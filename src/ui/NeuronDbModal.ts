@@ -1,7 +1,10 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — NeuronDB Browser Modal
 // Canonical modal for browsing, filtering, and previewing
-// Hartmann Factory & User models with full keyboard navigation
+// Hartmann Factory & User models with full keyboard navigation.
+// Styled after the ABDMS2000 Wavetable / Sound Browser aesthetic:
+// category chips, search with integrated icon, dual Table/Grid views,
+// and high-contrast informative selection footer.
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
@@ -24,6 +27,7 @@ export interface NeuronDbModelEntry {
 }
 
 export type NeuronDbSortColumn = 'slot' | 'name' | 'zones' | 'sources' | 'param' | 'comp';
+export type NeuronDbViewMode = 'grid' | 'table';
 
 const STICK_TABLE = [4, 8, 8, 12, 16, 20, 32, 32, 48, 64];
 
@@ -43,6 +47,7 @@ export class NeuronDbModal {
   private selectedSlot: number | null = null;
   private abortScan = false;
   private onPickSlot: ((slot: number) => void) | null = null;
+  private viewMode: NeuronDbViewMode = 'grid';
 
   public open(
     initialEntries: NeuronDbModelEntry[],
@@ -67,31 +72,43 @@ export class NeuronDbModal {
 
     this.backdropEl.innerHTML = `
       <div class="neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
-        <div class="modal-header">
-          <div class="modal-title">
+        <!-- Header -->
+        <div class="modal-header ndb-modal-header">
+          <div class="modal-title ndb-header-title">
             <span class="modal-icon">${ICONS.database}</span>
-            <span>NEURONDB MODEL BROWSER</span>
-            <span class="panel-badge" id="ndb-count-badge">${this.entries.length} MODELS</span>
+            <span class="ndb-title-text">NEURONDB MODEL BROWSER</span>
+            <span class="panel-badge ndb-badge" id="ndb-count-badge">${this.entries.length} MODELS</span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
+          <button type="button" class="btn btn-close-modal ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
         </div>
 
-        <div class="neurondb-toolbar">
+        <!-- Integrated Search Row (ABDMS2000 style) -->
+        <div class="ndb-search-row">
+          <span class="ndb-search-icon">${ICONS.search}</span>
           <input
             type="text"
             id="inp-ndb-search"
-            class="neurondb-search-input"
-            placeholder="Search by slot (#338), model name, parameter set..."
+            class="ndb-search-input"
+            placeholder="Search models by name, slot (#338), or parameter set..."
             autocomplete="off"
+            spellcheck="false"
             aria-label="Search models"
           />
-          <div class="neurondb-filter-group">
-            <label class="neurondb-filter-label" for="sel-ndb-param">PARAM SET:</label>
-            <select id="sel-ndb-param" class="neurondb-select-filter" title="Filter by Parameter Set (0..9)">
-              <option value="all">All Sets (0..9)</option>
-              ${PARAMETER_SETS.map((ps: { id: number; name: string }) => `<option value="${ps.id}">${ps.id}: ${ps.name}</option>`).join('')}
-            </select>
+          <div class="ndb-view-toggle">
+            <button type="button" class="ndb-view-btn ${this.viewMode === 'grid' ? 'active' : ''}" id="btn-view-grid" title="Grid View">
+              ${ICONS.grid}
+            </button>
+            <button type="button" class="ndb-view-btn ${this.viewMode === 'table' ? 'active' : ''}" id="btn-view-table" title="Table View">
+              ${ICONS.list}
+            </button>
           </div>
+        </div>
+
+        <!-- Category Filter Chips (ABDMS2000 style) -->
+        <div class="ndb-chips-row" id="ndb-chips-container"></div>
+
+        <!-- Secondary Filter Toolbar (Complexity + Status) -->
+        <div class="neurondb-toolbar">
           <div class="neurondb-filter-group">
             <label class="neurondb-filter-label" for="sel-ndb-comp">COMPLEXITY:</label>
             <select id="sel-ndb-comp" class="neurondb-select-filter" title="Filter by Analysis Complexity (1..10)">
@@ -102,24 +119,36 @@ export class NeuronDbModal {
           <span class="neurondb-scan-status" id="ndb-scan-status">Scanning model headers...</span>
         </div>
 
-        <div class="neurondb-table-wrap" id="ndb-table-wrap" tabindex="0">
-          <table class="neurondb-table">
-            <thead>
-              <tr id="ndb-thead-tr">
-                ${this.buildTheadHtml()}
-              </tr>
-            </thead>
-            <tbody id="ndb-tbody"></tbody>
-          </table>
+        <!-- Main Content Area: Grid or Table -->
+        <div class="ndb-content-wrap" id="ndb-content-wrap" tabindex="0">
+          <!-- Grid View Container -->
+          <div class="ndb-grid ${this.viewMode === 'grid' ? '' : 'is-hidden'}" id="ndb-grid-view"></div>
+
+          <!-- Table View Container -->
+          <div class="neurondb-table-wrap ${this.viewMode === 'table' ? '' : 'is-hidden'}" id="ndb-table-wrap">
+            <table class="neurondb-table">
+              <thead>
+                <tr id="ndb-thead-tr">
+                  ${this.buildTheadHtml()}
+                </tr>
+              </thead>
+              <tbody id="ndb-tbody"></tbody>
+            </table>
+          </div>
         </div>
 
-        <div class="modal-footer neurondb-footer">
-          <span class="neurondb-hint">Click row, double-click or use <strong>↑ / ↓</strong> and <strong>Enter</strong> to load into workspace.</span>
+        <!-- High-Contrast Informative Selection Footer (ABDMS2000 style) -->
+        <div class="modal-footer ndb-footer">
+          <div class="ndb-footer-selection" id="ndb-footer-sel">
+            <span class="ndb-footer-slot" id="ndb-foot-slot">#000</span>
+            <span class="ndb-footer-name" id="ndb-foot-name">—</span>
+            <span class="ndb-footer-details" id="ndb-foot-details"></span>
+          </div>
           <div class="neurondb-footer-actions">
             <button type="button" class="btn" id="btn-cancel-ndb-modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="btn-load-ndb-modal">
+            <button type="button" class="btn btn-primary ndb-select-btn" id="btn-load-ndb-modal">
               <span class="btn-icon">${ICONS.folder}</span>
-              <span>Load Selected Model</span>
+              <span>LOAD MODEL</span>
             </button>
           </div>
         </div>
@@ -128,36 +157,57 @@ export class NeuronDbModal {
 
     this.backdropEl.classList.remove('is-hidden');
     this.backdropEl.style.display = 'flex';
+    this.renderCategoryChips();
     this.bindHeaderSort();
-    this.renderRows();
+    this.renderView();
 
     const searchInp = this.backdropEl.querySelector<HTMLInputElement>('#inp-ndb-search');
     searchInp?.focus();
     searchInp?.addEventListener('input', () => {
       this.searchQuery = searchInp.value.trim().toLowerCase();
-      this.renderRows();
-    });
-
-    const selParam = this.backdropEl.querySelector<HTMLSelectElement>('#sel-ndb-param');
-    selParam?.addEventListener('change', () => {
-      this.filterParamSet = selParam.value === 'all' ? 'all' : parseInt(selParam.value, 10);
-      this.renderRows();
+      this.renderView();
     });
 
     const selComp = this.backdropEl.querySelector<HTMLSelectElement>('#sel-ndb-comp');
     selComp?.addEventListener('change', () => {
       this.filterComplexity = selComp.value === 'all' ? 'all' : parseInt(selComp.value, 10);
-      this.renderRows();
+      this.renderView();
     });
 
-    // Keyboard navigation: ArrowUp, ArrowDown, Enter, Escape
+    // View mode toggle
+    const btnGrid = this.backdropEl.querySelector<HTMLButtonElement>('#btn-view-grid');
+    const btnTable = this.backdropEl.querySelector<HTMLButtonElement>('#btn-view-table');
+    btnGrid?.addEventListener('click', () => {
+      this.viewMode = 'grid';
+      btnGrid.classList.add('active');
+      btnTable?.classList.remove('active');
+      this.backdropEl?.querySelector('#ndb-grid-view')?.classList.remove('is-hidden');
+      this.backdropEl?.querySelector('#ndb-table-wrap')?.classList.add('is-hidden');
+      this.renderView();
+    });
+    btnTable?.addEventListener('click', () => {
+      this.viewMode = 'table';
+      btnTable.classList.add('active');
+      btnGrid?.classList.remove('active');
+      this.backdropEl?.querySelector('#ndb-table-wrap')?.classList.remove('is-hidden');
+      this.backdropEl?.querySelector('#ndb-grid-view')?.classList.add('is-hidden');
+      this.renderView();
+    });
+
+    // Keyboard navigation: ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Enter, Escape
     const handleKeyNav = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        this.selectNextRow(1);
+        this.selectNext(this.viewMode === 'grid' ? 3 : 1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        this.selectNextRow(-1);
+        this.selectNext(this.viewMode === 'grid' ? -3 : -1);
+      } else if (e.key === 'ArrowRight' && this.viewMode === 'grid') {
+        e.preventDefault();
+        this.selectNext(1);
+      } else if (e.key === 'ArrowLeft' && this.viewMode === 'grid') {
+        e.preventDefault();
+        this.selectNext(-1);
       } else if (e.key === 'Enter') {
         if (this.selectedSlot !== null) {
           e.preventDefault();
@@ -170,7 +220,7 @@ export class NeuronDbModal {
     };
 
     searchInp?.addEventListener('keydown', handleKeyNav);
-    this.backdropEl.querySelector('#ndb-table-wrap')?.addEventListener('keydown', (e) => handleKeyNav(e as KeyboardEvent));
+    this.backdropEl.querySelector('#ndb-content-wrap')?.addEventListener('keydown', (e) => handleKeyNav(e as KeyboardEvent));
 
     const closeHandler = () => {
       this.close();
@@ -210,13 +260,30 @@ export class NeuronDbModal {
     if (idx >= 0) {
       this.entries[idx] = { ...updated };
     }
-    const row = this.backdropEl.querySelector<HTMLTableRowElement>(
-      `tr[data-slot="${updated.slot}"]`
-    );
-    if (row) {
-      row.innerHTML = this.buildRowInnerHtml(updated);
-      this.bindRowButton(row, updated.slot);
+
+    if (this.viewMode === 'table') {
+      const row = this.backdropEl.querySelector<HTMLTableRowElement>(
+        `tr[data-slot="${updated.slot}"]`
+      );
+      if (row) {
+        row.innerHTML = this.buildRowInnerHtml(updated);
+        this.bindRowButton(row, updated.slot);
+      }
+    } else {
+      const card = this.backdropEl.querySelector<HTMLElement>(
+        `.ndb-card[data-slot="${updated.slot}"]`
+      );
+      if (card) {
+        const temp = document.createElement('div');
+        temp.innerHTML = this.buildCardHtml(updated);
+        const newCard = temp.firstElementChild as HTMLElement;
+        if (newCard) {
+          card.replaceWith(newCard);
+          this.bindCardEvents(newCard, updated.slot);
+        }
+      }
     }
+    this.updateFooterSelection();
   }
 
   public setScanProgress(done: number, total: number): void {
@@ -227,6 +294,7 @@ export class NeuronDbModal {
     } else {
       statusEl.textContent = `Inspecting headers: ${done} / ${total}...`;
     }
+    this.renderCategoryChips();
   }
 
   public close(): void {
@@ -243,6 +311,53 @@ export class NeuronDbModal {
     cb?.(slot);
   }
 
+  // ── Category Chips Row (ABDMS2000 style) ───────────────────────────
+  private renderCategoryChips(): void {
+    const container = this.backdropEl?.querySelector<HTMLElement>('#ndb-chips-container');
+    if (!container) return;
+
+    // Count per parameter set
+    const counts: Record<number, number> = {};
+    for (const e of this.entries) {
+      if (e.parameterSet !== null) {
+        counts[e.parameterSet] = (counts[e.parameterSet] || 0) + 1;
+      }
+    }
+
+    let html = `
+      <button type="button" class="ndb-chip ${this.filterParamSet === 'all' ? 'active' : ''}" data-param="all">
+        <span class="ndb-chip-name">ALL</span>
+        <span class="ndb-chip-count">${this.entries.length}</span>
+      </button>
+    `;
+
+    PARAMETER_SETS.forEach((ps: { id: number; name: string }) => {
+      const count = counts[ps.id] || 0;
+      const isActive = this.filterParamSet === ps.id;
+      const iconKey = `param${ps.id}` as keyof typeof ICONS;
+      const iconSvg = ICONS[iconKey] || '';
+      html += `
+        <button type="button" class="ndb-chip cat-${ps.id} ${isActive ? 'active' : ''}" data-param="${ps.id}">
+          <span class="ndb-chip-icon">${iconSvg}</span>
+          <span class="ndb-chip-name">${ps.id}: ${ps.name}</span>
+          <span class="ndb-chip-count">${count}</span>
+        </button>
+      `;
+    });
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('.ndb-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const val = chip.getAttribute('data-param');
+        this.filterParamSet = val === 'all' ? 'all' : parseInt(val || '0', 10);
+        this.renderCategoryChips();
+        this.renderView();
+      });
+    });
+  }
+
+  // ── Sorting ──────────────────────────────────────────────────────────
   private buildTheadHtml(): string {
     const cols: Array<{ id: NeuronDbSortColumn; label: string; cls: string }> = [
       { id: 'slot', label: 'SLOT', cls: 'col-ndb-slot' },
@@ -285,7 +400,7 @@ export class NeuronDbModal {
         }
         theadTr.innerHTML = this.buildTheadHtml();
         this.bindHeaderSort();
-        this.renderRows();
+        this.renderView();
       });
     });
   }
@@ -345,7 +460,7 @@ export class NeuronDbModal {
     return filtered;
   }
 
-  private selectNextRow(delta: number): void {
+  private selectNext(delta: number): void {
     const filtered = this.getFilteredEntries();
     if (filtered.length === 0) return;
     const currentIdx = filtered.findIndex((e) => e.slot === this.selectedSlot);
@@ -354,36 +469,57 @@ export class NeuronDbModal {
     if (nextIdx >= filtered.length) nextIdx = filtered.length - 1;
     this.selectedSlot = filtered[nextIdx].slot;
 
-    const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
-    if (!tbody) return;
-    tbody.querySelectorAll('tr.neurondb-row').forEach((r) => {
-      const isSel = r.getAttribute('data-slot') === String(this.selectedSlot);
-      r.classList.toggle('is-selected', isSel);
-      if (isSel) {
-        r.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      }
-    });
+    if (this.viewMode === 'table') {
+      const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr.neurondb-row').forEach((r) => {
+        const isSel = r.getAttribute('data-slot') === String(this.selectedSlot);
+        r.classList.toggle('is-selected', isSel);
+        if (isSel) {
+          r.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+    } else {
+      const grid = this.backdropEl?.querySelector<HTMLElement>('#ndb-grid-view');
+      if (!grid) return;
+      grid.querySelectorAll('.ndb-card').forEach((c) => {
+        const isSel = c.getAttribute('data-slot') === String(this.selectedSlot);
+        c.classList.toggle('wt-selected', isSel);
+        if (isSel) {
+          c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      });
+    }
+    this.updateFooterSelection();
   }
 
-  private resetFilters(): void {
-    this.searchQuery = '';
-    this.filterParamSet = 'all';
-    this.filterComplexity = 'all';
-    const sInp = this.backdropEl?.querySelector<HTMLInputElement>('#inp-ndb-search');
-    if (sInp) sInp.value = '';
-    const sParam = this.backdropEl?.querySelector<HTMLSelectElement>('#sel-ndb-param');
-    if (sParam) sParam.value = 'all';
-    const sComp = this.backdropEl?.querySelector<HTMLSelectElement>('#sel-ndb-comp');
-    if (sComp) sComp.value = 'all';
-    this.renderRows();
+  private updateFooterSelection(): void {
+    if (!this.backdropEl) return;
+    const sel = this.entries.find((e) => e.slot === this.selectedSlot);
+    const slotEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-slot');
+    const nameEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-name');
+    const detEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-details');
+    if (!sel) {
+      if (slotEl) slotEl.textContent = '---';
+      if (nameEl) nameEl.textContent = 'No selection';
+      if (detEl) detEl.textContent = '';
+      return;
+    }
+
+    if (slotEl) slotEl.textContent = `#${String(sel.slot).padStart(3, '0')}`;
+    if (nameEl) nameEl.textContent = sel.name || 'Untitled';
+    if (detEl) {
+      const psName = sel.parameterSet !== null ? PARAMETER_SETS[sel.parameterSet]?.name || 'Set ' + sel.parameterSet : 'Unknown Set';
+      const zStr = sel.zoneCount !== null ? `${sel.zoneCount} Zones` : 'Pending zones';
+      const cStr = sel.complexity !== null ? `Lvl ${sel.complexity}` : '';
+      detEl.textContent = `— ${psName} | ${zStr} ${cStr ? '| ' + cStr : ''}`;
+    }
   }
 
-  private renderRows(): void {
-    const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
+  private renderView(): void {
     const badge = this.backdropEl?.querySelector<HTMLElement>('#ndb-count-badge');
-    if (!tbody) return;
-
     const filtered = this.getFilteredEntries();
+
     if (badge) {
       badge.textContent =
         filtered.length === this.entries.length
@@ -395,6 +531,100 @@ export class NeuronDbModal {
       this.selectedSlot = filtered[0].slot;
     }
 
+    if (this.viewMode === 'grid') {
+      this.renderGrid(filtered);
+    } else {
+      this.renderTable(filtered);
+    }
+    this.updateFooterSelection();
+  }
+
+  // ── Grid Rendering (Cards style like ABDMS2000) ──────────────────
+  private renderGrid(filtered: NeuronDbModelEntry[]): void {
+    const grid = this.backdropEl?.querySelector<HTMLElement>('#ndb-grid-view');
+    if (!grid) return;
+
+    if (filtered.length === 0) {
+      grid.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.database}</span>
+          <span class="empty-msg">No models match the filter criteria</span>
+          <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-grid">Reset Filters</button>
+        </div>
+      `;
+      grid.querySelector('#btn-ndb-reset-filter-grid')?.addEventListener('click', () => {
+        this.resetFilters();
+      });
+      return;
+    }
+
+    grid.innerHTML = filtered.map((e) => this.buildCardHtml(e)).join('');
+
+    grid.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
+      this.bindCardEvents(card, slot);
+    });
+  }
+
+  private buildCardHtml(e: NeuronDbModelEntry): string {
+    const isSel = e.slot === this.selectedSlot;
+    const slotStr = `#${String(e.slot).padStart(3, '0')}`;
+    const ps = e.parameterSet !== null ? PARAMETER_SETS[e.parameterSet] : null;
+    const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
+    const catName = ps ? `${ps.id}: ${ps.name}` : (e.parameterSet !== null ? `Set ${e.parameterSet}` : 'Pending');
+    const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
+    const iconSvg = ICONS[iconKey] || ICONS.database;
+
+    let zonesBadge = '';
+    if (e.zoneCount !== null) {
+      const spanStr =
+        e.lowKey !== null && e.highKey !== null
+          ? ` (${midiToNoteName(e.lowKey)}..${midiToNoteName(e.highKey)})`
+          : '';
+      zonesBadge = `${e.zoneCount}z${spanStr}`;
+    }
+
+    const compBadge = e.complexity !== null ? `Lvl ${e.complexity}` : '';
+
+    return `
+      <div class="ndb-card ${isSel ? 'wt-selected' : ''}" data-slot="${e.slot}">
+        <div class="ndb-card-icon ${catClass}">
+          ${iconSvg}
+        </div>
+        <div class="ndb-card-info">
+          <div class="ndb-card-top">
+            <span class="ndb-card-slot">${slotStr}</span>
+            <span class="ndb-card-cat ${catClass}">${catName}</span>
+          </div>
+          <div class="ndb-card-name" title="${e.name || slotStr}">${e.name || 'Untitled'}</div>
+          <div class="ndb-card-meta">
+            ${zonesBadge ? `<span class="ndb-card-badge">${zonesBadge}</span>` : ''}
+            ${compBadge ? `<span class="ndb-card-badge">${compBadge}</span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private bindCardEvents(card: HTMLElement, slot: number): void {
+    card.addEventListener('click', () => {
+      this.selectedSlot = slot;
+      const grid = this.backdropEl?.querySelector<HTMLElement>('#ndb-grid-view');
+      grid?.querySelectorAll('.ndb-card').forEach((c) => {
+        c.classList.toggle('wt-selected', c === card);
+      });
+      this.updateFooterSelection();
+    });
+    card.addEventListener('dblclick', () => {
+      this.triggerPick(slot);
+    });
+  }
+
+  // ── Table Rendering ──────────────────────────────────────────────────
+  private renderTable(filtered: NeuronDbModelEntry[]): void {
+    const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
+    if (!tbody) return;
+
     if (filtered.length === 0) {
       tbody.innerHTML = `
         <tr>
@@ -402,12 +632,12 @@ export class NeuronDbModal {
             <div class="neurondb-empty-state">
               <span class="empty-icon">${ICONS.database}</span>
               <span class="empty-msg">No models match the filter criteria</span>
-              <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter">Reset Filters</button>
+              <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-table">Reset Filters</button>
             </div>
           </td>
         </tr>
       `;
-      tbody.querySelector('#btn-ndb-reset-filter')?.addEventListener('click', () => {
+      tbody.querySelector('#btn-ndb-reset-filter-table')?.addEventListener('click', () => {
         this.resetFilters();
       });
       return;
@@ -430,12 +660,25 @@ export class NeuronDbModal {
         tbody.querySelectorAll('tr.neurondb-row').forEach((r) => {
           r.classList.toggle('is-selected', r === row);
         });
+        this.updateFooterSelection();
       });
       row.addEventListener('dblclick', () => {
         this.triggerPick(slot);
       });
       this.bindRowButton(row, slot);
     });
+  }
+
+  private resetFilters(): void {
+    this.searchQuery = '';
+    this.filterParamSet = 'all';
+    this.filterComplexity = 'all';
+    const sInp = this.backdropEl?.querySelector<HTMLInputElement>('#inp-ndb-search');
+    if (sInp) sInp.value = '';
+    const sComp = this.backdropEl?.querySelector<HTMLSelectElement>('#sel-ndb-comp');
+    if (sComp) sComp.value = 'all';
+    this.renderCategoryChips();
+    this.renderView();
   }
 
   private bindRowButton(row: HTMLTableRowElement, slot: number): void {
@@ -469,8 +712,9 @@ export class NeuronDbModal {
     let paramHtml = `<span class="ndb-dim">...</span>`;
     if (e.parameterSet !== null) {
       const ps = PARAMETER_SETS[e.parameterSet];
+      const catClass = ps ? `cat-${ps.id}` : '';
       paramHtml = ps
-        ? `<span class="ndb-param-tag">${ps.id}: ${ps.name}</span>`
+        ? `<span class="ndb-param-tag ${catClass}">${ps.id}: ${ps.name}</span>`
         : `Set ${e.parameterSet}`;
     }
 
