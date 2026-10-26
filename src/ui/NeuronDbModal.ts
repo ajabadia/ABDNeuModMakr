@@ -71,7 +71,7 @@ export class NeuronDbModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
+      <div class="modal-card catalog-browser-card neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
         <!-- Header -->
         <div class="modal-header ndb-modal-header">
           <div class="modal-title ndb-header-title">
@@ -79,7 +79,7 @@ export class NeuronDbModal {
             <span class="ndb-title-text">NEURONDB MODEL BROWSER</span>
             <span class="panel-badge ndb-badge" id="ndb-count-badge">${this.entries.length} MODELS</span>
           </div>
-          <button type="button" class="btn btn-close-modal ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
+          <button type="button" class="btn modal-close-btn btn-close-modal ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
         </div>
 
         <!-- Integrated Search Row (ABDMS2000 style) -->
@@ -156,7 +156,6 @@ export class NeuronDbModal {
     `;
 
     this.backdropEl.classList.remove('is-hidden');
-    this.backdropEl.style.display = 'flex';
     this.renderCategoryChips();
     this.bindHeaderSort();
     this.renderView();
@@ -301,7 +300,6 @@ export class NeuronDbModal {
     this.abortScan = true;
     if (this.backdropEl) {
       this.backdropEl.classList.add('is-hidden');
-      this.backdropEl.style.display = 'none';
     }
   }
 
