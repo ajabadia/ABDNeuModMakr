@@ -389,6 +389,7 @@ class App {
       },
       onNoteRelease: (_note) => {}
     });
+    this.keyboard.setZones(this.session!.zones, this.selectedZoneId);
 
     // 6. Drawers & Modals
     this.telemetryDrawer = new TelemetryDrawer(drawersMount, () => {
@@ -1477,6 +1478,7 @@ class App {
     this.ribbon.setZones(this.session.zones, this.selectedZoneId);
     this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones);
     this.processPanel.setConfig(this.session.processConfig);
+    this.keyboard.setZones(this.session.zones, this.selectedZoneId);
     this.keyboard.setActiveZone(activeZone);
     this.telemetryDrawer.updateAudit(this.session, errors);
     this.updateSpectralView(activeZone);

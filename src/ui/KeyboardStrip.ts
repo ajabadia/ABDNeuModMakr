@@ -1,8 +1,10 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Keyboard Strip Component
-// Interactive piano keyboard showing active zone & root pitch
+// Powered by @abdsynths/midi-keyb unified keyboard engine
+// Interactive piano keyboard showing multizone layout & root pitch
 // ─────────────────────────────────────────────────────────
 
+import { createKeyboard } from '@abdsynths/midi-keyb';
 import type { Zone } from '../core/types';
 import { midiToNoteName } from './ZoneRibbon';
 
@@ -14,9 +16,10 @@ export interface KeyboardStripHandlers {
 export class KeyboardStrip {
   private container: HTMLElement;
   private handlers: KeyboardStripHandlers;
-  private baseOctave: number = 2; // C2 (36) to C7 (96) by default (61 keys visible)
+  private baseOctave: number = 2; // C2 (36) by default
   private activeZone: Zone | null = null;
-  private pressedNotes: Set<number> = new Set();
+  private allZones: Zone[] = [];
+  private kbdInstance: any = null;
 
   constructor(container: HTMLElement, handlers: KeyboardStripHandlers) {
     this.container = container;
@@ -24,14 +27,26 @@ export class KeyboardStrip {
     this.render();
   }
 
+  public setZones(zones: Zone[], activeZoneId?: string | null): void {
+    this.allZones = zones || [];
+    if (activeZoneId !== undefined) {
+      this.activeZone = this.allZones.find((z) => z.id === activeZoneId) || null;
+    }
+    this.syncZonesToKeyboard();
+  }
+
   public setActiveZone(zone: Zone | null): void {
     this.activeZone = zone;
-    this.updateKeyHighlighting();
+    this.syncZonesToKeyboard();
   }
 
   public setBaseOctave(oct: number): void {
-    this.baseOctave = Math.max(0, Math.min(6, oct));
-    this.render();
+    this.baseOctave = Math.max(0, Math.min(5, oct));
+    if (this.kbdInstance?.setOctaveCount) {
+      this.kbdInstance.setOctaveCount(5, this.baseOctave * 12);
+    }
+    this.updateHud();
+    this.syncZonesToKeyboard();
   }
 
   private render(): void {
@@ -43,61 +58,84 @@ export class KeyboardStrip {
         <div class="keyboard-toolbar">
           <div class="keyboard-hud">
             <span class="hud-label">KEYBED RANGE:</span>
-            <span class="hud-value">${midiToNoteName(startNote)} (${startNote}) — ${midiToNoteName(startNote + keyCount - 1)} (${startNote + keyCount - 1})</span>
+            <span class="hud-value" id="kbd-range-text">${midiToNoteName(startNote)} (${startNote}) — ${midiToNoteName(startNote + keyCount - 1)} (${startNote + keyCount - 1})</span>
           </div>
           <div class="keyboard-octave-controls">
             <button type="button" class="btn btn-xs" id="btn-oct-down" ${this.baseOctave <= 0 ? 'disabled' : ''}>OCT −</button>
-            <span class="octave-indicator">OCT ${this.baseOctave}</span>
-            <button type="button" class="btn btn-xs" id="btn-oct-up" ${this.baseOctave >= 6 ? 'disabled' : ''}>OCT +</button>
+            <span class="octave-indicator" id="kbd-oct-indicator">OCT ${this.baseOctave}</span>
+            <button type="button" class="btn btn-xs" id="btn-oct-up" ${this.baseOctave >= 5 ? 'disabled' : ''}>OCT +</button>
           </div>
         </div>
 
-        <div class="piano-keys-bed" id="piano-keys-bed">
-          ${this.renderKeys(startNote, keyCount)}
-        </div>
+        <div class="piano-keys-bed" id="piano-keyboard"></div>
       </div>
     `;
 
+    this.initMidiKeyboard();
     this.bindEvents();
-    this.updateKeyHighlighting();
+    this.syncZonesToKeyboard();
   }
 
-  private renderKeys(startNote: number, count: number): string {
-    const keysHtml: string[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const midi = startNote + i;
-      const isBlack = [1, 3, 6, 8, 10].includes(midi % 12);
-      const noteName = midiToNoteName(midi);
-
-      keysHtml.push(`
-        <div 
-          class="piano-key ${isBlack ? 'black-key' : 'white-key'}" 
-          data-midi="${midi}"
-          data-note="${noteName}"
-          title="${noteName} (MIDI ${midi})"
-        >
-          <div class="key-root-pin" id="pin-${midi}"></div>
-          <span class="key-label">${(midi % 12 === 0) ? noteName : ''}</span>
-        </div>
-      `);
+  private initMidiKeyboard(): void {
+    if (this.kbdInstance?.destroy) {
+      this.kbdInstance.destroy();
     }
 
-    return keysHtml.join('');
+    this.kbdInstance = createKeyboard({
+      containerId: 'piano-keyboard',
+      wheelPitchId: null,
+      wheelModId: null,
+      onNoteOn: (note: number) => {
+        this.handlers.onNotePress(note);
+      },
+      onNoteOff: (note: number) => {
+        this.handlers.onNoteRelease(note);
+      },
+      config: {
+        numOctaves: 5,
+        startNote: this.baseOctave * 12,
+        fixedOctaves: true,
+        enablePanic: false,
+        enableWheels: false,
+        enableCollapse: true,
+        enableQwerty: true,
+        showQwertyLabels: false,
+        enableTouch: true
+      }
+    });
   }
 
-  private updateKeyHighlighting(): void {
-    const keys = this.container.querySelectorAll('.piano-key');
-    keys.forEach((el) => {
-      const midi = parseInt(el.getAttribute('data-midi') || '-1', 10);
-      if (midi < 0) return;
+  private updateHud(): void {
+    const startNote = this.baseOctave * 12;
+    const keyCount = 61;
+    const rangeEl = this.container.querySelector('#kbd-range-text');
+    if (rangeEl) {
+      rangeEl.textContent = `${midiToNoteName(startNote)} (${startNote}) — ${midiToNoteName(startNote + keyCount - 1)} (${startNote + keyCount - 1})`;
+    }
+    const octEl = this.container.querySelector('#kbd-oct-indicator');
+    if (octEl) {
+      octEl.textContent = `OCT ${this.baseOctave}`;
+    }
+    const downBtn = this.container.querySelector<HTMLButtonElement>('#btn-oct-down');
+    if (downBtn) downBtn.disabled = this.baseOctave <= 0;
+    const upBtn = this.container.querySelector<HTMLButtonElement>('#btn-oct-up');
+    if (upBtn) upBtn.disabled = this.baseOctave >= 5;
+  }
 
-      const isInZone = this.activeZone && midi >= this.activeZone.lowKey && midi <= this.activeZone.highKey;
-      const isRoot = this.activeZone && midi === this.activeZone.rootKey;
+  private syncZonesToKeyboard(): void {
+    if (!this.kbdInstance?.setZones) return;
 
-      el.classList.toggle('is-in-active-zone', Boolean(isInZone));
-      el.classList.toggle('is-root-key', Boolean(isRoot));
-    });
+    // Convert zones to format expected by MidiKeyboard
+    const mapped = this.allZones.map((z) => ({
+      id: z.id,
+      lowKey: z.lowKey,
+      highKey: z.highKey,
+      rootKey: z.rootKey,
+      color: 'var(--color-accent, #00c8ff)'
+    }));
+
+    const activeId = this.activeZone?.id;
+    this.kbdInstance.setZones(mapped, activeId);
   }
 
   private bindEvents(): void {
@@ -108,37 +146,12 @@ export class KeyboardStrip {
     this.container.querySelector('#btn-oct-up')?.addEventListener('click', () => {
       this.setBaseOctave(this.baseOctave + 1);
     });
+  }
 
-    const keys = this.container.querySelectorAll<HTMLElement>('.piano-key');
-    keys.forEach((el) => {
-      const midi = parseInt(el.getAttribute('data-midi') || '-1', 10);
-      if (midi < 0) return;
-
-      const press = () => {
-        el.classList.add('is-pressed');
-        this.pressedNotes.add(midi);
-        this.handlers.onNotePress(midi);
-      };
-
-      const release = () => {
-        el.classList.remove('is-pressed');
-        this.pressedNotes.delete(midi);
-        this.handlers.onNoteRelease(midi);
-      };
-
-      el.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        press();
-      });
-
-      el.addEventListener('mouseenter', (e: MouseEvent) => {
-        if (e.buttons === 1) {
-          press();
-        }
-      });
-
-      el.addEventListener('mouseup', release);
-      el.addEventListener('mouseleave', release);
-    });
+  public destroy(): void {
+    if (this.kbdInstance?.destroy) {
+      this.kbdInstance.destroy();
+      this.kbdInstance = null;
+    }
   }
 }

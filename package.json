@@ -10,6 +10,7 @@
     "test": "npx tsx tests/run_all.ts"
   },
   "dependencies": {
+    "@abdsynths/midi-keyb": "workspace:*",
     "@abdsynths/shared": "workspace:*"
   },
   "devDependencies": {
