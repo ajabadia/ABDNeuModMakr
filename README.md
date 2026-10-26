@@ -44,13 +44,14 @@ El script automáticamente:
 ## 🧩 Componentes Principales
 
 - **`AppNavbar`**: Barra superior unificada (`SynthNavBar`) con menús de archivo, edición, proceso y ayuda, pill de estado del modelo y auditor de cobertura continua MIDI 0..127.
-- **`ZoneRibbon`**: Mapa interactivo de la franja de 128 notas MIDI que visualiza la partición de zonas, notas raíz y asignación de muestras.
+- **`ZoneRibbon`**: Mapa interactivo de la franja de 128 notas MIDI que visualiza la partición de zonas, notas raíz y asignación de muestras. Representa el split de velocidad proporcionalmente (fijo 50%/50% en modo clásico a split 64, flexible en modo extendido).
 - **`ZoneInspector`**: Editor detallado de límites de notas (Low/Root/High Key), asignación de archivos WAV primarios (Base) y secundarios (Layer/Velocity), y controles de afinación (*detune*), ganancia y panorama.
 - **`ProcessPanel`**: Configuración del modelo destino (ranura 0..511, nombre de hasta 11 caracteres, complejidad 1..10 y los 10 Parameter Sets oficiales del manual).
-- **`KeyboardStrip`**: Teclado de piano interactivo para probar notas, verificar rangos y comprobar la cobertura.
+- **`KeyboardStrip`**: Teclado de piano unificado impulsado por `@abdsynths/midi-keyb`. Soporta representación multizona en vivo, indicador pin iluminado en la nota raíz (`rootKey`), límites visuales de zona, selección táctil/QWERTY y colapso vertical suave (`enableCollapse`) para maximizar el área de trabajo.
 - **`ProcessModal`**: Ventana modal con progreso en tiempo real de la resíntesis neural espectral.
+- **`NeuronDbModal`**: Navegador modal canónico de modelos de fábrica y usuario, con fondo neutro semitransparente, encabezado integrado y filtros avanzados por Parameter Set (0..9) y Complejidad (1..10) además de búsqueda en texto.
 - **`TelemetryDrawer`**: Cajón retráctil de auditoría de cobertura continua (verificación sin huecos ni solapamientos) y registro de eventos.
-- **`BankDrawer`**: Cajón retráctil para examinar la biblioteca de modelos generados y presets de NeuronDB con exportación a `.model`.
+- **`BankDrawer`**: Cajón retráctil para examinar la biblioteca de modelos generados y presets de NeuronDB con exportación a `.model` y buscador en tiempo real.
 
 ---
 
