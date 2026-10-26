@@ -65,6 +65,11 @@ export class TelemetryDrawer {
         <span class="badge-text">${hasGaps ? 'COVERAGE ISSUES DETECTED' : 'CONTINUOUS COVERAGE 0..127 VERIFIED'}</span>
       </div>
 
+      <div class="audit-minimap-container">
+        <div class="minimap-header-label">128-NOTE MIDI COVERAGE MAP (0..127):</div>
+        ${this.buildMiniMapHtml(session)}
+      </div>
+
       <div class="audit-metrics-row">
         <div class="audit-stat">
           <span class="stat-num">${totalZones}</span>
@@ -100,6 +105,56 @@ export class TelemetryDrawer {
     box.querySelector('#btn-drawer-auto-repair')?.addEventListener('click', () => {
       this.onAutoRepair?.();
     });
+  }
+
+  private buildMiniMapHtml(session: Session): string {
+    const coverage = new Uint8Array(128);
+    for (const z of session.zones) {
+      const low = Math.max(0, Math.min(127, z.lowKey));
+      const high = Math.max(0, Math.min(127, z.highKey));
+      for (let k = low; k <= high; k++) {
+        coverage[k]++;
+      }
+    }
+
+    let segmentsHtml = '<div class="telemetry-minimap" title="128-Note MIDI Coverage Mini-Map (0..127)">';
+    let currentType: 'gap' | 'ok' | 'overlap' | null = null;
+    let startKey = 0;
+
+    const flushSegment = (endKey: number) => {
+      if (currentType === null) return;
+      const count = endKey - startKey + 1;
+      const pct = ((count / 128) * 100).toFixed(2);
+      const title = `${startKey}–${endKey}: ${currentType.toUpperCase()} (${count} notes)`;
+      segmentsHtml += `<div class="minimap-segment is-${currentType}" style="width: ${pct}%" title="${title}"></div>`;
+    };
+
+    for (let k = 0; k < 128; k++) {
+      const type: 'gap' | 'ok' | 'overlap' =
+        coverage[k] === 0 ? 'gap' : coverage[k] === 1 ? 'ok' : 'overlap';
+      if (type !== currentType) {
+        if (currentType !== null) {
+          flushSegment(k - 1);
+        }
+        currentType = type;
+        startKey = k;
+      }
+    }
+    flushSegment(127);
+    segmentsHtml += '</div>';
+
+    return `
+      ${segmentsHtml}
+      <div class="telemetry-minimap-labels">
+        <span>C-1 (0)</span>
+        <span>C1 (24)</span>
+        <span>C3 (48)</span>
+        <span>C4 (60)</span>
+        <span>C6 (84)</span>
+        <span>C8 (108)</span>
+        <span>G9 (127)</span>
+      </div>
+    `;
   }
 
   public addLog(message: string): void {

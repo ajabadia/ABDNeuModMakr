@@ -246,6 +246,9 @@ class App {
         this.session = this.core.getSession()!;
         this.refreshUI();
       },
+      onDropSample: (zoneId, slot, file) => {
+        void this.loadSampleFileIntoZone(zoneId, slot, file);
+      },
       getWaveforms: (zoneId) => this.core.getZoneRibbonWaveforms(zoneId),
       onWaveModeChange: (mode) => {
         if (mode === 'resynthesis' && this.session) {
@@ -296,37 +299,8 @@ class App {
         void this.core.auditionSample(path, active?.rootKey ?? 60);
         this.spectralView?.notifyPlaybackStarted();
       },
-      onLoadSampleFile: async (zoneId, slot, file) => {
-        try {
-          const buffer = await file.arrayBuffer();
-          const decoded = this.core.registerSampleBuffer(file.name, buffer);
-          const targetZone = this.session?.zones.find((z) => z.id === zoneId);
-          const effectiveSlot =
-            slot === 'high' && targetZone && !targetZone.sampleLow ? 'low' : slot;
-          const changes: Partial<Zone> =
-            effectiveSlot === 'low'
-              ? { sampleLow: file.name }
-              : { sampleHigh: file.name };
-          if (
-            effectiveSlot === 'high' &&
-            decoded.instrument &&
-            decoded.instrument.lowVelocity >= 2 &&
-            decoded.instrument.lowVelocity <= 127
-          ) {
-            const isExtended = (this.session?.processConfig as { workingMode?: string })?.workingMode === 'extended';
-            changes.velSplit = isExtended ? decoded.instrument.lowVelocity : 64;
-          }
-          await this.core.updateZone(zoneId, changes);
-          this.session = this.core.getSession()!;
-          this.telemetryDrawer.addLog(
-            `Loaded ${file.name} into ${effectiveSlot === 'low' ? 'Low Vel' : 'High Vel'} (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
-          );
-          this.refreshUI();
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.telemetryDrawer.addLog(`Error loading ${file.name}: ${msg}`);
-          alert(`Failed to decode audio file "${file.name}":\n${msg}`);
-        }
+      onLoadSampleFile: (zoneId, slot, file) => {
+        void this.loadSampleFileIntoZone(zoneId, slot, file);
       },
       onDropMultipleFiles: (files) => {
         void this.handleDroppedFiles(files);
@@ -433,6 +407,44 @@ class App {
         e.returnValue = '';
       }
     });
+  }
+
+  private async loadSampleFileIntoZone(
+    zoneId: string,
+    slot: 'low' | 'high',
+    file: File
+  ): Promise<void> {
+    try {
+      const buffer = await file.arrayBuffer();
+      const decoded = this.core.registerSampleBuffer(file.name, buffer);
+      const targetZone = this.session?.zones.find((z) => z.id === zoneId);
+      const effectiveSlot =
+        slot === 'high' && targetZone && !targetZone.sampleLow ? 'low' : slot;
+      const changes: Partial<Zone> =
+        effectiveSlot === 'low'
+          ? { sampleLow: file.name }
+          : { sampleHigh: file.name };
+      if (
+        effectiveSlot === 'high' &&
+        decoded.instrument &&
+        decoded.instrument.lowVelocity >= 2 &&
+        decoded.instrument.lowVelocity <= 127
+      ) {
+        const isExtended =
+          (this.session?.processConfig as { workingMode?: string })?.workingMode === 'extended';
+        changes.velSplit = isExtended ? decoded.instrument.lowVelocity : 64;
+      }
+      await this.core.updateZone(zoneId, changes);
+      this.session = this.core.getSession()!;
+      this.telemetryDrawer.addLog(
+        `Loaded ${file.name} into ${effectiveSlot === 'low' ? 'Low Vel' : 'High Vel'} (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
+      );
+      this.refreshUI();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.telemetryDrawer.addLog(`Error loading ${file.name}: ${msg}`);
+      alert(`Failed to decode audio file "${file.name}":\n${msg}`);
+    }
   }
 
   private async handleDroppedFiles(fileList: FileList): Promise<void> {

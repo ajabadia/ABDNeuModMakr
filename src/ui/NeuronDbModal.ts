@@ -1,32 +1,35 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — NeuronDB Directory Browser Modal
-// Displays all <NNN>.model subdirectories found in a NeuronDB / Models folder
-// with progressive fast header inspection (MName, map.script, 64-byte .sphere header).
+// ABDNeuModMakr — NeuronDB Browser Modal
+// Canonical modal for browsing, filtering, and previewing
+// Hartmann Factory & User models with full keyboard navigation
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
-import { PARAMETER_SETS } from '../core/WebAudioPipeline';
 import { midiToNoteName } from './ZoneRibbon';
+import { PARAMETER_SETS } from '../core/WebAudioPipeline';
 
 export interface NeuronDbModelEntry {
   slot: number;
-  folderName: string;
+  folderName?: string;
   name: string;
   zoneCount: number | null;
-  sourceCount: number | null;
   lowKey: number | null;
   highKey: number | null;
+  sourceCount: number | null;
   parameterSet: number | null;
-  stickModes: number | null;
   complexity: number | null;
-  loadedMeta: boolean;
+  stickModes: number | null;
+  modelPath?: string;
+  loadedMeta?: boolean;
 }
 
-const STICK_TABLE = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
+export type NeuronDbSortColumn = 'slot' | 'name' | 'zones' | 'sources' | 'param' | 'comp';
 
-export function stickModesToComplexity(stickModes: number): number {
-  const idx = STICK_TABLE.findIndex((s) => s >= stickModes);
-  return idx >= 0 ? idx + 1 : 8;
+const STICK_TABLE = [4, 8, 8, 12, 16, 20, 32, 32, 48, 64];
+
+export function stickModesToComplexity(modes: number): number {
+  const idx = STICK_TABLE.indexOf(modes);
+  return idx >= 0 ? idx + 1 : Math.max(1, Math.min(10, Math.round(modes / 6.4)));
 }
 
 export class NeuronDbModal {
@@ -35,6 +38,8 @@ export class NeuronDbModal {
   private searchQuery = '';
   private filterParamSet: number | 'all' = 'all';
   private filterComplexity: number | 'all' = 'all';
+  private sortColumn: NeuronDbSortColumn = 'slot';
+  private sortAsc = true;
   private selectedSlot: number | null = null;
   private abortScan = false;
   private onPickSlot: ((slot: number) => void) | null = null;
@@ -49,6 +54,8 @@ export class NeuronDbModal {
     this.searchQuery = '';
     this.filterParamSet = 'all';
     this.filterComplexity = 'all';
+    this.sortColumn = 'slot';
+    this.sortAsc = true;
     this.selectedSlot = this.entries[0]?.slot ?? null;
     this.onPickSlot = onPick;
 
@@ -59,7 +66,7 @@ export class NeuronDbModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="neurondb-modal-card">
+      <div class="neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
         <div class="modal-header">
           <div class="modal-title">
             <span class="modal-icon">${ICONS.database}</span>
@@ -74,14 +81,15 @@ export class NeuronDbModal {
             type="text"
             id="inp-ndb-search"
             class="neurondb-search-input"
-            placeholder="Search by slot (#338), model name..."
+            placeholder="Search by slot (#338), model name, parameter set..."
             autocomplete="off"
+            aria-label="Search models"
           />
           <div class="neurondb-filter-group">
             <label class="neurondb-filter-label" for="sel-ndb-param">PARAM SET:</label>
             <select id="sel-ndb-param" class="neurondb-select-filter" title="Filter by Parameter Set (0..9)">
               <option value="all">All Sets (0..9)</option>
-              ${PARAMETER_SETS.map((ps) => `<option value="${ps.id}">${ps.id}: ${ps.name}</option>`).join('')}
+              ${PARAMETER_SETS.map((ps: { id: number; name: string }) => `<option value="${ps.id}">${ps.id}: ${ps.name}</option>`).join('')}
             </select>
           </div>
           <div class="neurondb-filter-group">
@@ -94,17 +102,11 @@ export class NeuronDbModal {
           <span class="neurondb-scan-status" id="ndb-scan-status">Scanning model headers...</span>
         </div>
 
-        <div class="neurondb-table-wrap">
+        <div class="neurondb-table-wrap" id="ndb-table-wrap" tabindex="0">
           <table class="neurondb-table">
             <thead>
-              <tr>
-                <th class="col-ndb-slot">SLOT</th>
-                <th class="col-ndb-name">MODEL NAME</th>
-                <th class="col-ndb-zones">ZONES</th>
-                <th class="col-ndb-sources">SOURCES</th>
-                <th class="col-ndb-param">PARAMETER SET</th>
-                <th class="col-ndb-comp">COMPLEXITY</th>
-                <th class="col-ndb-action">ACTION</th>
+              <tr id="ndb-thead-tr">
+                ${this.buildTheadHtml()}
               </tr>
             </thead>
             <tbody id="ndb-tbody"></tbody>
@@ -112,7 +114,7 @@ export class NeuronDbModal {
         </div>
 
         <div class="modal-footer neurondb-footer">
-          <span class="neurondb-hint">Click any row to select, double-click or press <strong>Load Selected Model</strong> to import into workspace.</span>
+          <span class="neurondb-hint">Click row, double-click or use <strong>↑ / ↓</strong> and <strong>Enter</strong> to load into workspace.</span>
           <div class="neurondb-footer-actions">
             <button type="button" class="btn" id="btn-cancel-ndb-modal">Cancel</button>
             <button type="button" class="btn btn-primary" id="btn-load-ndb-modal">
@@ -126,6 +128,7 @@ export class NeuronDbModal {
 
     this.backdropEl.classList.remove('is-hidden');
     this.backdropEl.style.display = 'flex';
+    this.bindHeaderSort();
     this.renderRows();
 
     const searchInp = this.backdropEl.querySelector<HTMLInputElement>('#inp-ndb-search');
@@ -147,16 +150,27 @@ export class NeuronDbModal {
       this.renderRows();
     });
 
-    searchInp?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && this.selectedSlot !== null) {
+    // Keyboard navigation: ArrowUp, ArrowDown, Enter, Escape
+    const handleKeyNav = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
         e.preventDefault();
-        this.triggerPick(this.selectedSlot);
+        this.selectNextRow(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this.selectNextRow(-1);
+      } else if (e.key === 'Enter') {
+        if (this.selectedSlot !== null) {
+          e.preventDefault();
+          this.triggerPick(this.selectedSlot);
+        }
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        this.close();
-        onCancel?.();
+        closeHandler();
       }
-    });
+    };
+
+    searchInp?.addEventListener('keydown', handleKeyNav);
+    this.backdropEl.querySelector('#ndb-table-wrap')?.addEventListener('keydown', (e) => handleKeyNav(e as KeyboardEvent));
 
     const closeHandler = () => {
       this.close();
@@ -229,8 +243,55 @@ export class NeuronDbModal {
     cb?.(slot);
   }
 
+  private buildTheadHtml(): string {
+    const cols: Array<{ id: NeuronDbSortColumn; label: string; cls: string }> = [
+      { id: 'slot', label: 'SLOT', cls: 'col-ndb-slot' },
+      { id: 'name', label: 'MODEL NAME', cls: 'col-ndb-name' },
+      { id: 'zones', label: 'ZONES', cls: 'col-ndb-zones' },
+      { id: 'sources', label: 'SOURCES', cls: 'col-ndb-sources' },
+      { id: 'param', label: 'PARAMETER SET', cls: 'col-ndb-param' },
+      { id: 'comp', label: 'COMPLEXITY', cls: 'col-ndb-comp' },
+    ];
+
+    return `
+      ${cols
+        .map((c) => {
+          const isSorted = this.sortColumn === c.id;
+          const arrow = isSorted ? (this.sortAsc ? '▲' : '▼') : '';
+          return `
+            <th class="${c.cls} is-sortable ${isSorted ? 'is-sorted' : ''}" data-sort="${c.id}" title="Sort by ${c.label}">
+              ${c.label} <span class="sort-indicator">${arrow}</span>
+            </th>
+          `;
+        })
+        .join('')}
+      <th class="col-ndb-action">ACTION</th>
+    `;
+  }
+
+  private bindHeaderSort(): void {
+    const theadTr = this.backdropEl?.querySelector('#ndb-thead-tr');
+    if (!theadTr) return;
+
+    theadTr.querySelectorAll<HTMLTableCellElement>('th.is-sortable').forEach((th) => {
+      th.addEventListener('click', () => {
+        const col = th.getAttribute('data-sort') as typeof this.sortColumn;
+        if (!col) return;
+        if (this.sortColumn === col) {
+          this.sortAsc = !this.sortAsc;
+        } else {
+          this.sortColumn = col;
+          this.sortAsc = true;
+        }
+        theadTr.innerHTML = this.buildTheadHtml();
+        this.bindHeaderSort();
+        this.renderRows();
+      });
+    });
+  }
+
   private getFilteredEntries(): NeuronDbModelEntry[] {
-    return this.entries.filter((e) => {
+    const filtered = this.entries.filter((e) => {
       if (this.filterParamSet !== 'all') {
         if (e.parameterSet !== this.filterParamSet) return false;
       }
@@ -255,6 +316,66 @@ export class NeuronDbModal {
       }
       return true;
     });
+
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      switch (this.sortColumn) {
+        case 'slot':
+          cmp = a.slot - b.slot;
+          break;
+        case 'name':
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case 'zones':
+          cmp = (a.zoneCount ?? 0) - (b.zoneCount ?? 0);
+          break;
+        case 'sources':
+          cmp = (a.sourceCount ?? 0) - (b.sourceCount ?? 0);
+          break;
+        case 'param':
+          cmp = (a.parameterSet ?? -1) - (b.parameterSet ?? -1);
+          break;
+        case 'comp':
+          cmp = (a.complexity ?? -1) - (b.complexity ?? -1);
+          break;
+      }
+      return this.sortAsc ? cmp : -cmp;
+    });
+
+    return filtered;
+  }
+
+  private selectNextRow(delta: number): void {
+    const filtered = this.getFilteredEntries();
+    if (filtered.length === 0) return;
+    const currentIdx = filtered.findIndex((e) => e.slot === this.selectedSlot);
+    let nextIdx = currentIdx + delta;
+    if (nextIdx < 0) nextIdx = 0;
+    if (nextIdx >= filtered.length) nextIdx = filtered.length - 1;
+    this.selectedSlot = filtered[nextIdx].slot;
+
+    const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr.neurondb-row').forEach((r) => {
+      const isSel = r.getAttribute('data-slot') === String(this.selectedSlot);
+      r.classList.toggle('is-selected', isSel);
+      if (isSel) {
+        r.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  }
+
+  private resetFilters(): void {
+    this.searchQuery = '';
+    this.filterParamSet = 'all';
+    this.filterComplexity = 'all';
+    const sInp = this.backdropEl?.querySelector<HTMLInputElement>('#inp-ndb-search');
+    if (sInp) sInp.value = '';
+    const sParam = this.backdropEl?.querySelector<HTMLSelectElement>('#sel-ndb-param');
+    if (sParam) sParam.value = 'all';
+    const sComp = this.backdropEl?.querySelector<HTMLSelectElement>('#sel-ndb-comp');
+    if (sComp) sComp.value = 'all';
+    this.renderRows();
   }
 
   private renderRows(): void {
@@ -277,9 +398,18 @@ export class NeuronDbModal {
     if (filtered.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" class="neurondb-empty-cell">No models match "${this.searchQuery}"</td>
+          <td colspan="7" class="neurondb-empty-cell">
+            <div class="neurondb-empty-state">
+              <span class="empty-icon">${ICONS.database}</span>
+              <span class="empty-msg">No models match the filter criteria</span>
+              <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter">Reset Filters</button>
+            </div>
+          </td>
         </tr>
       `;
+      tbody.querySelector('#btn-ndb-reset-filter')?.addEventListener('click', () => {
+        this.resetFilters();
+      });
       return;
     }
 

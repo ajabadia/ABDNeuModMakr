@@ -79,6 +79,7 @@ export interface ZoneRibbonHandlers {
   onSelectZone: (zoneId: string) => void;
   onSplitZone: (zoneId: string, splitKey: number) => void;
   onUpdateZone?: (zoneId: string, changes: Partial<Zone>) => void;
+  onDropSample?: (zoneId: string, slot: 'low' | 'high', file: File) => void;
   getWaveforms?: (zoneId: string) => ZoneRibbonWaveforms;
   onWaveModeChange?: (mode: 'original' | 'resynthesis') => void;
 }
@@ -233,6 +234,33 @@ export class ZoneRibbon {
       });
     });
 
+    // Bind sample drag & drop onto velocity bands
+    const velBands = this.container.querySelectorAll<HTMLElement>('.zone-vel-band');
+    velBands.forEach((band) => {
+      band.addEventListener('dragover', (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        band.classList.add('is-drag-over');
+      });
+      band.addEventListener('dragleave', (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        band.classList.remove('is-drag-over');
+      });
+      band.addEventListener('drop', (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        band.classList.remove('is-drag-over');
+        const block = band.closest('.ribbon-zone-block');
+        const zoneId = block?.getAttribute('data-zone-id');
+        const slot = band.classList.contains('zone-vel-high') ? 'high' : 'low';
+        const file = e.dataTransfer?.files?.[0];
+        if (zoneId && file && this.handlers.onDropSample) {
+          this.handlers.onDropSample(zoneId, slot, file);
+        }
+      });
+    });
+
     // Bind collision-free vertical Key Boundary dragging between Zone i and Zone i+1
     const keyResizers = this.container.querySelectorAll<HTMLElement>('.zone-key-resizer');
     keyResizers.forEach((handle) => {
@@ -321,7 +349,9 @@ export class ZoneRibbon {
           <span class="vel-band-badge">V ${highVelText}</span>
           <span class="zone-sample-tag">${highLabel}</span>
         </div>
-        <div class="zone-vel-divider"></div>
+        <div class="zone-vel-divider" title="Split Point @ ${split} · Low: 1–${split - 1} | High: ${split}–127">
+          <span class="vel-divider-handle">${split}</span>
+        </div>
         <div class="zone-vel-band zone-vel-low ${!zone.sampleLow ? 'is-missing-vel' : ''}" style="height: ${lowPct.toFixed(1)}%;" title="${lowVelTitle}">
           ${lowSvg}
           <span class="vel-band-badge">V ${lowVelText}</span>

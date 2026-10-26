@@ -91,6 +91,9 @@ export class KeyboardStrip {
       onNoteOff: (note: number) => {
         this.handlers.onNoteRelease(note);
       },
+      onCollapseChange: (collapsed: boolean) => {
+        this.container.querySelector('.keyboard-strip-container')?.classList.toggle('is-strip-collapsed', collapsed);
+      },
       config: {
         numOctaves: 5,
         startNote: this.baseOctave * 12,
@@ -136,6 +139,40 @@ export class KeyboardStrip {
 
     const activeId = this.activeZone?.id;
     this.kbdInstance.setZones(mapped, activeId);
+    this.updateKeyBadges();
+  }
+
+  private updateKeyBadges(): void {
+    const keyElements = this.container.querySelectorAll<HTMLElement>('[data-note]');
+    const activeRoot = this.activeZone?.rootKey;
+
+    keyElements.forEach((el) => {
+      const noteAttr = el.getAttribute('data-note');
+      if (!noteAttr) return;
+      const midi = parseInt(noteAttr, 10);
+      if (isNaN(midi)) return;
+
+      const existingRef = el.querySelector('.kbd-key-ref-label');
+      if (existingRef) existingRef.remove();
+      const existingRoot = el.querySelector('.kbd-key-root-badge');
+      if (existingRoot) existingRoot.remove();
+
+      // Reference note label on C keys
+      if (midi % 12 === 0) {
+        const refEl = document.createElement('span');
+        refEl.className = 'kbd-key-ref-label';
+        refEl.textContent = midiToNoteName(midi);
+        el.appendChild(refEl);
+      }
+
+      // Root note indicator badge for active zone
+      if (activeRoot !== undefined && midi === activeRoot) {
+        const rootEl = document.createElement('span');
+        rootEl.className = 'kbd-key-root-badge';
+        rootEl.textContent = `R: ${midiToNoteName(midi)}`;
+        el.appendChild(rootEl);
+      }
+    });
   }
 
   private bindEvents(): void {
