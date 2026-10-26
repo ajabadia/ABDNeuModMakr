@@ -6,6 +6,48 @@
 @import '@abdsynths/shared/styles';
 @import '@abdsynths/midi-keyb/keyboard.css';
 
+:root {
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+  --abd-bg-tint: #1b5286;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(56, 165, 255, 0.16) 0%, rgba(8, 24, 44, 0.42) 100%);
+}
+
+[data-theme="ms2000"],
+body.skin-ms2000 {
+  --color-bg-base: #0d2238;
+  --abd-bg-tint: #1b5286;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(56, 165, 255, 0.16) 0%, rgba(8, 24, 44, 0.42) 100%);
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+}
+
+[data-theme="audiolab"] {
+  --color-bg-base: #070a0e;
+  --abd-bg-tint: #0b1d16;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(0, 230, 118, 0.12) 0%, rgba(6, 15, 10, 0.46) 100%);
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+}
+
+[data-theme="audiolab-light"] {
+  --color-bg-base: #e9ecef;
+  --abd-bg-tint: #ced4da;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.6) 0%, rgba(180, 190, 200, 0.3) 100%);
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+}
+
+[data-theme="advanced"] {
+  --color-bg-base: #181b20;
+  --abd-bg-tint: #2d323b;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(148, 163, 184, 0.12) 0%, rgba(10, 12, 16, 0.48) 100%);
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+}
+
+[data-theme="cz101"] {
+  --color-bg-base: #1a1612;
+  --abd-bg-tint: #382c22;
+  --bg-tint-overlay: radial-gradient(ellipse at 50% 0%, rgba(255, 177, 66, 0.15) 0%, rgba(20, 14, 10, 0.45) 100%);
+  --bg-image-theme: url('./assets/backgrounds/bg_neutral.webp');
+}
+
 html,
 body {
   margin: 0;
@@ -13,7 +55,7 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: var(--color-bg-base);
+  background-color: var(--abd-bg-tint, var(--color-bg-base));
   color: var(--color-text-main);
   font-family: var(--font-sans);
   font-size: var(--text-lg);
@@ -56,8 +98,14 @@ input[type="range"] {
   width: 100vw;
   height: 100vh;
   box-sizing: border-box;
-  background-color: var(--color-bg-base);
+  background-color: var(--abd-bg-tint, var(--color-bg-base));
+  background-image: var(--bg-tint-overlay, radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.35) 100%)), var(--bg-image-theme);
+  background-blend-mode: normal, soft-light;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
   position: relative;
+  overflow: hidden;
 }
 
 .workspace-canvas {
