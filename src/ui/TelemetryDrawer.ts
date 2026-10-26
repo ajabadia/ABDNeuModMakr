@@ -105,6 +105,9 @@ export class TelemetryDrawer {
   public addLog(message: string): void {
     const time = new Date().toLocaleTimeString();
     this.logs.push(`[${time}] ${message}`);
+    if (this.logs.length > 500) {
+      this.logs.shift();
+    }
 
     if (this.drawerElement) {
       const stream = this.drawerElement.querySelector('#telemetry-log-stream');
@@ -113,6 +116,9 @@ export class TelemetryDrawer {
         line.className = 'log-entry';
         line.textContent = `[${time}] ${message}`;
         stream.appendChild(line);
+        while (stream.children.length > 500) {
+          stream.removeChild(stream.firstElementChild!);
+        }
         stream.scrollTop = stream.scrollHeight;
       }
     }

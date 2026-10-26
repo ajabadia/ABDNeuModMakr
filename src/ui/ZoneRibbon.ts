@@ -220,6 +220,17 @@ export class ZoneRibbon {
         e.preventDefault();
         this.splitBlockAtMouse(el, id, e);
       });
+
+      el.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const id = el.getAttribute('data-zone-id');
+          if (id) {
+            this.handlers.onSelectZone(id);
+            this.setActiveZone(id);
+          }
+        }
+      });
     });
 
     // Bind collision-free vertical Key Boundary dragging between Zone i and Zone i+1
@@ -295,17 +306,25 @@ export class ZoneRibbon {
     const lowSvg = buildWatermarkSvg(lowPeaks, Boolean(useProcessed));
     const highSvg = buildWatermarkSvg(highPeaks, Boolean(useProcessed));
 
+    const split = Math.max(2, Math.min(127, zone.velSplit ?? 64));
+    const highPct = ((128 - split) / 127) * 100;
+    const lowPct = ((split - 1) / 127) * 100;
+    const highVelText = `${split}–127`;
+    const lowVelText = `1–${split - 1}`;
+    const highVelTitle = `High Vel (${split}..127): ${highLabel}`;
+    const lowVelTitle = `Low Vel (1..${split - 1}): ${lowLabel}`;
+
     const velocityBandsHtml = hasHighVel
       ? `
-        <div class="zone-vel-band zone-vel-high" style="height: 50%;" title="High Vel (64..127): ${highLabel}">
+        <div class="zone-vel-band zone-vel-high" style="height: ${highPct.toFixed(1)}%;" title="${highVelTitle}">
           ${highSvg}
-          <span class="vel-band-badge">V 64–127</span>
+          <span class="vel-band-badge">V ${highVelText}</span>
           <span class="zone-sample-tag">${highLabel}</span>
         </div>
         <div class="zone-vel-divider"></div>
-        <div class="zone-vel-band zone-vel-low ${!zone.sampleLow ? 'is-missing-vel' : ''}" style="height: 50%;" title="Low Vel (1..63): ${lowLabel}">
+        <div class="zone-vel-band zone-vel-low ${!zone.sampleLow ? 'is-missing-vel' : ''}" style="height: ${lowPct.toFixed(1)}%;" title="${lowVelTitle}">
           ${lowSvg}
-          <span class="vel-band-badge">V 1–63</span>
+          <span class="vel-band-badge">V ${lowVelText}</span>
           <span class="zone-sample-tag">${lowLabel}</span>
         </div>
       `
@@ -317,12 +336,17 @@ export class ZoneRibbon {
         </div>
       `;
 
+    const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}`;
+
     return `
       <div 
         class="ribbon-zone-block ${isSelected ? 'is-selected' : ''} ${!zone.sampleLow ? 'has-no-sample' : ''} ${hasHighVel ? 'has-two-vel-layers' : ''}" 
         data-zone-id="${zone.id}"
+        tabindex="0"
+        role="button"
+        aria-label="Zone #${index + 1}: Keys ${lowStr} to ${highStr}"
         style="width: ${widthPct.toFixed(3)}%;"
-        title="Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? 'Low Vel 1..63 + High Vel 64..127' : 'Vel 1..127'}"
+        title="${zoneTitle}"
       >
         <div class="zone-block-header">
           <span class="zone-num">#${index + 1}</span>

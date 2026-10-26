@@ -78,6 +78,7 @@ export class AppNavbar {
           { id: 103, label: 'Save Session (.nmsession.json)', action: 'saveSession', shortcut: 'Ctrl+S' },
           { separator: true },
           { id: 104, label: 'Import Audio Files (.wav / .aif)...', action: 'importSamples', shortcut: 'Ctrl+I' },
+          { id: 1045, label: 'Import Audio by Name (Hartmann)...', action: 'importByName', shortcut: 'Ctrl+N' },
           { id: 105, label: 'Import Audio Folder...', action: 'importFolder' },
           { separator: true },
           { id: 106, label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },

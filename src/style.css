@@ -1633,12 +1633,12 @@ input[type="range"] {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal);
+  z-index: 1000;
 }
 
 .modal-backdrop.is-hidden,
@@ -1787,7 +1787,7 @@ input[type="range"] {
   background: var(--color-panel-bg);
   border-left: 1px solid var(--color-panel-border-strong);
   box-shadow: var(--shadow-elevation-3);
-  z-index: var(--z-overlay);
+  z-index: 90;
   display: flex;
   flex-direction: column;
   transition: transform var(--transition-normal);
@@ -1837,6 +1837,29 @@ input[type="range"] {
   padding: var(--space-2) 0;
 }
 
+.bank-search-bar {
+  display: flex;
+  margin: var(--space-2) 0;
+}
+
+.bank-filter-input {
+  width: 100%;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-main);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.bank-filter-input:focus {
+  border-color: var(--color-accent);
+}
+
 .bank-items-grid {
   display: flex;
   flex-direction: column;
@@ -1866,9 +1889,9 @@ input[type="range"] {
 .nmm-doc-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: var(--color-backdrop);
+  background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(4px);
-  z-index: var(--z-modal);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1950,24 +1973,74 @@ input[type="range"] {
 
 /* ── NeuronDB Browser Modal ────────────────────────────── */
 .neurondb-modal-card {
-  width: min(860px, 94vw);
-  max-width: 860px;
-  max-height: 84vh;
+  width: min(960px, 94vw);
+  max-width: 960px;
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.92), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.neurondb-modal-card .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-panel-header);
+  border-bottom: 1px solid var(--color-panel-border);
+  flex-shrink: 0;
 }
 
 .neurondb-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-5);
   background: var(--color-panel-surface);
   border-bottom: 1px solid var(--color-panel-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.neurondb-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.neurondb-filter-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.neurondb-select-filter {
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-main);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  outline: none;
+  cursor: pointer;
+  height: 28px;
+  transition: border-color var(--transition-fast);
+}
+
+.neurondb-select-filter:focus {
+  border-color: var(--color-accent);
 }
 
 .neurondb-search-input {
+  min-width: 220px;
   flex: 1;
   background: var(--color-bg-base);
   border: 1px solid var(--color-panel-border);
@@ -1975,8 +2048,10 @@ input[type="range"] {
   padding: var(--space-1) var(--space-3);
   color: var(--color-text-main);
   font-family: var(--font-ui);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   outline: none;
+  height: 28px;
+  box-sizing: border-box;
 }
 
 .neurondb-search-input:focus {

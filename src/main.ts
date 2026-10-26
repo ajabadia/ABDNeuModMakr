@@ -313,7 +313,8 @@ class App {
             decoded.instrument.lowVelocity >= 2 &&
             decoded.instrument.lowVelocity <= 127
           ) {
-            changes.velSplit = decoded.instrument.lowVelocity;
+            const isExtended = (this.session?.processConfig as { workingMode?: string })?.workingMode === 'extended';
+            changes.velSplit = isExtended ? decoded.instrument.lowVelocity : 64;
           }
           await this.core.updateZone(zoneId, changes);
           this.session = this.core.getSession()!;
@@ -421,6 +422,16 @@ class App {
     this.navbar.mount(this.session!, this.core.validateCoverage());
     this.bindKeyboardShortcuts();
     this.bindGlobalDragAndDrop();
+    this.bindUnsavedChangesGuard();
+  }
+
+  private bindUnsavedChangesGuard(): void {
+    window.addEventListener('beforeunload', (e) => {
+      if (this.session?.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   }
 
   private async handleDroppedFiles(fileList: FileList): Promise<void> {
@@ -429,6 +440,9 @@ class App {
   }
 
   private bindGlobalDragAndDrop(): void {
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
+
     const shell = document.querySelector<HTMLElement>('#app-shell');
     if (!shell) return;
 
@@ -573,7 +587,8 @@ class App {
         lower === 'map.script' ||
         lower.endsWith('.scape') ||
         lower.endsWith('.sphere') ||
-        lower.endsWith('.nmmodel')
+        lower.endsWith('.nmmodel') ||
+        lower.endsWith('.neuronikmodel')
       );
     });
 
@@ -836,7 +851,8 @@ class App {
           lower.endsWith('.sphere') ||
           lower === 'map.script' ||
           lower === 'mname' ||
-          lower.endsWith('.nmmodel')
+          lower.endsWith('.nmmodel') ||
+          lower.endsWith('.neuronikmodel')
         ) {
           const slotMatch = /(\d{3})\.model\//i.exec(relPath);
           if (slotMatch) {
@@ -1148,7 +1164,11 @@ class App {
       }
 
       // Single model (either in a .zip or loose files, optionally with embedded Samples/*.wav)
-      if (hasModelData && (preferredKind === 'model' || audioFiles.length === 0 || looseModelFiles.some((f) => f.name.toLowerCase().endsWith('.nmmodel')))) {
+      const hasLooseModernJson = looseModelFiles.some((f) => {
+        const lower = f.name.toLowerCase();
+        return lower.endsWith('.nmmodel') || lower.endsWith('.neuronikmodel');
+      });
+      if (hasModelData && (preferredKind === 'model' || audioFiles.length === 0 || hasLooseModernJson)) {
         const targetFiles =
           modelFolders.size === 1
             ? [...Array.from(modelFolders.values())[0], ...audioFiles]
@@ -1176,7 +1196,7 @@ class App {
       }
 
       throw new Error(
-        'No se encontraron archivos compatibles (.model, .scape, .sphere, .nmmodel, .wav, .aif o .zip válido).'
+        'No se encontraron archivos compatibles (.model, .scape, .sphere, .nmmodel, .neuronikmodel, .wav, .aif o .zip válido).'
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -293,6 +293,7 @@ export class WebAudioPipeline implements CoreService {
   private audioCtx: AudioContext | null = null;
   private analyserNode: AnalyserNode | null = null;
   private activeSourceNode: AudioBufferSourceNode | null = null;
+  private activeGainNode: GainNode | null = null;
   private activePlaybackMode: 'original' | 'resynthesis' | null = null;
   private readonly spectralCache: Map<
     string,
@@ -653,7 +654,7 @@ export class WebAudioPipeline implements CoreService {
 
     for (const z of capped) {
       z.rootKey = Math.max(z.lowKey, Math.min(z.highKey, z.rootKey));
-      z.velSplit = Math.max(2, Math.min(127, Math.round(z.velSplit ?? 64)));
+      z.velSplit = 64;
       if (!z.sampleLow && z.sampleHigh) {
         z.sampleLow = z.sampleHigh;
         z.sampleHigh = null;
@@ -706,7 +707,7 @@ export class WebAudioPipeline implements CoreService {
     );
     if (samplePath === undefined) {
       newZone.sampleHigh = host.sampleHigh;
-      newZone.velSplit = host.velSplit ?? 64;
+      newZone.velSplit = 64;
       newZone.detune = host.detune;
       newZone.volume = host.volume;
       newZone.pan = host.pan;
@@ -776,8 +777,8 @@ export class WebAudioPipeline implements CoreService {
       zone.rootKey = Math.max(0, Math.min(127, Math.round(changes.rootKey)));
     }
     if (changes.velSplit !== undefined) {
-      // Coupled Velocity boundary: Low Vel = 1..(velSplit-1), High Vel = velSplit..127
-      zone.velSplit = Math.max(2, Math.min(127, Math.round(changes.velSplit)));
+      const isExtended = (this.session?.processConfig as { workingMode?: string })?.workingMode === 'extended';
+      zone.velSplit = isExtended ? Math.max(2, Math.min(127, Math.round(changes.velSplit))) : 64;
     }
     if (changes.detune !== undefined) {
       zone.detune = Math.max(-99, Math.min(99, changes.detune));
@@ -824,6 +825,7 @@ export class WebAudioPipeline implements CoreService {
       zones[0].lowKey = removed.lowKey;
     }
 
+    this.spectralCache.delete(zoneId);
     this.markDirty();
   }
 
@@ -867,7 +869,7 @@ export class WebAudioPipeline implements CoreService {
     for (const z of zones) {
       if (!z.sampleLow && z.sampleHigh) {
         errors.push(
-          `Zone ${z.lowKey}–${z.highKey}: High Vel sample assigned without Low Vel sample (velocity gap 1–${(z.velSplit ?? 64) - 1})`
+          `Zone ${z.lowKey}–${z.highKey}: High Vel sample assigned without Low Vel sample (velocity gap 1–63)`
         );
       } else if (!z.sampleLow) {
         errors.push(`Zone ${z.lowKey}–${z.highKey}: no sample assigned`);
@@ -1345,10 +1347,19 @@ export class WebAudioPipeline implements CoreService {
       if (this.activeSourceNode === source) {
         this.activeSourceNode = null;
         this.activePlaybackMode = null;
+        if (this.activeGainNode === gainNode) {
+          try {
+            gainNode.disconnect();
+          } catch {
+            // Ignore if already disconnected
+          }
+          this.activeGainNode = null;
+        }
       }
     };
 
     this.activeSourceNode = source;
+    this.activeGainNode = gainNode;
     this.activePlaybackMode = mode;
     source.start();
   }
@@ -1363,6 +1374,14 @@ export class WebAudioPipeline implements CoreService {
       }
       this.activeSourceNode = null;
       this.activePlaybackMode = null;
+    }
+    if (this.activeGainNode) {
+      try {
+        this.activeGainNode.disconnect();
+      } catch {
+        // Ignore if already disconnected
+      }
+      this.activeGainNode = null;
     }
   }
 
@@ -1651,7 +1670,9 @@ export class WebAudioPipeline implements CoreService {
     const derived = deriveModelNameFromSample(sampleFilename, maxLen);
     if (derived) {
       this.session.processConfig.modelName = derived;
-      this.session.name = derived;
+      if (DEFAULT_MODEL_NAMES.has(this.session.name.trim())) {
+        this.session.name = derived;
+      }
     }
   }
 
@@ -2436,7 +2457,7 @@ export class WebAudioPipeline implements CoreService {
 
     const zipBytes = this.buildModelZipBytes(activeSlot);
     if (typeof document !== 'undefined') {
-      const blob = new Blob([zipBytes.buffer as ArrayBuffer], {
+      const blob = new Blob([zipBytes as unknown as BlobPart], {
         type: 'application/zip',
       });
       const url = URL.createObjectURL(blob);

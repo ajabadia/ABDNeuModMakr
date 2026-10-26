@@ -62,6 +62,12 @@ export class ZoneInspector {
     this.drawerElement = document.createElement('div');
     this.drawerElement.className = 'zone-metadata-drawer-panel is-closed';
     this.drawerMount.appendChild(this.drawerElement);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isDrawerOpen) {
+        this.closeDrawer();
+      }
+    });
   }
 
   public openDrawer(): void {
@@ -138,7 +144,6 @@ export class ZoneInspector {
     if (activeRow) {
       const cells = activeRow.querySelectorAll('td');
       if (cells.length >= 9) {
-        const velSplit = Math.max(2, Math.min(127, z.velSplit ?? 64));
         const hasHigh = Boolean(z.sampleHigh);
         const lowVelName = basenameOf(z.sampleLow);
         const highVelName = basenameOf(z.sampleHigh);
@@ -146,10 +151,10 @@ export class ZoneInspector {
         cells[2].textContent = midiNoteToString(z.rootKey);
         cells[3].textContent = midiNoteToString(z.highKey);
         cells[4].innerHTML = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? velSplit - 1 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
+          ? `<span class="cell-vel-tag">1–${hasHigh ? 63 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[5].innerHTML = highVelName
-          ? `<span class="cell-vel-tag">${velSplit}–127</span> <span class="cell-sample-name">${highVelName}</span>`
+          ? `<span class="cell-vel-tag">64–127</span> <span class="cell-sample-name">${highVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[6].textContent = detuneToString(z.detune);
         cells[7].textContent = volumeToLongString(z.volume);
@@ -336,7 +341,7 @@ export class ZoneInspector {
           </div>
         </div>
 
-        <!-- 2. Sample Assignment (Low Vel 1..63 & High Vel 64..127) -->
+        <!-- 2. Sample Assignment (Low Vel & High Vel) -->
         <div class="inspector-section section-samples">
           <div class="section-title">VELOCITY SAMPLE LAYERS (CANONICAL 1..63 / 64..127)</div>
           <div class="samples-slots-stack">
@@ -371,6 +376,17 @@ export class ZoneInspector {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-browse-high" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
                   ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-high" title="Clear High Vel Sample">${ICONS.close}</button>` : ''}
                 </div>
+              </div>
+            </div>
+
+            <div class="sample-vel-split-control is-disabled" style="margin-top: 8px; opacity: 0.75;">
+              <label for="slider-vel-split" style="font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span>VELOCITY SPLIT POINT</span>
+                <span class="val-display" id="val-vel-split">64 (Fixed: 1–63 / 64–127)</span>
+              </label>
+              <input type="range" id="slider-vel-split" min="64" max="64" value="64" disabled title="Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Variable velocity splits will be available in Extended Mode." />
+              <div style="font-size: 10px; color: var(--color-text-dim); margin-top: 2px;">
+                Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.
               </div>
             </div>
           </div>

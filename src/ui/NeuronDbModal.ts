@@ -33,6 +33,8 @@ export class NeuronDbModal {
   private backdropEl: HTMLElement | null = null;
   private entries: NeuronDbModelEntry[] = [];
   private searchQuery = '';
+  private filterParamSet: number | 'all' = 'all';
+  private filterComplexity: number | 'all' = 'all';
   private selectedSlot: number | null = null;
   private abortScan = false;
   private onPickSlot: ((slot: number) => void) | null = null;
@@ -45,6 +47,8 @@ export class NeuronDbModal {
     this.abortScan = false;
     this.entries = [...initialEntries].sort((a, b) => a.slot - b.slot);
     this.searchQuery = '';
+    this.filterParamSet = 'all';
+    this.filterComplexity = 'all';
     this.selectedSlot = this.entries[0]?.slot ?? null;
     this.onPickSlot = onPick;
 
@@ -55,7 +59,7 @@ export class NeuronDbModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="process-modal-card neurondb-modal-card">
+      <div class="neurondb-modal-card">
         <div class="modal-header">
           <div class="modal-title">
             <span class="modal-icon">${ICONS.database}</span>
@@ -70,9 +74,23 @@ export class NeuronDbModal {
             type="text"
             id="inp-ndb-search"
             class="neurondb-search-input"
-            placeholder="Filter by slot (#338), model name (dj4), or parameter set..."
+            placeholder="Search by slot (#338), model name..."
             autocomplete="off"
           />
+          <div class="neurondb-filter-group">
+            <label class="neurondb-filter-label" for="sel-ndb-param">PARAM SET:</label>
+            <select id="sel-ndb-param" class="neurondb-select-filter" title="Filter by Parameter Set (0..9)">
+              <option value="all">All Sets (0..9)</option>
+              ${PARAMETER_SETS.map((ps) => `<option value="${ps.id}">${ps.id}: ${ps.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="neurondb-filter-group">
+            <label class="neurondb-filter-label" for="sel-ndb-comp">COMPLEXITY:</label>
+            <select id="sel-ndb-comp" class="neurondb-select-filter" title="Filter by Analysis Complexity (1..10)">
+              <option value="all">All (1..10)</option>
+              ${STICK_TABLE.map((m, idx) => `<option value="${idx + 1}">Lvl ${idx + 1} (${m}m)</option>`).join('')}
+            </select>
+          </div>
           <span class="neurondb-scan-status" id="ndb-scan-status">Scanning model headers...</span>
         </div>
 
@@ -117,6 +135,18 @@ export class NeuronDbModal {
       this.renderRows();
     });
 
+    const selParam = this.backdropEl.querySelector<HTMLSelectElement>('#sel-ndb-param');
+    selParam?.addEventListener('change', () => {
+      this.filterParamSet = selParam.value === 'all' ? 'all' : parseInt(selParam.value, 10);
+      this.renderRows();
+    });
+
+    const selComp = this.backdropEl.querySelector<HTMLSelectElement>('#sel-ndb-comp');
+    selComp?.addEventListener('change', () => {
+      this.filterComplexity = selComp.value === 'all' ? 'all' : parseInt(selComp.value, 10);
+      this.renderRows();
+    });
+
     searchInp?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && this.selectedSlot !== null) {
         e.preventDefault();
@@ -132,6 +162,13 @@ export class NeuronDbModal {
       this.close();
       onCancel?.();
     };
+
+    this.backdropEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeHandler();
+      }
+    });
 
     this.backdropEl.querySelector('#btn-close-ndb-modal')?.addEventListener('click', closeHandler);
     this.backdropEl.querySelector('#btn-cancel-ndb-modal')?.addEventListener('click', closeHandler);
@@ -193,22 +230,30 @@ export class NeuronDbModal {
   }
 
   private getFilteredEntries(): NeuronDbModelEntry[] {
-    if (!this.searchQuery) return this.entries;
-    const q = this.searchQuery;
     return this.entries.filter((e) => {
-      const slotStr = String(e.slot).padStart(3, '0');
-      const nameStr = e.name.toLowerCase();
-      const paramName =
-        e.parameterSet !== null
-          ? (PARAMETER_SETS[e.parameterSet]?.name.toLowerCase() ?? '')
-          : '';
-      return (
-        slotStr.includes(q) ||
-        String(e.slot) === q ||
-        `#${slotStr}`.includes(q) ||
-        nameStr.includes(q) ||
-        paramName.includes(q)
-      );
+      if (this.filterParamSet !== 'all') {
+        if (e.parameterSet !== this.filterParamSet) return false;
+      }
+      if (this.filterComplexity !== 'all') {
+        if (e.complexity !== this.filterComplexity) return false;
+      }
+      if (this.searchQuery) {
+        const q = this.searchQuery;
+        const slotStr = String(e.slot).padStart(3, '0');
+        const nameStr = e.name.toLowerCase();
+        const paramName =
+          e.parameterSet !== null
+            ? (PARAMETER_SETS[e.parameterSet]?.name.toLowerCase() ?? '')
+            : '';
+        const match =
+          slotStr.includes(q) ||
+          String(e.slot) === q ||
+          `#${slotStr}`.includes(q) ||
+          nameStr.includes(q) ||
+          paramName.includes(q);
+        if (!match) return false;
+      }
+      return true;
     });
   }
 

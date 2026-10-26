@@ -109,7 +109,7 @@ export class KeyboardStrip {
       this.setBaseOctave(this.baseOctave + 1);
     });
 
-    const keys = this.container.querySelectorAll('.piano-key');
+    const keys = this.container.querySelectorAll<HTMLElement>('.piano-key');
     keys.forEach((el) => {
       const midi = parseInt(el.getAttribute('data-midi') || '-1', 10);
       if (midi < 0) return;
@@ -129,6 +129,12 @@ export class KeyboardStrip {
       el.addEventListener('mousedown', (e) => {
         e.preventDefault();
         press();
+      });
+
+      el.addEventListener('mouseenter', (e: MouseEvent) => {
+        if (e.buttons === 1) {
+          press();
+        }
       });
 
       el.addEventListener('mouseup', release);

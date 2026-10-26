@@ -155,8 +155,8 @@ async function runPhase3Tests(): Promise<void> {
   assert(entryPaths.includes('Sounds/077.sound/sound.script'), 'Missing Sounds/077.sound/sound.script');
   assert(entryPaths.includes('Sounds/077.sound/sound.stickrec'), 'Missing Sounds/077.sound/sound.stickrec');
   assert(
-    entryPaths.some((p) => p.startsWith('Modern/077_') && p.endsWith('.neuronikmodel')),
-    'Missing Modern/*.neuronikmodel'
+    entryPaths.some((p) => p.startsWith('Modern/077_') && (p.endsWith('.nmmodel') || p.endsWith('.neuronikmodel'))),
+    'Missing Modern/*.nmmodel'
   );
 
   // Import the ZIP back into a fresh pipeline instance

@@ -16,6 +16,8 @@ export class ProcessModal {
   private handlers: ProcessModalHandlers;
   private modalElement: HTMLElement | null = null;
   private isVisible: boolean = false;
+  private currentStatus: ProcessProgress['status'] = 'idle';
+  private onKeyDown: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(container: HTMLElement, handlers: ProcessModalHandlers) {
     this.container = container;
@@ -92,6 +94,18 @@ export class ProcessModal {
       this.handlers.onCancel();
     });
 
+    this.onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && this.isVisible) {
+        if (this.currentStatus === 'completed' || this.currentStatus === 'error' || this.currentStatus === 'cancelled') {
+          this.handlers.onClose();
+          this.hide();
+        } else {
+          this.handlers.onCancel();
+        }
+      }
+    };
+    window.addEventListener('keydown', this.onKeyDown);
+
     if (initialProgress) {
       this.updateProgress(initialProgress);
     }
@@ -99,6 +113,7 @@ export class ProcessModal {
 
   public updateProgress(p: ProcessProgress): void {
     if (!this.isVisible || !this.modalElement) return;
+    this.currentStatus = p.status;
 
     const fill = this.modalElement.querySelector('#modal-progress-fill') as HTMLElement;
     const msg = this.modalElement.querySelector('#modal-stage-msg') as HTMLElement;
@@ -107,6 +122,7 @@ export class ProcessModal {
     const time = this.modalElement.querySelector('#modal-metric-time') as HTMLElement;
     const sample = this.modalElement.querySelector('#modal-current-sample') as HTMLElement;
     const log = this.modalElement.querySelector('#modal-console-log') as HTMLElement;
+    const cancelBtn = this.modalElement.querySelector('#btn-modal-cancel') as HTMLButtonElement;
 
     if (fill) fill.style.width = `${p.percent}%`;
     if (msg) msg.textContent = p.message;
@@ -123,18 +139,29 @@ export class ProcessModal {
       log.scrollTop = log.scrollHeight;
     }
 
-    if (p.status === 'completed') {
-      const cancelBtn = this.modalElement.querySelector('#btn-modal-cancel') as HTMLButtonElement;
-      if (cancelBtn) {
-        cancelBtn.className = 'btn btn-primary btn-sm';
-        cancelBtn.innerHTML = `${ICONS.check} Done`;
-        cancelBtn.onclick = () => this.hide();
-      }
+    if (p.status === 'completed' && cancelBtn) {
+      cancelBtn.className = 'btn btn-primary btn-sm';
+      cancelBtn.innerHTML = `${ICONS.check} Done`;
+      cancelBtn.onclick = () => {
+        this.handlers.onClose();
+        this.hide();
+      };
+    } else if ((p.status === 'error' || p.status === 'cancelled') && cancelBtn) {
+      cancelBtn.className = 'btn btn-outline btn-sm';
+      cancelBtn.innerHTML = `${ICONS.close} Close`;
+      cancelBtn.onclick = () => {
+        this.handlers.onClose();
+        this.hide();
+      };
     }
   }
 
   public hide(): void {
     if (!this.isVisible || !this.modalElement) return;
+    if (this.onKeyDown) {
+      window.removeEventListener('keydown', this.onKeyDown);
+      this.onKeyDown = null;
+    }
     this.modalElement.remove();
     this.modalElement = null;
     this.isVisible = false;
