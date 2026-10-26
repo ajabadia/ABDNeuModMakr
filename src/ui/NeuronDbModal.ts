@@ -71,7 +71,7 @@ export class NeuronDbModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="modal-card catalog-browser-card neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
+      <div class="catalog-browser-card neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
         <!-- Header -->
         <div class="modal-header ndb-modal-header">
           <div class="modal-title ndb-header-title">

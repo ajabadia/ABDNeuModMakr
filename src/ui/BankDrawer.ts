@@ -14,6 +14,20 @@ export interface BankDrawerHandlers {
   onExportModel: (slot: number) => void;
 }
 
+export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
+  const cat = (category || '').toLowerCase();
+  if (cat.includes('string')) return { icon: ICONS.param1, catClass: 'cat-1', paramId: 1 };
+  if (cat.includes('bell')) return { icon: ICONS.param2, catClass: 'cat-2', paramId: 2 };
+  if (cat.includes('bass') || cat.includes('pluck')) return { icon: ICONS.param3, catClass: 'cat-3', paramId: 3 };
+  if (cat.includes('pad')) return { icon: ICONS.param4, catClass: 'cat-4', paramId: 4 };
+  if (cat.includes('key') || cat.includes('piano')) return { icon: ICONS.param5, catClass: 'cat-5', paramId: 5 };
+  if (cat.includes('wind') || cat.includes('vocal') || cat.includes('choir')) return { icon: ICONS.param6, catClass: 'cat-6', paramId: 6 };
+  if (cat.includes('texture') || cat.includes('drone')) return { icon: ICONS.param7, catClass: 'cat-7', paramId: 7 };
+  if (cat.includes('arp') || cat.includes('loop')) return { icon: ICONS.param8, catClass: 'cat-8', paramId: 8 };
+  if (cat.includes('rhythm') || cat.includes('drum')) return { icon: ICONS.param9, catClass: 'cat-9', paramId: 9 };
+  return { icon: ICONS.param0, catClass: 'cat-0', paramId: 0 };
+}
+
 export class BankDrawer {
   private container: HTMLElement;
   private handlers: BankDrawerHandlers;
@@ -229,14 +243,14 @@ export class BankDrawer {
                     <span class="ndb-card-badge">${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}</span>
                     <span class="ndb-card-badge">Lvl ${m.complexity}</span>
                   </div>
-                  <div class="ndb-card-actions">
-                    <button type="button" class="btn btn-xs btn-primary btn-select-model" data-slot="${m.slot}">
-                      Select Slot
-                    </button>
-                    <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}" title="Export .zip package">
-                      <span class="btn-icon">${ICONS.folder}</span> Export .zip
-                    </button>
-                  </div>
+                </div>
+                <div class="ndb-card-actions">
+                  <button type="button" class="btn btn-xs btn-primary btn-select-model" data-slot="${m.slot}" title="Set active editor slot to #${m.slot}">
+                    Select Slot
+                  </button>
+                  <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}" title="Export .zip package">
+                    <span class="btn-icon">${ICONS.folder}</span> Export .zip
+                  </button>
                 </div>
               </div>
             `;
@@ -318,26 +332,49 @@ export class BankDrawer {
     container.innerHTML = `
       <div class="ndb-grid">
         ${filtered
-          .map((p) => `
-            <div class="ndb-card" data-slot="${p.slot}">
-              <div class="ndb-card-icon cat-7">
-                ${ICONS.sliders}
-              </div>
-              <div class="ndb-card-info">
-                <div class="ndb-card-top">
-                  <span class="ndb-card-slot">#${String(p.slot).padStart(3, '0')}</span>
-                  <span class="ndb-card-cat">${p.category || 'Preset'}</span>
+          .map((p) => {
+            const catInfo = getPresetCategoryInfo(p.category);
+            return `
+              <div class="ndb-card" data-slot="${p.slot}" data-model="${p.modelIndex}">
+                <div class="ndb-card-icon ${catInfo.catClass}">
+                  ${catInfo.icon}
                 </div>
-                <div class="ndb-card-name" title="${p.name}">${p.name}</div>
-                <div class="ndb-card-meta">
-                  <span class="ndb-card-badge">Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
+                <div class="ndb-card-info">
+                  <div class="ndb-card-top">
+                    <span class="ndb-card-slot">#${String(p.slot).padStart(3, '0')}</span>
+                    <span class="ndb-card-cat ${catInfo.catClass}">${p.category || 'Preset'}</span>
+                  </div>
+                  <div class="ndb-card-name" title="${p.name}">${p.name}</div>
+                  <div class="ndb-card-meta">
+                    <span class="ndb-card-badge">Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
+                  </div>
+                </div>
+                <div class="ndb-card-actions">
+                  <button type="button" class="btn btn-xs btn-primary btn-select-preset-model" data-slot="${p.modelIndex}" title="Switch editor to Model #${p.modelIndex}">
+                    Select Model
+                  </button>
                 </div>
               </div>
-            </div>
-          `)
+            `;
+          })
           .join('')}
       </div>
     `;
+
+    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const modelSlot = parseInt(card.getAttribute('data-model') || '0', 10);
+      card.addEventListener('dblclick', () => {
+        this.handlers.onSelectModel(modelSlot);
+      });
+    });
+
+    container.querySelectorAll('.btn-select-preset-model').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const modelSlot = parseInt(btn.getAttribute('data-slot') || '0', 10);
+        this.handlers.onSelectModel(modelSlot);
+      });
+    });
   }
 
   public toggle(): void {
