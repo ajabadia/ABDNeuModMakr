@@ -1849,7 +1849,7 @@ input[type="range"] {
   top: var(--navbar-height);
   right: 0;
   bottom: 0;
-  width: 440px;
+  width: min(460px, 94vw);
   background: var(--color-panel-bg);
   border-left: 1px solid var(--color-panel-border-strong);
   box-shadow: var(--shadow-elevation-3);
@@ -1865,9 +1865,7 @@ input[type="range"] {
   transform: translateX(100%);
 }
 
-.audit-summary-box,
-.bank-model-item,
-.bank-preset-item {
+.audit-summary-box {
   background: var(--color-panel-surface);
   border: 1px solid var(--color-panel-border-dim);
   border-radius: var(--radius-md);

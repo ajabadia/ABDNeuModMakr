@@ -1,10 +1,13 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Bank Drawer Component
 // Browse generated models and sound presets from NeuronDB
+// Styled with canonical ABDShared catalog browser styles
+// (.ndb-search-row, .ndb-chip, .ndb-grid, .ndb-card, .ndb-footer)
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
 import type { BankSummary } from '../core/types';
+import { PARAMETER_SETS } from '../core/WebAudioPipeline';
 
 export interface BankDrawerHandlers {
   onSelectModel: (slot: number) => void;
@@ -30,32 +33,57 @@ export class BankDrawer {
     this.drawerElement = document.createElement('div');
     this.drawerElement.className = 'bank-drawer-panel is-closed';
     this.drawerElement.innerHTML = `
-      <div class="drawer-header">
-        <div class="drawer-title">
+      <!-- Header -->
+      <div class="drawer-header ndb-modal-header">
+        <div class="drawer-title ndb-header-title">
           <span class="drawer-icon">${ICONS.database}</span>
-          <span>NEURONDB BANK BROWSER</span>
+          <span class="ndb-title-text">NEURONDB BANK BROWSER</span>
+          <span class="panel-badge ndb-badge" id="bank-count-badge">0 ITEMS</span>
         </div>
-        <button type="button" class="btn btn-close-drawer" id="btn-close-bank" title="Close Drawer">${ICONS.close}</button>
+        <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-close-bank" title="Close Drawer (Esc)">${ICONS.close}</button>
       </div>
 
-      <div class="drawer-body">
-        <div class="bank-tabs">
-          <button type="button" class="bank-tab is-active" id="tab-models">GENERATED MODELS</button>
-          <button type="button" class="bank-tab" id="tab-presets">SOUND PRESETS</button>
-        </div>
+      <!-- Integrated Search Row (ABDMS2000 & Catalog style) -->
+      <div class="ndb-search-row">
+        <span class="ndb-search-icon">${ICONS.search}</span>
+        <input
+          type="text"
+          id="bank-filter-input"
+          class="ndb-search-input"
+          placeholder="Search models or presets by name, slot (#000), set..."
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search bank"
+        />
+      </div>
 
-        <div class="bank-search-bar">
-          <input
-            type="text"
-            id="bank-filter-input"
-            class="bank-filter-input"
-            placeholder="Search models or presets (name, slot #000, category)..."
-            autocomplete="off"
-          />
-        </div>
+      <!-- Category / Tab Filter Chips (ABDMS2000 style) -->
+      <div class="ndb-chips-row">
+        <button type="button" class="ndb-chip ${this.activeTab === 'models' ? 'active' : ''}" id="tab-models">
+          <span class="ndb-chip-icon">${ICONS.database}</span>
+          <span class="ndb-chip-name">GENERATED MODELS</span>
+          <span class="ndb-chip-count" id="count-models">0</span>
+        </button>
+        <button type="button" class="ndb-chip ${this.activeTab === 'presets' ? 'active' : ''}" id="tab-presets">
+          <span class="ndb-chip-icon">${ICONS.sliders}</span>
+          <span class="ndb-chip-name">SOUND PRESETS</span>
+          <span class="ndb-chip-count" id="count-presets">0</span>
+        </button>
+      </div>
 
-        <div class="bank-content-list" id="bank-list-container">
-          <!-- Model or Preset items rendered dynamically -->
+      <!-- Scrollable Content Wrap -->
+      <div class="ndb-content-wrap" id="bank-list-container" tabindex="0">
+        <!-- Model or Preset items rendered dynamically via .ndb-grid -->
+      </div>
+
+      <!-- Selection & Status Footer (ABDMS2000 style) -->
+      <div class="ndb-footer" id="bank-footer">
+        <div class="ndb-footer-selection">
+          <span class="ndb-footer-slot" id="bank-foot-slot">BANK</span>
+          <span class="ndb-footer-details" id="bank-foot-status">No bank loaded</span>
+        </div>
+        <div class="neurondb-footer-actions">
+          <button type="button" class="btn btn-xs" id="btn-bank-close-foot">Close</button>
         </div>
       </div>
     `;
@@ -63,6 +91,10 @@ export class BankDrawer {
     this.container.appendChild(this.drawerElement);
 
     this.drawerElement.querySelector('#btn-close-bank')?.addEventListener('click', () => {
+      this.close();
+    });
+
+    this.drawerElement.querySelector('#btn-bank-close-foot')?.addEventListener('click', () => {
       this.close();
     });
 
@@ -87,21 +119,22 @@ export class BankDrawer {
 
     tabModels?.addEventListener('click', () => {
       this.activeTab = 'models';
-      tabModels.classList.add('is-active');
-      tabPresets?.classList.remove('is-active');
+      tabModels.classList.add('active');
+      tabPresets?.classList.remove('active');
       this.renderModels();
     });
 
     tabPresets?.addEventListener('click', () => {
       this.activeTab = 'presets';
-      tabPresets?.classList.add('is-active');
-      tabModels?.classList.remove('is-active');
+      tabPresets?.classList.add('active');
+      tabModels?.classList.remove('active');
       this.renderPresets();
     });
   }
 
   public setBank(bank: BankSummary): void {
     this.currentBank = bank;
+    this.updateCounters();
     if (this.activeTab === 'models') {
       this.renderModels();
     } else {
@@ -109,16 +142,36 @@ export class BankDrawer {
     }
   }
 
+  private updateCounters(): void {
+    if (!this.drawerElement) return;
+    const mCount = this.currentBank?.models.length ?? 0;
+    const pCount = this.currentBank?.presets.length ?? 0;
+
+    const countModelsEl = this.drawerElement.querySelector('#count-models');
+    if (countModelsEl) countModelsEl.textContent = String(mCount);
+
+    const countPresetsEl = this.drawerElement.querySelector('#count-presets');
+    if (countPresetsEl) countPresetsEl.textContent = String(pCount);
+
+    const footStatusEl = this.drawerElement.querySelector('#bank-foot-status');
+    if (footStatusEl) footStatusEl.textContent = `${mCount} model${mCount === 1 ? '' : 's'} | ${pCount} preset${pCount === 1 ? '' : 's'}`;
+  }
+
   private renderModels(): void {
     if (!this.drawerElement || !this.currentBank) return;
     const container = this.drawerElement.querySelector('#bank-list-container');
     if (!container) return;
 
-    if (this.currentBank.models.length === 0) {
+    const badge = this.drawerElement.querySelector('#bank-count-badge');
+    const totalModels = this.currentBank.models.length;
+
+    if (totalModels === 0) {
+      if (badge) badge.textContent = '0 MODELS';
       container.innerHTML = `
-        <div class="bank-empty-state">
-          <span>No models generated in this bank yet.</span>
-          <span class="empty-sub">Create zones, assign samples, and click Process to generate models.</span>
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.database}</span>
+          <span class="empty-msg">No models generated in this bank yet</span>
+          <span class="ndb-dim">Create zones, assign samples, and click Process to generate models.</span>
         </div>
       `;
       return;
@@ -128,50 +181,88 @@ export class BankDrawer {
       ? this.currentBank.models.filter(
           (m) =>
             m.name.toLowerCase().includes(this.filterQuery) ||
-            String(m.slot).includes(this.filterQuery)
+            String(m.slot).includes(this.filterQuery) ||
+            `#${String(m.slot).padStart(3, '0')}`.includes(this.filterQuery) ||
+            (PARAMETER_SETS[m.parameterSet]?.name.toLowerCase().includes(this.filterQuery) ?? false)
         )
       : this.currentBank.models;
 
+    if (badge) {
+      badge.textContent =
+        filtered.length === totalModels
+          ? `${totalModels} MODELS`
+          : `${filtered.length} / ${totalModels} MODELS`;
+    }
+
     if (filtered.length === 0) {
       container.innerHTML = `
-        <div class="bank-empty-state">
-          <span>No models found matching "${this.filterQuery}".</span>
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.database}</span>
+          <span class="empty-msg">No models found matching "${this.filterQuery}"</span>
         </div>
       `;
       return;
     }
 
     container.innerHTML = `
-      <div class="bank-items-grid">
-        ${filtered.map((m) => `
-          <div class="bank-model-item">
-            <div class="model-item-header">
-              <span class="model-slot-tag">#${String(m.slot).padStart(3, '0')}</span>
-              <span class="model-item-name">${m.name}</span>
-            </div>
-            <div class="model-item-meta">
-              <span>Zones: ${m.zoneCount}</span>
-              <span>Complexity: ${m.complexity}/10</span>
-              <span>ParamSet: #${m.parameterSet}</span>
-            </div>
-            <div class="model-item-actions">
-              <button type="button" class="btn btn-xs btn-select-model" data-slot="${m.slot}">Select Slot</button>
-              <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}">${ICONS.folder} Export .zip</button>
-            </div>
-          </div>
-        `).join('')}
+      <div class="ndb-grid">
+        ${filtered
+          .map((m) => {
+            const ps = PARAMETER_SETS[m.parameterSet];
+            const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
+            const catName = ps ? `${ps.id}: ${ps.name}` : `Set ${m.parameterSet}`;
+            const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
+            const iconSvg = ICONS[iconKey] || ICONS.database;
+
+            return `
+              <div class="ndb-card" data-slot="${m.slot}">
+                <div class="ndb-card-icon ${catClass}">
+                  ${iconSvg}
+                </div>
+                <div class="ndb-card-info">
+                  <div class="ndb-card-top">
+                    <span class="ndb-card-slot">#${String(m.slot).padStart(3, '0')}</span>
+                    <span class="ndb-card-cat ${catClass}">${catName}</span>
+                  </div>
+                  <div class="ndb-card-name" title="${m.name}">${m.name}</div>
+                  <div class="ndb-card-meta">
+                    <span class="ndb-card-badge">${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}</span>
+                    <span class="ndb-card-badge">Lvl ${m.complexity}</span>
+                  </div>
+                  <div class="ndb-card-actions">
+                    <button type="button" class="btn btn-xs btn-primary btn-select-model" data-slot="${m.slot}">
+                      Select Slot
+                    </button>
+                    <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}" title="Export .zip package">
+                      <span class="btn-icon">${ICONS.folder}</span> Export .zip
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
       </div>
     `;
 
+    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
+      card.addEventListener('dblclick', () => {
+        this.handlers.onSelectModel(slot);
+      });
+    });
+
     container.querySelectorAll('.btn-select-model').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
         this.handlers.onSelectModel(slot);
       });
     });
 
     container.querySelectorAll('.btn-export').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
         this.handlers.onExportModel(slot);
       });
@@ -183,6 +274,20 @@ export class BankDrawer {
     const container = this.drawerElement.querySelector('#bank-list-container');
     if (!container) return;
 
+    const badge = this.drawerElement.querySelector('#bank-count-badge');
+    const totalPresets = this.currentBank.presets.length;
+
+    if (totalPresets === 0) {
+      if (badge) badge.textContent = '0 PRESETS';
+      container.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.sliders}</span>
+          <span class="empty-msg">No sound presets available in this bank</span>
+        </div>
+      `;
+      return;
+    }
+
     const filtered = this.filterQuery
       ? this.currentBank.presets.filter(
           (p) =>
@@ -193,29 +298,44 @@ export class BankDrawer {
         )
       : this.currentBank.presets;
 
+    if (badge) {
+      badge.textContent =
+        filtered.length === totalPresets
+          ? `${totalPresets} PRESETS`
+          : `${filtered.length} / ${totalPresets} PRESETS`;
+    }
+
     if (filtered.length === 0) {
       container.innerHTML = `
-        <div class="bank-empty-state">
-          <span>No presets found matching "${this.filterQuery}".</span>
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.sliders}</span>
+          <span class="empty-msg">No presets found matching "${this.filterQuery}"</span>
         </div>
       `;
       return;
     }
 
     container.innerHTML = `
-      <div class="bank-items-grid">
-        ${filtered.map((p) => `
-          <div class="bank-preset-item">
-            <div class="preset-item-header">
-              <span class="preset-slot-tag">#${String(p.slot).padStart(3, '0')}</span>
-              <span class="preset-name">${p.name}</span>
-              <span class="preset-category-pill">${p.category}</span>
+      <div class="ndb-grid">
+        ${filtered
+          .map((p) => `
+            <div class="ndb-card" data-slot="${p.slot}">
+              <div class="ndb-card-icon cat-7">
+                ${ICONS.sliders}
+              </div>
+              <div class="ndb-card-info">
+                <div class="ndb-card-top">
+                  <span class="ndb-card-slot">#${String(p.slot).padStart(3, '0')}</span>
+                  <span class="ndb-card-cat">${p.category || 'Preset'}</span>
+                </div>
+                <div class="ndb-card-name" title="${p.name}">${p.name}</div>
+                <div class="ndb-card-meta">
+                  <span class="ndb-card-badge">Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
+                </div>
+              </div>
             </div>
-            <div class="preset-item-meta">
-              <span>Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
-            </div>
-          </div>
-        `).join('')}
+          `)
+          .join('')}
       </div>
     `;
   }
