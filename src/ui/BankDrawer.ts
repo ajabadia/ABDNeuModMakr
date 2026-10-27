@@ -56,7 +56,7 @@ export class BankDrawer {
           <span class="ndb-title-text">NEURONDB BANK BROWSER</span>
           <span class="panel-badge ndb-badge" id="bank-count-badge">0 ITEMS</span>
         </div>
-        <div class="drawer-header-actions" style="display: flex; align-items: center; gap: var(--space-2);">
+        <div class="drawer-header-actions">
           <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-clear-bank-models" title="Clear all generated models from bank">${ICONS.trash}</button>
           <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-close-bank" title="Close Drawer (Esc)">${ICONS.close}</button>
         </div>
@@ -137,11 +137,7 @@ export class BankDrawer {
       }
     });
 
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.isOpen) {
-        this.close();
-      }
-    });
+    window.addEventListener('keydown', this.handleKeyDown);
 
     const tabModels = this.drawerElement.querySelector('#tab-models');
     const tabPresets = this.drawerElement.querySelector('#tab-presets');
@@ -313,7 +309,7 @@ export class BankDrawer {
           <span class="empty-icon">${ICONS.sliders}</span>
           <span class="empty-msg">No sound presets loaded</span>
           <span class="ndb-dim">Presets are loaded from NeuronDB/Sounds or your library folder.</span>
-          <button type="button" class="btn btn-xs btn-primary" id="btn-configure-neurondb-lib" style="margin-top: var(--space-3);">
+          <button type="button" class="btn btn-xs btn-primary ndb-empty-action" id="btn-configure-neurondb-lib">
             <span class="btn-icon">${ICONS.folder}</span>
             <span>Configure NeuronDB Library Folder...</span>
           </button>
@@ -422,5 +418,17 @@ export class BankDrawer {
     this.isOpen = false;
     this.drawerElement?.classList.remove('is-open');
     this.drawerElement?.classList.add('is-closed');
+  }
+
+  private handleKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && this.isOpen) {
+      this.close();
+    }
+  };
+
+  public destroy(): void {
+    window.removeEventListener('keydown', this.handleKeyDown);
+    this.drawerElement?.remove();
+    this.drawerElement = null;
   }
 }

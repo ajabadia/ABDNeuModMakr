@@ -89,7 +89,7 @@ export class TelemetryDrawer {
         <div class="audit-errors-list">
           <div class="errors-heading">Errors requiring attention:</div>
           ${errors.map((err) => `<div class="error-item">${ICONS.alert} ${err}</div>`).join('')}
-          <div style="margin-top: 10px;">
+          <div class="telemetry-spacer">
             <button type="button" class="btn btn-sm btn-primary" id="btn-drawer-auto-repair" title="Automatically sort zones, close gaps/overlaps across 0..127, and clamp root keys">
               ${ICONS.repair} Auto-Repair MIDI 0..127 Coverage
             </button>

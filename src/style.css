@@ -2140,7 +2140,40 @@ input[type="range"] {
 
 /* ── NeuronDB Browser Modal Styles are loaded from @abdsynths/shared/styles (catalog-browser.css) ── */
 
+/* ── Canonical Component Utilities & Modal Sizing ── */
+.doc-modal-card {
+  max-width: 620px;
+}
 
+.doc-modal-body {
+  line-height: 1.55;
+  font-size: var(--text-md);
+}
+
+.sample-vel-split-control {
+  margin-top: var(--space-2);
+}
+
+.sample-vel-split-control.is-disabled {
+  opacity: 0.75;
+}
+
+.sample-vel-split-label {
+  font-size: var(--text-xs);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.sample-vel-split-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-top: var(--space-1);
+}
+
+.telemetry-spacer {
+  margin-top: var(--space-3);
+}
 
 @media (max-width: 1180px) {
   .workspace-columns,
@@ -2148,3 +2181,4 @@ input[type="range"] {
     grid-template-columns: 1fr;
   }
 }
+

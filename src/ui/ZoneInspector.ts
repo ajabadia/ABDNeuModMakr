@@ -379,13 +379,13 @@ export class ZoneInspector {
               </div>
             </div>
 
-            <div class="sample-vel-split-control is-disabled" style="margin-top: 8px; opacity: 0.75;">
-              <label for="slider-vel-split" style="font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <div class="sample-vel-split-control is-disabled">
+              <label for="slider-vel-split" class="sample-vel-split-label">
                 <span>VELOCITY SPLIT POINT</span>
                 <span class="val-display" id="val-vel-split">64 (Fixed: 1–63 / 64–127)</span>
               </label>
               <input type="range" id="slider-vel-split" min="64" max="64" value="64" disabled title="Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Variable velocity splits will be available in Extended Mode." />
-              <div style="font-size: 10px; color: var(--color-text-dim); margin-top: 2px;">
+              <div class="sample-vel-split-hint">
                 Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.
               </div>
             </div>

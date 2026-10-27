@@ -349,7 +349,7 @@ export class AppNavbar {
       `;
 
     this.docModalEl.innerHTML = `
-      <div class="process-modal-card" style="max-width: 620px;">
+      <div class="process-modal-card doc-modal-card">
         <div class="modal-header">
           <div class="modal-title">
             <span class="modal-icon">${ICONS.cpu}</span>
@@ -357,7 +357,7 @@ export class AppNavbar {
           </div>
           <button type="button" class="btn btn-close-modal" id="btn-close-doc-modal">${ICONS.close}</button>
         </div>
-        <div class="modal-body" style="line-height: 1.55; font-size: var(--text-md);">
+        <div class="modal-body doc-modal-body">
           ${bodyHtml}
         </div>
         <div class="modal-footer">
