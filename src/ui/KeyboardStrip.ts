@@ -101,6 +101,9 @@ export class KeyboardStrip {
         enablePanic: false,
         enableWheels: false,
         enableCollapse: true,
+        enableSustain: false,
+        enableHold: false,
+        enableRetrig: false,
         enableQwerty: true,
         showQwertyLabels: false,
         enableTouch: true

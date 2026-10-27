@@ -2175,6 +2175,15 @@ input[type="range"] {
   margin-top: var(--space-3);
 }
 
+/* ── Keyboard Strip: Hide SUST, HOLD, RETRIG buttons, preserving only Collapse ── */
+.keyboard-strip-container .kbd-sustain-btn,
+.keyboard-strip-container .kbd-hold-btn,
+.keyboard-strip-container .kbd-retrig-btn,
+.keyboard-strip-container .kbd-sostenuto-btn,
+.keyboard-strip-container .kbd-soft-btn {
+  display: none !important;
+}
+
 @media (max-width: 1180px) {
   .workspace-columns,
   .samples-slots-grid {

@@ -29,6 +29,11 @@ declare module '@abdsynths/midi-keyb' {
     enableResizeObserver?: boolean;
     enablePanic?: boolean;
     enableWheels?: boolean;
+    enableSustain?: boolean;
+    enableHold?: boolean;
+    enableRetrig?: boolean;
+    enableSostenuto?: boolean;
+    enableSoftPedal?: boolean;
     zones?: KeyboardZone[];
     activeZoneIndex?: number | string;
   }
