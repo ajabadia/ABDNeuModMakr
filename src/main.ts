@@ -350,10 +350,16 @@ class App {
       {
         onConfigChange: (cfg) => {
           this.session = this.core.updateProcessConfig(cfg);
-          this.navbar.updateSession(this.session, this.core.validateCoverage());
+          const errors = this.core.validateCoverage();
+          this.navbar.updateSession(this.session, errors);
+          this.processPanel.setValidation(errors, this.session.zones);
           this.updateSpectralView(this.getActiveZone());
         },
         onStartProcess: () => this.handleStartProcess()
+      },
+      {
+        errors: this.core.validateCoverage(),
+        zones: this.session!.zones
       }
     );
 
@@ -390,8 +396,12 @@ class App {
       onSelectModel: (slot) => {
         if (this.session) {
           this.session = this.core.updateProcessConfig({ modelNumber: slot });
-          this.processPanel.setConfig(this.session.processConfig);
-          this.navbar.updateSession(this.session, this.core.validateCoverage());
+          const errors = this.core.validateCoverage();
+          this.processPanel.setConfig(this.session.processConfig, {
+            errors,
+            zones: this.session.zones,
+          });
+          this.navbar.updateSession(this.session, errors);
         }
       },
       onExportModel: async (slot) => {
@@ -1641,7 +1651,10 @@ class App {
     this.navbar.updateHistory(this.core.getHistoryState());
     this.ribbon.setZones(this.session.zones, this.selectedZoneId);
     this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones);
-    this.processPanel.setConfig(this.session.processConfig);
+    this.processPanel.setConfig(this.session.processConfig, {
+      errors,
+      zones: this.session.zones,
+    });
     this.keyboard.setZones(this.session.zones, this.selectedZoneId);
     this.keyboard.setActiveZone(activeZone);
     this.telemetryDrawer.updateAudit(this.session, errors);

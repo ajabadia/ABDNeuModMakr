@@ -4,7 +4,7 @@
 // 10 Canonical Parameter Set Buttons, and Target Format Buttons)
 // ─────────────────────────────────────────────────────────
 
-import type { ProcessConfig, ParameterSetInfo, TargetFormat } from '../core/types';
+import type { ProcessConfig, ParameterSetInfo, TargetFormat, Zone } from '../core/types';
 import { ICONS } from './icons';
 
 const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
@@ -27,27 +27,46 @@ export interface ProcessPanelHandlers {
   onStartProcess: () => void;
 }
 
+export interface ProcessValidationState {
+  errors: string[];
+  zones: Zone[];
+}
+
 export class ProcessPanel {
   private container: HTMLElement;
   private parameterSets: ParameterSetInfo[];
   private handlers: ProcessPanelHandlers;
   private currentConfig: ProcessConfig;
+  private coverageErrors: string[] = [];
+  private zones: Zone[] = [];
 
   constructor(
     container: HTMLElement,
     initialConfig: ProcessConfig,
     parameterSets: ParameterSetInfo[],
-    handlers: ProcessPanelHandlers
+    handlers: ProcessPanelHandlers,
+    initialValidation?: ProcessValidationState
   ) {
     this.container = container;
     this.parameterSets = parameterSets;
     this.handlers = handlers;
     this.currentConfig = { ...initialConfig };
+    if (initialValidation) {
+      this.coverageErrors = initialValidation.errors;
+      this.zones = initialValidation.zones;
+    }
     this.render();
   }
 
-  public setConfig(config: ProcessConfig): void {
+  public setConfig(
+    config: ProcessConfig,
+    validation?: ProcessValidationState
+  ): void {
     this.currentConfig = { ...config };
+    if (validation) {
+      this.coverageErrors = validation.errors;
+      this.zones = validation.zones;
+    }
     const activeEl = document.activeElement;
     if (activeEl && this.container.contains(activeEl)) {
       this.syncDomValues();
@@ -55,6 +74,65 @@ export class ProcessPanel {
     }
     this.render();
   }
+
+  public setValidation(errors: string[], zones: Zone[]): void {
+    this.coverageErrors = errors;
+    this.zones = zones;
+    this.syncCtaButton();
+  }
+
+  public getSufficientDataStatus(): {
+    canGenerate: boolean;
+    notice: string;
+    tooltip: string;
+  } {
+    if (this.zones.length === 0) {
+      return {
+        canGenerate: false,
+        notice: 'No keyboard zones defined.',
+        tooltip: 'Cannot generate model: At least one keyboard zone is required.',
+      };
+    }
+
+    const missingSampleCount = this.zones.filter((z) => !z.sampleLow).length;
+    if (missingSampleCount > 0) {
+      const notice =
+        missingSampleCount === this.zones.length
+          ? 'Assign audio sample(s) to keyboard zones to enable generation.'
+          : `${missingSampleCount} zone(s) missing audio sample.`;
+      return {
+        canGenerate: false,
+        notice,
+        tooltip: `Cannot generate model: ${notice}`,
+      };
+    }
+
+    if (this.coverageErrors.length > 0) {
+      const firstError = this.coverageErrors[0];
+      return {
+        canGenerate: false,
+        notice: firstError,
+        tooltip: `Cannot generate model: ${firstError}`,
+      };
+    }
+
+    const trimmedName = this.currentConfig.modelName.trim();
+    if (trimmedName.length === 0) {
+      return {
+        canGenerate: false,
+        notice: 'Model name cannot be blank.',
+        tooltip: 'Cannot generate model: Please specify a valid model name.',
+      };
+    }
+
+    const zoneLabel = this.zones.length === 1 ? '1 zone' : `${this.zones.length} zones`;
+    return {
+      canGenerate: true,
+      notice: `Ready to process • ${zoneLabel} configured`,
+      tooltip: 'Run Spectral Analysis & Generate Model (Ctrl+P / Ctrl+Enter)',
+    };
+  }
+
 
   private getMaxNameLength(): number {
     return this.currentConfig.targetFormat === 'modern-neural' ? 32 : 11;
@@ -110,6 +188,23 @@ export class ProcessPanel {
       const fmt = btn.getAttribute('data-target-format');
       btn.classList.toggle('is-active', fmt === activeTarget);
     });
+
+    this.syncCtaButton();
+  }
+
+  private syncCtaButton(): void {
+    const btn = this.container.querySelector('#btn-cta-process') as HTMLButtonElement | null;
+    const notice = this.container.querySelector('#cta-process-notice') as HTMLElement | null;
+    const status = this.getSufficientDataStatus();
+
+    if (btn) {
+      btn.disabled = !status.canGenerate;
+      btn.title = status.tooltip;
+    }
+    if (notice) {
+      notice.className = `cta-notice ${status.canGenerate ? 'is-ready' : 'is-warning'}`;
+      notice.textContent = status.notice;
+    }
   }
 
   private render(): void {
@@ -120,6 +215,7 @@ export class ProcessPanel {
     const recDepth =
       STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
     const activeTarget = this.currentConfig.targetFormat ?? 'dual';
+    const status = this.getSufficientDataStatus();
 
     this.container.innerHTML = `
       <div class="process-panel-card">
@@ -128,6 +224,23 @@ export class ProcessPanel {
             <span class="panel-badge">MODEL GENERATOR</span>
             <span class="panel-caption">GLOBAL MODEL SETTINGS</span>
           </div>
+        </div>
+
+        <!-- 0. Top Action CTA: permanently visible at top of card -->
+        <div class="process-cta-box">
+          <button
+            type="button"
+            class="btn btn-primary btn-cta-process"
+            id="btn-cta-process"
+            ${status.canGenerate ? '' : 'disabled'}
+            title="${status.tooltip}"
+          >
+            <span class="btn-icon">${ICONS.play}</span>
+            <span>GENERATE NEURON MODEL</span>
+          </button>
+          <p class="cta-notice ${status.canGenerate ? 'is-ready' : 'is-warning'}" id="cta-process-notice">
+            ${status.notice}
+          </p>
         </div>
 
         <div class="process-form">
@@ -268,18 +381,10 @@ export class ProcessPanel {
               </button>
             </div>
           </div>
-
-          <!-- 5. Action CTA -->
-          <div class="process-cta-box">
-            <button type="button" class="btn btn-primary btn-cta-process" id="btn-cta-process" title="Run Spectral Analysis & Generate Model (Ctrl+P / Ctrl+Enter)">
-              <span class="btn-icon">${ICONS.play}</span>
-              <span>GENERATE NEURON MODEL</span>
-            </button>
-            <p class="cta-notice">Analyzes all unique zone samples, extracts excitation / resonant frames, and builds .model / .nmmodel files.</p>
-          </div>
         </div>
       </div>
     `;
+
 
     this.bindEvents();
   }
@@ -409,7 +514,9 @@ export class ProcessPanel {
     });
 
     this.container.querySelector('#btn-cta-process')?.addEventListener('click', () => {
+      if (!this.getSufficientDataStatus().canGenerate) return;
       this.handlers.onStartProcess();
     });
   }
 }
+

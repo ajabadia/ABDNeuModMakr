@@ -272,7 +272,17 @@ export class AppNavbar {
         <span class="hud-coverage-text">${isOk ? '128/128 MIDI KEYS OK' : `${coverageErrors.length} GAPS DETECTED`}</span>
       `;
     }
+
+    if (this.processBtn) {
+      const hasSamples = session.zones.length > 0 && session.zones.every((z) => Boolean(z.sampleLow));
+      const canProcess = coverageErrors.length === 0 && hasSamples;
+      this.processBtn.disabled = !canProcess;
+      this.processBtn.title = canProcess
+        ? 'Process Model Now (Ctrl+P)'
+        : `Cannot process: ${coverageErrors[0] ?? 'Assign audio sample(s) to keyboard zones'}`;
+    }
   }
+
 
   private syncActiveMenuChecks(): void {
     this.navBarInstance?.setActiveValues({

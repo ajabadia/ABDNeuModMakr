@@ -190,7 +190,7 @@ input[type="range"] {
 
 .process-panel-card {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .panel-header,
@@ -1394,24 +1394,50 @@ input[type="range"] {
 }
 
 .process-cta-box {
-  margin-top: auto;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-panel-border-dim);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-panel-border-dim);
+  flex-shrink: 0;
 }
 
 .btn-cta-process {
   width: 100%;
-  height: 36px;
-  font-size: var(--text-lg);
-  letter-spacing: 0.6px;
+  height: 38px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition: all var(--transition-fast);
+}
+
+.btn-cta-process:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+  box-shadow: none;
+  border-color: var(--color-panel-border-dim);
 }
 
 .cta-notice {
   font-size: var(--text-sm);
   color: var(--color-text-dim);
   margin: var(--space-2) 0 0;
-  line-height: 1.3;
+  line-height: 1.35;
   text-align: center;
+  transition: color var(--transition-fast);
+}
+
+.cta-notice.is-warning {
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+.cta-notice.is-ready {
+  color: var(--color-success);
+  font-weight: 500;
 }
 
 .validation-inline-bar {
