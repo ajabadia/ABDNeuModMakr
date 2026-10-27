@@ -4,8 +4,15 @@
 // ─────────────────────────────────────────────────────────
 
 import './style.css';
-import { WebAudioPipeline } from './core/WebAudioPipeline';
-import type { Zone, Session, CoreEvent } from './core/types';
+import {
+  createCoreService,
+  type CoreService,
+  type Zone,
+  type Session,
+  type CoreEvent,
+  type SoundPreset,
+  PARAMETER_SETS,
+} from './core';
 import { AppNavbar } from './ui/Navbar';
 import { ZoneRibbon } from './ui/ZoneRibbon';
 import { ZoneInspector } from './ui/ZoneInspector';
@@ -16,14 +23,17 @@ import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal, stickModesToComplexity, type NeuronDbModelEntry } from './ui/NeuronDbModal';
-import { parseMName, parseMapScript, parseModelNamesCache } from './formats/ModelFormat';
-import { parseSoundNamesCache, parseSoundScript } from './formats/SoundFormat';
-import { PARAMETER_SETS } from './core/WebAudioPipeline';
-import type { SoundPreset } from './core/types';
-import { parseZipArchive } from './formats/ZipArchive';
+import {
+  parseMName,
+  parseMapScript,
+  parseModelNamesCache,
+  parseSoundNamesCache,
+  parseSoundScript,
+  parseZipArchive,
+} from '@abdsynths/shared/formats/neuron';
 
 class App {
-  private core = new WebAudioPipeline();
+  private core: CoreService = createCoreService();
   private session: Session | null = null;
   private selectedZoneId: string | null = null;
 

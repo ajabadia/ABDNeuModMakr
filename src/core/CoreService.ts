@@ -22,6 +22,10 @@ import type {
   MidiNote,
   ZoneSpectralInspection,
   HistoryState,
+  ZoneRibbonWaveforms,
+  ProcessSourcesInspection,
+  DecodedWav,
+  AudioFilePayload,
 } from './types.ts';
 
 export type CoreEventListener = (event: CoreEvent) => void;
@@ -44,13 +48,15 @@ export interface CoreService {
   loadSession(id: string): Promise<Session>;
   saveSession(session: Session): Promise<void>;
   getSession(): Session | null;
+  exportSessionJson(): string;
+  loadSessionFromJson(jsonText: string): Promise<Session>;
 
   // ── Zones ───────────────────────────────────────────────
   /** Get all zones in current session */
   getZones(): Zone[];
 
   /** Add a new zone, splitting the one that covers `rootKey` */
-  addZone(rootKey: MidiNote, samplePath: string): Promise<Zone>;
+  addZone(rootKey: MidiNote, samplePath?: string): Promise<Zone>;
 
   /** Update a zone's properties (detune, volume, pan, samples, keys) */
   updateZone(zoneId: string, changes: Partial<Zone>): Promise<Zone>;
@@ -64,16 +70,47 @@ export interface CoreService {
    */
   validateCoverage(): string[];
 
-  // ── Samples ─────────────────────────────────────────────
+  // ── Samples & Waveforms ─────────────────────────────────
+  /** Register an in-memory WAV buffer, decoding and validating header metadata */
+  registerSampleBuffer(sampleName: string, wavBuffer: ArrayBuffer): DecodedWav;
+
+  /** Get list of unique loaded or referenced sample names */
+  getLoadedSampleNames(): string[];
+
+  /** Get 64-point normalized waveform envelopes for zone ribbon rendering */
+  getZoneRibbonWaveforms(zoneId: string): ZoneRibbonWaveforms;
+
+  /** Play a loaded or synthesized sample via audio engine */
+  auditionSample(samplePath: string, rootKey?: MidiNote): Promise<void>;
+
   /** Import samples from a folder, auto-assigning zones by filename */
   importSamplesFromFolder(folderPath: string): Promise<Zone[]>;
+
+  /** Import audio files into session with optional velocity merging */
+  importAudioFiles(
+    files: AudioFilePayload[],
+    mode?: 'samples' | 'by-name'
+  ): Promise<Zone[]>;
+
+  /** Import model files or .zip bundles */
+  importModelFiles(files: AudioFilePayload[]): Promise<GeneratedModel>;
+
+  /** Classify active session audio sources (imported vs user WAVs) */
+  inspectProcessSources(): ProcessSourcesInspection;
+
+  /** Export zone audio as standard AIFF PCM-16 with INST chunk */
+  exportZoneAsAiff(zoneId: string): { filename: string; bytes: Uint8Array };
 
   // ── Process / Model Generation ──────────────────────────
   /** Get available parameter set descriptions */
   getParameterSets(): ParameterSetInfo[];
 
   /** Start model generation with current session + config */
-  startProcess(config: ProcessConfig): Promise<void>;
+  startProcess(
+    config: ProcessConfig,
+    options?: { forceReanalyzeImported?: boolean }
+  ): Promise<void>;
+
 
   /** Cancel a running process */
   cancelProcess(): Promise<void>;
@@ -99,20 +136,20 @@ export interface CoreService {
 
   // ── Phase 4: Spectral Inspection & A/B Audition ─────────
   /** Compute or retrieve cached 2D spectrogram, partial tracks, and A/B waveforms for a zone */
-  inspectZoneSpectrum?(zoneId: string): ZoneSpectralInspection;
+  inspectZoneSpectrum(zoneId: string): ZoneSpectralInspection;
 
   /** Play either the original sample ('original') or the additive Scape/Sphere resynthesis ('resynthesis') */
-  auditionZoneComparison?(
+  auditionZoneComparison(
     zoneId: string,
     mode: 'original' | 'resynthesis',
     targetNote?: MidiNote
   ): Promise<void>;
 
   /** Stop any active sample or resynthesis playback */
-  stopAudition?(): void;
+  stopAudition(): void;
 
   /** Poll real-time Web Audio AnalyserNode telemetry during playback */
-  getRealtimeSpectrum?(): {
+  getRealtimeSpectrum(): {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
@@ -121,20 +158,21 @@ export interface CoreService {
 
   // ── Phase 5: UX Avanzada (Undo/Redo, Config & Auto-Repair) ──
   /** Undo the last session mutation and return the restored Session */
-  undo?(): Session | null;
+  undo(): Session | null;
 
   /** Redo the previously undone session mutation and return the restored Session */
-  redo?(): Session | null;
+  redo(): Session | null;
 
   /** Query current Undo/Redo stack state */
-  getHistoryState?(): HistoryState;
+  getHistoryState(): HistoryState;
 
   /** Update ProcessConfig fields with Undo/Redo support and real-time persistence */
-  updateProcessConfig?(changes: Partial<ProcessConfig>): Session;
+  updateProcessConfig(changes: Partial<ProcessConfig>): Session;
 
   /** Automatically repair any gaps, overlaps, or out-of-range root keys across MIDI 0..127 */
-  autoRepairCoverage?(): Session;
+  autoRepairCoverage(): Session;
 
   /** Reset session zones to a single contiguous 0..127 zone with Undo support */
-  resetZonesToSingle?(): Session;
+  resetZonesToSingle(): Session;
 }
+

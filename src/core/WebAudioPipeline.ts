@@ -55,7 +55,8 @@ import {
   parseModelFileSet,
   convertLegacyModelToModern,
   resynthesizeNeuronModelSource,
-} from '../formats/ModelFormat.ts';
+} from '@abdsynths/shared/formats/neuron';
+
 import type {
   WorkerInboundMessage,
   WorkerOutboundMessage,

@@ -24,8 +24,6 @@ import {
   convertLegacyModelToModern,
   SPHERE_FRAME_MAGIC,
   type ParsedNeuronModel,
-} from '../src/formats/ModelFormat.ts';
-import {
   NEURON_SOUND_SCHEMA,
   parseSoundScript,
   serializeSoundScript,
@@ -34,7 +32,8 @@ import {
   serializeStickRec,
   parseSoundNamesCache,
   serializeSoundNamesCache,
-} from '../src/formats/SoundFormat.ts';
+} from '@abdsynths/shared/formats/neuron';
+
 import {
   decodeWav,
   synthesizeDemoWav,

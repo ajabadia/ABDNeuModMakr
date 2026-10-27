@@ -209,3 +209,32 @@ export type CoreEvent =
   | { type: 'process-error'; error: string }
   | { type: 'bank-updated'; bank: BankSummary }
   | { type: 'history-changed'; history: HistoryState };
+
+/** Normalized waveform envelope data for zone ribbons */
+export interface ZoneRibbonWaveforms {
+  lowOriginal: number[];
+  highOriginal: number[] | null;
+  processed: number[] | null;
+  hasProcessed: boolean;
+}
+
+/** Audio source inspection across session zones */
+export interface ProcessSourcesInspection {
+  importedSources: string[];
+  newAudioSources: string[];
+  importedComplexity: number | null;
+  complexityChanged: boolean;
+}
+
+export type {
+  DecodedWav,
+  WavFormatTag,
+  AiffInstrumentInfo,
+} from '@abdsynths/shared/formats/neuron';
+
+/** In-memory audio file payload for imports */
+export interface AudioFilePayload {
+  name: string;
+  buffer: ArrayBuffer;
+}
+

@@ -6,7 +6,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { createZipArchive, parseZipArchive } from '../src/formats/ZipArchive.ts';
+import { createZipArchive, parseZipArchive } from '@abdsynths/shared/formats/neuron';
 import {
   WebAudioPipeline,
   parseSampleFilenameByName,
