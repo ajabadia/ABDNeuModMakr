@@ -1208,6 +1208,50 @@ input[type="range"] {
   color: var(--color-accent);
 }
 
+/* Canonical Category Color Palette for Parameter Sets (0..9) */
+.btn-param-set.cat-0 .param-btn-num, .btn-param-set.cat-0 .param-btn-icon, .btn-param-set.cat-0 .param-btn-cat { color: var(--color-cat-0); }
+.btn-param-set.cat-1 .param-btn-num, .btn-param-set.cat-1 .param-btn-icon, .btn-param-set.cat-1 .param-btn-cat { color: var(--color-cat-1); }
+.btn-param-set.cat-2 .param-btn-num, .btn-param-set.cat-2 .param-btn-icon, .btn-param-set.cat-2 .param-btn-cat { color: var(--color-cat-2); }
+.btn-param-set.cat-3 .param-btn-num, .btn-param-set.cat-3 .param-btn-icon, .btn-param-set.cat-3 .param-btn-cat { color: var(--color-cat-3); }
+.btn-param-set.cat-4 .param-btn-num, .btn-param-set.cat-4 .param-btn-icon, .btn-param-set.cat-4 .param-btn-cat { color: var(--color-cat-4); }
+.btn-param-set.cat-5 .param-btn-num, .btn-param-set.cat-5 .param-btn-icon, .btn-param-set.cat-5 .param-btn-cat { color: var(--color-cat-5); }
+.btn-param-set.cat-6 .param-btn-num, .btn-param-set.cat-6 .param-btn-icon, .btn-param-set.cat-6 .param-btn-cat { color: var(--color-cat-6); }
+.btn-param-set.cat-7 .param-btn-num, .btn-param-set.cat-7 .param-btn-icon, .btn-param-set.cat-7 .param-btn-cat { color: var(--color-cat-7); }
+.btn-param-set.cat-8 .param-btn-num, .btn-param-set.cat-8 .param-btn-icon, .btn-param-set.cat-8 .param-btn-cat { color: var(--color-cat-8); }
+.btn-param-set.cat-9 .param-btn-num, .btn-param-set.cat-9 .param-btn-icon, .btn-param-set.cat-9 .param-btn-cat { color: var(--color-cat-9); }
+
+.btn-param-set.cat-0:hover, .btn-param-set.is-active.cat-0 { border-color: var(--color-cat-0); }
+.btn-param-set.cat-1:hover, .btn-param-set.is-active.cat-1 { border-color: var(--color-cat-1); }
+.btn-param-set.cat-2:hover, .btn-param-set.is-active.cat-2 { border-color: var(--color-cat-2); }
+.btn-param-set.cat-3:hover, .btn-param-set.is-active.cat-3 { border-color: var(--color-cat-3); }
+.btn-param-set.cat-4:hover, .btn-param-set.is-active.cat-4 { border-color: var(--color-cat-4); }
+.btn-param-set.cat-5:hover, .btn-param-set.is-active.cat-5 { border-color: var(--color-cat-5); }
+.btn-param-set.cat-6:hover, .btn-param-set.is-active.cat-6 { border-color: var(--color-cat-6); }
+.btn-param-set.cat-7:hover, .btn-param-set.is-active.cat-7 { border-color: var(--color-cat-7); }
+.btn-param-set.cat-8:hover, .btn-param-set.is-active.cat-8 { border-color: var(--color-cat-8); }
+.btn-param-set.cat-9:hover, .btn-param-set.is-active.cat-9 { border-color: var(--color-cat-9); }
+
+.param-set-info-card.cat-0 { border-left-color: var(--color-cat-0); }
+.param-set-info-card.cat-0 .param-set-badge { color: var(--color-cat-0); }
+.param-set-info-card.cat-1 { border-left-color: var(--color-cat-1); }
+.param-set-info-card.cat-1 .param-set-badge { color: var(--color-cat-1); }
+.param-set-info-card.cat-2 { border-left-color: var(--color-cat-2); }
+.param-set-info-card.cat-2 .param-set-badge { color: var(--color-cat-2); }
+.param-set-info-card.cat-3 { border-left-color: var(--color-cat-3); }
+.param-set-info-card.cat-3 .param-set-badge { color: var(--color-cat-3); }
+.param-set-info-card.cat-4 { border-left-color: var(--color-cat-4); }
+.param-set-info-card.cat-4 .param-set-badge { color: var(--color-cat-4); }
+.param-set-info-card.cat-5 { border-left-color: var(--color-cat-5); }
+.param-set-info-card.cat-5 .param-set-badge { color: var(--color-cat-5); }
+.param-set-info-card.cat-6 { border-left-color: var(--color-cat-6); }
+.param-set-info-card.cat-6 .param-set-badge { color: var(--color-cat-6); }
+.param-set-info-card.cat-7 { border-left-color: var(--color-cat-7); }
+.param-set-info-card.cat-7 .param-set-badge { color: var(--color-cat-7); }
+.param-set-info-card.cat-8 { border-left-color: var(--color-cat-8); }
+.param-set-info-card.cat-8 .param-set-badge { color: var(--color-cat-8); }
+.param-set-info-card.cat-9 { border-left-color: var(--color-cat-9); }
+.param-set-info-card.cat-9 .param-set-badge { color: var(--color-cat-9); }
+
 .target-format-buttons-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1.1fr;

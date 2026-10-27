@@ -12,6 +12,8 @@ import { PARAMETER_SETS } from '../core/WebAudioPipeline';
 export interface BankDrawerHandlers {
   onSelectModel: (slot: number) => void;
   onExportModel: (slot: number) => void;
+  onClearModels?: () => void;
+  onConfigureNeuronDbFolder?: () => void;
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
@@ -54,7 +56,10 @@ export class BankDrawer {
           <span class="ndb-title-text">NEURONDB BANK BROWSER</span>
           <span class="panel-badge ndb-badge" id="bank-count-badge">0 ITEMS</span>
         </div>
-        <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-close-bank" title="Close Drawer (Esc)">${ICONS.close}</button>
+        <div class="drawer-header-actions" style="display: flex; align-items: center; gap: var(--space-2);">
+          <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-clear-bank-models" title="Clear all generated models from bank">${ICONS.trash}</button>
+          <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-close-bank" title="Close Drawer (Esc)">${ICONS.close}</button>
+        </div>
       </div>
 
       <!-- Integrated Search Row (ABDMS2000 & Catalog style) -->
@@ -103,6 +108,16 @@ export class BankDrawer {
     `;
 
     this.container.appendChild(this.drawerElement);
+
+    this.drawerElement.querySelector('#btn-clear-bank-models')?.addEventListener('click', () => {
+      if (!this.currentBank || this.currentBank.models.length === 0) {
+        alert('There are no generated models to clear in this bank.');
+        return;
+      }
+      if (confirm(`Are you sure you want to clear all ${this.currentBank.models.length} generated model(s) from the bank?`)) {
+        this.handlers.onClearModels?.();
+      }
+    });
 
     this.drawerElement.querySelector('#btn-close-bank')?.addEventListener('click', () => {
       this.close();
@@ -229,7 +244,7 @@ export class BankDrawer {
             const iconSvg = ICONS[iconKey] || ICONS.database;
 
             return `
-              <div class="ndb-card" data-slot="${m.slot}">
+              <div class="ndb-card ${catClass}" data-slot="${m.slot}">
                 <div class="ndb-card-icon ${catClass}">
                   ${iconSvg}
                 </div>
@@ -296,9 +311,17 @@ export class BankDrawer {
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.sliders}</span>
-          <span class="empty-msg">No sound presets available in this bank</span>
+          <span class="empty-msg">No sound presets loaded</span>
+          <span class="ndb-dim">Presets are loaded from NeuronDB/Sounds or your library folder.</span>
+          <button type="button" class="btn btn-xs btn-primary" id="btn-configure-neurondb-lib" style="margin-top: var(--space-3);">
+            <span class="btn-icon">${ICONS.folder}</span>
+            <span>Configure NeuronDB Library Folder...</span>
+          </button>
         </div>
       `;
+      container.querySelector('#btn-configure-neurondb-lib')?.addEventListener('click', () => {
+        this.handlers.onConfigureNeuronDbFolder?.();
+      });
       return;
     }
 
@@ -335,7 +358,7 @@ export class BankDrawer {
           .map((p) => {
             const catInfo = getPresetCategoryInfo(p.category);
             return `
-              <div class="ndb-card" data-slot="${p.slot}" data-model="${p.modelIndex}">
+              <div class="ndb-card ${catInfo.catClass}" data-slot="${p.slot}" data-model="${p.modelIndex}">
                 <div class="ndb-card-icon ${catInfo.catClass}">
                   ${catInfo.icon}
                 </div>

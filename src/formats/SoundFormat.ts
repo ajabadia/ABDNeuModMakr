@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Hartmann Neuron .sound Preset Format
+// ABDNeuModMakr — Hartmann Neuron Binary .sound Reader & Writer
 // Re-exported from @abdsynths/shared/formats/neuron as single source of truth.
 // ─────────────────────────────────────────────────────────
 

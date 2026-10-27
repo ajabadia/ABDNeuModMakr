@@ -2303,12 +2303,32 @@ export class WebAudioPipeline implements CoreService {
 
   // ── Bank & Export Packaging ─────────────────────────────
 
+  private bankPresets = [...INITIAL_PRESETS];
+
+  public setBankPresets(presets: BankSummary['presets']): void {
+    if (presets && presets.length > 0) {
+      this.bankPresets = [...presets];
+    }
+  }
+
+  public async clearGeneratedModels(): Promise<void> {
+    this.generatedModels = [];
+    this.modelZoneBinaries.clear();
+    try {
+      localStorage.removeItem('abdsynths_nmm_bank');
+    } catch {
+      // ignore
+    }
+    this.pushHistory('Clear Generated Models');
+    this.emit({ type: 'bank-updated', bank: await this.loadBank() });
+  }
+
   public async loadBank(): Promise<BankSummary> {
     return {
       models: [...this.generatedModels],
-      presets: [...INITIAL_PRESETS],
+      presets: [...this.bankPresets],
       totalModels: this.generatedModels.length,
-      totalPresets: INITIAL_PRESETS.length,
+      totalPresets: this.bankPresets.length,
     };
   }
 

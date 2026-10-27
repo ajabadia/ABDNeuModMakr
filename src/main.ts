@@ -17,6 +17,9 @@ import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal, stickModesToComplexity, type NeuronDbModelEntry } from './ui/NeuronDbModal';
 import { parseMName, parseMapScript, parseModelNamesCache } from './formats/ModelFormat';
+import { parseSoundNamesCache, parseSoundScript } from './formats/SoundFormat';
+import { PARAMETER_SETS } from './core/WebAudioPipeline';
+import type { SoundPreset } from './core/types';
 import { parseZipArchive } from './formats/ZipArchive';
 
 class App {
@@ -125,6 +128,7 @@ class App {
       onImportFolder: () => this.triggerFolderImport(),
       onImportByName: () => this.triggerAudioImport('by-name'),
       onImportModelFolder: () => this.triggerModelFolderImport(),
+      onConfigureNeuronDbFolder: () => this.triggerConfigureNeuronDbFolder(),
       onImportModel: () => this.triggerModelImport(),
       onExportModel: async () => {
         if (!this.session) return;
@@ -386,7 +390,14 @@ class App {
           `NeuronModel_${String(slot).padStart(3, '0')}.zip`
         );
         this.telemetryDrawer.addLog(`Exported model package #${String(slot).padStart(3, '0')} (.zip)`);
-      }
+      },
+      onClearModels: async () => {
+        await this.core.clearGeneratedModels();
+        const bank = await this.core.loadBank();
+        this.bankDrawer.setBank(bank);
+        this.telemetryDrawer.addLog('Cleared all generated models from session bank.');
+      },
+      onConfigureNeuronDbFolder: () => this.triggerConfigureNeuronDbFolder(),
     });
 
     this.processModal = new ProcessModal(modalsMount, {
@@ -555,6 +566,136 @@ class App {
     fileInput.click();
   }
 
+  private triggerConfigureNeuronDbFolder(): void {
+    const win = window as Window & {
+      showDirectoryPicker?: (opts?: { mode?: 'read' }) => Promise<FileSystemDirectoryHandle>;
+    };
+    if (typeof win.showDirectoryPicker === 'function') {
+      void (async () => {
+        try {
+          const dirHandle = await win.showDirectoryPicker!({ mode: 'read' });
+          await this.importFromDirectoryHandle(dirHandle, 'model');
+          const bank = await this.core.loadBank();
+          this.bankDrawer.setBank(bank);
+          this.bankDrawer.open();
+          this.telemetryDrawer.addLog(`Configured NeuronDB folder: "${dirHandle.name}".`);
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          const msg = err instanceof Error ? err.message : String(err);
+          this.telemetryDrawer.addLog(`Configure NeuronDB folder error: ${msg}`);
+          alert(`Failed to configure NeuronDB folder:\n${msg}`);
+        }
+      })();
+      return;
+    }
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    (fileInput as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true;
+    fileInput.addEventListener('change', async () => {
+      const fileList = fileInput.files;
+      if (!fileList || fileList.length === 0) return;
+      await this.importFromWebkitFileList(fileList, 'model');
+      const bank = await this.core.loadBank();
+      this.bankDrawer.setBank(bank);
+      this.bankDrawer.open();
+    });
+    fileInput.click();
+  }
+
+  private async scanSoundPresets(
+    rootHandle: FileSystemDirectoryHandle,
+    subDirs: Map<string, FileSystemDirectoryHandle>,
+    directFiles: FileSystemFileHandle[]
+  ): Promise<void> {
+    type IterDir = FileSystemDirectoryHandle & {
+      values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
+    };
+
+    let soundNamesHandle = directFiles.find((f) => f.name.toLowerCase() === 'soundnames');
+    let soundsDir = subDirs.get('sounds') ?? subDirs.get('Sounds');
+
+    if (!soundsDir && rootHandle.name.toLowerCase() === 'sounds') {
+      soundsDir = rootHandle;
+    }
+
+    if (!soundNamesHandle && soundsDir) {
+      for await (const entry of (soundsDir as IterDir).values()) {
+        if (entry.kind === 'file' && entry.name.toLowerCase() === 'soundnames') {
+          soundNamesHandle = entry as FileSystemFileHandle;
+          break;
+        }
+      }
+    }
+
+    const soundNamesMap = new Map<number, string>();
+    if (soundNamesHandle) {
+      try {
+        const file = await soundNamesHandle.getFile();
+        const text = await file.text();
+        const parsed = parseSoundNamesCache(text);
+        for (const [k, v] of parsed.entries()) {
+          soundNamesMap.set(k, v);
+        }
+      } catch {
+        // ignore error parsing cache
+      }
+    }
+
+    const presets: SoundPreset[] = [];
+
+    if (soundsDir) {
+      for await (const entry of (soundsDir as IterDir).values()) {
+        if (entry.kind === 'directory') {
+          const match = /^(\d{3})\.sound$/i.exec(entry.name);
+          if (match) {
+            const slot = parseInt(match[1], 10);
+            let name = soundNamesMap.get(slot) || `Sound${match[1]}`;
+            let modelIndex = slot;
+            try {
+              const soundDir = entry as FileSystemDirectoryHandle;
+              for await (const inner of (soundDir as IterDir).values()) {
+                if (inner.kind === 'file' && inner.name.toLowerCase() === 'sound.script') {
+                  const sf = await (inner as FileSystemFileHandle).getFile();
+                  const scriptText = await sf.text();
+                  const parsed = parseSoundScript(scriptText);
+                  if (parsed.name && parsed.name.trim().length > 0) {
+                    name = parsed.name;
+                  }
+                  if (parsed.r1ModelIndex !== undefined && parsed.r1ModelIndex < 512) {
+                    modelIndex = parsed.r1ModelIndex;
+                  }
+                  break;
+                }
+              }
+            } catch {
+              // ignore individual sound read errors
+            }
+
+            const cat = PARAMETER_SETS[modelIndex % 10]?.name || 'Sound';
+            presets.push({ slot, name, category: cat, modelIndex, parameterCount: 445 });
+          }
+        }
+      }
+    } else if (soundNamesMap.size > 0) {
+      for (const [slot, name] of soundNamesMap.entries()) {
+        if (name && name !== '--<empty>--' && name !== 'InitSound') {
+          const cat = PARAMETER_SETS[slot % 10]?.name || 'Preset';
+          presets.push({ slot, name, category: cat, modelIndex: slot, parameterCount: 445 });
+        }
+      }
+    }
+
+    if (presets.length > 0) {
+      presets.sort((a, b) => a.slot - b.slot);
+      this.core.setBankPresets(presets);
+      const bank = await this.core.loadBank();
+      this.bankDrawer.setBank(bank);
+      this.telemetryDrawer.addLog(`Loaded ${presets.length} sound preset(s) from NeuronDB.`);
+    }
+  }
+
   private async importFromDirectoryHandle(
     rootHandle: FileSystemDirectoryHandle,
     preferredKind: 'audio' | 'model'
@@ -642,6 +783,7 @@ class App {
     }
 
     if (modelSubDirs.size > 0) {
+      await this.scanSoundPresets(rootHandle, subDirs, directFiles);
       const availableSlots = Array.from(modelSubDirs.keys()).sort((a, b) => a - b);
       if (availableSlots.length === 1) {
         const targetDir = modelSubDirs.get(availableSlots[0])!;

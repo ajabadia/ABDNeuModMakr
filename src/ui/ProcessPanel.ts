@@ -98,6 +98,10 @@ export class ProcessPanel {
       const id = parseInt(btn.getAttribute('data-param-set') || '0', 10);
       btn.classList.toggle('is-active', id === this.currentConfig.parameterSet);
     });
+    const infoCard = this.container.querySelector('#param-set-info-card') as HTMLElement;
+    if (infoCard) {
+      infoCard.className = `param-set-info-card cat-${this.currentConfig.parameterSet}`;
+    }
 
     // Sync Target Format buttons
     const activeTarget = this.currentConfig.targetFormat ?? 'dual';
@@ -211,7 +215,7 @@ export class ProcessPanel {
                   (ps) => `
                 <button
                   type="button"
-                  class="btn-param-set ${ps.id === this.currentConfig.parameterSet ? 'is-active' : ''}"
+                  class="btn-param-set cat-${ps.id} ${ps.id === this.currentConfig.parameterSet ? 'is-active' : ''}"
                   data-param-set="${ps.id}"
                   title="${ps.id}: ${ps.name} [${ps.category}] — ${ps.description}"
                 >
@@ -225,7 +229,7 @@ export class ProcessPanel {
                 .join('')}
             </div>
 
-            <div class="param-set-info-card">
+            <div class="param-set-info-card cat-${activeSet.id}" id="param-set-info-card">
               <div class="param-set-info-header">
                 <span class="param-set-badge" id="disp-param-cat">${activeSet.category}</span>
                 <span class="param-set-name" id="disp-param-name">${activeSet.id}: ${activeSet.name}</span>
@@ -373,6 +377,10 @@ export class ProcessPanel {
         paramBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
         const found = this.parameterSets.find((p) => p.id === setId);
         if (found) {
+          const infoCardEl = this.container.querySelector('#param-set-info-card') as HTMLElement;
+          if (infoCardEl) {
+            infoCardEl.className = `param-set-info-card cat-${found.id}`;
+          }
           dispCat.textContent = found.category;
           dispName.textContent = `${found.id}: ${found.name}`;
           dispDesc.textContent = found.description;

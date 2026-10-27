@@ -85,6 +85,12 @@ export interface CoreService {
   /** Load bank summary (models + presets) */
   loadBank(): Promise<BankSummary>;
 
+  /** Clear all generated models from bank history */
+  clearGeneratedModels(): Promise<void>;
+
+  /** Set sound presets in bank */
+  setBankPresets(presets: BankSummary['presets']): void;
+
   /** Export a generated model to a path */
   exportModel(slot: number, targetPath: string): Promise<void>;
 

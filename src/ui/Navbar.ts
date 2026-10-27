@@ -16,6 +16,7 @@ export interface NavbarHandlers {
   onImportByName: () => void;
   onImportModelFolder: () => void;
   onImportModel: () => void;
+  onConfigureNeuronDbFolder?: () => void;
   onExportModel: () => void;
   onExportZoneAiff: () => void;
   onUndo: () => void;
@@ -82,6 +83,7 @@ export class AppNavbar {
           { id: 105, label: 'Import Audio Folder...', action: 'importFolder' },
           { separator: true },
           { id: 106, label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
+          { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
           { id: 107, label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
           { id: 108, label: 'Transfer / Export Model (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
@@ -379,6 +381,7 @@ export class AppNavbar {
       case 'importFolder': this.handlers.onImportFolder(); break;
       case 'importByName': this.handlers.onImportByName(); break;
       case 'importModelFolder': this.handlers.onImportModelFolder(); break;
+      case 'configureNeuronDbFolder': this.handlers.onConfigureNeuronDbFolder?.(); break;
       case 'importModel': this.handlers.onImportModel(); break;
       case 'exportModel': this.handlers.onExportModel(); break;
       case 'exportZoneAiff': this.handlers.onExportZoneAiff(); break;
