@@ -16,6 +16,7 @@
 //     automatic envelope-shape / interlaced layer separation (up to 3 layers)
 // ─────────────────────────────────────────────────────────
 
+import { clamp } from './DspMath.ts';
 import { FftEngine, createWindowTable } from './FftEngine.ts';
 import {
   clusterTraces,
@@ -48,10 +49,6 @@ export interface OctaveCandidate {
 }
 
 export type AudioInput = Float32Array | Float32Array[];
-
-function clamp(val: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, val));
-}
 
 function extractChannels(audio: AudioInput): {
   left: Float32Array;

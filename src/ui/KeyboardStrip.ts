@@ -4,7 +4,7 @@
 // Interactive piano keyboard showing multizone layout & root pitch
 // ─────────────────────────────────────────────────────────
 
-import { createKeyboard } from '@abdsynths/midi-keyb';
+import { createKeyboard, type KeyboardInstance } from '@abdsynths/midi-keyb';
 import type { Zone } from '../core/types';
 import { midiToNoteName } from './ZoneRibbon';
 
@@ -19,7 +19,7 @@ export class KeyboardStrip {
   private baseOctave: number = 2; // C2 (36) by default
   private activeZone: Zone | null = null;
   private allZones: Zone[] = [];
-  private kbdInstance: any = null;
+  private kbdInstance: KeyboardInstance | null = null;
 
   constructor(container: HTMLElement, handlers: KeyboardStripHandlers) {
     this.container = container;

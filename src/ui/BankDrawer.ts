@@ -7,7 +7,7 @@
 
 import { ICONS } from './icons';
 import type { BankSummary } from '../core/types';
-import { PARAMETER_SETS } from '../core/WebAudioPipeline';
+import { PARAMETER_SETS } from '../core';
 
 export interface BankDrawerHandlers {
   onSelectModel: (slot: number) => void;

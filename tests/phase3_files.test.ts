@@ -7,10 +7,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createZipArchive, parseZipArchive } from '@abdsynths/shared/formats/neuron';
-import {
-  WebAudioPipeline,
-  parseSampleFilenameByName,
-} from '../src/core/WebAudioPipeline.ts';
+import { WebAudioPipeline } from '../src/core/WebAudioPipeline.ts';
+import { parseSampleFilenameByName } from '../src/core/sampleNaming.ts';
 import { synthesizeDemoWav, encodePcm16Wav } from '../src/core/dsp/WavDecoder.ts';
 
 function assert(condition: boolean, message: string): void {

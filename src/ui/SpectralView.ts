@@ -9,8 +9,9 @@
 // ─────────────────────────────────────────────────────────
 
 import { SpectrumPlotter } from '@abdsynths/shared/components';
-import type { ZoneSpectralInspection } from '../core/types.ts';
-import { ICONS } from './icons.ts';
+import { clamp, linearToDb } from '../core/dsp/DspMath';
+import type { ZoneSpectralInspection } from '../core/types';
+import { ICONS } from './icons';
 
 export type SpectralDisplayMode = 'spectrogram' | 'partials' | 'waveform-ab' | 'log-curve';
 export type AuditionTargetMode = 'original' | 'resynthesis';
@@ -325,7 +326,7 @@ export class SpectralView {
         (t) => t.partialIndex === pIdx + 1
       );
       const layerNum = (track?.layerIndex ?? 0) + 1;
-      const ampDb = amp > 1e-5 ? `${(20 * Math.log10(amp)).toFixed(1)} dB` : '-inf dB';
+      const ampDb = amp > 1e-5 ? `${linearToDb(amp).toFixed(1)} dB` : '-inf dB';
       this.hoverInfoEl.textContent = `Partial H${pIdx + 1}: ${freqHz.toFixed(1)} Hz (Δ ${offHz >= 0 ? '+' : ''}${offHz.toFixed(1)} Hz) | Amp: ${ampDb} | Layer L${layerNum}`;
     } else {
       const timeSec = xNorm * this.inspection.durationSec;
@@ -477,11 +478,11 @@ export class SpectralView {
       const targetDb = -60 + meanNorm * 58;
 
       // Nearest harmonic partial amplitude
-      const harmIdx = Math.min(63, Math.max(0, Math.round(freqHz / f0) - 1));
+      const harmIdx = clamp(Math.round(freqHz / f0) - 1, 0, 63);
       const pAmp = summary.amplitudes[harmIdx] ?? 0;
-      const modelDb = pAmp > 1e-4 ? Math.max(-60, 20 * Math.log10(pAmp)) : -58;
+      const modelDb = pAmp > 1e-4 ? Math.max(-60, linearToDb(pAmp)) : -58;
 
-      const resDb = Math.max(-60, Math.min(0, -48 + Math.abs(targetDb - modelDb) * 0.6));
+      const resDb = clamp(-48 + Math.abs(targetDb - modelDb) * 0.6, -60, 0);
 
       targetCurve.push(Number(targetDb.toFixed(1)));
       modelCurve.push(Number(modelDb.toFixed(1)));
@@ -602,8 +603,8 @@ export class SpectralView {
 
     for (let k = 0; k < 64; k++) {
       const amp = summary.amplitudes[k] ?? 0;
-      const relDb = amp > 1e-5 ? 20 * Math.log10(amp) : -72;
-      const normH = Math.max(0.02, Math.min(1, (relDb + 60) / 60));
+      const relDb = linearToDb(amp, -72, 1e-5);
+      const normH = clamp((relDb + 60) / 60, 0.02, 1);
       const bh = normH * plotH;
       const x = k * barSlotW + (barSlotW - barW) * 0.5;
       const y = 8 + plotH - bh;

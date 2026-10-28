@@ -9,7 +9,7 @@
 
 import { ICONS } from './icons';
 import { midiToNoteName } from './ZoneRibbon';
-import { PARAMETER_SETS } from '../core/WebAudioPipeline';
+import { PARAMETER_SETS } from '../core';
 
 export interface NeuronDbModelEntry {
   slot: number;

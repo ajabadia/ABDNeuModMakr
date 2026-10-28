@@ -4,6 +4,7 @@
 // & .neuronikmodel Writer (Port of SpectralModelWriter.h + model_binary.py)
 // ─────────────────────────────────────────────────────────
 
+import { clamp } from './DspMath.ts';
 import type { SpectralModelData } from './GridIndicator.ts';
 import type { ProcessConfig, Zone } from '../types.ts';
 
@@ -54,9 +55,15 @@ export interface CompiledZoneFramePackage {
   neuronikJson: Record<string, unknown>;
 }
 
-function clamp(val: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, val));
-}
+
+/**
+ * Canonical Hartmann Neuron hardware sample rate (Hz). Every legacy
+ * `.scape` / `.sphere` grid derivation (resolution, 2048-bin Phase-Vocoder
+ * table, frequency ceiling) references this single constant — the
+ * `legacy-neuron` path must never use another rate.
+ * (Copies in `@abdsynths/shared` stay canonical there; this is the src-side alias.)
+ */
+export const NEURON_SAMPLE_RATE = 44100;
 
 /**
  * Exact mapping from UI Complexity (1..10) to `recursionDepth`
@@ -450,7 +457,7 @@ export function serializeNeuronScapeBinary(
   curveId = -1048088517
 ): Uint8Array {
   const f0 = Math.max(20.0, frames[0]?.f0Hz ?? 441.0);
-  const resolution = clamp(Math.round(44100.0 / f0), 32, 2048);
+  const resolution = clamp(Math.round(NEURON_SAMPLE_RATE / f0), 32, 2048);
   const numCycles = 64; // 64 cycles (3 attack cycles with 1/n harmonics + 61 steady sine cycles)
   const sampleCount = resolution * numCycles;
   const loopStart = resolution * 16;
@@ -526,7 +533,7 @@ export function serializeNeuronSphereBinary(
   curveId = -1048088517
 ): Uint8Array {
   const f0 = Math.max(20.0, frames[0]?.f0Hz ?? 441.0);
-  const resolution = clamp(Math.round(44100.0 / f0), 32, 2048);
+  const resolution = clamp(Math.round(NEURON_SAMPLE_RATE / f0), 32, 2048);
   const numFrames = Math.max(1, frames.length);
   const frameStride = 6568; // 0x1A0 (416) + 6152 = 6568 bytes
   const dataOffset = 140 + 104 + 56; // 300 (0x12C)
@@ -573,7 +580,7 @@ export function serializeNeuronSphereBinary(
   writeFdAnChunk(view, 244, sphereFdPairs);
 
   // 4. Frame bank at +300 (0x12C), stride 6568 bytes
-  const binStepHz = 44100.0 / 2048.0; // 21.533203125 Hz (0x10015e08 in FUN_10007e00)
+  const binStepHz = NEURON_SAMPLE_RATE / 2048.0; // 21.533203125 Hz (0x10015e08 in FUN_10007e00)
 
   for (let f = 0; f < numFrames; f++) {
     const frame = frames[f];
@@ -624,7 +631,7 @@ export function serializeNeuronSphereBinary(
         const ampU16 = clamp(Math.round(mag * 65535), 1, 65535);
         const rawHz = clamp((k + 1) * frame.f0Hz + frame.scape.partialOffsetsHz[k], 21.5332, 22050.0);
         // FUN_10007e00 stores frequency in 0.5 Hz units: round(freqHz * 2.0 + 0.5)
-        const freqHalfHzU16 = clamp(Math.round(rawHz * 2.0 + 0.5), 40, 44100);
+        const freqHalfHzU16 = clamp(Math.round(rawHz * 2.0 + 0.5), 40, NEURON_SAMPLE_RATE);
         const binIdx = clamp(Math.round(rawHz / binStepHz), 1, 1023);
         partials.push({ freqHalfHzU16, ampU16, binIdx });
       }
@@ -903,7 +910,7 @@ export function serializeBinaryScapeSpherePayload(
 export function resynthesizeModelToPcm(
   model: SpectralModelData,
   durationSec = 1.2,
-  sampleRate = 44100,
+  sampleRate = NEURON_SAMPLE_RATE,
   playbackF0Hz?: number
 ): Float32Array {
   const numSamples = Math.max(1, Math.floor(durationSec * sampleRate));

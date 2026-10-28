@@ -31,11 +31,11 @@ import type {
 import {
   decodeWav,
   encodePcm16Wav,
-  encodeAiffPcm16,
-  resampleAudioChannel,
+  midiNoteToHz,
   synthesizeDemoWav,
   type DecodedWav,
 } from './dsp/WavDecoder.ts';
+import { clamp, linearToDb } from './dsp/DspMath.ts';
 import {
   analyzeSingleZone,
   runMultiZonePipeline,
@@ -47,28 +47,41 @@ import { SpectralAnalyzer } from './dsp/SpectralAnalyzer.ts';
 import { computeStft } from './dsp/FftEngine.ts';
 import { buildLayerView } from './dsp/GridIndicator.ts';
 import {
+  NEURON_SAMPLE_RATE,
   complexityToLimits,
   resynthesizeModelToPcm,
 } from './dsp/ScapeSphereGenerator.ts';
 import {
-  buildModelExportZip,
   parseModelFileSet,
   convertLegacyModelToModern,
   resynthesizeNeuronModelSource,
 } from '@abdsynths/shared/formats/neuron';
 
+import { parseSessionJson } from './sessionSchema.ts';
+import {
+  persistSessionToLocalStorage,
+  restoreSessionFromLocalStorage,
+} from './sessionPersistence.ts';
+import { AudioPreviewService } from './audioPreview.ts';
+import { BankService } from './bankService.ts';
+import { SessionHistory } from './sessionHistory.ts';
+import { createInitialSession, createZone } from './sessionFactory.ts';
+import {
+  DEFAULT_MODEL_NAMES,
+  deriveModelNameFromSample,
+  parseSampleFilenameByName,
+} from './sampleNaming.ts';
+import {
+  buildZoneRibbonWaveforms,
+  emptyRibbonWaveforms,
+  getSampleEnvelope,
+  type EnvelopeStore,
+  type ZoneRibbonWaveformsData,
+} from './waveforms.ts';
 import type {
   WorkerInboundMessage,
   WorkerOutboundMessage,
 } from './worker/analysisWorker.ts';
-
-let zoneIdCounter = 0;
-function nextZoneId(): string {
-  return `zone-${++zoneIdCounter}-${Date.now().toString(36)}`;
-}
-
-const STORAGE_SESSION_KEY = 'abd_neumodmakr_session_v1';
-const STORAGE_BANK_KEY = 'abd_neumodmakr_bank_v1';
 
 /**
  * The 10 official Parameter Sets from the Hartmann Neuron MODELmaker v1.2 manual
@@ -87,200 +100,10 @@ export const PARAMETER_SETS: ParameterSetInfo[] = [
   { id: 9, name: 'Multipurpose',     description: 'BodyAmnt/BdyColor/CorpOpen & CrpSmall/CrpMatrl for acoustic body shaping', category: 'General' },
 ];
 
-const INITIAL_PRESETS = [
-  { slot: 0,  name: 'DangerDrone',    modelIndex: 511, category: 'Pad',     parameterCount: 445 },
-  { slot: 1,  name: 'SilkStrings',    modelIndex: 0,   category: 'Strings', parameterCount: 445 },
-  { slot: 2,  name: 'GlassKeys',      modelIndex: 1,   category: 'Keys',    parameterCount: 445 },
-  { slot: 3,  name: 'WarmBass',       modelIndex: 2,   category: 'Bass',    parameterCount: 445 },
-  { slot: 4,  name: 'NeuralPad',      modelIndex: 0,   category: 'Pad',     parameterCount: 445 },
-  { slot: 5,  name: 'MetalBell',      modelIndex: 3,   category: 'Bell',    parameterCount: 445 },
-  { slot: 6,  name: 'AirTexture',     modelIndex: 1,   category: 'Texture', parameterCount: 445 },
-  { slot: 7,  name: 'DeepResonance',  modelIndex: 2,   category: 'Bass',    parameterCount: 445 },
-  { slot: 8,  name: 'CrystalArp',     modelIndex: 0,   category: 'Arp',     parameterCount: 445 },
-  { slot: 9,  name: 'VocalMorph',     modelIndex: 4,   category: 'Vocal',   parameterCount: 445 },
-  { slot: 10, name: 'OrganicPulse',   modelIndex: 3,   category: 'Rhythm',  parameterCount: 445 },
-  { slot: 11, name: 'FrozenChoir',    modelIndex: 1,   category: 'Pad',     parameterCount: 445 },
-];
-
-function createZone(
-  low: MidiNote,
-  root: MidiNote,
-  high: MidiNote,
-  sampleLow: string | null = null
-): Zone {
-  return {
-    id: nextZoneId(),
-    lowKey: low,
-    rootKey: root,
-    highKey: high,
-    sampleLow,
-    sampleHigh: null,
-    velSplit: 64,
-    detune: 0,
-    volume: 0,
-    pan: 0,
-  };
-}
-
-function createInitialSession(name: string): Session {
-  const now = new Date().toISOString();
-  return {
-    id: `session-${Date.now().toString(36)}`,
-    name,
-    zones: [createZone(0, 60, 127, null)],
-    processConfig: {
-      modelNumber: 0,
-      modelName: 'NewModel',
-      complexity: 8,
-      parameterSet: 0,
-      targetFormat: 'dual',
-    },
-    dirty: false,
-    createdAt: now,
-    modifiedAt: now,
-  };
-}
-
-export interface ParsedSampleFilename {
-  sampleName: string;
-  rootKey: MidiNote;
-  lowKey: MidiNote;
-  velocityLayer: 1 | 2;
-  isHighVelocity: boolean;
-}
-
-/**
- * Extracts MIDI rootKey, lowKey, and velocity layer (`1` = Low Vel, `2` = High Vel)
- * from a sample filename using both:
- *   1. The official Hartmann MODELmaker `Import by Name` (`NC_HARTMANN`) convention:
- *      `name_rootkey_lowkey[.ext]` or `name_rootkey_lowkey_v1[.ext]` / `name_rootkey_lowkey_v2[.ext]`
- *      (e.g. `Flute_72_68.aif`, `Flute_72_68_v1.aif`, `Flute_72_68_v2.aif`)
- *   2. Modern / manual patterns like `12 String Gtr-E2_high.aif`, `Piano_C3.wav`, `Bass_36_v2.wav`.
- */
-export function parseSampleFilenameByName(
-  filename: string,
-  fallbackRoot: MidiNote = 60
-): ParsedSampleFilename {
-  const base = (filename.split(/[\\/]/).pop() ?? filename).replace(/\.[^.]+$/, '');
-  const lower = base.toLowerCase();
-
-  let velocityLayer: 1 | 2 = 1;
-  if (/(?:[_\-\s](?:v2|high|hi|vel2|ff))$/i.test(lower)) {
-    velocityLayer = 2;
-  } else if (/(?:[_\-\s](?:v1|low|lo|vel1|pp))$/i.test(lower)) {
-    velocityLayer = 1;
-  }
-
-  // 1. Check strict Hartmann `name_rootkey_lowkey[_v1|_v2]` numeric convention (`KeyZoneData.createKeyZoneFromFileByName`)
-  const tokens = base.split('_');
-  if (tokens.length >= 3) {
-    const r = parseInt(tokens[1], 10);
-    const l = parseInt(tokens[2], 10);
-    if (!Number.isNaN(r) && r >= 0 && r <= 127 && !Number.isNaN(l) && l >= 0 && l <= 127) {
-      if (tokens[3]) {
-        const vTok = tokens[3].toLowerCase();
-        if (vTok === 'v2' || vTok === 'high') velocityLayer = 2;
-        else if (vTok === 'v1' || vTok === 'low') velocityLayer = 1;
-      }
-      return {
-        sampleName: filename,
-        rootKey: r,
-        lowKey: l,
-        velocityLayer,
-        isHighVelocity: velocityLayer === 2,
-      };
-    }
-  }
-
-  // 2. Fallback to note name or single MIDI number
-  const rootKey = parseRootKeyFromFilename(filename, fallbackRoot);
-  return {
-    sampleName: filename,
-    rootKey,
-    lowKey: rootKey,
-    velocityLayer,
-    isHighVelocity: velocityLayer === 2,
-  };
-}
-
-/**
- * Extracts a MIDI root key (0..127) from a sample filename if present.
- * Supports patterns like `Piano_60_36.wav`, `Bass_C2.wav`, `Cellos_F#3.wav`, `12 String Gtr-A2.aif`.
- */
-export function parseRootKeyFromFilename(filename: string, fallback: MidiNote = 60): MidiNote {
-  const base = filename.split(/[\\/]/).pop() ?? filename;
-
-  // 1. Check Hartmann `name_rootkey_lowkey` numeric tokens first
-  const hartmannMatch = /^[^_]+_(\d{1,3})_(\d{1,3})(?:_|$|\.)/.exec(base);
-  if (hartmannMatch) {
-    const rk = parseInt(hartmannMatch[1], 10);
-    if (rk >= 0 && rk <= 127) return rk;
-  }
-
-  // 2. Check note name pattern like C3, F#4, Bb2, G-2
-  const noteMatch = base.match(/(?:^|[_\-\s])([A-Ga-g])([#b]?)(-?\d)(?:[_\-.\s]|$)/);
-  if (noteMatch) {
-    const letter = noteMatch[1].toUpperCase();
-    const accidental = noteMatch[2];
-    const octave = parseInt(noteMatch[3], 10);
-    const semitoneMap: Record<string, number> = {
-      C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11,
-    };
-    let semitone = semitoneMap[letter] ?? 0;
-    if (accidental === '#') semitone += 1;
-    if (accidental === 'b') semitone -= 1;
-    const midi = (octave + 1) * 12 + semitone;
-    if (midi >= 0 && midi <= 127) return midi;
-  }
-
-  // 3. Check numeric MIDI token like _60_ or _60.wav
-  const numMatch = base.match(/(?:^|[_\-\s])(\d{1,3})(?:[_\-.\s]|$)/);
-  if (numMatch) {
-    const val = parseInt(numMatch[1], 10);
-    if (val >= 0 && val <= 127) return val;
-  }
-
-  return fallback;
-}
-
-const DEFAULT_MODEL_NAMES = new Set([
-  '',
-  'NewModel',
-  'Init Model',
-  'InitModel',
-  'UNTITLED',
-  'Default Session',
-  'MyModel',
-]);
-
-/**
- * Derives a clean model name from an audio sample filename by stripping path, extension,
- * velocity tags (`_v1`, `_v2`, `_low`, `_high`), Hartmann numeric tokens (`_072_068`),
- * and note names (`_C4`, `-E2`).
- */
-export function deriveModelNameFromSample(filename: string, maxLen = 11): string {
-  const base = (filename.split(/[\\/]/).pop() ?? filename).replace(/\.[^.]+$/, '');
-  const cleaned = base
-    .replace(/(?:[_\-\s](?:v1|v2|low|lo|high|hi|vel1|vel2|pp|ff))$/i, '')
-    .replace(/_\d{1,3}_\d{1,3}$/, '')
-    .replace(/(?:[_\-\s][A-Ga-g][#b]?-?\d)$/, '')
-    .replace(/(?:[_\-\s]\d{1,3})$/, '')
-    .replace(/[\r\n\t]+/g, '')
-    .trim();
-  const asciiOnly = cleaned.replace(/[^\x20-\x7E]/g, '');
-  const candidate = (asciiOnly || base.replace(/[^\x20-\x7E]/g, '') || 'Model').trim();
-  return candidate.slice(0, maxLen);
-}
-
 export class WebAudioPipeline implements CoreService {
   private session: Session | null = null;
   private readonly listeners: Set<CoreEventListener> = new Set();
   private readonly sampleBuffers: Map<string, ArrayBuffer> = new Map();
-  private readonly modelZoneBinaries: Map<number, ZoneBinaryPair[]> = new Map();
-  private readonly modelMapScriptVersions: Map<
-    number,
-    { major: number; minor: number; build: number; lineEnding?: '\r\n' | '\n' }
-  > = new Map();
   private readonly importedSourceBinaries: Map<
     string,
     PreservedSourceBinary & { complexity: number }
@@ -291,53 +114,56 @@ export class WebAudioPipeline implements CoreService {
   private isRunning = false;
   private cancelFlag = false;
   private processProgress: ProcessProgress | null = null;
-  private audioCtx: AudioContext | null = null;
-  private analyserNode: AnalyserNode | null = null;
-  private activeSourceNode: AudioBufferSourceNode | null = null;
-  private activeGainNode: GainNode | null = null;
-  private activePlaybackMode: 'original' | 'resynthesis' | null = null;
+  // A/B auditioning — delegated to AudioPreviewService (P1.1 follow-up).
+  // Session zones, sample buffers and the resynth cache stay here and are
+  // exposed to the service through PreviewSources; only live WebAudio
+  // nodes live in the service.
+  private readonly preview: AudioPreviewService = new AudioPreviewService({
+    getZone: (zoneId: string) => this.session?.zones.find((z) => z.id === zoneId),
+    getFirstZone: () => this.session?.zones[0],
+    getSampleBuffer: (name: string) => this.sampleBuffers.get(name),
+    setSampleBuffer: (name: string, buffer: ArrayBuffer) => {
+      this.sampleBuffers.set(name, buffer);
+    },
+    getResynthMono: (zoneId: string) => this.spectralCache.get(zoneId)?.resynthMono,
+    ensureSpectrum: (zoneId: string) => {
+      this.inspectZoneSpectrum(zoneId);
+    },
+  });
   private readonly spectralCache: Map<
     string,
     { key: string; inspection: ZoneSpectralInspection; resynthMono: Float32Array }
   > = new Map();
   private readonly ribbonEnvelopeCache: Map<string, number[]> = new Map();
 
-  // Phase 5: Undo / Redo Snapshot Stack (Command History)
-  private undoStack: {
-    label: string;
-    snapshotJson: string;
-    coalesceKey?: string;
-    timestampMs: number;
-  }[] = [];
-  private redoStack: {
-    label: string;
-    snapshotJson: string;
-    coalesceKey?: string;
-    timestampMs: number;
-  }[] = [];
-  private static readonly MAX_HISTORY = 50;
-  private static readonly COALESCE_WINDOW_MS = 450;
+  // Phase 5: Undo / Redo — delegated to SessionHistory (P1.1a).
+  // Entries hold structured clones of only the mutable document
+  // ({zones, processConfig}), never full-session JSON.
+  private readonly history = new SessionHistory();
 
-  private generatedModels: GeneratedModel[] = [
-    {
-      slot: 0,
-      name: 'Factory000',
-      zoneCount: 4,
-      complexity: 8,
-      parameterSet: 0,
-      createdAt: '2003-07-01T00:00:00Z',
-      path: 'Models/000.model',
+  // Bank & export packaging — delegated to BankService (P1.1 follow-up).
+  // Generated-model records, presets, binaries and map.script versions
+  // live in the service; session, buffers and analysis stay here and are
+  // exposed through BankContext.
+  private readonly bank: BankService = new BankService({
+    getSession: () => this.session,
+    getSampleBuffer: (name: string) => this.sampleBuffers.get(name),
+    ensureDemoBuffers: (zones: Zone[]) => this.ensureZoneDemoBuffers(zones),
+    analyzeZone: (payload, cfg) => analyzeSingleZone(payload, cfg, this.analyzer),
+    pushHistory: (label: string) => this.pushHistory(label),
+    emit: (event) => this.emit(event),
+    setProcessProgress: (p: ProcessProgress) => {
+      this.processProgress = p;
     },
-    {
-      slot: 511,
-      name: 'sinew',
-      zoneCount: 1,
-      complexity: 8,
-      parameterSet: 0,
-      createdAt: '2003-07-01T00:00:00Z',
-      path: 'Models/511.model',
-    },
-  ];
+  });
+
+  /**
+   * P0.3 import guardrails: a single decoded sample is fully buffered in
+   * memory (`decodeWav`), so cap per-file size; cap file count at the
+   * maximum meaningful zone count (one single-note zone per MIDI key).
+   */
+  public static readonly MAX_IMPORT_FILE_BYTES = 50 * 1024 * 1024;
+  public static readonly MAX_IMPORT_FILES = 128;
 
   // ── Lifecycle ───────────────────────────────────────────
 
@@ -347,13 +173,8 @@ export class WebAudioPipeline implements CoreService {
   }
 
   public dispose(): void {
-    this.stopAudition();
+    this.preview.disposeAudio();
     this.terminateWorker();
-    if (this.audioCtx) {
-      void this.audioCtx.close();
-      this.audioCtx = null;
-      this.analyserNode = null;
-    }
     this.listeners.clear();
   }
 
@@ -442,46 +263,13 @@ export class WebAudioPipeline implements CoreService {
   /**
    * Restores a session from a `.nmsession.json` string and ensures playable demo buffers
    * exist for any referenced sample names not yet loaded in memory.
+   *
+   * The payload is validated by `parseSessionJson` (P0.2): malformed JSON
+   * and structurally corrupt sessions throw specific errors instead of
+   * producing a broken live session.
    */
   public async loadSessionFromJson(jsonText: string): Promise<Session> {
-    const parsed = JSON.parse(jsonText) as {
-      session?: Session;
-      id?: string;
-      name?: string;
-      zones?: Zone[];
-      processConfig?: ProcessConfig;
-    };
-    const loaded: Session = parsed.session ?? (parsed as unknown as Session);
-    if (!loaded || !Array.isArray(loaded.zones) || loaded.zones.length === 0) {
-      throw new Error('Invalid session JSON: missing zones array');
-    }
-
-    const newSession: Session = {
-      id: loaded.id ?? `session_${Date.now()}`,
-      name: loaded.name ?? 'Imported Session',
-      zones: loaded.zones.map((z) => ({
-        id: z.id ?? nextZoneId(),
-        lowKey: Math.max(0, Math.min(127, z.lowKey ?? 0)),
-        rootKey: Math.max(0, Math.min(127, z.rootKey ?? 60)),
-        highKey: Math.max(0, Math.min(127, z.highKey ?? 127)),
-        sampleLow: z.sampleLow ?? null,
-        sampleHigh: z.sampleHigh ?? null,
-        detune: z.detune ?? 0,
-        volume: z.volume ?? 0,
-        pan: z.pan ?? 0,
-      })),
-      processConfig: {
-        modelName: loaded.processConfig?.modelName ?? 'MyModel',
-        modelNumber: loaded.processConfig?.modelNumber ?? 1,
-        parameterSet: loaded.processConfig?.parameterSet ?? 0,
-        complexity: loaded.processConfig?.complexity ?? 8,
-        targetFormat: loaded.processConfig?.targetFormat ?? 'dual',
-      },
-      createdAt: loaded.createdAt ?? new Date().toISOString(),
-      modifiedAt: new Date().toISOString(),
-      dirty: false,
-    };
-
+    const newSession = parseSessionJson(jsonText);
     this.session = newSession;
     this.clearHistory();
     this.ensureZoneDemoBuffers(newSession.zones);
@@ -497,84 +285,55 @@ export class WebAudioPipeline implements CoreService {
   // ── Phase 5: Undo / Redo & Config / Coverage Repair ─────
 
   private clearHistory(): void {
-    this.undoStack = [];
-    this.redoStack = [];
+    this.history.clear();
     this.emit({ type: 'history-changed', history: this.getHistoryState() });
   }
 
   private pushHistory(label: string, coalesceKey?: string): void {
     if (!this.session) return;
-    const now = Date.now();
-    const top = this.undoStack[this.undoStack.length - 1];
-
-    // Coalesce rapid slider/input drags on the same property within COALESCE_WINDOW_MS
-    if (
-      top &&
-      coalesceKey &&
-      top.coalesceKey === coalesceKey &&
-      now - top.timestampMs <= WebAudioPipeline.COALESCE_WINDOW_MS
-    ) {
-      top.timestampMs = now;
-      this.redoStack = [];
-      this.emit({ type: 'history-changed', history: this.getHistoryState() });
-      return;
-    }
-
-    this.undoStack.push({
+    this.history.push(
+      { zones: this.session.zones, processConfig: this.session.processConfig },
       label,
-      snapshotJson: JSON.stringify(this.session),
-      coalesceKey,
-      timestampMs: now,
-    });
-    if (this.undoStack.length > WebAudioPipeline.MAX_HISTORY) {
-      this.undoStack.shift();
-    }
-    this.redoStack = [];
+      coalesceKey
+    );
     this.emit({ type: 'history-changed', history: this.getHistoryState() });
   }
 
   public getHistoryState(): HistoryState {
-    const undoTop = this.undoStack[this.undoStack.length - 1];
-    const redoTop = this.redoStack[this.redoStack.length - 1];
-    return {
-      canUndo: this.undoStack.length > 0,
-      canRedo: this.redoStack.length > 0,
-      undoLabel: undoTop ? undoTop.label : null,
-      redoLabel: redoTop ? redoTop.label : null,
-      undoCount: this.undoStack.length,
-      redoCount: this.redoStack.length,
-    };
+    return this.history.getState();
   }
 
-  public undo(): Session | null {
-    if (!this.session || this.undoStack.length === 0) return null;
-    const entry = this.undoStack.pop()!;
-    this.redoStack.push({
-      label: entry.label,
-      snapshotJson: JSON.stringify(this.session),
-      timestampMs: Date.now(),
-    });
-    this.session = JSON.parse(entry.snapshotJson) as Session;
+  private applyHistoryDocument(doc: { zones: Zone[]; processConfig: ProcessConfig }): void {
+    if (!this.session) return;
+    this.session.zones = structuredClone(doc.zones);
+    this.session.processConfig = structuredClone(doc.processConfig);
+    this.session.dirty = true;
+    this.session.modifiedAt = new Date().toISOString();
     this.ensureZoneDemoBuffers(this.session.zones);
     this.persistToLocalStorage();
     this.emit({ type: 'session-changed', session: this.session });
     this.emit({ type: 'history-changed', history: this.getHistoryState() });
+  }
+
+  public undo(): Session | null {
+    if (!this.session) return null;
+    const restored = this.history.undo({
+      zones: this.session.zones,
+      processConfig: this.session.processConfig,
+    });
+    if (!restored) return null;
+    this.applyHistoryDocument(restored);
     return this.session;
   }
 
   public redo(): Session | null {
-    if (!this.session || this.redoStack.length === 0) return null;
-    const entry = this.redoStack.pop()!;
-    this.undoStack.push({
-      label: entry.label,
-      snapshotJson: JSON.stringify(this.session),
-      timestampMs: Date.now(),
+    if (!this.session) return null;
+    const restored = this.history.redo({
+      zones: this.session.zones,
+      processConfig: this.session.processConfig,
     });
-    this.session = JSON.parse(entry.snapshotJson) as Session;
-    this.ensureZoneDemoBuffers(this.session.zones);
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: this.session });
-    this.emit({ type: 'history-changed', history: this.getHistoryState() });
+    if (!restored) return null;
+    this.applyHistoryDocument(restored);
     return this.session;
   }
 
@@ -585,7 +344,7 @@ export class WebAudioPipeline implements CoreService {
 
     const cfg = this.session.processConfig;
     if (changes.modelNumber !== undefined) {
-      cfg.modelNumber = Math.max(0, Math.min(511, Math.round(changes.modelNumber)));
+      cfg.modelNumber = clamp(Math.round(changes.modelNumber), 0, 511);
     }
     if (changes.modelName !== undefined) {
       const maxLen = (changes.targetFormat ?? cfg.targetFormat) === 'modern-neural' ? 32 : 11;
@@ -593,16 +352,30 @@ export class WebAudioPipeline implements CoreService {
       cfg.modelName = trimmed.length > 0 ? trimmed : 'UNTITLED';
     }
     if (changes.complexity !== undefined) {
-      cfg.complexity = Math.max(1, Math.min(10, Math.round(changes.complexity)));
+      cfg.complexity = clamp(Math.round(changes.complexity), 1, 10);
     }
     if (changes.parameterSet !== undefined) {
-      cfg.parameterSet = Math.max(0, Math.min(9, Math.round(changes.parameterSet)));
+      cfg.parameterSet = clamp(Math.round(changes.parameterSet), 0, 9);
     }
     if (changes.targetFormat !== undefined) {
       cfg.targetFormat = changes.targetFormat;
       if (cfg.targetFormat !== 'modern-neural' && cfg.modelName.length > 11) {
         cfg.modelName = cfg.modelName.slice(0, 11);
       }
+      // P1.3: extended editing only exists behind modern-neural; leaving
+      // it silently on would fork behavior on the legacy binary path.
+      if (cfg.targetFormat !== 'modern-neural' && cfg.workingMode === 'extended') {
+        cfg.workingMode = 'classic';
+      }
+    }
+    if (changes.workingMode !== undefined) {
+      if (changes.workingMode !== 'classic' && changes.workingMode !== 'extended') {
+        throw new Error("Invalid workingMode: must be 'classic' | 'extended'");
+      }
+      if (changes.workingMode === 'extended' && cfg.targetFormat !== 'modern-neural') {
+        throw new Error("workingMode 'extended' requires targetFormat 'modern-neural'");
+      }
+      cfg.workingMode = changes.workingMode;
     }
 
     this.markDirty();
@@ -744,8 +517,8 @@ export class WebAudioPipeline implements CoreService {
       changes.lowKey !== undefined && changes.highKey !== undefined;
 
     if (bothKeyEdgesRaw) {
-      zone.lowKey = Math.max(0, Math.min(127, Math.round(changes.lowKey!)));
-      zone.highKey = Math.max(0, Math.min(127, Math.round(changes.highKey!)));
+      zone.lowKey = clamp(Math.round(changes.lowKey!), 0, 127);
+      zone.highKey = clamp(Math.round(changes.highKey!), 0, 127);
     } else if (changes.lowKey !== undefined) {
       // Canonical MainFrame.handlePianoNote coupled LowKey adjustment (prevents key collision/gap)
       if (idx === 0) {
@@ -775,20 +548,20 @@ export class WebAudioPipeline implements CoreService {
     }
 
     if (changes.rootKey !== undefined) {
-      zone.rootKey = Math.max(0, Math.min(127, Math.round(changes.rootKey)));
+      zone.rootKey = clamp(Math.round(changes.rootKey), 0, 127);
     }
     if (changes.velSplit !== undefined) {
-      const isExtended = (this.session?.processConfig as { workingMode?: string })?.workingMode === 'extended';
-      zone.velSplit = isExtended ? Math.max(2, Math.min(127, Math.round(changes.velSplit))) : 64;
+      const isExtended = this.session?.processConfig.workingMode === 'extended';
+      zone.velSplit = isExtended ? clamp(Math.round(changes.velSplit), 2, 127) : 64;
     }
     if (changes.detune !== undefined) {
-      zone.detune = Math.max(-99, Math.min(99, changes.detune));
+      zone.detune = clamp(changes.detune, -99, 99);
     }
     if (changes.volume !== undefined) {
-      zone.volume = Math.max(-32, Math.min(12, changes.volume));
+      zone.volume = clamp(changes.volume, -32, 12);
     }
     if (changes.pan !== undefined) {
-      zone.pan = Math.max(-50, Math.min(50, changes.pan));
+      zone.pan = clamp(changes.pan, -50, 50);
     }
     if (changes.sampleLow !== undefined) {
       zone.sampleLow = changes.sampleLow;
@@ -890,6 +663,11 @@ export class WebAudioPipeline implements CoreService {
     sampleName: string,
     wavBuffer: ArrayBuffer
   ): DecodedWav {
+    if (wavBuffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES) {
+      throw new Error(
+        `Sample '${sampleName}' exceeds the ${WebAudioPipeline.MAX_IMPORT_FILE_BYTES / (1024 * 1024)} MB per-file import limit (${(wavBuffer.byteLength / (1024 * 1024)).toFixed(1)} MB)`
+      );
+    }
     const decoded = decodeWav(wavBuffer);
     this.sampleBuffers.set(sampleName, wavBuffer);
     this.importedSourceBinaries.delete(sampleName);
@@ -897,80 +675,31 @@ export class WebAudioPipeline implements CoreService {
     return decoded;
   }
 
-  private computeNormalizedEnvelope(mono: Float32Array, cols = 64): number[] {
-    const out = new Array<number>(cols).fill(0);
-    if (mono.length === 0) return out;
-    let globalPeak = 1e-6;
-    for (let i = 0; i < mono.length; i++) {
-      const a = Math.abs(mono[i]);
-      if (a > globalPeak) globalPeak = a;
-    }
-    for (let c = 0; c < cols; c++) {
-      const i0 = Math.floor((c * mono.length) / cols);
-      const i1 = Math.max(i0 + 1, Math.floor(((c + 1) * mono.length) / cols));
-      let peak = 0;
-      for (let i = i0; i < i1 && i < mono.length; i++) {
-        const a = Math.abs(mono[i]);
-        if (a > peak) peak = a;
-      }
-      out[c] = Number(Math.min(1, peak / globalPeak).toFixed(3));
-    }
-    return out;
-  }
-
-  private getSampleEnvelope(sampleName: string | null, fallbackKey = 60): number[] {
-    if (!sampleName) return [];
-    const cached = this.ribbonEnvelopeCache.get(sampleName);
-    if (cached) return cached;
-    let raw = this.sampleBuffers.get(sampleName);
-    if (!raw) {
-      raw = synthesizeDemoWav('strings', fallbackKey, 44100, 1.0);
-      this.sampleBuffers.set(sampleName, raw);
-    }
-    try {
-      const decoded = decodeWav(raw);
-      const env = this.computeNormalizedEnvelope(decoded.mono, 64);
-      this.ribbonEnvelopeCache.set(sampleName, env);
-      return env;
-    } catch {
-      return [];
-    }
-  }
-
   /**
    * Returns 64-point normalized waveform envelopes (0..1) for `ZoneRibbon` watermark rendering:
    * - `lowOriginal`: envelope of `zone.sampleLow`
    * - `highOriginal`: envelope of `zone.sampleHigh` (if assigned)
    * - `processed`: envelope of resynthesized/processed model waveform (if inspected or processed)
+   *
+   * Envelope math lives in `./waveforms.ts`; this method only orchestrates
+   * session lookup with the pipeline's buffer/cache stores.
    */
-  public getZoneRibbonWaveforms(zoneId: string): {
-    lowOriginal: number[];
-    highOriginal: number[] | null;
-    processed: number[] | null;
-    hasProcessed: boolean;
-  } {
+  public getZoneRibbonWaveforms(zoneId: string): ZoneRibbonWaveformsData {
     const zone = this.session?.zones.find((z) => z.id === zoneId);
-    if (!zone) {
-      return { lowOriginal: [], highOriginal: null, processed: null, hasProcessed: false };
-    }
-    const lowOriginal = this.getSampleEnvelope(zone.sampleLow, zone.rootKey);
-    const highOriginal = zone.sampleHigh
-      ? this.getSampleEnvelope(zone.sampleHigh, zone.rootKey)
-      : null;
-
-    let processed: number[] | null = null;
-    const specCached = this.spectralCache.get(zone.id);
-    if (specCached) {
-      processed = this.computeNormalizedEnvelope(specCached.resynthMono, 64);
-    }
-    const slot = this.session?.processConfig.modelNumber ?? 0;
-    const hasModelBinaries = Boolean(this.modelZoneBinaries.get(slot)?.length);
-    return {
-      lowOriginal,
-      highOriginal,
-      processed,
-      hasProcessed: Boolean(processed) || hasModelBinaries,
+    if (!zone) return emptyRibbonWaveforms();
+    const store: EnvelopeStore = {
+      buffers: this.sampleBuffers,
+      cache: this.ribbonEnvelopeCache,
     };
+    const slot = this.session?.processConfig.modelNumber ?? 0;
+    return buildZoneRibbonWaveforms({
+      lowOriginal: getSampleEnvelope(store, zone.sampleLow, zone.rootKey),
+      highOriginal: zone.sampleHigh
+        ? getSampleEnvelope(store, zone.sampleHigh, zone.rootKey)
+        : null,
+      resynthMono: this.spectralCache.get(zone.id)?.resynthMono ?? null,
+      hasModelBinaries: this.bank.hasBinaries(slot),
+    });
   }
 
   /**
@@ -1074,7 +803,7 @@ export class WebAudioPipeline implements CoreService {
         sumSq += samples[i] * samples[i];
       }
       const rms = Math.sqrt(sumSq / samples.length);
-      const rmsDb = rms > 1e-6 ? Number((20 * Math.log10(rms)).toFixed(1)) : -96;
+      const rmsDb = Number(linearToDb(rms, -96).toFixed(1));
 
       for (let c = 0; c < columns; c++) {
         const i0 = Math.floor((c * samples.length) / columns);
@@ -1146,10 +875,10 @@ export class WebAudioPipeline implements CoreService {
         for (let b = b0; b < b1 && b <= maxBin; b++) {
           if (fr.magnitudes[b] > binMax) binMax = fr.magnitudes[b];
         }
-        const relDb = 20 * Math.log10(Math.max(1e-6, binMax / peakMag));
+        const relDb = linearToDb(binMax / peakMag, -120);
         // Normalize [-72 dB .. 0 dB] -> [0 .. 1]
         col[dbIdx] = Number(
-          Math.max(0, Math.min(1, (relDb + 72) / 72)).toFixed(3)
+          clamp((relDb + 72) / 72, 0, 1).toFixed(3)
         );
       }
       magnitudes.push(col);
@@ -1229,50 +958,7 @@ export class WebAudioPipeline implements CoreService {
     samplePath: string,
     rootKey: MidiNote = 60
   ): Promise<void> {
-    if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
-      return;
-    }
-
-    this.ensureAudioContext();
-    if (!this.audioCtx || !this.analyserNode) return;
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
-
-    this.stopAudition();
-
-    let raw = this.sampleBuffers.get(samplePath);
-    if (!raw) {
-      const parsedKey = parseRootKeyFromFilename(samplePath, rootKey);
-      raw = synthesizeDemoWav('strings', parsedKey, 44100, 1.0);
-      this.sampleBuffers.set(samplePath, raw);
-    }
-
-    const decoded = decodeWav(raw);
-    const audioBuffer = this.audioCtx.createBuffer(
-      decoded.numChannels,
-      decoded.numSamples,
-      decoded.sampleRate
-    );
-    for (let ch = 0; ch < decoded.numChannels; ch++) {
-      audioBuffer.copyToChannel(
-        new Float32Array(decoded.channels[ch]),
-        ch
-      );
-    }
-
-    const source = this.audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.analyserNode);
-    source.onended = () => {
-      if (this.activeSourceNode === source) {
-        this.activeSourceNode = null;
-        this.activePlaybackMode = null;
-      }
-    };
-    this.activeSourceNode = source;
-    this.activePlaybackMode = 'original';
-    source.start();
+    return this.preview.auditionSample(samplePath, rootKey);
   }
 
   /**
@@ -1284,106 +970,11 @@ export class WebAudioPipeline implements CoreService {
     mode: 'original' | 'resynthesis',
     targetNote?: MidiNote
   ): Promise<void> {
-    if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
-      return;
-    }
-    if (!this.session) return;
-
-    const zone =
-      this.session.zones.find((z) => z.id === zoneId) ?? this.session.zones[0];
-    if (!zone) return;
-
-    this.ensureAudioContext();
-    if (!this.audioCtx || !this.analyserNode) return;
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
-
-    this.stopAudition();
-
-    if (mode === 'resynthesis' && !this.spectralCache.has(zone.id)) {
-      this.inspectZoneSpectrum(zone.id);
-    }
-    const cached = this.spectralCache.get(zone.id);
-
-    const semitoneShift =
-      targetNote !== undefined
-        ? targetNote - zone.rootKey + (zone.detune || 0) / 100
-        : (zone.detune || 0) / 100;
-    const playbackRate = Math.pow(2.0, semitoneShift / 12.0);
-    const linearGain = Math.pow(10.0, (zone.volume || 0) / 20.0);
-
-    let audioBuffer: AudioBuffer;
-    if (mode === 'resynthesis' && cached) {
-      const mono = cached.resynthMono;
-      audioBuffer = this.audioCtx.createBuffer(1, mono.length, 44100);
-      audioBuffer.copyToChannel(new Float32Array(mono), 0);
-    } else {
-      const sampleName = zone.sampleLow ?? 'Strings_60_C4.wav';
-      const raw =
-        this.sampleBuffers.get(sampleName) ??
-        synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
-      const decoded = decodeWav(raw);
-      audioBuffer = this.audioCtx.createBuffer(
-        decoded.numChannels,
-        decoded.numSamples,
-        decoded.sampleRate
-      );
-      for (let ch = 0; ch < decoded.numChannels; ch++) {
-        audioBuffer.copyToChannel(new Float32Array(decoded.channels[ch]), ch);
-      }
-    }
-
-    const source = this.audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.playbackRate.value = Math.max(0.125, Math.min(8.0, playbackRate));
-
-    const gainNode = this.audioCtx.createGain();
-    gainNode.gain.value = Math.max(0.05, Math.min(4.0, linearGain));
-
-    source.connect(gainNode);
-    gainNode.connect(this.analyserNode);
-
-    source.onended = () => {
-      if (this.activeSourceNode === source) {
-        this.activeSourceNode = null;
-        this.activePlaybackMode = null;
-        if (this.activeGainNode === gainNode) {
-          try {
-            gainNode.disconnect();
-          } catch {
-            // Ignore if already disconnected
-          }
-          this.activeGainNode = null;
-        }
-      }
-    };
-
-    this.activeSourceNode = source;
-    this.activeGainNode = gainNode;
-    this.activePlaybackMode = mode;
-    source.start();
+    return this.preview.auditionZoneComparison(zoneId, mode, targetNote);
   }
 
   public stopAudition(): void {
-    if (this.activeSourceNode) {
-      try {
-        this.activeSourceNode.stop();
-        this.activeSourceNode.disconnect();
-      } catch {
-        // Ignore if already stopped
-      }
-      this.activeSourceNode = null;
-      this.activePlaybackMode = null;
-    }
-    if (this.activeGainNode) {
-      try {
-        this.activeGainNode.disconnect();
-      } catch {
-        // Ignore if already disconnected
-      }
-      this.activeGainNode = null;
-    }
+    this.preview.stopAudition();
   }
 
   /**
@@ -1395,48 +986,9 @@ export class WebAudioPipeline implements CoreService {
     isPlaying: boolean;
     mode: 'original' | 'resynthesis' | null;
   } {
-    if (!this.analyserNode || !this.activeSourceNode) {
-      return {
-        bins: new Uint8Array(64),
-        rmsDb: -96,
-        isPlaying: false,
-        mode: null,
-      };
-    }
-
-    const freqBins = new Uint8Array(this.analyserNode.frequencyBinCount);
-    this.analyserNode.getByteFrequencyData(freqBins);
-
-    const timeBytes = new Uint8Array(this.analyserNode.fftSize);
-    this.analyserNode.getByteTimeDomainData(timeBytes);
-    let sumSq = 0;
-    for (let i = 0; i < timeBytes.length; i++) {
-      const norm = (timeBytes[i] - 128) / 128.0;
-      sumSq += norm * norm;
-    }
-    const rms = Math.sqrt(sumSq / timeBytes.length);
-    const rmsDb = rms > 1e-5 ? Number((20 * Math.log10(rms)).toFixed(1)) : -96;
-
-    return {
-      bins: freqBins.subarray(0, 128),
-      rmsDb,
-      isPlaying: true,
-      mode: this.activePlaybackMode,
-    };
+    return this.preview.getRealtimeSpectrum();
   }
 
-  private ensureAudioContext(): void {
-    if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
-      return;
-    }
-    if (!this.audioCtx) {
-      this.audioCtx = new AudioContext();
-      this.analyserNode = this.audioCtx.createAnalyser();
-      this.analyserNode.fftSize = 2048;
-      this.analyserNode.smoothingTimeConstant = 0.78;
-      this.analyserNode.connect(this.audioCtx.destination);
-    }
-  }
 
   public async importSamplesFromFolder(_folderPath: string): Promise<Zone[]> {
     if (!this.session) await this.newSession('Imported Multisample');
@@ -1479,6 +1031,20 @@ export class WebAudioPipeline implements CoreService {
     });
 
     if (candidateFiles.length === 0) return this.getZones();
+    // P0.3: bound memory and zone count before decoding anything.
+    if (candidateFiles.length > WebAudioPipeline.MAX_IMPORT_FILES) {
+      throw new Error(
+        `Too many files for import (${candidateFiles.length}, max ${WebAudioPipeline.MAX_IMPORT_FILES})`
+      );
+    }
+    const oversizedNames = candidateFiles
+      .filter((f) => f.buffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES)
+      .map((f) => f.name);
+    if (oversizedNames.length === candidateFiles.length) {
+      throw new Error(
+        `All ${candidateFiles.length} file(s) exceed the ${WebAudioPipeline.MAX_IMPORT_FILE_BYTES / (1024 * 1024)} MB per-file import limit: ${oversizedNames.slice(0, 3).join(', ')}${oversizedNames.length > 3 ? ', …' : ''}`
+      );
+    }
     if (!this.session) await this.newSession('Imported Multisample');
 
     interface ParsedSampleItem {
@@ -1490,12 +1056,18 @@ export class WebAudioPipeline implements CoreService {
     }
 
     const items: ParsedSampleItem[] = [];
+    const skippedNames: string[] = [...oversizedNames];
     for (const f of candidateFiles) {
+      if (f.buffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES) {
+        // Skip without decoding: fully buffered in memory by decodeWav
+        continue;
+      }
       let decoded: ReturnType<typeof this.registerSampleBuffer>;
       try {
         decoded = this.registerSampleBuffer(f.name, f.buffer);
       } catch {
         // Skip invalid/corrupt or non-audio files in folder imports
+        skippedNames.push(f.name);
         continue;
       }
 
@@ -1563,7 +1135,8 @@ export class WebAudioPipeline implements CoreService {
     }
 
     if (items.length === 0) {
-      throw new Error('No valid WAV or AIFF audio files could be decoded.');
+      const skipped = skippedNames.length > 0 ? ` Skipped: ${skippedNames.slice(0, 3).join(', ')}${skippedNames.length > 3 ? ', …' : ''}.` : '';
+      throw new Error(`No valid WAV or AIFF audio files could be decoded.${skipped}`);
     }
 
     this.pushHistory(`Import ${items.length} Sample(s)`);
@@ -1881,8 +1454,8 @@ export class WebAudioPipeline implements CoreService {
 
       if (rawScape && rawSphere && parsedSphere) {
         const res = parsedSphere.header.resolution || parsedScape?.header.resolution || 100;
-        const targetF0Hz = Number((440 * Math.pow(2, (zone.rootKey - 69) / 12)).toFixed(2));
-        const detectedF0Hz = Number((res > 0 ? 44100 / res : targetF0Hz).toFixed(2));
+        const targetF0Hz = Number(midiNoteToHz(zone.rootKey).toFixed(2));
+        const detectedF0Hz = Number((res > 0 ? NEURON_SAMPLE_RATE / res : targetF0Hz).toFixed(2));
         const midFrame =
           parsedSphere.frames[Math.floor(parsedSphere.frames.length / 2)] ??
           parsedSphere.frames[0];
@@ -1987,14 +1560,6 @@ export class WebAudioPipeline implements CoreService {
     this.session!.dirty = false;
     this.session!.modifiedAt = new Date().toISOString();
 
-    this.modelZoneBinaries.set(bundle.slot, zoneBinaries);
-    this.modelMapScriptVersions.set(bundle.slot, {
-      major: bundle.mapScript.versionMajor,
-      minor: bundle.mapScript.versionMinor,
-      build: bundle.mapScript.versionBuild,
-      lineEnding: '\n',
-    });
-
     const model: GeneratedModel = {
       slot: bundle.slot,
       name: bundle.name,
@@ -2008,10 +1573,12 @@ export class WebAudioPipeline implements CoreService {
       neuronikModelJson,
     };
 
-    this.generatedModels = this.generatedModels.filter(
-      (m) => m.slot !== model.slot
-    );
-    this.generatedModels.push(model);
+    this.bank.registerImportedBundle(bundle.slot, zoneBinaries, {
+      major: bundle.mapScript.versionMajor,
+      minor: bundle.mapScript.versionMinor,
+      build: bundle.mapScript.versionBuild,
+      lineEnding: '\n',
+    }, model);
 
     this.persistToLocalStorage();
     this.emit({ type: 'session-changed', session: this.session! });
@@ -2153,7 +1720,7 @@ export class WebAudioPipeline implements CoreService {
           } else if (msg.type === 'complete') {
             this.isRunning = false;
             this.terminateWorker();
-            this.finalizeModelGeneration(
+            this.bank.finalizeModelGeneration(
               config,
               zones.length,
               msg.zonesAnalysis,
@@ -2233,7 +1800,7 @@ export class WebAudioPipeline implements CoreService {
       );
 
       this.isRunning = false;
-      this.finalizeModelGeneration(
+      this.bank.finalizeModelGeneration(
         config,
         zones.length,
         result.zonesAnalysis,
@@ -2302,332 +1869,40 @@ export class WebAudioPipeline implements CoreService {
     return this.processProgress;
   }
 
-  // ── Bank & Export Packaging ─────────────────────────────
-
-  private bankPresets = [...INITIAL_PRESETS];
+  // ── Bank & Export Packaging (delegated to BankService) ──
 
   public setBankPresets(presets: BankSummary['presets']): void {
-    if (presets && presets.length > 0) {
-      this.bankPresets = [...presets];
-    }
+    this.bank.setBankPresets(presets);
   }
 
   public async clearGeneratedModels(): Promise<void> {
-    this.generatedModels = [];
-    this.modelZoneBinaries.clear();
-    try {
-      localStorage.removeItem('abdsynths_nmm_bank');
-    } catch {
-      // ignore
-    }
-    this.pushHistory('Clear Generated Models');
-    this.emit({ type: 'bank-updated', bank: await this.loadBank() });
+    return this.bank.clearGeneratedModels();
   }
 
   public async loadBank(): Promise<BankSummary> {
-    return {
-      models: [...this.generatedModels],
-      presets: [...this.bankPresets],
-      totalModels: this.generatedModels.length,
-      totalPresets: this.bankPresets.length,
-    };
+    return this.bank.loadBank();
   }
 
-  /**
-   * Builds a complete PKZIP archive (`Uint8Array`) containing the Hartmann NeuronDB
-   * `.model` directory (`MName`, `map.script`, `%06d.scape`, `%06d.sphere`),
-   * `.sound` directory (`sound.script`, `sound.stickrec`), and modern `.neuronikmodel` v2.1.
-   */
   public buildModelZipBytes(slot: number): Uint8Array {
-    const model = this.generatedModels.find((m) => m.slot === slot);
-    const activeSlot = model?.slot ?? slot;
-    const modelName =
-      model?.name ?? this.session?.processConfig.modelName ?? `Model${activeSlot}`;
-    const zones = this.session?.zones ?? [
-      createZone(0, 60, 127, 'Strings_60_C4.wav'),
-    ];
-    this.ensureZoneDemoBuffers(zones);
-
-    let zoneBinaries = this.modelZoneBinaries.get(activeSlot);
-    if (!zoneBinaries || zoneBinaries.length === 0) {
-      const cfg: ProcessConfig = this.session?.processConfig ?? {
-        modelName,
-        modelNumber: activeSlot,
-        parameterSet: model?.parameterSet ?? 0,
-        complexity: model?.complexity ?? 8,
-        targetFormat: model?.targetFormat ?? 'dual',
-      };
-      const analyzedBySample = new Map<string, ZoneBinaryPair>();
-      zoneBinaries = [];
-      for (const zone of zones) {
-        const lowName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
-        if (!analyzedBySample.has(lowName)) {
-          const wavBuffer = zone.sampleLow
-            ? (this.sampleBuffers.get(zone.sampleLow) ?? null)
-            : null;
-          const analyzed = analyzeSingleZone(
-            { zone, wavBuffer },
-            cfg,
-            this.analyzer
-          );
-          const pair: ZoneBinaryPair = {
-            scapeBinary: analyzed.scapeBinary,
-            sphereBinary: analyzed.sphereBinary,
-          };
-          analyzedBySample.set(lowName, pair);
-          zoneBinaries.push(pair);
-        }
-        if (zone.sampleHigh && !analyzedBySample.has(zone.sampleHigh)) {
-          const highBuffer = this.sampleBuffers.get(zone.sampleHigh) ?? null;
-          const analyzedHigh = analyzeSingleZone(
-            {
-              zone: { ...zone, sampleLow: zone.sampleHigh },
-              wavBuffer: highBuffer,
-            },
-            cfg,
-            this.analyzer
-          );
-          const pairHigh: ZoneBinaryPair = {
-            scapeBinary: analyzedHigh.scapeBinary,
-            sphereBinary: analyzedHigh.sphereBinary,
-          };
-          analyzedBySample.set(zone.sampleHigh, pairHigh);
-          zoneBinaries.push(pairHigh);
-        }
-      }
-      this.modelZoneBinaries.set(activeSlot, zoneBinaries);
-    }
-
-    const sourceSamples: { name: string; data: Uint8Array }[] = [];
-    const seenSamples = new Set<string>();
-    for (const z of zones) {
-      for (const sName of [z.sampleLow, z.sampleHigh]) {
-        if (sName && !seenSamples.has(sName)) {
-          seenSamples.add(sName);
-          const buf = this.sampleBuffers.get(sName);
-          if (buf) {
-            sourceSamples.push({ name: sName, data: new Uint8Array(buf) });
-          }
-        }
-      }
-    }
-
-    return buildModelExportZip({
-      slot: activeSlot,
-      name: modelName,
-      zones,
-      zoneBinaries,
-      mapScriptVersion: this.modelMapScriptVersions.get(activeSlot),
-      neuronikModelJson: model?.neuronikModelJson,
-      targetFormat:
-        this.session?.processConfig.targetFormat ?? model?.targetFormat ?? 'legacy-neuron',
-      sourceSamples,
-    });
+    return this.bank.buildModelZipBytes(slot);
   }
 
   public async exportModel(slot: number, targetPath: string): Promise<void> {
-    const existingModel = this.generatedModels.find((m) => m.slot === slot);
-    const activeSlot = existingModel?.slot ?? slot;
-    const modelName =
-      existingModel?.name ??
-      this.session?.processConfig.modelName ??
-      `Model${activeSlot}`;
-    const zoneCount =
-      existingModel?.zoneCount ?? this.session?.zones.length ?? 1;
-    const complexity =
-      existingModel?.complexity ?? this.session?.processConfig.complexity ?? 8;
-    const parameterSet =
-      existingModel?.parameterSet ??
-      this.session?.processConfig.parameterSet ??
-      0;
-
-    const lowerTarget = targetPath.toLowerCase();
-    const wantsJsonOnly = lowerTarget.endsWith('.nmmodel') || lowerTarget.endsWith('.neuronikmodel');
-    if (wantsJsonOnly) {
-      const jsonContent =
-        existingModel?.neuronikModelJson ??
-        JSON.stringify(
-          {
-            name: modelName,
-            slot: activeSlot,
-            zoneCount,
-            complexity,
-            parameterSet,
-            createdAt: existingModel?.createdAt ?? new Date().toISOString(),
-            format: 2,
-          },
-          null,
-          2
-        );
-
-      if (typeof document !== 'undefined') {
-        const blob = new Blob([jsonContent], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download =
-          targetPath.split(/[\\/]/).pop() ??
-          `Model_${String(activeSlot).padStart(3, '0')}.nmmodel`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-      return;
-    }
-
-    const zipBytes = this.buildModelZipBytes(activeSlot);
-    if (typeof document !== 'undefined') {
-      const blob = new Blob([zipBytes as unknown as BlobPart], {
-        type: 'application/zip',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const safeName = modelName.replace(/[^A-Za-z0-9_-]/g, '_');
-      const defaultZipName = `NeuronModel_${String(activeSlot).padStart(3, '0')}_${safeName}.zip`;
-      const requestedName = targetPath.split(/[\\/]/).pop() ?? defaultZipName;
-      a.download = requestedName.endsWith('.zip')
-        ? requestedName
-        : defaultZipName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    return this.bank.exportModel(slot, targetPath);
   }
 
-  /**
-   * Exports a zone's audio buffer as a canonical Hartmann MODELmaker v1.2
-   * 44100 Hz, 16-bit, Mono Big-Endian `FORM/AIFF` file with `INST` chunk
-   * (`rootKey`, `lowKey`, `highKey`, `detune`, `gainDb`) and triggers a browser download.
-   */
   public exportZoneAsAiff(zoneId: string): { filename: string; bytes: Uint8Array } {
-    if (!this.session) {
-      throw new Error('No active session');
-    }
-    const zone =
-      this.session.zones.find((z) => z.id === zoneId) ?? this.session.zones[0];
-    if (!zone) {
-      throw new Error('No zone available to export');
-    }
-
-    this.ensureZoneDemoBuffers([zone]);
-    const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
-    const raw =
-      this.sampleBuffers.get(sampleName) ??
-      synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
-    const decoded = decodeWav(raw);
-    const mono44k = resampleAudioChannel(decoded.mono, decoded.sampleRate, 44100);
-
-    const aiffAb = encodeAiffPcm16([mono44k], 44100, {
-      rootKey: zone.rootKey,
-      lowKey: zone.lowKey,
-      highKey: zone.highKey,
-      lowVelocity: 1,
-      highVelocity: 127,
-      detune: Math.round(zone.detune),
-      gainDb: Math.round(zone.volume),
-    });
-
-    const basePrefix = sampleName
-      .split(/[\\/]/)
-      .pop()!
-      .replace(/\.[^.]+$/, '')
-      .replace(/[^A-Za-z0-9]/g, '');
-    const rrr = String(zone.rootKey).padStart(3, '0');
-    const lll = String(zone.lowKey).padStart(3, '0');
-    const filename = `${basePrefix || 'Zone'}_${rrr}_${lll}_v1.aif`;
-    const bytes = new Uint8Array(aiffAb);
-
-    if (typeof document !== 'undefined') {
-      const blob = new Blob([aiffAb], { type: 'audio/aiff' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-
-    return { filename, bytes };
+    return this.bank.exportZoneAsAiff(zoneId);
   }
 
   public async importModel(
     _sourcePath: string,
     slot: number
   ): Promise<GeneratedModel> {
-    const model: GeneratedModel = {
-      slot,
-      name: `Imported${slot}`,
-      zoneCount: 1,
-      complexity: 8,
-      parameterSet: 0,
-      createdAt: new Date().toISOString(),
-      path: `Models/${String(slot).padStart(3, '0')}.model`,
-    };
-    this.generatedModels = this.generatedModels.filter((m) => m.slot !== slot);
-    this.generatedModels.push(model);
-    this.persistToLocalStorage();
-    const bank = await this.loadBank();
-    this.emit({ type: 'bank-updated', bank });
-    return model;
+    return this.bank.importModel(_sourcePath, slot);
   }
 
   // ── Private Helpers ─────────────────────────────────────
-
-  private finalizeModelGeneration(
-    config: ProcessConfig,
-    zoneCount: number,
-    zonesAnalysis: ZoneAnalysisSummary[],
-    zoneBinaries: ZoneBinaryPair[],
-    neuronikModelJson: string,
-    elapsedMs: number
-  ): void {
-    this.modelZoneBinaries.set(config.modelNumber, zoneBinaries);
-
-    const model: GeneratedModel = {
-      slot: config.modelNumber,
-      name: config.modelName,
-      zoneCount,
-      complexity: config.complexity,
-      parameterSet: config.parameterSet,
-      createdAt: new Date().toISOString(),
-      path: `Models/${String(config.modelNumber).padStart(3, '0')}.model`,
-      targetFormat: config.targetFormat ?? 'dual',
-      zonesAnalysis,
-      neuronikModelJson,
-    };
-
-    this.generatedModels = this.generatedModels.filter(
-      (m) => m.slot !== model.slot
-    );
-    this.generatedModels.push(model);
-    this.persistToLocalStorage();
-
-    const firstSummary = zonesAnalysis[0];
-    const summaryText = firstSummary
-      ? ` (f0=${firstSummary.detectedF0Hz} Hz, ${firstSummary.gridNotice}, ${firstSummary.activePartials} partials)`
-      : '';
-
-    this.processProgress = {
-      status: 'completed',
-      currentZone: zoneCount,
-      totalZones: zoneCount,
-      currentSample: '',
-      percent: 100,
-      message: `Model "${config.modelName}" generated successfully${summaryText}`,
-      elapsedMs,
-    };
-
-    this.emit({
-      type: 'process-progress',
-      progress: { ...this.processProgress },
-    });
-    this.emit({ type: 'process-complete', model });
-  }
 
   private ensureZoneDemoBuffers(zones: Zone[]): void {
     for (const z of zones) {
@@ -2667,59 +1942,16 @@ export class WebAudioPipeline implements CoreService {
   }
 
   private persistToLocalStorage(): void {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      if (this.session) {
-        localStorage.setItem(
-          STORAGE_SESSION_KEY,
-          JSON.stringify(this.session)
-        );
-      }
-      // Persist generated models metadata (cap neuronikModelJson size to avoid quota issues)
-      const lightModels = this.generatedModels.map((m) => ({
-        ...m,
-        neuronikModelJson:
-          m.neuronikModelJson && m.neuronikModelJson.length < 250000
-            ? m.neuronikModelJson
-            : undefined,
-      }));
-      localStorage.setItem(STORAGE_BANK_KEY, JSON.stringify(lightModels));
-    } catch {
-      // Ignore storage quota or private-mode errors
-    }
+    persistSessionToLocalStorage(this.session);
+    this.bank.persistBank();
   }
 
   private restoreFromLocalStorage(): void {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const rawBank = localStorage.getItem(STORAGE_BANK_KEY);
-      if (rawBank) {
-        const parsedBank = JSON.parse(rawBank) as GeneratedModel[];
-        if (Array.isArray(parsedBank) && parsedBank.length > 0) {
-          this.generatedModels = parsedBank;
-        }
-      }
-      const rawSession = localStorage.getItem(STORAGE_SESSION_KEY);
-      if (rawSession) {
-        const parsedSession = JSON.parse(rawSession) as Session;
-        if (
-          parsedSession &&
-          Array.isArray(parsedSession.zones) &&
-          parsedSession.zones.length > 0
-        ) {
-          if (
-            parsedSession.zones.length === 1 &&
-            parsedSession.zones[0].sampleLow === 'Strings_60_C4.wav' &&
-            DEFAULT_MODEL_NAMES.has(parsedSession.processConfig?.modelName?.trim() ?? '')
-          ) {
-            parsedSession.zones[0].sampleLow = null;
-          }
-          this.session = parsedSession;
-          this.ensureZoneDemoBuffers(this.session.zones);
-        }
-      }
-    } catch {
-      // Ignore malformed localStorage state
+    const restored = restoreSessionFromLocalStorage();
+    if (restored) {
+      this.session = restored;
+      this.ensureZoneDemoBuffers(this.session.zones);
     }
+    this.bank.restoreBank();
   }
 }

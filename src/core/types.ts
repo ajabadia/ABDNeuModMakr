@@ -50,12 +50,26 @@ export type TargetFormat = 'dual' | 'legacy-neuron' | 'modern-neural';
 /**
  * Process configuration — the settings for model generation.
  */
+export type WorkingMode = 'classic' | 'extended';
+
 export interface ProcessConfig {
   modelNumber: ModelSlot;     // 0..511
   modelName: string;          // max 11 characters
   complexity: number;         // 1..10, default 8
   parameterSet: number;       // 0..9
   targetFormat?: TargetFormat; // default 'dual'
+  /**
+   * Editing working mode. Absent (or 'classic') = canonical Hartmann
+   * behavior (`velSplit` forced to 64 in every edit path). 'extended'
+   * honors per-zone velocity splits (2..127): sample import adopts the
+   * WAV/AIFF `INST`/`smpl` lowVelocity, the inspector slider edits it,
+   * and ribbon/table labels render it. Only selectable with
+   * `targetFormat: 'modern-neural'`; leaving modern-neural resets it to
+   * 'classic'. It never alters legacy binaries — no DSP/export path
+   * consumes `velSplit`, so `.model`/`.sound` output is bit-identical
+   * either way; the value is session metadata for the modern engine.
+   */
+  workingMode?: WorkingMode;
 }
 
 /** Process execution state */

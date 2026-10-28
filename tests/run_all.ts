@@ -11,11 +11,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const TEST_FILES = [
+  'phase0_canonical_contract.test.ts',
   'phase1_pipeline.test.ts',
   'phase2_formats.test.ts',
   'phase3_files.test.ts',
   'phase4_spectral.test.ts',
   'phase5_ux.test.ts',
+  'phase6_units.test.ts',
 ];
 
 async function runTestFile(file: string): Promise<boolean> {

@@ -6,7 +6,7 @@
 // right-side sliding drawer for Zone Metadata editing.
 // ─────────────────────────────────────────────────────────
 
-import type { Zone } from '../core/types';
+import type { WorkingMode, Zone } from '../core/types';
 import {
   midiNoteToString,
   detuneToString,
@@ -43,6 +43,7 @@ export class ZoneInspector {
   private allZones: Zone[] = [];
   private zoneIndex: number = 0;
   private totalZones: number = 1;
+  private workingMode: WorkingMode = 'classic';
 
   constructor(
     container: HTMLElement,
@@ -101,8 +102,13 @@ export class ZoneInspector {
     zone: Zone | null,
     index: number,
     total: number,
-    allZones?: Zone[]
+    allZones?: Zone[],
+    workingMode?: WorkingMode
   ): void {
+    const modeChanged = workingMode !== undefined && workingMode !== this.workingMode;
+    if (workingMode !== undefined) {
+      this.workingMode = workingMode;
+    }
     const sameZone = this.currentZone && zone && this.currentZone.id === zone.id;
     const sameCount = allZones ? allZones.length === this.allZones.length : true;
     this.currentZone = zone ? { ...zone } : null;
@@ -114,6 +120,7 @@ export class ZoneInspector {
     if (
       sameZone &&
       sameCount &&
+      !modeChanged &&
       activeEl &&
       this.drawerElement &&
       this.drawerElement.contains(activeEl)
@@ -145,16 +152,17 @@ export class ZoneInspector {
       const cells = activeRow.querySelectorAll('td');
       if (cells.length >= 9) {
         const hasHigh = Boolean(z.sampleHigh);
+        const rowSplit = Math.max(2, Math.min(127, z.velSplit ?? 64));
         const lowVelName = basenameOf(z.sampleLow);
         const highVelName = basenameOf(z.sampleHigh);
         cells[1].textContent = midiNoteToString(z.lowKey);
         cells[2].textContent = midiNoteToString(z.rootKey);
         cells[3].textContent = midiNoteToString(z.highKey);
         cells[4].innerHTML = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? 63 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
+          ? `<span class="cell-vel-tag">1–${hasHigh ? rowSplit - 1 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[5].innerHTML = highVelName
-          ? `<span class="cell-vel-tag">64–127</span> <span class="cell-sample-name">${highVelName}</span>`
+          ? `<span class="cell-vel-tag">${rowSplit}–127</span> <span class="cell-sample-name">${highVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[6].textContent = detuneToString(z.detune);
         cells[7].textContent = volumeToLongString(z.volume);
@@ -173,15 +181,16 @@ export class ZoneInspector {
         const lowVelName = basenameOf(zone.sampleLow);
         const highVelName = basenameOf(zone.sampleHigh);
         const hasHigh = Boolean(highVelName);
+        const zoneSplit = Math.max(2, Math.min(127, zone.velSplit ?? 64));
         const detuneStr = detuneToString(zone.detune);
         const volumeStr = volumeToLongString(zone.volume);
         const panStr = panToString(zone.pan);
 
         const lowVelHtml = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? 63 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
+          ? `<span class="cell-vel-tag">1–${hasHigh ? zoneSplit - 1 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         const highVelHtml = highVelName
-          ? `<span class="cell-vel-tag">64–127</span> <span class="cell-sample-name">${highVelName}</span>`
+          ? `<span class="cell-vel-tag">${zoneSplit}–127</span> <span class="cell-sample-name">${highVelName}</span>`
           : `<span class="cell-empty-dash">—</span>`;
 
         return `
@@ -190,8 +199,8 @@ export class ZoneInspector {
             <td class="col-key">${lowKeyStr}</td>
             <td class="col-key is-root">${rootKeyStr}</td>
             <td class="col-key">${highKeyStr}</td>
-            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleLow ? `Vel 1..${hasHigh ? 63 : 127}: ${zone.sampleLow}` : 'No Low Vel sample'}">${lowVelHtml}</td>
-            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleHigh ? `Vel 64..127: ${zone.sampleHigh}` : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
+            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleLow ? `Vel 1..${hasHigh ? zoneSplit - 1 : 127}: ${zone.sampleLow}` : 'No Low Vel sample'}">${lowVelHtml}</td>
+            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleHigh ? `Vel ${zoneSplit}..127: ${zone.sampleHigh}` : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
             <td class="col-num">${detuneStr}</td>
             <td class="col-num">${volumeStr}</td>
             <td class="col-num">${panStr}</td>
@@ -285,6 +294,10 @@ export class ZoneInspector {
     const minHighKey = nextZone ? z.lowKey : 127;
     const maxHighKey = nextZone ? nextZone.highKey - 1 : 127;
     const hasHighVel = Boolean(z.sampleHigh);
+    // Velocity split rendering follows the zone's stored split (classic
+    // sessions always store 64, so this renders identically there).
+    const split = Math.max(2, Math.min(127, z.velSplit ?? 64));
+    const isExtended = this.workingMode === 'extended';
     const loadedSamples = this.handlers.getLoadedSamples?.() ?? [];
     const lowOptionsHtml = [
       `<option value="">-- Select Loaded Sample --</option>`,
@@ -343,11 +356,11 @@ export class ZoneInspector {
 
         <!-- 2. Sample Assignment (Low Vel & High Vel) -->
         <div class="inspector-section section-samples">
-          <div class="section-title">VELOCITY SAMPLE LAYERS (CANONICAL 1..63 / 64..127)</div>
+          <div class="section-title">VELOCITY SAMPLE LAYERS (${isExtended ? `SPLIT 1..${split - 1} / ${split}..127` : 'CANONICAL 1..63 / 64..127'})</div>
           <div class="samples-slots-stack">
             <div class="sample-slot-card ${z.sampleLow ? 'has-file' : 'is-empty'}" id="card-sample-low">
               <div class="sample-slot-header">
-                <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? 63 : 127})</span>
+                <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? split - 1 : 127})</span>
                 ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Low Vel Audio">${ICONS.play} Audition</button>` : ''}
               </div>
               <div class="sample-slot-body">
@@ -364,7 +377,7 @@ export class ZoneInspector {
 
             <div class="sample-slot-card ${z.sampleHigh ? 'has-file' : 'is-empty'}" id="card-sample-high">
               <div class="sample-slot-header">
-                <span class="sample-slot-tag" id="tag-vel-high">HIGH VEL SAMPLE (${hasHighVel ? 'VEL 64..127' : 'OPTIONAL 64..127'})</span>
+                <span class="sample-slot-tag" id="tag-vel-high">HIGH VEL SAMPLE (${hasHighVel ? `VEL ${split}..127` : 'OPTIONAL 64..127'})</span>
                 ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-high" title="Audition High Vel Audio">${ICONS.play} Audition</button>` : ''}
               </div>
               <div class="sample-slot-body">
@@ -379,14 +392,14 @@ export class ZoneInspector {
               </div>
             </div>
 
-            <div class="sample-vel-split-control is-disabled">
+            <div class="sample-vel-split-control ${isExtended ? '' : 'is-disabled'}">
               <label for="slider-vel-split" class="sample-vel-split-label">
                 <span>VELOCITY SPLIT POINT</span>
-                <span class="val-display" id="val-vel-split">64 (Fixed: 1–63 / 64–127)</span>
+                <span class="val-display" id="val-vel-split">${isExtended ? `${split} (1–${split - 1} / ${split}–127)` : '64 (Fixed: 1–63 / 64–127)'}</span>
               </label>
-              <input type="range" id="slider-vel-split" min="64" max="64" value="64" disabled title="Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Variable velocity splits will be available in Extended Mode." />
+              <input type="range" id="slider-vel-split" min="${isExtended ? 2 : 64}" max="${isExtended ? 127 : 64}" value="${split}" ${isExtended ? '' : 'disabled'} title="${isExtended ? `Extended Mode: velocity split point (Low Vel 1..${split - 1} / High Vel ${split}..127). Stored in the session; legacy .model binaries always render the canonical 1..63 / 64..127 layers.` : 'Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Switch WORKING MODE → Extended (requires modern-neural export) to edit.'}" />
               <div class="sample-vel-split-hint">
-                Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.
+                ${isExtended ? `Extended Mode: split at ${split} (Low: 1–${split - 1}, High: ${split}–127).` : 'Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.'}
               </div>
             </div>
           </div>
@@ -532,6 +545,16 @@ export class ZoneInspector {
       const val = Math.max(-50, Math.min(50, parseInt(slPan.value, 10) || 0));
       if (valPan) valPan.textContent = panToString(val);
       this.handlers.onUpdateZone(z.id, { pan: val });
+    });
+
+    // Velocity split slider (Extended Mode only; core clamps 2..127 and
+    // forces 64 in classic, so this stays consistent even if reached otherwise)
+    const slSplit = this.drawerElement.querySelector('#slider-vel-split') as HTMLInputElement | null;
+    const valSplit = this.drawerElement.querySelector('#val-vel-split') as HTMLElement | null;
+    slSplit?.addEventListener('input', () => {
+      const val = Math.max(2, Math.min(127, parseInt(slSplit.value, 10) || 64));
+      if (valSplit) valSplit.textContent = `${val} (1–${val - 1} / ${val}–127)`;
+      this.handlers.onUpdateZone(z.id, { velSplit: val });
     });
 
     // Reuse already-loaded sample dropdowns

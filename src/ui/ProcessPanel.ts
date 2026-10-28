@@ -4,8 +4,13 @@
 // 10 Canonical Parameter Set Buttons, and Target Format Buttons)
 // ─────────────────────────────────────────────────────────
 
-import type { ProcessConfig, ParameterSetInfo, TargetFormat, Zone } from '../core/types';
+import type { ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
 import { ICONS } from './icons';
+
+const EXTENDED_MODE_TITLE_OFF =
+  'Extended Working Mode requires Extended export — select EXPORT / SAVE MODE → Extended (.nmmodel) first. Variable velocity splits (2..127) live only in modern-neural sessions.';
+const EXTENDED_MODE_TITLE_ON =
+  'Extended Working Mode: honors per-zone velocity splits (2..127) from samples and the inspector slider. Only available with modern-neural export; never alters legacy .model binaries.';
 
 const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
 
@@ -189,7 +194,34 @@ export class ProcessPanel {
       btn.classList.toggle('is-active', fmt === activeTarget);
     });
 
+    this.syncWorkingModeButtons();
     this.syncCtaButton();
+  }
+
+  /**
+   * Syncs Working Mode buttons with the current config. Extended is only
+   * selectable behind `targetFormat: 'modern-neural'` (same gate as the
+   * core); otherwise it stays disabled with an explanatory title.
+   */
+  private syncWorkingModeButtons(): void {
+    const mode = this.currentConfig.workingMode ?? 'classic';
+    const canExtend = this.currentConfig.targetFormat === 'modern-neural';
+    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode');
+    modeBtns.forEach((btn) => {
+      const m = btn.getAttribute('data-working-mode');
+      btn.classList.toggle('is-active', m === mode || (m === 'classic' && mode !== 'extended'));
+      if (m === 'extended') {
+        btn.classList.toggle('is-disabled-future', !canExtend);
+        if (canExtend) {
+          btn.removeAttribute('disabled');
+        } else {
+          btn.setAttribute('disabled', '');
+        }
+        btn.title = canExtend ? EXTENDED_MODE_TITLE_ON : EXTENDED_MODE_TITLE_OFF;
+        const tag = btn.querySelector('.mode-soon-tag') as HTMLElement | null;
+        if (tag) tag.hidden = canExtend;
+      }
+    });
   }
 
   private syncCtaButton(): void {
@@ -244,13 +276,13 @@ export class ProcessPanel {
         </div>
 
         <div class="process-form">
-          <!-- 0. Working Mode (Classic vs Extended) -->
+          <!-- 0. Working Mode (Classic vs Extended; extended gated on modern-neural) -->
           <div class="form-group param-set-group">
             <label title="Working Mode governs interface limits and workflow (Classic = canonical Hartmann MODELmaker v1.2)">WORKING MODE</label>
             <div class="working-mode-buttons-grid" role="radiogroup" aria-label="Working Mode">
               <button
                 type="button"
-                class="btn-working-mode is-active"
+                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') !== 'extended' ? 'is-active' : ''}"
                 data-working-mode="classic"
                 title="Classic Working Mode: Canonical Hartmann MODELmaker v1.2 rules (2 velocity layers 1..63 / 64..127, 11-char MName)"
               >
@@ -258,12 +290,12 @@ export class ProcessPanel {
               </button>
               <button
                 type="button"
-                class="btn-working-mode is-disabled-future"
+                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'is-active' : ''} ${this.currentConfig.targetFormat === 'modern-neural' ? '' : 'is-disabled-future'}"
                 data-working-mode="extended"
-                disabled
-                title="Extended Working Mode (multi-velocity splits, extended envelopes — coming in future phase; will save exclusively in Extended .nmmodel)"
+                ${this.currentConfig.targetFormat === 'modern-neural' ? '' : 'disabled'}
+                title="${this.currentConfig.targetFormat === 'modern-neural' ? EXTENDED_MODE_TITLE_ON : EXTENDED_MODE_TITLE_OFF}"
               >
-                Extended Mode <span class="mode-soon-tag">SOON</span>
+                Extended Mode <span class="mode-soon-tag" ${this.currentConfig.targetFormat === 'modern-neural' ? 'hidden' : ''}>SOON</span>
               </button>
             </div>
           </div>
@@ -494,11 +526,30 @@ export class ProcessPanel {
       });
     });
 
+    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode');
+    modeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.hasAttribute('disabled')) return;
+        const m = (btn.getAttribute('data-working-mode') === 'extended' ? 'extended' : 'classic') as WorkingMode;
+        if ((this.currentConfig.workingMode ?? 'classic') === m) return;
+        this.currentConfig.workingMode = m;
+        this.syncWorkingModeButtons();
+        this.handlers.onConfigChange({ ...this.currentConfig });
+      });
+    });
+    this.syncWorkingModeButtons();
+
     const targetBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-target-format');
     targetBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const fmt = (btn.getAttribute('data-target-format') || 'dual') as TargetFormat;
         this.currentConfig.targetFormat = fmt;
+        if (fmt !== 'modern-neural') {
+          // Mirrors the core reset in updateProcessConfig: extended lives
+          // only behind modern-neural, so leaving it drops back to classic.
+          this.currentConfig.workingMode = 'classic';
+        }
+        this.syncWorkingModeButtons();
         targetBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
         const maxLen = this.getMaxNameLength();
         if (inpName) {
