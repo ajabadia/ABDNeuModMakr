@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Bank Drawer Component
-// Browse generated models and sound presets from NeuronDB
-// Styled with canonical ABDShared catalog browser styles
-// (.ndb-search-row, .ndb-chip, .ndb-grid, .ndb-card, .ndb-footer)
+// ABDNeuModMakr — Bank Drawer (thin adapter over ABDShared bank UI)
+// Browse generated models and library models from NeuronDB.
+// Shell + cards come from `@abdsynths/shared/components/bank` — this
+// file only adapts them to CoreService: tabs shown, data mapping and
+// the serve-don't-apply handlers. Same public API as before.
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
@@ -10,6 +11,9 @@ import type { BankSummary } from '../core/types';
 import type { NeuronDbModelEntry } from './NeuronDbModal';
 import { PARAMETER_SETS } from '../core';
 import { confirmDialog, toast } from './notify';
+import { createBankShell } from '@abdsynths/shared/components/bank/bankShell.js';
+import { bankCardHtml, bindBankCards } from '@abdsynths/shared/components/bank/bankCard.js';
+import { classifyBankCategory } from '@abdsynths/shared/components/bank/bankCategories.js';
 
 export type BankTab = 'models' | 'presets' | 'library';
 
@@ -44,24 +48,22 @@ export interface BankDrawerHandlers {
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
-  const cat = (category || '').toLowerCase();
-  if (cat.includes('string')) return { icon: ICONS.param1, catClass: 'cat-1', paramId: 1 };
-  if (cat.includes('bell')) return { icon: ICONS.param2, catClass: 'cat-2', paramId: 2 };
-  if (cat.includes('bass') || cat.includes('pluck')) return { icon: ICONS.param3, catClass: 'cat-3', paramId: 3 };
-  if (cat.includes('pad')) return { icon: ICONS.param4, catClass: 'cat-4', paramId: 4 };
-  if (cat.includes('key') || cat.includes('piano')) return { icon: ICONS.param5, catClass: 'cat-5', paramId: 5 };
-  if (cat.includes('wind') || cat.includes('vocal') || cat.includes('choir')) return { icon: ICONS.param6, catClass: 'cat-6', paramId: 6 };
-  if (cat.includes('texture') || cat.includes('drone')) return { icon: ICONS.param7, catClass: 'cat-7', paramId: 7 };
-  if (cat.includes('arp') || cat.includes('loop')) return { icon: ICONS.param8, catClass: 'cat-8', paramId: 8 };
-  if (cat.includes('rhythm') || cat.includes('drum')) return { icon: ICONS.param9, catClass: 'cat-9', paramId: 9 };
-  return { icon: ICONS.param0, catClass: 'cat-0', paramId: 0 };
+  const { catClass, paramId } = classifyBankCategory(category);
+  return { icon: ICONS[`param${paramId}` as keyof typeof ICONS] || ICONS.param0, catClass, paramId };
 }
+
+const TAB_LABELS: Record<BankTab, string> = {
+  models: 'GENERATED MODELS',
+  presets: 'SOUND PRESETS',
+  library: 'LIBRARY',
+};
 
 export class BankDrawer {
   private container: HTMLElement;
   private handlers: BankDrawerHandlers;
   private isOpen: boolean = false;
-  private drawerElement: HTMLElement | null = null;
+  private shell: ReturnType<typeof createBankShell> | null = null;
+  private unbindCards: (() => void) | null = null;
   private currentBank: BankSummary | null = null;
   private activeTab: BankTab = 'models';
   private readonly visibleTabs: BankTab[];
@@ -81,142 +83,41 @@ export class BankDrawer {
   }
 
   private init(): void {
-    this.drawerElement = document.createElement('div');
-    this.drawerElement.className = 'bank-drawer-panel is-closed';
-    this.drawerElement.innerHTML = `
-      <!-- Header -->
-      <div class="drawer-header ndb-modal-header">
-        <div class="drawer-title ndb-header-title">
-          <span class="drawer-icon">${ICONS.database}</span>
-          <span class="ndb-title-text">NEURONDB BANK BROWSER</span>
-          <span class="panel-badge ndb-badge" id="bank-count-badge">0 ITEMS</span>
-        </div>
-        <div class="drawer-header-actions">
-          <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-clear-bank-models" title="Clear all generated models from bank">${ICONS.trash}</button>
-          <button type="button" class="btn btn-close-drawer ndb-close-btn" id="btn-close-bank" title="Close Drawer (Esc)">${ICONS.close}</button>
-        </div>
-      </div>
-
-      <!-- Integrated Search Row (ABDMS2000 & Catalog style) -->
-      <div class="ndb-search-row">
-        <span class="ndb-search-icon">${ICONS.search}</span>
-        <input
-          type="text"
-          id="bank-filter-input"
-          class="ndb-search-input"
-          placeholder="Search models or presets by name, slot (#000), set..."
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="Search bank"
-        />
-      </div>
-
-      <!-- Category / Tab Filter Chips (ABDMS2000 style) -->
-      <div class="ndb-chips-row">
-        ${this.visibleTabs.includes('models') ? `
-        <button type="button" class="ndb-chip ${this.activeTab === 'models' ? 'active' : ''}" id="tab-models">
-          <span class="ndb-chip-icon">${ICONS.database}</span>
-          <span class="ndb-chip-name">GENERATED MODELS</span>
-          <span class="ndb-chip-count" id="count-models">0</span>
-        </button>
-        ` : ''}
-        ${this.visibleTabs.includes('presets') ? `
-        <button type="button" class="ndb-chip ${this.activeTab === 'presets' ? 'active' : ''}" id="tab-presets">
-          <span class="ndb-chip-icon">${ICONS.sliders}</span>
-          <span class="ndb-chip-name">SOUND PRESETS</span>
-          <span class="ndb-chip-count" id="count-presets">0</span>
-        </button>
-        ` : ''}
-        ${this.visibleTabs.includes('library') ? `
-        <button type="button" class="ndb-chip ${this.activeTab === 'library' ? 'active' : ''}" id="tab-library">
-          <span class="ndb-chip-icon">${ICONS.folder}</span>
-          <span class="ndb-chip-name">LIBRARY</span>
-          <span class="ndb-chip-count" id="count-library">0</span>
-        </button>
-        ` : ''}
-      </div>
-
-      <!-- Scrollable Content Wrap -->
-      <div class="ndb-content-wrap" id="bank-list-container" tabindex="0">
-        <!-- Model or Preset items rendered dynamically via .ndb-grid -->
-      </div>
-
-      <!-- Selection & Status Footer (ABDMS2000 style) -->
-      <div class="ndb-footer" id="bank-footer">
-        <div class="ndb-footer-selection">
-          <span class="ndb-footer-slot" id="bank-foot-slot">BANK</span>
-          <span class="ndb-footer-details" id="bank-foot-status">No bank loaded</span>
-        </div>
-        <div class="neurondb-footer-actions">
-          <button type="button" class="btn btn-xs" id="btn-bank-close-foot">Close</button>
-        </div>
-      </div>
-    `;
-
-    this.container.appendChild(this.drawerElement);
-
-    this.drawerElement.querySelector('#btn-clear-bank-models')?.addEventListener('click', () => {
-      if (!this.currentBank || this.currentBank.models.length === 0) {
-        toast('There are no generated models to clear in this bank.', 'warning');
-        return;
-      }
-      const count = this.currentBank.models.length;
-      void confirmDialog(
-        `Clear all ${count} generated model(s) from the bank? This cannot be undone.`,
-        { confirmLabel: 'Clear all', danger: true }
-      ).then((ok) => {
-        if (ok) this.handlers.onClearModels?.();
-      });
+    this.shell = createBankShell({
+      title: 'NEURONDB BANK BROWSER',
+      badge: '0 ITEMS',
+      tabs: this.visibleTabs.map((id) => ({ id, label: TAB_LABELS[id] })),
+      activeTab: this.activeTab,
+      searchPlaceholder: 'Search models or presets by name, slot (#000), set...',
+      headerActions: [
+        { id: 'clear', label: 'Clear', title: 'Clear all generated models from bank', iconHtml: ICONS.trash },
+        { id: 'close', label: 'Close', title: 'Close Drawer (Esc)', iconHtml: ICONS.close },
+      ],
+      onTabChange: (tab) => {
+        this.activeTab = tab as BankTab;
+        this.renderActiveTab();
+      },
+      onSearch: (query) => {
+        this.filterQuery = query;
+        this.renderActiveTab();
+      },
+      onHeaderAction: (id) => {
+        if (id === 'clear') this.confirmClearModels();
+      },
+      onFooterAction: (id) => {
+        if (id === 'close') this.close();
+      },
+      onClose: () => this.close(),
     });
+    this.shell.element.classList.add('is-closed');
+    const iconEl = this.shell.element.querySelector('[data-shell-icon]');
+    if (iconEl) iconEl.innerHTML = ICONS.database;
+    const searchIconEl = this.shell.element.querySelector('[data-shell-search-icon]');
+    if (searchIconEl) searchIconEl.innerHTML = ICONS.search;
+    this.renderFooter();
 
-    this.drawerElement.querySelector('#btn-close-bank')?.addEventListener('click', () => {
-      this.close();
-    });
-
-    this.drawerElement.querySelector('#btn-bank-close-foot')?.addEventListener('click', () => {
-      this.close();
-    });
-
-    const filterInput = this.drawerElement.querySelector('#bank-filter-input') as HTMLInputElement | null;
-    filterInput?.addEventListener('input', () => {
-      this.filterQuery = (filterInput.value || '').trim().toLowerCase();
-      this.renderActiveTab();
-    });
-
+    this.container.appendChild(this.shell.element);
     window.addEventListener('keydown', this.handleKeyDown);
-
-    const tabModels = this.drawerElement.querySelector('#tab-models');
-    const tabPresets = this.drawerElement.querySelector('#tab-presets');
-    const tabLibrary = this.drawerElement.querySelector('#tab-library');
-    const chips = [tabModels, tabPresets, tabLibrary];
-
-    tabModels?.addEventListener('click', () => {
-      this.activeTab = 'models';
-      chips.forEach((c) => c?.classList.toggle('active', c === tabModels));
-      this.renderModels();
-    });
-
-    tabPresets?.addEventListener('click', () => {
-      this.activeTab = 'presets';
-      chips.forEach((c) => c?.classList.toggle('active', c === tabPresets));
-      this.renderPresets();
-    });
-
-    tabLibrary?.addEventListener('click', () => {
-      this.activeTab = 'library';
-      chips.forEach((c) => c?.classList.toggle('active', c === tabLibrary));
-      this.renderLibrary();
-    });
-  }
-
-  private renderActiveTab(): void {
-    if (this.activeTab === 'presets') {
-      this.renderPresets();
-    } else if (this.activeTab === 'library') {
-      this.renderLibrary();
-    } else {
-      this.renderModels();
-    }
   }
 
   public setBank(bank: BankSummary, selectedSlot?: number | null): void {
@@ -230,61 +131,67 @@ export class BankDrawer {
   }
 
   private updateCounters(): void {
-    if (!this.drawerElement) return;
+    if (!this.shell) return;
     const mCount = this.currentBank?.models.length ?? 0;
     const pCount = this.currentBank?.presets.length ?? 0;
     const lCount = this.handlers.onRequestLibrary?.().length ?? 0;
-
-    const countModelsEl = this.drawerElement.querySelector('#count-models');
-    if (countModelsEl) countModelsEl.textContent = String(mCount);
-
-    const countPresetsEl = this.drawerElement.querySelector('#count-presets');
-    if (countPresetsEl) countPresetsEl.textContent = String(pCount);
-
-    const countLibraryEl = this.drawerElement.querySelector('#count-library');
-    if (countLibraryEl) countLibraryEl.textContent = String(lCount);
-
+    this.shell.setTabCount('models', mCount);
+    this.shell.setTabCount('presets', pCount);
+    this.shell.setTabCount('library', lCount);
     this.updateFooterSelection();
+  }
+
+  private renderFooter(): void {
+    if (!this.shell) return;
+    this.shell.footerEl.innerHTML = `
+      <div class="ndb-footer-selection">
+        <span class="ndb-footer-slot" id="bank-foot-slot">BANK</span>
+        <span class="ndb-footer-details" id="bank-foot-status">No bank loaded</span>
+      </div>
+      <div class="neurondb-footer-actions">
+        <button type="button" class="btn btn-xs" data-footer-action="close">Close</button>
+      </div>
+    `;
   }
 
   /** Active editor slot (mirrors the NeuronDB modal). Null = none selected yet. */
   public setSelectedSlot(slot: number | null): void {
     this.selectedSlot = slot;
-    if (!this.drawerElement) return;
-    const keyAttr = this.activeTab === 'presets' ? 'data-model' : 'data-slot';
-    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const key = card.getAttribute(keyAttr);
-      card.classList.toggle('wt-selected', key !== null && parseInt(key, 10) === slot);
-    });
+    this.renderActiveTab();
     this.updateFooterSelection();
   }
 
   /** Library-tab highlight (selection only — the host loads on double-click / Load). */
   public setSelectedLibrary(slot: number | null): void {
     this.selectedLibrarySlot = slot;
-    if (!this.drawerElement) return;
-    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const key = card.getAttribute('data-slot');
-      card.classList.toggle(
-        'wt-selected',
-        key !== null && parseInt(key, 10) === slot
-      );
-    });
+    this.renderActiveTab();
     this.updateFooterSelection();
   }
 
   /** Preset-tab highlight (selection only — the host decides on Load). */
   public setSelectedPreset(presetSlot: number | null): void {
     this.selectedPresetSlot = presetSlot;
-    if (!this.drawerElement) return;
-    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const key = card.getAttribute('data-slot');
-      card.classList.toggle(
-        'wt-selected',
-        key !== null && parseInt(key, 10) === presetSlot
-      );
-    });
+    this.renderActiveTab();
     this.updateFooterSelection();
+  }
+
+  /** Read-only visibility for drawer-exclusivity logic (additive; no behavior change). */
+  public isVisible(): boolean {
+    return this.isOpen;
+  }
+
+  private confirmClearModels(): void {
+    if (!this.currentBank || this.currentBank.models.length === 0) {
+      toast('There are no generated models to clear in this bank.', 'warning');
+      return;
+    }
+    const count = this.currentBank.models.length;
+    void confirmDialog(
+      `Clear all ${count} generated model(s) from the bank? This cannot be undone.`,
+      { confirmLabel: 'Clear all', danger: true }
+    ).then((ok) => {
+      if (ok) this.handlers.onClearModels?.();
+    });
   }
 
   private servePreset(presetSlot: number, name: string, modelIndex: number): void {
@@ -298,7 +205,7 @@ export class BankDrawer {
   }
 
   private updateFooterSelection(): void {
-    if (!this.drawerElement) return;
+    if (!this.shell) return;
     const mCount = this.currentBank?.models.length ?? 0;
     const pCount = this.currentBank?.presets.length ?? 0;
     const parts: string[] = [];
@@ -317,12 +224,12 @@ export class BankDrawer {
       this.selectedSlot === null
         ? undefined
         : this.currentBank?.models.find((m) => m.slot === this.selectedSlot);
-    const slotEl = this.drawerElement.querySelector('#bank-foot-slot');
+    const slotEl = this.shell.element.querySelector('#bank-foot-slot');
     if (slotEl) {
       slotEl.textContent =
         this.selectedSlot === null ? 'BANK' : `#${String(this.selectedSlot).padStart(3, '0')}`;
     }
-    const footStatusEl = this.drawerElement.querySelector('#bank-foot-status');
+    const footStatusEl = this.shell.element.querySelector('#bank-foot-status');
     if (!footStatusEl) return;
     if (this.activeTab === 'library' && this.selectedLibrarySlot !== null) {
       const entry = this.handlers.onRequestLibrary?.().find((e) => e.slot === this.selectedLibrarySlot);
@@ -341,16 +248,35 @@ export class BankDrawer {
     footStatusEl.textContent = sel ? `${base} | Sel: ${sel.name}` : base;
   }
 
-  private renderModels(): void {
-    if (!this.drawerElement || !this.currentBank) return;
-    const container = this.drawerElement.querySelector('#bank-list-container');
-    if (!container) return;
+  private renderActiveTab(): void {
+    if (this.activeTab === 'presets') {
+      this.renderPresets();
+    } else if (this.activeTab === 'library') {
+      this.renderLibrary();
+    } else {
+      this.renderModels();
+    }
+  }
 
-    const badge = this.drawerElement.querySelector('#bank-count-badge');
+  private bindCards(handlers: {
+    onCardClick: (slot: number) => void;
+    onCardDblClick: (slot: number) => void;
+    onAction: (info: { slot: number; action: string }) => void;
+  }): void {
+    this.unbindCards?.();
+    this.unbindCards = null;
+    if (!this.shell) return;
+    this.unbindCards = bindBankCards(this.shell.contentEl, handlers);
+  }
+
+  private renderModels(): void {
+    if (!this.shell || !this.currentBank) return;
+    const container = this.shell.contentEl;
+
     const totalModels = this.currentBank.models.length;
 
     if (totalModels === 0) {
-      if (badge) badge.textContent = '0 MODELS';
+      this.shell.setBadge('0 MODELS');
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.database}</span>
@@ -371,12 +297,11 @@ export class BankDrawer {
         )
       : this.currentBank.models;
 
-    if (badge) {
-      badge.textContent =
-        filtered.length === totalModels
-          ? `${totalModels} MODELS`
-          : `${filtered.length} / ${totalModels} MODELS`;
-    }
+    this.shell.setBadge(
+      filtered.length === totalModels
+        ? `${totalModels} MODELS`
+        : `${filtered.length} / ${totalModels} MODELS`
+    );
 
     if (filtered.length === 0) {
       container.innerHTML = `
@@ -396,34 +321,22 @@ export class BankDrawer {
             const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
             const catName = ps ? `${ps.id}: ${ps.name}` : `Set ${m.parameterSet}`;
             const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
-            const iconSvg = ICONS[iconKey] || ICONS.database;
-
-            return `
-              <div class="ndb-card ${catClass}${m.slot === this.selectedSlot ? ' wt-selected' : ''}" data-slot="${m.slot}">
-                <div class="ndb-card-icon ${catClass}">
-                  ${iconSvg}
-                </div>
-                <div class="ndb-card-info">
-                  <div class="ndb-card-top">
-                    <span class="ndb-card-slot">#${String(m.slot).padStart(3, '0')}</span>
-                    <span class="ndb-card-cat ${catClass}">${catName}</span>
-                  </div>
-                  <div class="ndb-card-name" title="${m.name}">${m.name}</div>
-                  <div class="ndb-card-meta">
-                    <span class="ndb-card-badge">${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}</span>
-                    <span class="ndb-card-badge">Lvl ${m.complexity}</span>
-                  </div>
-                </div>
-                <div class="ndb-card-actions">
-                  <button type="button" class="btn btn-xs btn-primary btn-load-model" data-slot="${m.slot}" title="Load Model #${m.slot} into the editor (replaces current session, undoable)">
-                    Load
-                  </button>
-                  <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}" title="Export .zip package">
-                    <span class="btn-icon">${ICONS.folder}</span> Export .zip
-                  </button>
-                </div>
-              </div>
-            `;
+            return bankCardHtml({
+              slot: m.slot,
+              catClass,
+              catLabel: catName,
+              name: m.name,
+              iconHtml: ICONS[iconKey] || ICONS.database,
+              badges: [
+                `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
+                `Lvl ${m.complexity}`,
+              ],
+              actions: [
+                { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },
+                { id: 'export', label: 'Export .zip', kind: 'export', title: 'Export .zip package', iconHtml: ICONS.folder },
+              ],
+              selected: m.slot === this.selectedSlot,
+            });
           })
           .join('')}
       </div>
@@ -431,44 +344,31 @@ export class BankDrawer {
 
     // Single click only highlights; double-click / Load serves the slot
     // and the host performs the full load into the editor session.
-    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
-      card.addEventListener('click', () => {
-        this.setSelectedSlot(slot);
-      });
-      card.addEventListener('dblclick', () => {
+    this.bindCards({
+      onCardClick: (slot) => this.setSelectedSlot(slot),
+      onCardDblClick: (slot) => {
         this.setSelectedSlot(slot);
         this.handlers.onSelectModel(slot);
-      });
-    });
-
-    container.querySelectorAll('.btn-load-model').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
+      },
+      onAction: ({ slot, action }) => {
+        if (action === 'export') {
+          this.handlers.onExportModel(slot);
+          return;
+        }
+        this.setSelectedSlot(slot);
         this.handlers.onSelectModel(slot);
-      });
-    });
-
-    container.querySelectorAll('.btn-export').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
-        this.handlers.onExportModel(slot);
-      });
+      },
     });
   }
 
   private renderPresets(): void {
-    if (!this.drawerElement || !this.currentBank) return;
-    const container = this.drawerElement.querySelector('#bank-list-container');
-    if (!container) return;
+    if (!this.shell || !this.currentBank) return;
+    const container = this.shell.contentEl;
 
-    const badge = this.drawerElement.querySelector('#bank-count-badge');
     const totalPresets = this.currentBank.presets.length;
 
     if (totalPresets === 0) {
-      if (badge) badge.textContent = '0 PRESETS';
+      this.shell.setBadge('0 PRESETS');
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.sliders}</span>
@@ -496,12 +396,11 @@ export class BankDrawer {
         )
       : this.currentBank.presets;
 
-    if (badge) {
-      badge.textContent =
-        filtered.length === totalPresets
-          ? `${totalPresets} PRESETS`
-          : `${filtered.length} / ${totalPresets} PRESETS`;
-    }
+    this.shell.setBadge(
+      filtered.length === totalPresets
+        ? `${totalPresets} PRESETS`
+        : `${filtered.length} / ${totalPresets} PRESETS`
+    );
 
     if (filtered.length === 0) {
       container.innerHTML = `
@@ -518,29 +417,18 @@ export class BankDrawer {
         ${filtered
           .map((p) => {
             const catInfo = getPresetCategoryInfo(p.category);
-            return `
-              <div class="ndb-card ${catInfo.catClass}${p.slot === this.selectedPresetSlot ? ' wt-selected' : ''}" data-slot="${p.slot}" data-model="${p.modelIndex}">
-                <div class="ndb-card-icon ${catInfo.catClass}">
-                  ${catInfo.icon}
-                </div>
-                <div class="ndb-card-info">
-                  <div class="ndb-card-top">
-                    <span class="ndb-card-slot">#${String(p.slot).padStart(3, '0')}</span>
-                    <span class="ndb-card-cat ${catInfo.catClass}">${p.category || 'Preset'}</span>
-                  </div>
-                  <div class="ndb-card-name" title="${p.name}">${p.name}</div>
-                  <div class="ndb-card-meta">
-                    <span class="ndb-card-badge">Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
-                    <span class="ndb-card-badge">${p.parameterCount} params</span>
-                  </div>
-                </div>
-                <div class="ndb-card-actions">
-                  <button type="button" class="btn btn-xs btn-primary btn-load-preset" data-slot="${p.slot}" data-name="${p.name}" data-model="${p.modelIndex}" title="Load Sound Preset #${String(p.slot).padStart(3, '0')}">
-                    Load Sound
-                  </button>
-                </div>
-              </div>
-            `;
+            return bankCardHtml({
+              slot: p.slot,
+              catClass: catInfo.catClass,
+              catLabel: p.category || 'Preset',
+              name: p.name,
+              iconHtml: catInfo.icon,
+              badges: [`Uses Model #${String(p.modelIndex).padStart(3, '0')}`, `${p.parameterCount} params`],
+              actions: [
+                { id: 'load', label: 'Load Sound', title: `Load Sound Preset #${String(p.slot).padStart(3, '0')}` },
+              ],
+              selected: p.slot === this.selectedPresetSlot,
+            });
           })
           .join('')}
       </div>
@@ -549,46 +437,26 @@ export class BankDrawer {
     // Single click only highlights: the preset is served to the host on
     // double-click / Load, which decides what loading means. (Mirrors the
     // synth: browsing must not retarget the editor on every click.)
-    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const presetSlot = parseInt(card.getAttribute('data-slot') || '0', 10);
-      const modelSlot = parseInt(card.getAttribute('data-model') || '0', 10);
-      const name = card.querySelector('.ndb-card-name')?.textContent || `Sound${presetSlot}`;
-      card.addEventListener('click', () => {
-        this.setSelectedPreset(presetSlot);
-      });
-      card.addEventListener('dblclick', () => {
-        this.setSelectedPreset(presetSlot);
-        this.servePreset(presetSlot, name, modelSlot);
-      });
+    this.bindCards({
+      onCardClick: (slot) => this.setSelectedPreset(slot),
+      onCardDblClick: (slot) => {
+        const card = filtered.find((p) => p.slot === slot);
+        this.setSelectedPreset(slot);
+        if (card) this.servePreset(slot, card.name, card.modelIndex);
+      },
+      onAction: ({ slot, action }) => {
+        if (action !== 'load') return;
+        const card = filtered.find((p) => p.slot === slot);
+        this.setSelectedPreset(slot);
+        if (card) this.servePreset(slot, card.name, card.modelIndex);
+      },
     });
-
-    container.querySelectorAll('.btn-load-preset').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const presetSlot = parseInt(btn.getAttribute('data-slot') || '0', 10);
-        const modelSlot = parseInt(btn.getAttribute('data-model') || '0', 10);
-        const card = btn.closest('.ndb-card') as HTMLElement | null;
-        const name =
-          btn.getAttribute('data-name') ||
-          card?.querySelector('.ndb-card-name')?.textContent ||
-          `Sound${presetSlot}`;
-        this.setSelectedPreset(presetSlot);
-        this.servePreset(presetSlot, name, modelSlot);
-      });
-    });
-  }
-
-  /** Read-only visibility for drawer-exclusivity logic (additive; no behavior change). */
-  public isVisible(): boolean {
-    return this.isOpen;
   }
 
   private renderLibrary(): void {
-    if (!this.drawerElement) return;
-    const container = this.drawerElement.querySelector('#bank-list-container');
-    if (!container) return;
+    if (!this.shell) return;
+    const container = this.shell.contentEl;
 
-    const badge = this.drawerElement.querySelector('#bank-count-badge');
     const entries = this.handlers.onRequestLibrary?.() ?? [];
 
     const filtered = this.filterQuery
@@ -601,12 +469,11 @@ export class BankDrawer {
         )
       : entries;
 
-    if (badge) {
-      badge.textContent =
-        filtered.length === entries.length
-          ? `${entries.length} IN LIBRARY`
-          : `${filtered.length} / ${entries.length} IN LIBRARY`;
-    }
+    this.shell.setBadge(
+      filtered.length === entries.length
+        ? `${entries.length} IN LIBRARY`
+        : `${filtered.length} / ${entries.length} IN LIBRARY`
+    );
 
     if (entries.length === 0) {
       container.innerHTML = `
@@ -645,56 +512,40 @@ export class BankDrawer {
             const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
             const catName = ps ? `${ps.id}: ${ps.name}` : 'Pending';
             const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
-            const iconSvg = ICONS[iconKey] || ICONS.database;
             const range =
-              e.lowKey !== null && e.highKey !== null ? `MM ${e.lowKey}..${e.highKey}` : e.folderName;
-            return `
-              <div class="ndb-card ${catClass}${e.slot === this.selectedLibrarySlot ? ' wt-selected' : ''}" data-slot="${e.slot}">
-                <div class="ndb-card-icon ${catClass}">
-                  ${iconSvg}
-                </div>
-                <div class="ndb-card-info">
-                  <div class="ndb-card-top">
-                    <span class="ndb-card-slot">#${String(e.slot).padStart(3, '0')}</span>
-                    <span class="ndb-card-cat ${catClass}">${catName}</span>
-                  </div>
-                  <div class="ndb-card-name" title="${e.name || e.folderName}">${e.name || e.folderName}</div>
-                  <div class="ndb-card-meta">
-                    ${e.zoneCount !== null ? `<span class="ndb-card-badge">${e.zoneCount} Zone${e.zoneCount === 1 ? '' : 's'}</span>` : ''}
-                    ${e.complexity !== null ? `<span class="ndb-card-badge">Lvl ${e.complexity}</span>` : ''}
-                    <span class="ndb-card-badge">${range}</span>
-                  </div>
-                </div>
-                <div class="ndb-card-actions">
-                  <button type="button" class="btn btn-xs btn-primary btn-load-library" data-slot="${e.slot}" title="Load library Model #${String(e.slot).padStart(3, '0')} into the editor">
-                    Load
-                  </button>
-                </div>
-              </div>
-            `;
+              e.lowKey !== null && e.highKey !== null ? `MM ${e.lowKey}..${e.highKey}` : (e.folderName ?? '');
+            return bankCardHtml({
+              slot: e.slot,
+              catClass,
+              catLabel: catName,
+              name: e.name || e.folderName,
+              iconHtml: ICONS[iconKey] || ICONS.database,
+              badges: [
+                ...(e.zoneCount !== null ? [`${e.zoneCount} Zone${e.zoneCount === 1 ? '' : 's'}`] : []),
+                ...(e.complexity !== null ? [`Lvl ${e.complexity}`] : []),
+                range,
+              ],
+              actions: [
+                { id: 'load', label: 'Load', title: `Load library Model #${String(e.slot).padStart(3, '0')} into the editor` },
+              ],
+              selected: e.slot === this.selectedLibrarySlot,
+            });
           })
           .join('')}
       </div>
     `;
 
-    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
-      const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
-      card.addEventListener('click', () => {
-        this.setSelectedLibrary(slot);
-      });
-      card.addEventListener('dblclick', () => {
+    this.bindCards({
+      onCardClick: (slot) => this.setSelectedLibrary(slot),
+      onCardDblClick: (slot) => {
         this.setSelectedLibrary(slot);
         this.handlers.onPickLibrary?.(slot);
-      });
-    });
-
-    container.querySelectorAll('.btn-load-library').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
+      },
+      onAction: ({ slot, action }) => {
+        if (action !== 'load') return;
         this.setSelectedLibrary(slot);
         this.handlers.onPickLibrary?.(slot);
-      });
+      },
     });
   }
 
@@ -708,18 +559,15 @@ export class BankDrawer {
 
   public open(): void {
     this.isOpen = true;
-    this.drawerElement?.classList.remove('is-closed');
-    this.drawerElement?.classList.add('is-open');
-    const filterInput = this.drawerElement?.querySelector('#bank-filter-input') as HTMLInputElement | null;
-    if (filterInput) {
-      setTimeout(() => filterInput.focus(), 80);
-    }
+    this.shell?.element.classList.remove('is-closed');
+    this.shell?.element.classList.add('is-open');
+    this.shell?.focusSearch();
   }
 
   public close(): void {
     this.isOpen = false;
-    this.drawerElement?.classList.remove('is-open');
-    this.drawerElement?.classList.add('is-closed');
+    this.shell?.element.classList.remove('is-open');
+    this.shell?.element.classList.add('is-closed');
   }
 
   private handleKeyDown = (e: KeyboardEvent): void => {
@@ -730,7 +578,9 @@ export class BankDrawer {
 
   public destroy(): void {
     window.removeEventListener('keydown', this.handleKeyDown);
-    this.drawerElement?.remove();
-    this.drawerElement = null;
+    this.unbindCards?.();
+    this.unbindCards = null;
+    this.shell?.destroy();
+    this.shell = null;
   }
 }
