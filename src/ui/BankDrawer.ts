@@ -636,24 +636,27 @@ export class BankDrawer {
       return;
     }
 
-    const setName = (id: number | null): string =>
-      id === null ? 'Pending' : (PARAMETER_SETS[id]?.name ?? `Set ${id}`);
-
     container.innerHTML = `
       <div class="ndb-grid">
         ${filtered
           .map((e) => {
+            // Same parameter-set coloring as the models tab / NeuronDB modal.
+            const ps = e.parameterSet !== null ? PARAMETER_SETS[e.parameterSet] : null;
+            const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
+            const catName = ps ? `${ps.id}: ${ps.name}` : 'Pending';
+            const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
+            const iconSvg = ICONS[iconKey] || ICONS.database;
             const range =
               e.lowKey !== null && e.highKey !== null ? `MM ${e.lowKey}..${e.highKey}` : e.folderName;
             return `
-              <div class="ndb-card${e.slot === this.selectedLibrarySlot ? ' wt-selected' : ''}" data-slot="${e.slot}">
-                <div class="ndb-card-icon">
-                  ${ICONS.database}
+              <div class="ndb-card ${catClass}${e.slot === this.selectedLibrarySlot ? ' wt-selected' : ''}" data-slot="${e.slot}">
+                <div class="ndb-card-icon ${catClass}">
+                  ${iconSvg}
                 </div>
                 <div class="ndb-card-info">
                   <div class="ndb-card-top">
                     <span class="ndb-card-slot">#${String(e.slot).padStart(3, '0')}</span>
-                    <span class="ndb-card-cat">${setName(e.parameterSet)}</span>
+                    <span class="ndb-card-cat ${catClass}">${catName}</span>
                   </div>
                   <div class="ndb-card-name" title="${e.name || e.folderName}">${e.name || e.folderName}</div>
                   <div class="ndb-card-meta">
