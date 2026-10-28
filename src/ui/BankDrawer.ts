@@ -106,11 +106,9 @@ export class BankDrawer {
         { id: 'clear', label: 'Clear', title: 'Clear all generated models from bank', iconHtml: ICONS.trash },
         { id: 'close', label: 'Close', title: 'Close Drawer (Esc)', iconHtml: ICONS.close },
       ],
-      footerActions: [
-        { id: 'refresh', label: 'Refresh', title: 'Refresh library folder (rescan)', kind: 'outline' },
-        { id: 'folder', label: 'Folder...', kind: 'primary' },
-        { id: 'close', label: 'Close' },
-      ],
+      // No footer actions: the header already serves Refresh/Folder/Clear/
+      // Close. The footer keeps the slot + status line (bank summary,
+      // refresh record, selection) with no duplicated buttons.
       onTabChange: (tab) => {
         this.activeTab = tab as BankTab;
         this.renderChips();
@@ -330,10 +328,10 @@ export class BankDrawer {
       for (const m of this.currentBank.models) {
         counts[m.parameterSet] = (counts[m.parameterSet] || 0) + 1;
       }
+      // All ten sets always: same pill row whatever the bank contains.
       const items: BankChipItem[] = [{ id: 'all', label: 'All', count: this.currentBank.models.length }];
       for (let i = 0; i <= 9; i++) {
         const count = counts[i] || 0;
-        if (count === 0 && this.currentBank.models.length > 0) continue;
         const ps = PARAMETER_SETS[i];
         const setName = ps ? ps.name : `Set ${i}`;
         items.push({
@@ -358,10 +356,10 @@ export class BankDrawer {
         if (e.parameterSet === null) pending++;
         else counts[e.parameterSet] = (counts[e.parameterSet] || 0) + 1;
       }
+      // All ten sets always: same pill row whatever the folder contains.
       const items: BankChipItem[] = [{ id: 'all', label: 'All', count: entries.length }];
       for (let i = 0; i <= 9; i++) {
         const count = counts[i] || 0;
-        if (count === 0 && entries.length > 0) continue;
         const ps = PARAMETER_SETS[i];
         const setName = ps ? ps.name : `Set ${i}`;
         items.push({
@@ -447,10 +445,13 @@ export class BankDrawer {
     );
 
     if (filtered.length === 0) {
+      const emptyMsg = this.filterQuery
+        ? `No models found matching "${this.filterQuery}"`
+        : 'No models in this category yet';
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.database}</span>
-          <span class="empty-msg">No models found matching "${this.filterQuery}"</span>
+          <span class="empty-msg">${emptyMsg}</span>
         </div>
       `;
       return;
@@ -643,10 +644,13 @@ export class BankDrawer {
     }
 
     if (filtered.length === 0) {
+      const emptyMsg = this.filterQuery
+        ? `No library models found matching "${this.filterQuery}"`
+        : 'No library models in this category yet';
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.folder}</span>
-          <span class="empty-msg">No library models found matching "${this.filterQuery}"</span>
+          <span class="empty-msg">${emptyMsg}</span>
         </div>
       `;
       return;
