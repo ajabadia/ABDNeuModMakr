@@ -54,6 +54,8 @@ import {
 import {
   parseModelFileSet,
   convertLegacyModelToModern,
+  parseNeuronScape,
+  parseNeuronSphere,
   resynthesizeNeuronModelSource,
 } from '@abdsynths/shared/formats/neuron';
 
@@ -63,7 +65,7 @@ import {
   restoreSessionFromLocalStorage,
 } from './sessionPersistence.ts';
 import { AudioPreviewService } from './audioPreview.ts';
-import { BankService } from './bankService.ts';
+import { BankService, BankLoadError, buildBankLoadPlan } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
 import { createInitialSession, createZone } from './sessionFactory.ts';
 import {
@@ -1589,6 +1591,114 @@ export class WebAudioPipeline implements CoreService {
     this.emit({ type: 'bank-updated', bank });
 
     return model;
+  }
+
+  /**
+   * Loads a generated model from the bank back into the editor session:
+   * restores name, config, zone layout and resynthesized playable
+   * samples from the cached `.scape`/`.sphere` binaries (same routine
+   * the `.model` import path uses). The previous session state stays
+   * reachable via Undo. Per-zone `velSplit` is not stored on the model
+   * record, so zones come back at the canonical 64 split.
+   */
+  public async loadBankModel(slot: number): Promise<Session> {
+    const record = this.bank.getModelRecord(slot);
+    if (!record) {
+      throw new BankLoadError('NOT_FOUND', `Model #${slot} is not in the bank.`);
+    }
+    const binaries = this.bank.getModelBinaries(slot);
+    const plan = buildBankLoadPlan(record, binaries);
+
+    if (!this.session) {
+      await this.newSession(record.name);
+    } else {
+      this.pushHistory(`Load Model "${record.name}"`);
+    }
+
+    const analysisBySample = new Map<string, ZoneAnalysisSummary>();
+    for (const s of record.zonesAnalysis ?? []) {
+      if (!analysisBySample.has(s.sampleName)) {
+        analysisBySample.set(s.sampleName, s);
+      }
+    }
+
+    plan.sampleOrder.forEach((sampleName, i) => {
+      const pair = binaries![i];
+      const firstZone = plan.zones.find(
+        (z) => z.sampleLow === sampleName || z.sampleHigh === sampleName
+      );
+      let wavBuf: ArrayBuffer | null = null;
+      try {
+        const parsedScape = parseNeuronScape(pair.scapeBinary);
+        const parsedSphere = parseNeuronSphere(pair.sphereBinary);
+        const pcm =
+          parsedSphere.frames.length > 0 || parsedScape
+            ? resynthesizeNeuronModelSource(parsedSphere, parsedScape, 44100, 0.22)
+            : null;
+        wavBuf = pcm
+          ? encodePcm16Wav(pcm, 44100, {
+              rootKey: firstZone?.rootKey ?? 60,
+              lowKey: firstZone?.lowKey ?? 0,
+              highKey: firstZone?.highKey ?? 127,
+              detune: 0,
+            })
+          : null;
+      } catch {
+        wavBuf = null;
+      }
+      if (!wavBuf) {
+        wavBuf = synthesizeDemoWav('strings', firstZone?.rootKey ?? 60, 44100, 1.0);
+      }
+      try {
+        this.registerSampleBuffer(sampleName, wavBuf);
+      } catch {
+        // Oversize buffer: keep the name reference; audition falls back to demo.
+      }
+      const summary = analysisBySample.get(sampleName);
+      this.importedSourceBinaries.set(sampleName, {
+        scapeBinary: pair.scapeBinary,
+        sphereBinary: pair.sphereBinary,
+        origParameterSet: record.parameterSet,
+        complexity: record.complexity,
+        summary: summary ?? {
+          zoneId: sampleName,
+          lowKey: firstZone?.lowKey ?? 0,
+          rootKey: firstZone?.rootKey ?? 60,
+          highKey: firstZone?.highKey ?? 127,
+          sampleName,
+          sampleRate: 44100,
+          durationSec: 1.0,
+          detectedF0Hz: 440,
+          targetF0Hz: 440,
+          gridResidualCents: 0,
+          gridObservations: 0,
+          gridBand: 'green',
+          gridNotice: 'Bank model (resynthesized on load)',
+          layerCount: 1,
+          frameCount: 0,
+          activePartials: 0,
+          octaveFoldCents: 0,
+          biGrid: false,
+          amplitudes: new Array<number>(64).fill(0),
+          frequencyOffsets: new Array<number>(64).fill(0),
+        },
+      });
+    });
+
+    const newZones: Zone[] = plan.zones.map((z) => {
+      const zone = createZone(z.lowKey, z.rootKey, z.highKey, z.sampleLow);
+      zone.sampleHigh = z.sampleHigh;
+      return zone;
+    });
+    this.session!.name = record.name;
+    this.session!.zones = newZones;
+    this.session!.processConfig = { ...plan.processConfig };
+    this.session!.dirty = true;
+    this.session!.modifiedAt = new Date().toISOString();
+    this.ensureZoneDemoBuffers(this.session!.zones);
+    this.persistToLocalStorage();
+    this.emit({ type: 'session-changed', session: this.session! });
+    return this.session!;
   }
 
   // ── Process / Model Generation ──────────────────────────

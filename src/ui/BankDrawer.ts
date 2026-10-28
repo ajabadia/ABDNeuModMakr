@@ -7,10 +7,24 @@
 
 import { ICONS } from './icons';
 import type { BankSummary } from '../core/types';
+import type { NeuronDbModelEntry } from './NeuronDbModal';
 import { PARAMETER_SETS } from '../core';
 import { confirmDialog, toast } from './notify';
 
+export type BankTab = 'models' | 'presets' | 'library';
+
+export interface BankDrawerOptions {
+  /** Tabs rendered by the drawer. Default `['models', 'presets']`.
+   * Hosts show only what they can serve: NeuModMakr hides presets. */
+  visibleTabs?: BankTab[];
+}
+
 export interface BankDrawerHandlers {
+  /**
+   * Model chosen for loading (double-click / Load). The component only
+   * serves the slot — the host decides what loading means (NeuModMakr
+   * restores the full session, the synth loads into its engine).
+   */
   onSelectModel: (slot: number) => void;
   onExportModel: (slot: number) => void;
   onClearModels?: () => void;
@@ -23,6 +37,10 @@ export interface BankDrawerHandlers {
    * `onSelectModel(preset.modelIndex)`.
    */
   onSelectPreset?: (slot: number, name: string, modelIndex: number) => void;
+  /** Live library-folder entries (pull model — the owner mutates them in place during scans). */
+  onRequestLibrary?: () => NeuronDbModelEntry[];
+  /** Library entry chosen for loading (double-click / Load). */
+  onPickLibrary?: (slot: number) => void;
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
@@ -45,14 +63,20 @@ export class BankDrawer {
   private isOpen: boolean = false;
   private drawerElement: HTMLElement | null = null;
   private currentBank: BankSummary | null = null;
-  private activeTab: 'models' | 'presets' = 'models';
+  private activeTab: BankTab = 'models';
+  private readonly visibleTabs: BankTab[];
   private filterQuery: string = '';
   private selectedSlot: number | null = null;
   private selectedPresetSlot: number | null = null;
+  private selectedLibrarySlot: number | null = null;
 
-  constructor(container: HTMLElement, handlers: BankDrawerHandlers) {
+  constructor(container: HTMLElement, handlers: BankDrawerHandlers, options?: BankDrawerOptions) {
     this.container = container;
     this.handlers = handlers;
+    this.visibleTabs = options?.visibleTabs ?? ['models', 'presets'];
+    if (!this.visibleTabs.includes(this.activeTab)) {
+      this.activeTab = this.visibleTabs[0] ?? 'models';
+    }
     this.init();
   }
 
@@ -89,16 +113,27 @@ export class BankDrawer {
 
       <!-- Category / Tab Filter Chips (ABDMS2000 style) -->
       <div class="ndb-chips-row">
+        ${this.visibleTabs.includes('models') ? `
         <button type="button" class="ndb-chip ${this.activeTab === 'models' ? 'active' : ''}" id="tab-models">
           <span class="ndb-chip-icon">${ICONS.database}</span>
           <span class="ndb-chip-name">GENERATED MODELS</span>
           <span class="ndb-chip-count" id="count-models">0</span>
         </button>
+        ` : ''}
+        ${this.visibleTabs.includes('presets') ? `
         <button type="button" class="ndb-chip ${this.activeTab === 'presets' ? 'active' : ''}" id="tab-presets">
           <span class="ndb-chip-icon">${ICONS.sliders}</span>
           <span class="ndb-chip-name">SOUND PRESETS</span>
           <span class="ndb-chip-count" id="count-presets">0</span>
         </button>
+        ` : ''}
+        ${this.visibleTabs.includes('library') ? `
+        <button type="button" class="ndb-chip ${this.activeTab === 'library' ? 'active' : ''}" id="tab-library">
+          <span class="ndb-chip-icon">${ICONS.folder}</span>
+          <span class="ndb-chip-name">LIBRARY</span>
+          <span class="ndb-chip-count" id="count-library">0</span>
+        </button>
+        ` : ''}
       </div>
 
       <!-- Scrollable Content Wrap -->
@@ -145,31 +180,43 @@ export class BankDrawer {
     const filterInput = this.drawerElement.querySelector('#bank-filter-input') as HTMLInputElement | null;
     filterInput?.addEventListener('input', () => {
       this.filterQuery = (filterInput.value || '').trim().toLowerCase();
-      if (this.activeTab === 'models') {
-        this.renderModels();
-      } else {
-        this.renderPresets();
-      }
+      this.renderActiveTab();
     });
 
     window.addEventListener('keydown', this.handleKeyDown);
 
     const tabModels = this.drawerElement.querySelector('#tab-models');
     const tabPresets = this.drawerElement.querySelector('#tab-presets');
+    const tabLibrary = this.drawerElement.querySelector('#tab-library');
+    const chips = [tabModels, tabPresets, tabLibrary];
 
     tabModels?.addEventListener('click', () => {
       this.activeTab = 'models';
-      tabModels.classList.add('active');
-      tabPresets?.classList.remove('active');
+      chips.forEach((c) => c?.classList.toggle('active', c === tabModels));
       this.renderModels();
     });
 
     tabPresets?.addEventListener('click', () => {
       this.activeTab = 'presets';
-      tabPresets?.classList.add('active');
-      tabModels?.classList.remove('active');
+      chips.forEach((c) => c?.classList.toggle('active', c === tabPresets));
       this.renderPresets();
     });
+
+    tabLibrary?.addEventListener('click', () => {
+      this.activeTab = 'library';
+      chips.forEach((c) => c?.classList.toggle('active', c === tabLibrary));
+      this.renderLibrary();
+    });
+  }
+
+  private renderActiveTab(): void {
+    if (this.activeTab === 'presets') {
+      this.renderPresets();
+    } else if (this.activeTab === 'library') {
+      this.renderLibrary();
+    } else {
+      this.renderModels();
+    }
   }
 
   public setBank(bank: BankSummary, selectedSlot?: number | null): void {
@@ -179,23 +226,23 @@ export class BankDrawer {
     }
     this.selectedPresetSlot = null;
     this.updateCounters();
-    if (this.activeTab === 'models') {
-      this.renderModels();
-    } else {
-      this.renderPresets();
-    }
+    this.renderActiveTab();
   }
 
   private updateCounters(): void {
     if (!this.drawerElement) return;
     const mCount = this.currentBank?.models.length ?? 0;
     const pCount = this.currentBank?.presets.length ?? 0;
+    const lCount = this.handlers.onRequestLibrary?.().length ?? 0;
 
     const countModelsEl = this.drawerElement.querySelector('#count-models');
     if (countModelsEl) countModelsEl.textContent = String(mCount);
 
     const countPresetsEl = this.drawerElement.querySelector('#count-presets');
     if (countPresetsEl) countPresetsEl.textContent = String(pCount);
+
+    const countLibraryEl = this.drawerElement.querySelector('#count-library');
+    if (countLibraryEl) countLibraryEl.textContent = String(lCount);
 
     this.updateFooterSelection();
   }
@@ -208,6 +255,20 @@ export class BankDrawer {
     this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
       const key = card.getAttribute(keyAttr);
       card.classList.toggle('wt-selected', key !== null && parseInt(key, 10) === slot);
+    });
+    this.updateFooterSelection();
+  }
+
+  /** Library-tab highlight (selection only — the host loads on double-click / Load). */
+  public setSelectedLibrary(slot: number | null): void {
+    this.selectedLibrarySlot = slot;
+    if (!this.drawerElement) return;
+    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const key = card.getAttribute('data-slot');
+      card.classList.toggle(
+        'wt-selected',
+        key !== null && parseInt(key, 10) === slot
+      );
     });
     this.updateFooterSelection();
   }
@@ -240,7 +301,18 @@ export class BankDrawer {
     if (!this.drawerElement) return;
     const mCount = this.currentBank?.models.length ?? 0;
     const pCount = this.currentBank?.presets.length ?? 0;
-    const base = `${mCount} model${mCount === 1 ? '' : 's'} | ${pCount} preset${pCount === 1 ? '' : 's'}`;
+    const parts: string[] = [];
+    if (this.visibleTabs.includes('models')) {
+      parts.push(`${mCount} model${mCount === 1 ? '' : 's'}`);
+    }
+    if (this.visibleTabs.includes('presets')) {
+      parts.push(`${pCount} preset${pCount === 1 ? '' : 's'}`);
+    }
+    if (this.visibleTabs.includes('library')) {
+      const lCount = this.handlers.onRequestLibrary?.().length ?? 0;
+      parts.push(`${lCount} in library`);
+    }
+    const base = parts.join(' | ');
     const sel =
       this.selectedSlot === null
         ? undefined
@@ -252,6 +324,13 @@ export class BankDrawer {
     }
     const footStatusEl = this.drawerElement.querySelector('#bank-foot-status');
     if (!footStatusEl) return;
+    if (this.activeTab === 'library' && this.selectedLibrarySlot !== null) {
+      const entry = this.handlers.onRequestLibrary?.().find((e) => e.slot === this.selectedLibrarySlot);
+      footStatusEl.textContent = entry
+        ? `${base} | Sel: ${entry.name || entry.folderName}`
+        : base;
+      return;
+    }
     if (this.activeTab === 'presets' && this.selectedPresetSlot !== null) {
       const preset = this.currentBank?.presets.find((p) => p.slot === this.selectedPresetSlot);
       footStatusEl.textContent = preset
@@ -336,8 +415,8 @@ export class BankDrawer {
                   </div>
                 </div>
                 <div class="ndb-card-actions">
-                  <button type="button" class="btn btn-xs btn-primary btn-select-model" data-slot="${m.slot}" title="Set active editor slot to #${m.slot}">
-                    Select Slot
+                  <button type="button" class="btn btn-xs btn-primary btn-load-model" data-slot="${m.slot}" title="Load Model #${m.slot} into the editor (replaces current session, undoable)">
+                    Load
                   </button>
                   <button type="button" class="btn btn-xs btn-export" data-slot="${m.slot}" title="Export .zip package">
                     <span class="btn-icon">${ICONS.folder}</span> Export .zip
@@ -350,18 +429,20 @@ export class BankDrawer {
       </div>
     `;
 
+    // Single click only highlights; double-click / Load serves the slot
+    // and the host performs the full load into the editor session.
     container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
       const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
       card.addEventListener('click', () => {
         this.setSelectedSlot(slot);
-        this.handlers.onSelectModel(slot);
       });
       card.addEventListener('dblclick', () => {
+        this.setSelectedSlot(slot);
         this.handlers.onSelectModel(slot);
       });
     });
 
-    container.querySelectorAll('.btn-select-model').forEach((btn) => {
+    container.querySelectorAll('.btn-load-model').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
@@ -500,6 +581,118 @@ export class BankDrawer {
   /** Read-only visibility for drawer-exclusivity logic (additive; no behavior change). */
   public isVisible(): boolean {
     return this.isOpen;
+  }
+
+  private renderLibrary(): void {
+    if (!this.drawerElement) return;
+    const container = this.drawerElement.querySelector('#bank-list-container');
+    if (!container) return;
+
+    const badge = this.drawerElement.querySelector('#bank-count-badge');
+    const entries = this.handlers.onRequestLibrary?.() ?? [];
+
+    const filtered = this.filterQuery
+      ? entries.filter(
+          (e) =>
+            (e.name || '').toLowerCase().includes(this.filterQuery) ||
+            (e.folderName || '').toLowerCase().includes(this.filterQuery) ||
+            String(e.slot).includes(this.filterQuery) ||
+            `#${String(e.slot).padStart(3, '0')}`.includes(this.filterQuery)
+        )
+      : entries;
+
+    if (badge) {
+      badge.textContent =
+        filtered.length === entries.length
+          ? `${entries.length} IN LIBRARY`
+          : `${filtered.length} / ${entries.length} IN LIBRARY`;
+    }
+
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.folder}</span>
+          <span class="empty-msg">No library folder scanned yet</span>
+          <span class="ndb-dim">Select a NeuronDB library folder to browse its models here.</span>
+          <button type="button" class="btn btn-xs btn-primary ndb-empty-action" id="btn-library-configure">
+            <span class="btn-icon">${ICONS.folder}</span>
+            <span>Select Library Folder...</span>
+          </button>
+        </div>
+      `;
+      container.querySelector('#btn-library-configure')?.addEventListener('click', () => {
+        this.handlers.onConfigureNeuronDbFolder?.();
+      });
+      return;
+    }
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.folder}</span>
+          <span class="empty-msg">No library models found matching "${this.filterQuery}"</span>
+        </div>
+      `;
+      return;
+    }
+
+    const setName = (id: number | null): string =>
+      id === null ? 'Pending' : (PARAMETER_SETS[id]?.name ?? `Set ${id}`);
+
+    container.innerHTML = `
+      <div class="ndb-grid">
+        ${filtered
+          .map((e) => {
+            const range =
+              e.lowKey !== null && e.highKey !== null ? `MM ${e.lowKey}..${e.highKey}` : e.folderName;
+            return `
+              <div class="ndb-card${e.slot === this.selectedLibrarySlot ? ' wt-selected' : ''}" data-slot="${e.slot}">
+                <div class="ndb-card-icon">
+                  ${ICONS.database}
+                </div>
+                <div class="ndb-card-info">
+                  <div class="ndb-card-top">
+                    <span class="ndb-card-slot">#${String(e.slot).padStart(3, '0')}</span>
+                    <span class="ndb-card-cat">${setName(e.parameterSet)}</span>
+                  </div>
+                  <div class="ndb-card-name" title="${e.name || e.folderName}">${e.name || e.folderName}</div>
+                  <div class="ndb-card-meta">
+                    ${e.zoneCount !== null ? `<span class="ndb-card-badge">${e.zoneCount} Zone${e.zoneCount === 1 ? '' : 's'}</span>` : ''}
+                    ${e.complexity !== null ? `<span class="ndb-card-badge">Lvl ${e.complexity}</span>` : ''}
+                    <span class="ndb-card-badge">${range}</span>
+                  </div>
+                </div>
+                <div class="ndb-card-actions">
+                  <button type="button" class="btn btn-xs btn-primary btn-load-library" data-slot="${e.slot}" title="Load library Model #${String(e.slot).padStart(3, '0')} into the editor">
+                    Load
+                  </button>
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+    container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
+      card.addEventListener('click', () => {
+        this.setSelectedLibrary(slot);
+      });
+      card.addEventListener('dblclick', () => {
+        this.setSelectedLibrary(slot);
+        this.handlers.onPickLibrary?.(slot);
+      });
+    });
+
+    container.querySelectorAll('.btn-load-library').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const slot = parseInt(btn.getAttribute('data-slot') || '0', 10);
+        this.setSelectedLibrary(slot);
+        this.handlers.onPickLibrary?.(slot);
+      });
+    });
   }
 
   public toggle(): void {

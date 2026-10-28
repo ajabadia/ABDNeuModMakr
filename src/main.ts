@@ -299,9 +299,19 @@ class App {
       this.refreshUI();
     });
     this.bankDrawer = new BankDrawer(drawersMount, {
-      onSelectModel: (slot) => {
-        if (this.session) {
-          this.session = this.core.updateProcessConfig({ modelNumber: slot });
+      // Model chosen for loading: restart the whole editor session from
+      // the bank record (name, config, zones, resynthesized samples).
+      onSelectModel: async (slot) => {
+        if (this.session?.dirty) {
+          const proceed = await confirmDialog(
+            `Loading Model #${slot} replaces the current session (unsaved changes will be kept in Undo history).`,
+            { confirmLabel: 'Load model', cancelLabel: 'Cancel' }
+          );
+          if (!proceed) return;
+        }
+        try {
+          this.session = await this.core.loadBankModel(slot);
+          this.selectedZoneId = this.session.zones[0]?.id ?? null;
           const errors = this.core.validateCoverage();
           this.processPanel.setConfig(this.session.processConfig, {
             errors,
@@ -309,36 +319,16 @@ class App {
           });
           this.navbar.updateSession(this.session, errors);
           this.bankDrawer.setSelectedSlot(slot);
-        }
-      },
-      // Preset pick (bank presets tab): the drawer only serves the
-      // selection — this host decides. A preset references a model, so
-      // jump the editor to that model when the bank holds it; otherwise
-      // explain instead of silently retargeting to an empty slot.
-      onSelectPreset: async (presetSlot, name, modelIndex) => {
-        const bank = await this.core.loadBank();
-        this.bankDrawer.setBank(bank, this.session?.processConfig.modelNumber ?? null);
-        const model = bank.models.find((m) => m.slot === modelIndex);
-        if (this.session && model) {
-          this.session = this.core.updateProcessConfig({ modelNumber: modelIndex });
-          const errors = this.core.validateCoverage();
-          this.processPanel.setConfig(this.session.processConfig, {
-            errors,
-            zones: this.session.zones,
-          });
-          this.navbar.updateSession(this.session, errors);
-          this.bankDrawer.setSelectedSlot(modelIndex);
-          this.bankDrawer.setSelectedPreset(presetSlot);
           this.telemetryDrawer.addLog(
-            `Loaded preset #${String(presetSlot).padStart(3, '0')} '${name}' → editing Model #${String(modelIndex).padStart(3, '0')} '${model.name}'.`
+            `Loaded Model #${String(slot).padStart(3, '0')} '${this.session.name}' from bank (${this.session.zones.length} zone(s)).`
           );
-          toast(`Preset '${name}' → Model #${modelIndex} '${model.name}'`, 'success');
+          toast(`Loaded Model #${slot} '${this.session.name}'`, 'success');
           this.bankDrawer.close();
-        } else {
-          this.bankDrawer.setSelectedPreset(presetSlot);
-          const msg = `Preset '${name}' uses Model #${modelIndex}, which is not in this bank. Import it via the Models tab or a folder first.`;
-          this.telemetryDrawer.addLog(msg);
-          toast(msg, 'warning');
+          this.refreshUI();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.telemetryDrawer.addLog(`Load model #${slot} failed: ${msg}`);
+          toast(`Failed to load Model #${slot}: ${msg}`, 'error');
         }
       },
       onExportModel: async (slot) => {
@@ -355,7 +345,12 @@ class App {
         this.telemetryDrawer.addLog('Cleared all generated models from session bank.');
       },
       onConfigureNeuronDbFolder: () => this.imports.triggerConfigureNeuronDbFolder(),
-    });
+      // Library entries live in the folder scan (owned by ImportHandlers).
+      onRequestLibrary: () => this.imports.getLibraryEntries(),
+      onPickLibrary: (slot) => this.imports.pickLibraryModel(slot),
+    },
+    // NeuModMakr serves models + library; presets belong to the synth host.
+    { visibleTabs: ['models', 'library'] });
 
     this.processModal = new ProcessModal(modalsMount, {
       onCancel: () => this.core.cancelProcess(),

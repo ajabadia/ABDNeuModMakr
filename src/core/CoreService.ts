@@ -61,6 +61,14 @@ export interface CoreService {
   /** Update a zone's properties (detune, volume, pan, samples, keys) */
   updateZone(zoneId: string, changes: Partial<Zone>): Promise<Zone>;
 
+  /**
+   * Load a generated model from the bank back into the editor session:
+   * restores name, config, zone layout and resynthesized playable
+   * samples. Throws `BankLoadError` (`NO_BINARIES` when the slot has
+   * metadata but no cached audio, e.g. after a page reload).
+   */
+  loadBankModel(slot: number): Promise<Session>;
+
   /** Remove a zone, expanding its neighbour to cover the gap */
   removeZone(zoneId: string): Promise<void>;
 

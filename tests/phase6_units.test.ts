@@ -40,7 +40,8 @@ import { WebAudioPipeline } from '../src/core/WebAudioPipeline.ts';
 import { ImportHandlers, type ImportContext } from '../src/app/importHandlers.ts';
 import { MenuActions, type MenuContext } from '../src/app/menuActions.ts';
 import type { CoreService } from '../src/core/CoreService.ts';
-import type { ProcessConfig, Session } from '../src/core/types.ts';
+import type { GeneratedModel, ProcessConfig, Session, ZoneAnalysisSummary } from '../src/core/types.ts';
+import type { ZoneBinaryPair } from '../src/core/dsp/PipelineRunner.ts';
 
 function testConfig(): ProcessConfig {
   return {
@@ -519,6 +520,90 @@ async function runPhase6Tests(): Promise<void> {
     p.dispose();
   }
   console.log('[PASS] 10. updateProcessConfig history-after-validation');
+
+  // ── 11. buildBankLoadPlan (pure assembly for full model loads) ──
+  {
+    const { buildBankLoadPlan, BankLoadError } = await import('../src/core/bankService.ts');
+    const pair = (s: number): ZoneBinaryPair => ({
+      scapeBinary: new Uint8Array([s]),
+      sphereBinary: new Uint8Array([s]),
+    });
+    const sum = (sampleName: string, lowKey: number, rootKey: number, highKey: number): ZoneAnalysisSummary => ({
+      zoneId: `${sampleName}-z`,
+      lowKey,
+      rootKey,
+      highKey,
+      sampleName,
+      sampleRate: 44100,
+      durationSec: 1.0,
+      detectedF0Hz: 440,
+      targetF0Hz: 440,
+      gridResidualCents: 0,
+      gridObservations: 16,
+      gridBand: 'green',
+      gridNotice: 'test',
+      layerCount: 1,
+      frameCount: 16,
+      activePartials: 64,
+      octaveFoldCents: 0,
+      biGrid: false,
+      amplitudes: new Array<number>(64).fill(0),
+      frequencyOffsets: new Array<number>(64).fill(0),
+    });
+    const base: GeneratedModel = {
+      slot: 7,
+      name: 'LoadMe',
+      zoneCount: 2,
+      complexity: 9,
+      parameterSet: 3,
+      createdAt: '2026-01-01T00:00:00Z',
+      path: 'Models/007.model',
+      targetFormat: 'dual',
+      zonesAnalysis: [],
+      neuronikModelJson: JSON.stringify({
+        name: 'LoadMe',
+        slot: 7,
+        zones: [
+          { lowKey: 0, rootKey: 48, highKey: 63, sampleName: 'a.wav', sampleHigh: 'b.wav' },
+          { lowKey: 64, rootKey: 72, highKey: 127, sampleName: 'a.wav' },
+        ],
+      }),
+    };
+
+    // Missing record / missing binaries / count mismatch / no zones
+    assert.throws(() => buildBankLoadPlan(undefined, [pair(1)]), (e: unknown) => e instanceof BankLoadError && e.code === 'NOT_FOUND');
+    assert.throws(() => buildBankLoadPlan(base, undefined), (e: unknown) => e instanceof BankLoadError && e.code === 'NO_BINARIES');
+    assert.throws(() => buildBankLoadPlan(base, []), (e: unknown) => e instanceof BankLoadError && e.code === 'NO_BINARIES');
+    assert.throws(() => buildBankLoadPlan(base, [pair(1)]), (e: unknown) => e instanceof BankLoadError && e.code === 'MISMATCH');
+    assert.throws(
+      () => buildBankLoadPlan({ ...base, neuronikModelJson: undefined, zonesAnalysis: [] }, [pair(1)]),
+      (e: unknown) => e instanceof BankLoadError && e.code === 'NO_ZONES'
+    );
+
+    // Ordered-unique sample alignment: [a.wav, b.wav] ↔ 2 binaries;
+    // zone 2 reuses a.wav; config carried over from the record.
+    const plan = buildBankLoadPlan(base, [pair(1), pair(2)]);
+    assert.deepEqual(plan.sampleOrder, ['a.wav', 'b.wav']);
+    assert.equal(plan.zones.length, 2);
+    assert.equal(plan.zones[0].sampleHigh, 'b.wav');
+    assert.equal(plan.zones[1].sampleLow, 'a.wav');
+    assert.equal(plan.processConfig.modelName, 'LoadMe');
+    assert.equal(plan.processConfig.modelNumber, 7);
+    assert.equal(plan.processConfig.complexity, 9);
+
+    // Fallback when neuronikModelJson is absent: zonesAnalysis (low only).
+    const fallback = buildBankLoadPlan(
+      {
+        ...base,
+        neuronikModelJson: undefined,
+        zonesAnalysis: [sum('solo.wav', 0, 60, 127)],
+      },
+      [pair(9)]
+    );
+    assert.deepEqual(fallback.sampleOrder, ['solo.wav']);
+    assert.equal(fallback.zones[0].sampleHigh, null);
+  }
+  console.log('[PASS] 11. buildBankLoadPlan mapping + error contract');
 
   console.log('=== ALL PHASE 6 TESTS PASSED ===');
 }

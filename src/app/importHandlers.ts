@@ -312,28 +312,71 @@ export class ImportHandlers {
     }
   }
 
+  private lastLibraryEntries: NeuronDbModelEntry[] = [];
+  private lastLibraryPick: ((slot: number) => void) | null = null;
+
+  private setLibrarySource(entries: NeuronDbModelEntry[], pick: (slot: number) => void): void {
+    this.lastLibraryEntries = entries;
+    this.lastLibraryPick = pick;
+  }
+
+  /** Live entries for the bank drawer's Library tab (pull model; mutated in place by scans). */
+  public getLibraryEntries(): NeuronDbModelEntry[] {
+    return this.lastLibraryEntries;
+  }
+
+  /** Load a library entry exactly like picking it in the NeuronDB modal. */
+  public pickLibraryModel(slot: number): void {
+    this.lastLibraryPick?.(slot);
+  }
+
+  private async readModelDirFiles(
+    modelDir: FileSystemDirectoryHandle,
+    folderPrefix: string
+  ): Promise<{ name: string; buffer: ArrayBuffer }[]> {
+    type IterDir = FileSystemDirectoryHandle & {
+      values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
+    };
+    const out: { name: string; buffer: ArrayBuffer }[] = [];
+    for await (const entry of (modelDir as IterDir).values()) {
+      if (entry.kind === 'file') {
+        if (entry.name.startsWith('.') || entry.name.startsWith('._')) continue;
+        const file = await (entry as FileSystemFileHandle).getFile();
+        const buffer = await file.arrayBuffer();
+        out.push({ name: `${folderPrefix}/${entry.name}`, buffer });
+      }
+    }
+    return out;
+  }
+
+  private async loadModelDirSlot(
+    modelSubDirs: Map<number, FileSystemDirectoryHandle>,
+    chosenSlot: number
+  ): Promise<void> {
+    try {
+      const targetDir = modelSubDirs.get(chosenSlot);
+      if (!targetDir) return;
+      const loaded = await this.readModelDirFiles(targetDir, targetDir.name);
+      const model = await this.ctx.core.importModelFiles(loaded);
+      this.ctx.session = this.ctx.core.getSession()!;
+      this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
+      this.ctx.log(
+        `Imported model #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
+      );
+      this.ctx.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.log(`Error loading model #${chosenSlot}: ${msg}`);
+      toast(`Failed to load model #${String(chosenSlot).padStart(3, '0')}: ${msg}`, 'error');
+    }
+  }
+
   async importFromDirectoryHandle(
     rootHandle: FileSystemDirectoryHandle,
     preferredKind: 'audio' | 'model'
   ): Promise<void> {
     type IterDir = FileSystemDirectoryHandle & {
       values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
-    };
-
-    const readModelDirFiles = async (
-      modelDir: FileSystemDirectoryHandle,
-      folderPrefix: string
-    ): Promise<{ name: string; buffer: ArrayBuffer }[]> => {
-      const out: { name: string; buffer: ArrayBuffer }[] = [];
-      for await (const entry of (modelDir as IterDir).values()) {
-        if (entry.kind === 'file') {
-          if (entry.name.startsWith('.') || entry.name.startsWith('._')) continue;
-          const file = await (entry as FileSystemFileHandle).getFile();
-          const buffer = await file.arrayBuffer();
-          out.push({ name: `${folderPrefix}/${entry.name}`, buffer });
-        }
-      }
-      return out;
     };
 
     // 1. Check if rootHandle itself is a `<NNN>.model` directory or contains MName / map.script / .scape
@@ -363,7 +406,7 @@ export class ImportHandlers {
     });
 
     if (hasDirectModelFiles) {
-      const loaded = await readModelDirFiles(rootHandle, rootHandle.name);
+      const loaded = await this.readModelDirFiles(rootHandle, rootHandle.name);
       const model = await this.ctx.core.importModelFiles(loaded);
       this.ctx.session = this.ctx.core.getSession()!;
       this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
@@ -403,7 +446,7 @@ export class ImportHandlers {
       const availableSlots = Array.from(modelSubDirs.keys()).sort((a, b) => a - b);
       if (availableSlots.length === 1) {
         const targetDir = modelSubDirs.get(availableSlots[0])!;
-        const loaded = await readModelDirFiles(targetDir, targetDir.name);
+        const loaded = await this.readModelDirFiles(targetDir, targetDir.name);
         const model = await this.ctx.core.importModelFiles(loaded);
         this.ctx.session = this.ctx.core.getSession()!;
         this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
@@ -446,24 +489,10 @@ export class ImportHandlers {
       });
 
       this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
-        void (async () => {
-          try {
-            const targetDir = modelSubDirs.get(chosenSlot);
-            if (!targetDir) return;
-            const loaded = await readModelDirFiles(targetDir, targetDir.name);
-            const model = await this.ctx.core.importModelFiles(loaded);
-            this.ctx.session = this.ctx.core.getSession()!;
-            this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
-            this.ctx.log(
-              `Imported model #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
-            );
-            this.ctx.refresh();
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            this.ctx.log(`Error loading model #${chosenSlot}: ${msg}`);
-            toast(`Failed to load model #${String(chosenSlot).padStart(3, '0')}: ${msg}`, 'error');
-          }
-        })();
+        void this.loadModelDirSlot(modelSubDirs, chosenSlot);
+      });
+      this.setLibrarySource(initialEntries, (slot) => {
+        void this.loadModelDirSlot(modelSubDirs, slot);
       });
 
       // Progressively scan lightweight headers in batches of 20 without blocking UI
@@ -680,6 +709,12 @@ export class ImportHandlers {
 
         this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
           const files = modelFolders.get(chosenSlot);
+          if (files) {
+            void loadSlotFiles(files);
+          }
+        });
+        this.setLibrarySource(initialEntries, (slot) => {
+          const files = modelFolders.get(slot);
           if (files) {
             void loadSlotFiles(files);
           }
@@ -918,7 +953,7 @@ export class ImportHandlers {
           };
         });
 
-        this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
+        const pickZipSlot = (chosenSlot: number): void => {
           void (async () => {
             const files = modelFolders.get(chosenSlot);
             if (!files) return;
@@ -930,7 +965,9 @@ export class ImportHandlers {
             );
             this.ctx.refresh();
           })();
-        });
+        };
+        this.ctx.neuronDb.open(initialEntries, pickZipSlot);
+        this.setLibrarySource(initialEntries, pickZipSlot);
         return;
       }
 
