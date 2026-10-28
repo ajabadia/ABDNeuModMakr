@@ -251,6 +251,15 @@ export class NeuronDbModal {
     return this.abortScan;
   }
 
+  /**
+   * Allows a background header scan (e.g. drawer refresh) without
+   * opening the modal: closing the modal sets the abort flag, and the
+   * scan loops stop on it. The drawer refresh resets it first.
+   */
+  public beginBackgroundScan(): void {
+    this.abortScan = false;
+  }
+
   public updateEntry(updated: NeuronDbModelEntry): void {
     if (this.abortScan || !this.backdropEl || this.backdropEl.classList.contains('is-hidden')) {
       return;

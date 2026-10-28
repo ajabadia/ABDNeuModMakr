@@ -190,6 +190,7 @@ export class ImportHandlers {
       void (async () => {
         try {
           const dirHandle = await win.showDirectoryPicker!({ mode: 'read' });
+          this.lastNeuronDbSource = { kind: 'handle', dir: dirHandle };
           await this.importFromDirectoryHandle(dirHandle, 'model');
           const bank = await this.ctx.core.loadBank();
           this.ctx.bank.setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
@@ -211,9 +212,9 @@ export class ImportHandlers {
     (fileInput as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true;
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
-      if (!fileList || fileList.length === 0) return;
-      await this.importFromWebkitFileList(fileList, 'model');
-      const bank = await this.ctx.core.loadBank();
+      if (!fileList || fileList.length === 0) return;          this.lastNeuronDbSource = { kind: 'files', files: fileList };
+          await this.importFromWebkitFileList(fileList, 'model');
+          const bank = await this.ctx.core.loadBank();
       this.ctx.bank.setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
       this.ctx.bank.open();
     });
@@ -314,6 +315,11 @@ export class ImportHandlers {
 
   private lastLibraryEntries: NeuronDbModelEntry[] = [];
   private lastLibraryPick: ((slot: number) => void) | null = null;
+  /** Last configured library source, retained so refresh can rescan without a picker. */
+  private lastNeuronDbSource:
+    | { kind: 'handle'; dir: FileSystemDirectoryHandle }
+    | { kind: 'files'; files: FileList }
+    | null = null;
 
   private setLibrarySource(entries: NeuronDbModelEntry[], pick: (slot: number) => void): void {
     this.lastLibraryEntries = entries;
@@ -328,6 +334,32 @@ export class ImportHandlers {
   /** Load a library entry exactly like picking it in the NeuronDB modal. */
   public pickLibraryModel(slot: number): void {
     this.lastLibraryPick?.(slot);
+  }
+
+  /**
+   * Rescans the last configured NeuronDB folder without opening a picker.
+   * Returns null when no folder was ever configured (the caller should
+   * open the configure flow instead). Never touches the editor session:
+   * single-model and audio layouts are skipped, only the multi-model
+   * library (+ presets) is refreshed.
+   */
+  public async refreshNeuronDbFolder(): Promise<{ models: number; presets: number } | null> {
+    const src = this.lastNeuronDbSource;
+    if (!src) return null;
+    this.ctx.neuronDb.beginBackgroundScan();
+    try {
+      if (src.kind === 'handle') {
+        await this.importFromDirectoryHandle(src.dir, 'model', { openModal: false, applyToSession: false });
+      } else {
+        await this.importFromWebkitFileList(src.files, 'model', { openModal: false, applyToSession: false });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.log(`Refresh NeuronDB folder error: ${msg}`);
+      throw err;
+    }
+    const bank = await this.ctx.core.loadBank();
+    return { models: this.lastLibraryEntries.length, presets: bank.presets.length };
   }
 
   private async readModelDirFiles(
@@ -373,7 +405,8 @@ export class ImportHandlers {
 
   async importFromDirectoryHandle(
     rootHandle: FileSystemDirectoryHandle,
-    preferredKind: 'audio' | 'model'
+    preferredKind: 'audio' | 'model',
+    opts?: { openModal?: boolean; applyToSession?: boolean }
   ): Promise<void> {
     type IterDir = FileSystemDirectoryHandle & {
       values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
@@ -406,6 +439,8 @@ export class ImportHandlers {
     });
 
     if (hasDirectModelFiles) {
+      // Refresh never replaces the editor session.
+      if (opts?.applyToSession === false) return;
       const loaded = await this.readModelDirFiles(rootHandle, rootHandle.name);
       const model = await this.ctx.core.importModelFiles(loaded);
       this.ctx.session = this.ctx.core.getSession()!;
@@ -445,6 +480,9 @@ export class ImportHandlers {
       await this.scanSoundPresets(rootHandle, subDirs, directFiles);
       const availableSlots = Array.from(modelSubDirs.keys()).sort((a, b) => a - b);
       if (availableSlots.length === 1) {
+        // A single model folder loads straight into the session on
+        // configure; refresh skips it (nothing library-like to rescan).
+        if (opts?.applyToSession === false) return;
         const targetDir = modelSubDirs.get(availableSlots[0])!;
         const loaded = await this.readModelDirFiles(targetDir, targetDir.name);
         const model = await this.ctx.core.importModelFiles(loaded);
@@ -488,9 +526,11 @@ export class ImportHandlers {
         };
       });
 
-      this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
-        void this.loadModelDirSlot(modelSubDirs, chosenSlot);
-      });
+      if (opts?.openModal !== false) {
+        this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
+          void this.loadModelDirSlot(modelSubDirs, chosenSlot);
+        });
+      }
       this.setLibrarySource(initialEntries, (slot) => {
         void this.loadModelDirSlot(modelSubDirs, slot);
       });
@@ -587,6 +627,8 @@ export class ImportHandlers {
     }
 
     // 3. Otherwise collect `.wav` / `.aif` / `.aiff` audio files (recursively up to 1 level)
+    // Refresh never replaces the editor session with audio imports.
+    if (opts?.applyToSession === false) return;
     const audioFiles: { name: string; buffer: ArrayBuffer }[] = [];
     const collectAudio = async (dir: FileSystemDirectoryHandle, depth: number): Promise<void> => {
       for await (const entry of (dir as IterDir).values()) {
@@ -628,7 +670,8 @@ export class ImportHandlers {
 
   async importFromWebkitFileList(
     fileList: FileList,
-    preferredKind: 'audio' | 'model'
+    preferredKind: 'audio' | 'model',
+    opts?: { openModal?: boolean; applyToSession?: boolean }
   ): Promise<void> {
     try {
       // Group model files by `<NNN>.model` folder first WITHOUT reading all 4,527 buffers into RAM
@@ -684,6 +727,9 @@ export class ImportHandlers {
         };
 
         if (modelFolders.size <= 1) {
+          // A single model folder loads straight into the session on
+          // configure; refresh skips it (nothing library-like to rescan).
+          if (opts?.applyToSession === false) return;
           const targetFiles =
             modelFolders.size === 1
               ? Array.from(modelFolders.values())[0]
@@ -707,12 +753,14 @@ export class ImportHandlers {
           loadedMeta: false,
         }));
 
-        this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
-          const files = modelFolders.get(chosenSlot);
-          if (files) {
-            void loadSlotFiles(files);
-          }
-        });
+        if (opts?.openModal !== false) {
+          this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
+            const files = modelFolders.get(chosenSlot);
+            if (files) {
+              void loadSlotFiles(files);
+            }
+          });
+        }
         this.setLibrarySource(initialEntries, (slot) => {
           const files = modelFolders.get(slot);
           if (files) {

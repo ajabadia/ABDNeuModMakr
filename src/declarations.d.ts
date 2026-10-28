@@ -10,6 +10,12 @@ declare module '@abdsynths/shared/components/bank/bankShell.js' {
     title?: string;
     iconHtml?: string;
   }
+  export interface BankShellFooterAction {
+    id: string;
+    label: string;
+    title?: string;
+    kind?: 'primary' | 'outline';
+  }
   export interface BankShellOptions {
     title?: string;
     badge?: string;
@@ -17,6 +23,7 @@ declare module '@abdsynths/shared/components/bank/bankShell.js' {
     activeTab?: string;
     searchPlaceholder?: string;
     headerActions?: BankShellHeaderAction[];
+    footerActions?: BankShellFooterAction[];
     onTabChange?: (tab: string) => void;
     onSearch?: (query: string) => void;
     onHeaderAction?: (id: string) => void;
@@ -35,6 +42,9 @@ declare module '@abdsynths/shared/components/bank/bankShell.js' {
     setTab(tabId: string): void;
     focusSearch(): void;
     flashStatus(message: string, kind?: 'ok' | 'working' | 'error'): void;
+    setFootSlot(text: string): void;
+    setFooterStatus(text: string): void;
+    setBusy(actionId: string, active: boolean): void;
     destroy(): void;
   }
   export function createBankShell(options?: BankShellOptions): BankShell;
@@ -76,6 +86,19 @@ declare module '@abdsynths/shared/components/bank/bankCategories.js' {
     catClass: string;
     paramId: number;
   };
+}
+
+declare module '@abdsynths/shared/components/bank/bankChips.js' {
+  export interface BankChipItem {
+    id: string;
+    label: string;
+    count?: number;
+    catClass?: string;
+    title?: string;
+    prefixHtml?: string;
+  }
+  export function bankChipsHtml(items: BankChipItem[], activeId?: string): string;
+  export function bindBankChips(container: HTMLElement, onPick: (id: string) => void): () => void;
 }
 
 declare module '@abdsynths/midi-keyb' {

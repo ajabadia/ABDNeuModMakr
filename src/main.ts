@@ -347,6 +347,8 @@ class App {
       onConfigureNeuronDbFolder: () => this.imports.triggerConfigureNeuronDbFolder(),
       // Library entries live in the folder scan (owned by ImportHandlers).
       onRequestLibrary: () => this.imports.getLibraryEntries(),
+      // Refresh rescans the last configured folder without a picker.
+      onRefreshLibrary: () => this.imports.refreshNeuronDbFolder(),
       onPickLibrary: (slot) => this.imports.pickLibraryModel(slot),
     },
     // NeuModMakr serves models + library; presets belong to the synth host.
