@@ -311,6 +311,36 @@ class App {
           this.bankDrawer.setSelectedSlot(slot);
         }
       },
+      // Preset pick (bank presets tab): the drawer only serves the
+      // selection — this host decides. A preset references a model, so
+      // jump the editor to that model when the bank holds it; otherwise
+      // explain instead of silently retargeting to an empty slot.
+      onSelectPreset: async (presetSlot, name, modelIndex) => {
+        const bank = await this.core.loadBank();
+        this.bankDrawer.setBank(bank, this.session?.processConfig.modelNumber ?? null);
+        const model = bank.models.find((m) => m.slot === modelIndex);
+        if (this.session && model) {
+          this.session = this.core.updateProcessConfig({ modelNumber: modelIndex });
+          const errors = this.core.validateCoverage();
+          this.processPanel.setConfig(this.session.processConfig, {
+            errors,
+            zones: this.session.zones,
+          });
+          this.navbar.updateSession(this.session, errors);
+          this.bankDrawer.setSelectedSlot(modelIndex);
+          this.bankDrawer.setSelectedPreset(presetSlot);
+          this.telemetryDrawer.addLog(
+            `Loaded preset #${String(presetSlot).padStart(3, '0')} '${name}' → editing Model #${String(modelIndex).padStart(3, '0')} '${model.name}'.`
+          );
+          toast(`Preset '${name}' → Model #${modelIndex} '${model.name}'`, 'success');
+          this.bankDrawer.close();
+        } else {
+          this.bankDrawer.setSelectedPreset(presetSlot);
+          const msg = `Preset '${name}' uses Model #${modelIndex}, which is not in this bank. Import it via the Models tab or a folder first.`;
+          this.telemetryDrawer.addLog(msg);
+          toast(msg, 'warning');
+        }
+      },
       onExportModel: async (slot) => {
         await this.core.exportModel(
           slot,

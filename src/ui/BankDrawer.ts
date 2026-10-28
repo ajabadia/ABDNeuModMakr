@@ -15,6 +15,14 @@ export interface BankDrawerHandlers {
   onExportModel: (slot: number) => void;
   onClearModels?: () => void;
   onConfigureNeuronDbFolder?: () => void;
+  /**
+   * Preset selection (presets tab). The component only serves the
+   * selection — the host decides what loading means (same contract as
+   * ABDAxionikVS, whose synth applies the preset to its engine).
+   * Optional: when absent, the drawer falls back to
+   * `onSelectModel(preset.modelIndex)`.
+   */
+  onSelectPreset?: (slot: number, name: string, modelIndex: number) => void;
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
@@ -40,6 +48,7 @@ export class BankDrawer {
   private activeTab: 'models' | 'presets' = 'models';
   private filterQuery: string = '';
   private selectedSlot: number | null = null;
+  private selectedPresetSlot: number | null = null;
 
   constructor(container: HTMLElement, handlers: BankDrawerHandlers) {
     this.container = container;
@@ -168,6 +177,7 @@ export class BankDrawer {
     if (selectedSlot !== undefined) {
       this.selectedSlot = selectedSlot;
     }
+    this.selectedPresetSlot = null;
     this.updateCounters();
     if (this.activeTab === 'models') {
       this.renderModels();
@@ -202,6 +212,30 @@ export class BankDrawer {
     this.updateFooterSelection();
   }
 
+  /** Preset-tab highlight (selection only — the host decides on Load). */
+  public setSelectedPreset(presetSlot: number | null): void {
+    this.selectedPresetSlot = presetSlot;
+    if (!this.drawerElement) return;
+    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const key = card.getAttribute('data-slot');
+      card.classList.toggle(
+        'wt-selected',
+        key !== null && parseInt(key, 10) === presetSlot
+      );
+    });
+    this.updateFooterSelection();
+  }
+
+  private servePreset(presetSlot: number, name: string, modelIndex: number): void {
+    if (this.handlers.onSelectPreset) {
+      this.handlers.onSelectPreset(presetSlot, name, modelIndex);
+    } else {
+      // Legacy fallback: hosts without a preset loader keep the old
+      // switch-editor-to-model behavior.
+      this.handlers.onSelectModel(modelIndex);
+    }
+  }
+
   private updateFooterSelection(): void {
     if (!this.drawerElement) return;
     const mCount = this.currentBank?.models.length ?? 0;
@@ -217,7 +251,15 @@ export class BankDrawer {
         this.selectedSlot === null ? 'BANK' : `#${String(this.selectedSlot).padStart(3, '0')}`;
     }
     const footStatusEl = this.drawerElement.querySelector('#bank-foot-status');
-    if (footStatusEl) footStatusEl.textContent = sel ? `${base} | Sel: ${sel.name}` : base;
+    if (!footStatusEl) return;
+    if (this.activeTab === 'presets' && this.selectedPresetSlot !== null) {
+      const preset = this.currentBank?.presets.find((p) => p.slot === this.selectedPresetSlot);
+      footStatusEl.textContent = preset
+        ? `${base} | Sel: ${preset.name} (→ Model #${String(preset.modelIndex).padStart(3, '0')})`
+        : base;
+      return;
+    }
+    footStatusEl.textContent = sel ? `${base} | Sel: ${sel.name}` : base;
   }
 
   private renderModels(): void {
@@ -396,7 +438,7 @@ export class BankDrawer {
           .map((p) => {
             const catInfo = getPresetCategoryInfo(p.category);
             return `
-              <div class="ndb-card ${catInfo.catClass}${p.modelIndex === this.selectedSlot ? ' wt-selected' : ''}" data-slot="${p.slot}" data-model="${p.modelIndex}">
+              <div class="ndb-card ${catInfo.catClass}${p.slot === this.selectedPresetSlot ? ' wt-selected' : ''}" data-slot="${p.slot}" data-model="${p.modelIndex}">
                 <div class="ndb-card-icon ${catInfo.catClass}">
                   ${catInfo.icon}
                 </div>
@@ -408,11 +450,12 @@ export class BankDrawer {
                   <div class="ndb-card-name" title="${p.name}">${p.name}</div>
                   <div class="ndb-card-meta">
                     <span class="ndb-card-badge">Uses Model #${String(p.modelIndex).padStart(3, '0')}</span>
+                    <span class="ndb-card-badge">${p.parameterCount} params</span>
                   </div>
                 </div>
                 <div class="ndb-card-actions">
-                  <button type="button" class="btn btn-xs btn-primary btn-select-preset-model" data-slot="${p.modelIndex}" title="Switch editor to Model #${p.modelIndex}">
-                    Select Model
+                  <button type="button" class="btn btn-xs btn-primary btn-load-preset" data-slot="${p.slot}" data-name="${p.name}" data-model="${p.modelIndex}" title="Load Sound Preset #${String(p.slot).padStart(3, '0')}">
+                    Load Sound
                   </button>
                 </div>
               </div>
@@ -422,22 +465,34 @@ export class BankDrawer {
       </div>
     `;
 
+    // Single click only highlights: the preset is served to the host on
+    // double-click / Load, which decides what loading means. (Mirrors the
+    // synth: browsing must not retarget the editor on every click.)
     container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const presetSlot = parseInt(card.getAttribute('data-slot') || '0', 10);
       const modelSlot = parseInt(card.getAttribute('data-model') || '0', 10);
+      const name = card.querySelector('.ndb-card-name')?.textContent || `Sound${presetSlot}`;
       card.addEventListener('click', () => {
-        this.setSelectedSlot(modelSlot);
-        this.handlers.onSelectModel(modelSlot);
+        this.setSelectedPreset(presetSlot);
       });
       card.addEventListener('dblclick', () => {
-        this.handlers.onSelectModel(modelSlot);
+        this.setSelectedPreset(presetSlot);
+        this.servePreset(presetSlot, name, modelSlot);
       });
     });
 
-    container.querySelectorAll('.btn-select-preset-model').forEach((btn) => {
+    container.querySelectorAll('.btn-load-preset').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const modelSlot = parseInt(btn.getAttribute('data-slot') || '0', 10);
-        this.handlers.onSelectModel(modelSlot);
+        const presetSlot = parseInt(btn.getAttribute('data-slot') || '0', 10);
+        const modelSlot = parseInt(btn.getAttribute('data-model') || '0', 10);
+        const card = btn.closest('.ndb-card') as HTMLElement | null;
+        const name =
+          btn.getAttribute('data-name') ||
+          card?.querySelector('.ndb-card-name')?.textContent ||
+          `Sound${presetSlot}`;
+        this.setSelectedPreset(presetSlot);
+        this.servePreset(presetSlot, name, modelSlot);
       });
     });
   }
