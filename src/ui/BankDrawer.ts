@@ -442,6 +442,11 @@ export class BankDrawer {
     });
   }
 
+  /** Read-only visibility for drawer-exclusivity logic (additive; no behavior change). */
+  public isVisible(): boolean {
+    return this.isOpen;
+  }
+
   public toggle(): void {
     if (this.isOpen) {
       this.close();

@@ -425,8 +425,39 @@ async function runPhase6Tests(): Promise<void> {
       assert.ok(logs.some((l) => l === 'Redo: Y'));
       assert.equal(refreshed, 1);
     }
+    // Drawers are mutually exclusive: opening Bank closes Telemetry and vice versa
+    {
+      const mkDrawer = (open: boolean) => {
+        const d = {
+          visible: open,
+          isVisible: () => d.visible,
+          toggle: () => { d.visible = !d.visible; },
+          open: () => { d.visible = true; },
+          close: () => { d.visible = false; },
+        };
+        return d;
+      };
+      const telemetryDrawer = mkDrawer(false);
+      const bankDrawer = mkDrawer(true); // bank auto-opened by folder import
+      const ctx = mkCtx({}, createInitialSession('D'));
+      (ctx.shell as unknown as { getTelemetry: () => unknown }).getTelemetry = () => telemetryDrawer;
+      (ctx.shell as unknown as { getBank: () => unknown }).getBank = () => bankDrawer;
+      const handlers = new MenuActions(ctx).buildNavbarHandlers();
+
+      // GAP pill click always surfaces the audit, moving Bank aside
+      handlers.onOpenAudit!();
+      assert.equal(telemetryDrawer.visible, true);
+      assert.equal(bankDrawer.visible, false);
+
+      // Toggling Bank open hides Telemetry
+      (ctx.core as unknown as { loadBank: () => Promise<unknown> }).loadBank = async () => ({ models: [], presets: [] });
+      (bankDrawer as unknown as { setBank: (b: unknown) => void }).setBank = () => {};
+      await handlers.onToggleBank();
+      assert.equal(bankDrawer.visible, true);
+      assert.equal(telemetryDrawer.visible, false);
+    }
   }
-  console.log('[PASS] 8. menuActions navbar handlers + undo/redo selection fallback');
+  console.log('[PASS] 8. menuActions navbar handlers + undo/redo fallback + drawer exclusivity');
 
   // ── 9. workingMode extended (gated on modern-neural, legacy untouched) ──
   {

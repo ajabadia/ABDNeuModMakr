@@ -143,6 +143,7 @@ export class MenuActions {
         } else {
           this.ctx.shell.getTelemetry().addLog(`Coverage errors detected (${errs.length}): ${errs.join(' | ')}`);
         }
+        this.ctx.shell.getBank().close();
         this.ctx.shell.getTelemetry().open();
       },
       onSetTargetFormat: (format) => {
@@ -155,9 +156,23 @@ export class MenuActions {
       onToggleBank: async () => {
         const bank = await this.ctx.core.loadBank();
         this.ctx.shell.getBank().setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
+        const willOpen = !this.ctx.shell.getBank().isVisible();
         this.ctx.shell.getBank().toggle();
+        // Right-side drawers share one fixed slot: surfacing Bank hides
+        // Telemetry so the two never stack and mask each other.
+        if (willOpen) this.ctx.shell.getTelemetry().close();
       },
-      onToggleLogs: () => this.ctx.shell.getTelemetry().toggle(),
+      onToggleLogs: () => {
+        const willOpen = !this.ctx.shell.getTelemetry().isVisible();
+        this.ctx.shell.getTelemetry().toggle();
+        if (willOpen) this.ctx.shell.getBank().close();
+      },
+      // Coverage-pill click: always surface the audit, never toggle it
+      // closed, and move the Bank drawer out of the way first.
+      onOpenAudit: () => {
+        this.ctx.shell.getBank().close();
+        this.ctx.shell.getTelemetry().open();
+      },
       onSelectTheme: (theme) => {
         const idx = this.ctx.themes.indexOf(theme);
         if (idx >= 0) {

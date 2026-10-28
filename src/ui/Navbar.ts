@@ -32,6 +32,8 @@ export interface NavbarHandlers {
   onToggleSpectral: () => void;
   onToggleBank: () => void;
   onToggleLogs: () => void;
+  /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
+  onOpenAudit?: () => void;
   onSelectTheme: (theme: string) => void;
   onToggleTheme: () => void;
 }
@@ -231,8 +233,16 @@ export class AppNavbar {
     this.undoBtn = rightSlot.querySelector('#nav-btn-undo');
     this.redoBtn = rightSlot.querySelector('#nav-btn-redo');
 
-    // Center coverage pill click -> open telemetry / audit
-    this.coverageElement?.addEventListener('click', () => this.handlers.onToggleLogs());
+    // Center coverage pill click -> always surface the coverage audit.
+    // (Toggle semantics hid the audit under an open Bank drawer, which
+    // made the click look like it opened the Bank manager instead.)
+    this.coverageElement?.addEventListener('click', () => {
+      if (this.handlers.onOpenAudit) {
+        this.handlers.onOpenAudit();
+      } else {
+        this.handlers.onToggleLogs();
+      }
+    });
 
     // Right slot button clicks
     this.undoBtn?.addEventListener('click', () => this.handlers.onUndo());

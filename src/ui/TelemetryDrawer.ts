@@ -179,6 +179,11 @@ export class TelemetryDrawer {
     }
   }
 
+  /** Read-only visibility for drawer-exclusivity logic (additive; no behavior change). */
+  public isVisible(): boolean {
+    return this.isOpen;
+  }
+
   public toggle(): void {
     this.isOpen = !this.isOpen;
     this.drawerElement?.classList.toggle('is-closed', !this.isOpen);

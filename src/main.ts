@@ -450,6 +450,9 @@ class App {
         `Cannot start Process: gaps in MIDI note coverage (${errors.length}). Adjust zone boundaries or Reset to a single 0..127 zone.`,
         'error'
       );
+      // Telemetry shares its fixed slot with the Bank drawer: move Bank
+      // aside so the audit (not Bank) is what the user sees.
+      this.bankDrawer.close();
       this.telemetryDrawer.open();
       return;
     }
