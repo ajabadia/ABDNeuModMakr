@@ -34,6 +34,7 @@ declare module '@abdsynths/shared/components/bank/bankShell.js' {
     setTabCount(tabId: string, count: number): void;
     setTab(tabId: string): void;
     focusSearch(): void;
+    flashStatus(message: string, kind?: 'ok' | 'working' | 'error'): void;
     destroy(): void;
   }
   export function createBankShell(options?: BankShellOptions): BankShell;
