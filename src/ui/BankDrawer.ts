@@ -8,6 +8,7 @@
 import { ICONS } from './icons';
 import type { BankSummary } from '../core/types';
 import { PARAMETER_SETS } from '../core';
+import { confirmDialog, toast } from './notify';
 
 export interface BankDrawerHandlers {
   onSelectModel: (slot: number) => void;
@@ -38,6 +39,7 @@ export class BankDrawer {
   private currentBank: BankSummary | null = null;
   private activeTab: 'models' | 'presets' = 'models';
   private filterQuery: string = '';
+  private selectedSlot: number | null = null;
 
   constructor(container: HTMLElement, handlers: BankDrawerHandlers) {
     this.container = container;
@@ -111,12 +113,16 @@ export class BankDrawer {
 
     this.drawerElement.querySelector('#btn-clear-bank-models')?.addEventListener('click', () => {
       if (!this.currentBank || this.currentBank.models.length === 0) {
-        alert('There are no generated models to clear in this bank.');
+        toast('There are no generated models to clear in this bank.', 'warning');
         return;
       }
-      if (confirm(`Are you sure you want to clear all ${this.currentBank.models.length} generated model(s) from the bank?`)) {
-        this.handlers.onClearModels?.();
-      }
+      const count = this.currentBank.models.length;
+      void confirmDialog(
+        `Clear all ${count} generated model(s) from the bank? This cannot be undone.`,
+        { confirmLabel: 'Clear all', danger: true }
+      ).then((ok) => {
+        if (ok) this.handlers.onClearModels?.();
+      });
     });
 
     this.drawerElement.querySelector('#btn-close-bank')?.addEventListener('click', () => {
@@ -157,8 +163,11 @@ export class BankDrawer {
     });
   }
 
-  public setBank(bank: BankSummary): void {
+  public setBank(bank: BankSummary, selectedSlot?: number | null): void {
     this.currentBank = bank;
+    if (selectedSlot !== undefined) {
+      this.selectedSlot = selectedSlot;
+    }
     this.updateCounters();
     if (this.activeTab === 'models') {
       this.renderModels();
@@ -178,8 +187,37 @@ export class BankDrawer {
     const countPresetsEl = this.drawerElement.querySelector('#count-presets');
     if (countPresetsEl) countPresetsEl.textContent = String(pCount);
 
+    this.updateFooterSelection();
+  }
+
+  /** Active editor slot (mirrors the NeuronDB modal). Null = none selected yet. */
+  public setSelectedSlot(slot: number | null): void {
+    this.selectedSlot = slot;
+    if (!this.drawerElement) return;
+    const keyAttr = this.activeTab === 'presets' ? 'data-model' : 'data-slot';
+    this.drawerElement.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
+      const key = card.getAttribute(keyAttr);
+      card.classList.toggle('wt-selected', key !== null && parseInt(key, 10) === slot);
+    });
+    this.updateFooterSelection();
+  }
+
+  private updateFooterSelection(): void {
+    if (!this.drawerElement) return;
+    const mCount = this.currentBank?.models.length ?? 0;
+    const pCount = this.currentBank?.presets.length ?? 0;
+    const base = `${mCount} model${mCount === 1 ? '' : 's'} | ${pCount} preset${pCount === 1 ? '' : 's'}`;
+    const sel =
+      this.selectedSlot === null
+        ? undefined
+        : this.currentBank?.models.find((m) => m.slot === this.selectedSlot);
+    const slotEl = this.drawerElement.querySelector('#bank-foot-slot');
+    if (slotEl) {
+      slotEl.textContent =
+        this.selectedSlot === null ? 'BANK' : `#${String(this.selectedSlot).padStart(3, '0')}`;
+    }
     const footStatusEl = this.drawerElement.querySelector('#bank-foot-status');
-    if (footStatusEl) footStatusEl.textContent = `${mCount} model${mCount === 1 ? '' : 's'} | ${pCount} preset${pCount === 1 ? '' : 's'}`;
+    if (footStatusEl) footStatusEl.textContent = sel ? `${base} | Sel: ${sel.name}` : base;
   }
 
   private renderModels(): void {
@@ -240,7 +278,7 @@ export class BankDrawer {
             const iconSvg = ICONS[iconKey] || ICONS.database;
 
             return `
-              <div class="ndb-card ${catClass}" data-slot="${m.slot}">
+              <div class="ndb-card ${catClass}${m.slot === this.selectedSlot ? ' wt-selected' : ''}" data-slot="${m.slot}">
                 <div class="ndb-card-icon ${catClass}">
                   ${iconSvg}
                 </div>
@@ -272,6 +310,10 @@ export class BankDrawer {
 
     container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
       const slot = parseInt(card.getAttribute('data-slot') || '0', 10);
+      card.addEventListener('click', () => {
+        this.setSelectedSlot(slot);
+        this.handlers.onSelectModel(slot);
+      });
       card.addEventListener('dblclick', () => {
         this.handlers.onSelectModel(slot);
       });
@@ -354,7 +396,7 @@ export class BankDrawer {
           .map((p) => {
             const catInfo = getPresetCategoryInfo(p.category);
             return `
-              <div class="ndb-card ${catInfo.catClass}" data-slot="${p.slot}" data-model="${p.modelIndex}">
+              <div class="ndb-card ${catInfo.catClass}${p.modelIndex === this.selectedSlot ? ' wt-selected' : ''}" data-slot="${p.slot}" data-model="${p.modelIndex}">
                 <div class="ndb-card-icon ${catInfo.catClass}">
                   ${catInfo.icon}
                 </div>
@@ -382,6 +424,10 @@ export class BankDrawer {
 
     container.querySelectorAll<HTMLElement>('.ndb-card').forEach((card) => {
       const modelSlot = parseInt(card.getAttribute('data-model') || '0', 10);
+      card.addEventListener('click', () => {
+        this.setSelectedSlot(modelSlot);
+        this.handlers.onSelectModel(modelSlot);
+      });
       card.addEventListener('dblclick', () => {
         this.handlers.onSelectModel(modelSlot);
       });

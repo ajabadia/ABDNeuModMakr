@@ -120,6 +120,9 @@ export const DEFAULT_MODEL_NAMES = new Set([
   'MyModel',
 ]);
 
+/** Demo/fallback sample baked into fresh sessions and audition paths. */
+export const DEFAULT_SAMPLE_NAME = 'Strings_60_C4.wav';
+
 /**
  * Derives a clean model name from an audio sample filename by stripping path, extension,
  * velocity tags (`_v1`, `_v2`, `_low`, `_high`), Hartmann numeric tokens (`_072_068`),

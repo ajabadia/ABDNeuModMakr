@@ -14,6 +14,7 @@ import {
   panToString,
 } from './ZoneRibbon';
 import { ICONS } from './icons';
+import { confirmDialog } from './notify';
 
 export interface ZoneInspectorHandlers {
   onSelectZone?: (zoneId: string) => void;
@@ -483,13 +484,12 @@ export class ZoneInspector {
     });
 
     this.container.querySelector('#btn-delete-zone')?.addEventListener('click', () => {
-      if (
-        confirm(
-          `Remove zone #${this.zoneIndex + 1} (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})? Adjacent zones will expand to maintain 0..127 coverage.`
-        )
-      ) {
-        this.handlers.onDeleteZone(z.id);
-      }
+      void confirmDialog(
+        `Remove zone #${this.zoneIndex + 1} (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})? Adjacent zones will expand to maintain 0..127 coverage.`,
+        { confirmLabel: 'Remove zone', danger: true }
+      ).then((ok) => {
+        if (ok) this.handlers.onDeleteZone(z.id);
+      });
     });
   }
 

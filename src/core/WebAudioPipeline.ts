@@ -340,7 +340,6 @@ export class WebAudioPipeline implements CoreService {
   public updateProcessConfig(changes: Partial<ProcessConfig>): Session {
     if (!this.session) throw new Error('No active session');
     const keys = Object.keys(changes).sort().join(',');
-    this.pushHistory(`Change Process Settings (${keys})`, `config:${keys}`);
 
     const cfg = this.session.processConfig;
     if (changes.modelNumber !== undefined) {
@@ -378,6 +377,9 @@ export class WebAudioPipeline implements CoreService {
       cfg.workingMode = changes.workingMode;
     }
 
+    // History AFTER validation: a rejected change (e.g. extended without
+    // modern-neural) must not leave a phantom undo step behind.
+    this.pushHistory(`Change Process Settings (${keys})`, `config:${keys}`);
     this.markDirty();
     return this.session;
   }
@@ -1283,13 +1285,13 @@ export class WebAudioPipeline implements CoreService {
     ) {
       if (bundle.hasMNameOrMapScript) {
         throw new Error(
-          'Has seleccionado solo MName o map.script sin los archivos .scape y .sphere del modelo.\n\n' +
-            '• Si usas "Import Model Files / .zip", selecciona TODOS los archivos dentro de la carpeta <NNN>.model (Ctrl+A: MName, map.script, *.scape, *.sphere) o un archivo .zip.\n' +
-            '• O bien usa "File -> Import Model Folder (<NNN>.model)..." para abrir la carpeta directamente.'
+          'Only MName or map.script selected without the model .scape and .sphere files.\n\n' +
+            '• When using "Import Model Files / .zip", select ALL files inside the <NNN>.model (Ctrl+A: MName, map.script, *.scape, *.sphere) or a .zip file.\n' +
+            '• Or use "File -> Import Model Folder (<NNN>.model)..." to open the folder directly.'
         );
       }
       throw new Error(
-        'No se encontraron archivos válidos de modelo (.scape, .sphere, .nmmodel) ni muestras de audio dentro de los archivos seleccionados.'
+        'No valid model files (.scape, .sphere, .nmmodel) or audio samples found in the selected files.'
       );
     }
 

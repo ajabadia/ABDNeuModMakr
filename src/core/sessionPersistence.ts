@@ -10,7 +10,7 @@
 
 import type { Session } from './types.ts';
 import { validateSessionPayload } from './sessionSchema.ts';
-import { DEFAULT_MODEL_NAMES } from './sampleNaming.ts';
+import { DEFAULT_MODEL_NAMES, DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
 
 export const STORAGE_SESSION_KEY = 'abd_neumodmakr_session_v1';
 
@@ -35,7 +35,7 @@ export function restoreSessionFromLocalStorage(): Session | null {
     const parsedSession = validateSessionPayload(JSON.parse(rawSession) as unknown);
     if (
       parsedSession.zones.length === 1 &&
-      parsedSession.zones[0].sampleLow === 'Strings_60_C4.wav' &&
+      parsedSession.zones[0].sampleLow === DEFAULT_SAMPLE_NAME &&
       DEFAULT_MODEL_NAMES.has(parsedSession.processConfig?.modelName?.trim() ?? '')
     ) {
       parsedSession.zones[0].sampleLow = null;

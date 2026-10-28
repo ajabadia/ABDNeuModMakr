@@ -23,6 +23,7 @@ import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
+import { confirmDialog, toast } from './ui/notify';
 
 class App {
   private core: CoreService = createCoreService();
@@ -307,6 +308,7 @@ class App {
             zones: this.session.zones,
           });
           this.navbar.updateSession(this.session, errors);
+          this.bankDrawer.setSelectedSlot(slot);
         }
       },
       onExportModel: async (slot) => {
@@ -319,7 +321,7 @@ class App {
       onClearModels: async () => {
         await this.core.clearGeneratedModels();
         const bank = await this.core.loadBank();
-        this.bankDrawer.setBank(bank);
+        this.bankDrawer.setBank(bank, this.session?.processConfig.modelNumber ?? null);
         this.telemetryDrawer.addLog('Cleared all generated models from session bank.');
       },
       onConfigureNeuronDbFolder: () => this.imports.triggerConfigureNeuronDbFolder(),
@@ -358,6 +360,9 @@ class App {
         case 'history-changed':
           this.navbar.updateHistory(event.history);
           break;
+        case 'bank-updated':
+          this.bankDrawer.setBank(event.bank, this.session?.processConfig.modelNumber ?? null);
+          break;
         case 'process-progress':
           this.processModal.updateProgress(event.progress);
           this.navbar.setProcessing(event.progress.status === 'running');
@@ -386,7 +391,7 @@ class App {
         case 'process-error':
           this.navbar.setProcessing(false);
           this.telemetryDrawer.addLog(`Process error: ${event.error}`);
-          alert(`Error during processing: ${event.error}`);
+          toast(`Error during processing: ${event.error}`, 'error');
           break;
       }
     });
@@ -441,7 +446,10 @@ class App {
     if (!this.session) return;
     const errors = this.core.validateCoverage();
     if (errors.length > 0) {
-      alert(`Cannot start Process: Gaps detected in MIDI note coverage.\n\n${errors.join('\n')}\n\nPlease adjust zone boundaries or click Edit -> Reset to Single 0..127 Zone.`);
+      toast(
+        `Cannot start Process: gaps in MIDI note coverage (${errors.length}). Adjust zone boundaries or Reset to a single 0..127 zone.`,
+        'error'
+      );
       this.telemetryDrawer.open();
       return;
     }
@@ -452,10 +460,10 @@ class App {
     if (srcInfo.importedSources.length > 0) {
       if (srcInfo.newAudioSources.length > 0) {
         // Hybrid session: some zones have new WAV/AIFFs, other zones come from an imported .model
-        const proceedHybrid = window.confirm(
-          `Aviso: Este modelo combina ${srcInfo.newAudioSources.length} muestra(s) WAV/AIFF nueva(s) con ${srcInfo.importedSources.length} fuente(s) heredadas de un .model antiguo (sin WAV original).\n\n` +
-            `• Pulsa [Aceptar] para analizar las ${srcInfo.newAudioSources.length} muestra(s) nueva(s) y CONSERVAR intactos sin pérdida los .scape/.sphere de las ${srcInfo.importedSources.length} fuente(s) heredadas.\n` +
-            `• Pulsa [Cancelar] para no ejecutar el proceso.`
+        const proceedHybrid = await confirmDialog(
+          `This model combines ${srcInfo.newAudioSources.length} new WAV/AIFF sample(s) with ${srcInfo.importedSources.length} inherited source(s) from a legacy .model (no original WAV).\n\n` +
+            `Accept analyzes the ${srcInfo.newAudioSources.length} new sample(s) and keeps the ${srcInfo.importedSources.length} inherited .scape/.sphere source(s) intact and lossless.`,
+          { confirmLabel: 'Analyze new & keep lossless' }
         );
         if (!proceedHybrid) return;
         this.telemetryDrawer.addLog(
@@ -463,37 +471,35 @@ class App {
         );
       } else if (!this.session.dirty && !srcInfo.complexityChanged) {
         // Pure imported .model and nothing was modified at all
-        const forceLossy = window.confirm(
-          `Aviso: El modelo "${this.session.processConfig.modelName}" procede de un .model antiguo ya compilado (sin los WAV originales) y no has modificado ningún parámetro ni zona.\n\n` +
-            `El modelo ya está listo para usarse o exportarse directamente sin necesidad de procesarlo.\n\n` +
-            `• Pulsa [Cancelar] para conservar el modelo original intacto (recomendado).\n` +
-            `• Pulsa [Aceptar] SOLO si deseas forzar un re-análisis desde la onda resintetizada (con pérdida / efecto fotocopia).`
+        const forceLossy = await confirmDialog(
+          `Model "${this.session.processConfig.modelName}" comes from an already-compiled legacy .model (no original WAVs) and nothing was modified. It is ready to use or export as-is.\n\n` +
+            `Only force a re-analysis from the resynthesized wave (lossy / photocopy effect) if you know what you are doing.`,
+          { confirmLabel: 'Force lossy re-analysis', cancelLabel: 'Keep original (recommended)', danger: true }
         );
         if (!forceLossy) return;
         forceReanalyzeImported = true;
       } else if (srcInfo.complexityChanged) {
         // Pure imported .model and user changed Complexity
-        const keepLossless = window.confirm(
-          `Aviso: Las ${srcInfo.importedSources.length} fuente(s) de este modelo proceden de un .model antiguo sin los WAV originales.\n\n` +
-            `Recalcular Complexity (${srcInfo.importedComplexity} -> ${this.session.processConfig.complexity}) obligaría a re-analizar el audio resintetizado (efecto fotocopia con pérdida).\n\n` +
-            `• Pulsa [Aceptar] para actualizar cabeceras/zonas CONSERVANDO los .scape/.sphere originales sin pérdida (recomendado).\n` +
-            `• Pulsa [Cancelar] si prefieres cancelar o forzar el re-análisis con pérdida.`
+        const keepLossless = await confirmDialog(
+          `The ${srcInfo.importedSources.length} source(s) of this model come from a legacy .model without the original WAVs.\n\n` +
+            `Recalculating Complexity (${srcInfo.importedComplexity} -> ${this.session.processConfig.complexity}) would force a re-analysis of the resynthesized audio (lossy photocopy effect).\n\n` +
+            `Accept updates headers/zones while keeping the original .scape/.sphere data lossless (recommended).`,
+          { confirmLabel: 'Update losslessly (recommended)', cancelLabel: 'Cancel' }
         );
         if (!keepLossless) {
-          const confirmForce = window.confirm(
-            `¿Deseas forzar el re-análisis con pérdida (efecto fotocopia) a Complexity ${this.session.processConfig.complexity}?\n\n` +
-              `• Pulsa [Cancelar] para abortar y no tocar el modelo.\n` +
-              `• Pulsa [Aceptar] para forzar el re-análisis.`
+          const confirmForce = await confirmDialog(
+            `Force the lossy re-analysis (photocopy effect) at Complexity ${this.session.processConfig.complexity}?`,
+            { confirmLabel: 'Force re-analysis', danger: true }
           );
           if (!confirmForce) return;
           forceReanalyzeImported = true;
         }
       } else {
         // Pure imported .model and user modified Parameter Set, Name, Slot, or Zone bounds/trims
-        const proceedLossless = window.confirm(
-          `Aviso: Este modelo procede de un .model antiguo ya compilado (sin los WAV originales).\n\n` +
-            `• Pulsa [Aceptar] para aplicar tus cambios de cabeceras/zonas (MName, map.script, Parameter Set) CONSERVANDO los .scape y .sphere originales 100% sin pérdida.\n` +
-            `• Pulsa [Cancelar] para abortar.`
+        const proceedLossless = await confirmDialog(
+          `This model comes from an already-compiled legacy .model (no original WAVs).\n\n` +
+            `Accept applies your header/zone changes (MName, map.script, Parameter Set) while keeping the original .scape and .sphere data 100% lossless.`,
+          { confirmLabel: 'Apply losslessly' }
         );
         if (!proceedLossless) return;
         this.telemetryDrawer.addLog(

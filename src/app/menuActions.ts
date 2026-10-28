@@ -154,7 +154,7 @@ export class MenuActions {
       onToggleSpectral: () => this.ctx.toggleSpectralPanel(),
       onToggleBank: async () => {
         const bank = await this.ctx.core.loadBank();
-        this.ctx.shell.getBank().setBank(bank);
+        this.ctx.shell.getBank().setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
         this.ctx.shell.getBank().toggle();
       },
       onToggleLogs: () => this.ctx.shell.getTelemetry().toggle(),
@@ -275,7 +275,7 @@ export class MenuActions {
         } else if (key === 'b') {
           e.preventDefault();
           void this.ctx.core.loadBank().then((bank) => {
-            this.ctx.shell.getBank().setBank(bank);
+            this.ctx.shell.getBank().setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
             this.ctx.shell.getBank().toggle();
           });
         } else if (key === 'l') {

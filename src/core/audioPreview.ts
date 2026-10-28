@@ -9,7 +9,7 @@
 
 import { decodeWav, synthesizeDemoWav } from './dsp/WavDecoder.ts';
 import { clamp, linearToDb } from './dsp/DspMath.ts';
-import { parseRootKeyFromFilename } from './sampleNaming.ts';
+import { DEFAULT_SAMPLE_NAME, parseRootKeyFromFilename } from './sampleNaming.ts';
 import type { MidiNote, Zone } from './types.ts';
 
 export type PreviewPlaybackMode = 'original' | 'resynthesis';
@@ -128,7 +128,7 @@ export class AudioPreviewService {
       audioBuffer = this.audioCtx.createBuffer(1, mono.length, 44100);
       audioBuffer.copyToChannel(new Float32Array(mono), 0);
     } else {
-      const sampleName = zone.sampleLow ?? 'Strings_60_C4.wav';
+      const sampleName = zone.sampleLow ?? DEFAULT_SAMPLE_NAME;
       const raw =
         this.sources.getSampleBuffer(sampleName) ??
         synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);

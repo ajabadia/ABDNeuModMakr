@@ -18,6 +18,7 @@ import {
 import type { ZoneBinaryPair, ZoneWavPayload } from './dsp/PipelineRunner.ts';
 import { buildModelExportZip } from '@abdsynths/shared/formats/neuron';
 import { createZone } from './sessionFactory.ts';
+import { DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
 import type {
   BankSummary,
   CoreEvent,
@@ -165,7 +166,7 @@ export class BankService {
     const modelName =
       model?.name ?? session?.processConfig.modelName ?? `Model${activeSlot}`;
     const zones = session?.zones ?? [
-      createZone(0, 60, 127, 'Strings_60_C4.wav'),
+      createZone(0, 60, 127, DEFAULT_SAMPLE_NAME),
     ];
     this.ctx.ensureDemoBuffers(zones);
 

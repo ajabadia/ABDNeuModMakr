@@ -18,6 +18,7 @@ import {
   parseZipArchive,
 } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
+import { toast } from '../ui/notify';
 
 export interface ImportContext {
   core: CoreService;
@@ -69,7 +70,7 @@ export class ImportHandlers {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`Error loading ${file.name}: ${msg}`);
-      alert(`Failed to decode audio file "${file.name}":\n${msg}`);
+      toast(`Failed to decode audio file "${file.name}": ${msg}`, 'error');
     }
   }
 
@@ -113,7 +114,7 @@ export class ImportHandlers {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.ctx.log(`Open session error: ${msg}`);
-        alert(`Failed to load session JSON:\n${msg}`);
+        toast(`Failed to load session JSON: ${msg}`, 'error');
       }
     });
     fileInput.click();
@@ -132,7 +133,7 @@ export class ImportHandlers {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           const msg = err instanceof Error ? err.message : String(err);
           this.ctx.log(`Folder import error: ${msg}`);
-          alert(`Failed to import audio folder: ${msg}`);
+          toast(`Failed to import audio folder: ${msg}`, 'error');
         }
       })();
       return;
@@ -163,7 +164,7 @@ export class ImportHandlers {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           const msg = err instanceof Error ? err.message : String(err);
           this.ctx.log(`Model folder import error: ${msg}`);
-          alert(`Failed to import model folder:\n${msg}`);
+          toast(`Failed to import model folder: ${msg}`, 'error');
         }
       })();
       return;
@@ -191,14 +192,14 @@ export class ImportHandlers {
           const dirHandle = await win.showDirectoryPicker!({ mode: 'read' });
           await this.importFromDirectoryHandle(dirHandle, 'model');
           const bank = await this.ctx.core.loadBank();
-          this.ctx.bank.setBank(bank);
+          this.ctx.bank.setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
           this.ctx.bank.open();
           this.ctx.log(`Configured NeuronDB folder: "${dirHandle.name}".`);
         } catch (err) {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           const msg = err instanceof Error ? err.message : String(err);
           this.ctx.log(`Configure NeuronDB folder error: ${msg}`);
-          alert(`Failed to configure NeuronDB folder:\n${msg}`);
+          toast(`Failed to configure NeuronDB folder: ${msg}`, 'error');
         }
       })();
       return;
@@ -213,7 +214,7 @@ export class ImportHandlers {
       if (!fileList || fileList.length === 0) return;
       await this.importFromWebkitFileList(fileList, 'model');
       const bank = await this.ctx.core.loadBank();
-      this.ctx.bank.setBank(bank);
+      this.ctx.bank.setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
       this.ctx.bank.open();
     });
     fileInput.click();
@@ -306,7 +307,7 @@ export class ImportHandlers {
       presets.sort((a, b) => a.slot - b.slot);
       this.ctx.core.setBankPresets(presets);
       const bank = await this.ctx.core.loadBank();
-      this.ctx.bank.setBank(bank);
+      this.ctx.bank.setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
       this.ctx.log(`Loaded ${presets.length} sound preset(s) from NeuronDB.`);
     }
   }
@@ -460,7 +461,7 @@ export class ImportHandlers {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             this.ctx.log(`Error loading model #${chosenSlot}: ${msg}`);
-            alert(`Failed to load model #${String(chosenSlot).padStart(3, '0')}:\n${msg}`);
+            toast(`Failed to load model #${String(chosenSlot).padStart(3, '0')}: ${msg}`, 'error');
           }
         })();
       });
@@ -583,7 +584,7 @@ export class ImportHandlers {
           ? 'No valid .model files (MName, map.script, .scape, .sphere) found in selected folder.'
           : 'No valid .wav / .aif / .aiff audio files found in selected folder.';
       this.ctx.log(`Folder import: ${msg}`);
-      alert(msg);
+      toast(msg, 'warning');
       return;
     }
 
@@ -760,7 +761,7 @@ export class ImportHandlers {
       }
 
       if (audioFileEntries.length === 0) {
-        alert('No valid audio or .model files found in the selected folder.');
+        toast('No valid audio or .model files found in the selected folder.', 'warning');
         return;
       }
 
@@ -779,7 +780,7 @@ export class ImportHandlers {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`Folder import error: ${msg}`);
-      alert(`Failed to import folder: ${msg}`);
+      toast(`Failed to import folder: ${msg}`, 'error');
     }
   }
 
@@ -966,12 +967,12 @@ export class ImportHandlers {
       }
 
       throw new Error(
-        'No se encontraron archivos compatibles (.model, .scape, .sphere, .nmmodel, .neuronikmodel, .wav, .aif o .zip válido).'
+        'No compatible files found (.model, .scape, .sphere, .nmmodel, .neuronikmodel, .wav, .aif or valid .zip).'
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`${sourceLabel} error: ${msg}`);
-      alert(`Error al importar archivos:\n${msg}`);
+      toast(`Failed to import files: ${msg}`, 'error');
     }
   }
 

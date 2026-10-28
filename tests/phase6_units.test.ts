@@ -468,6 +468,27 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 9. workingMode extended gating, velSplit honor/force, JSON gate');
 
+  // ── 10. updateProcessConfig validates BEFORE recording history ──
+  {
+    const p = new WebAudioPipeline();
+    await p.init();
+    await p.newSession('HistGuard');
+    assert.equal(p.getHistoryState().canUndo, false);
+
+    // Rejected change must not leave a phantom undo step
+    assert.throws(() => p.updateProcessConfig({ workingMode: 'extended' }), /modern-neural/);
+    assert.equal(p.getHistoryState().canUndo, false);
+
+    // Accepted change records exactly one step
+    p.updateProcessConfig({ targetFormat: 'modern-neural' });
+    assert.equal(p.getHistoryState().canUndo, true);
+    p.undo();
+    assert.equal(p.getHistoryState().canUndo, false);
+
+    p.dispose();
+  }
+  console.log('[PASS] 10. updateProcessConfig history-after-validation');
+
   console.log('=== ALL PHASE 6 TESTS PASSED ===');
 }
 
