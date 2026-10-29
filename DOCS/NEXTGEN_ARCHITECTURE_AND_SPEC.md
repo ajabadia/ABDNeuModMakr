@@ -226,3 +226,11 @@ Cuando abordemos la expansión de los *Resynators* en el sintetizador C++ / JUCE
 - **Canvas de Forma de Onda con Handles Arrastrables**: Visualización completa de la onda con marcadores interactivos de `Loop Start`, `Loop End` y rampa de `Loop Crossfade (ms)`.
 - **Lupa de Empalme de Fase (`Seam / Zero-Crossing Magnifier`)**: Vista ampliada del punto de unión (`loopEnd` $\rightarrow$ `loopStart`) con ajuste automático a cruces por cero de igual pendiente (*Snap to Zero-Crossing*) y pre-escucha continua en tiempo real mientras se arrastran los puntos.
 - **Controles de Loop**: Selección visual de modo (`no_loop`, `loop_continuous`, `loop_sustain`, `one_shot`, y futuro `ping_pong`), edición numérica en `frames` y `ms`, e integración directa con el `Auto-Loop Finder` de la Fase 8.
+
+---
+
+## 10. Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended — Fase Final)
+
+- **Asignación de Imagen de Portada**: Carga por archivo (`PNG`, `JPG`, `WEBP`, `AVIF`, `SVG`), Drag & Drop o pegado desde portapapeles, visible únicamente en **Modo Extended**.
+- **Conversión Automática a `.webp`**: Procesado en cliente mediante `Canvas` / `OffscreenCanvas` (`image/webp`, calidad `0.88`, resolución normalizada p. ej. `512×512`) para garantizar peso mínimo y carga instantánea.
+- **Almacenamiento en el Contenedor**: Se guarda como `05_extended_model/cover.webp` (y en `IndexedDB`) referenciado en `manifest.json`, mostrándose como carátula del modelo tanto en `ABDNeuModMakr` como en el navegador visual de modelos de `ABDAxionikVS`.

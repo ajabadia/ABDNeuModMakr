@@ -314,9 +314,20 @@ Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
 
 ---
 
-## Fase 14 — Testing, CI/CD y Distribución
+## Fase 14 — Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended) *(Fase Final)*
 
-- [x] Suite de tests automatizados Fases 1 a 6 (`npm test` + `npm run test:types`)
-- [ ] Tests unitarios y de integración para clasificador acústico de Parameter Sets, motor DSP mejorado, estándar 24-bit/96 kHz, editor de loops y contenedor multiformato
+> *Nota: Exclusivo del Modo Extendido (`.nmmodel` y capa `05_extended_model/`). El formato hardware clásico `.model` de 2001 se mantiene intacto sin imagen para preservar compatibilidad binaria estricta.*
+
+- [ ] **Selector y Zona Drag & Drop de Portada (`Model Cover Artwork`)**:
+  - Permitir asignar una imagen de portada al modelo en modo `Extended` (mediante carga de archivos `PNG`, `JPG`, `WEBP`, `AVIF`, `SVG` o arrastrar/pegar desde el portapapeles).
+  - **Conversión y Optimización Automática a `.webp` en Cliente**: Redimensionado inteligente (ej. cuadrada `512×512` o `1024×1024` con recorte centrado `cover`) y codificación automática a **`cover.webp`** mediante `OffscreenCanvas` / `HTMLCanvasElement.toBlob('image/webp', 0.88)` para minimizar el peso dentro del paquete `.nmmodel` y en `IndexedDB`.
+  - **Visualización en `ABDNeuModMakr` y `ABDAxionikVS`**: Previsualización en la cabecera / pestaña `Extended` del modelo, miniaturas en el navegador de bancos (`NeuronDB` / `BankDrawer`) y empaquetado dentro del contenedor `.nmmodel` (`05_extended_model/cover.webp` + referencia en `manifest.json`).
+
+---
+
+## Fase 15 — Testing, CI/CD y Distribución
+
+- [x] Suite de tests automatizados Fases 1 a 8 (`npm test` + `npm run test:types`)
+- [ ] Tests unitarios y de integración para clasificador acústico de Parameter Sets, motor DSP mejorado, estándar 24-bit/96 kHz, editor de loops, portada `.webp` y contenedor multiformato
 - [ ] Configuración de despliegue continuo en Vercel conectado al repositorio de GitHub
 - [ ] Empaquetado opcional desktop (WebView2 / Tauri / Electron) junto al puente local de IA

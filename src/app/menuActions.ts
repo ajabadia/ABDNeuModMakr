@@ -201,12 +201,9 @@ export class MenuActions {
   }
 
   bindUnsavedChangesGuard(): void {
-    window.addEventListener('beforeunload', (e) => {
-      if (this.ctx.session?.dirty) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    });
+    // Session state is continuously auto-persisted to localStorage on every
+    // edit via WebAudioPipeline.saveSessionToStorage(). Do not block page
+    // reloads or HMR with a native browser beforeunload confirmation modal.
   }
 
   performUndo(): void {

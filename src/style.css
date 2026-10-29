@@ -135,7 +135,7 @@ input[type="range"] {
 .workspace-columns {
   flex: 1;
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: clamp(410px, 31vw, 455px) 1fr;
   gap: var(--space-4);
   min-height: 0;
 }
@@ -199,6 +199,7 @@ input[type="range"] {
 }
 
 .process-panel-card {
+  padding: var(--space-3) var(--space-4);
   flex: 1;
   overflow: hidden;
 }
@@ -918,6 +919,50 @@ input[type="range"] {
   gap: var(--space-4);
 }
 
+/* ── Canonical Unified Synth Knob Cell (Parity with ABDAxionikVS) ── */
+.zone-knobs-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-2) 0 var(--space-1);
+}
+
+.synth-knob-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-1);
+}
+
+.synth-knob-cell .abd-knob__label {
+  display: none;
+}
+
+.synth-knob-num {
+  font-size: var(--text-md);
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.synth-knob-title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  text-align: center;
+}
+
 .samples-slots-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1040,7 +1085,7 @@ input[type="range"] {
 .process-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1056,13 +1101,13 @@ input[type="range"] {
 .form-row-name-slot {
   display: grid;
   grid-template-columns: 1fr 94px;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .complexity-buttons-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-1);
+  gap: 3px;
 }
 
 /* Shared option-button core (complexity + param-set); layout variants stay below */
@@ -1080,7 +1125,7 @@ input[type="range"] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 3px var(--space-1);
+  padding: 2px var(--space-1);
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
@@ -1109,15 +1154,15 @@ input[type="range"] {
 
 .param-set-buttons-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 5px;
 }
 
 .btn-param-set {
   align-items: center;
-  gap: var(--space-2);
-  padding: 3px var(--space-2);
-  font-size: var(--text-sm);
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-align: left;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
@@ -1169,11 +1214,11 @@ input[type="range"] {
 
 .param-btn-cat {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: 9px;
   color: var(--color-text-dim);
   background: var(--color-panel-surface-elevated);
   border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
+  padding: 0 3px;
   flex-shrink: 0;
 }
 
@@ -1320,6 +1365,11 @@ input[type="range"] {
 #inp-model-name {
   font-family: var(--font-mono);
   font-weight: 700;
+  padding: 4px var(--space-2);
+}
+
+.form-row-name-slot .input-with-prefix {
+  padding: 2px var(--space-2);
 }
 
 
@@ -1335,47 +1385,47 @@ input[type="range"] {
   background: var(--color-panel-surface);
   border-left: 3px solid var(--color-accent);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  margin-top: var(--space-2);
+  padding: 4px var(--space-2);
+  margin-top: 3px;
 }
 
 .param-set-info-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-1);
+  margin-bottom: 2px;
 }
 
 .param-set-badge {
   background: var(--color-accent-dim);
   color: var(--color-accent);
   font-weight: 700;
-  font-size: var(--text-sm);
-  padding: 1px var(--space-2);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
 }
 
 .param-set-name {
   font-weight: 700;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
 }
 
 .param-set-desc {
-  font-size: var(--text-md);
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
-  line-height: 1.35;
+  line-height: 1.25;
 }
 
 .process-cta-box {
-  margin-bottom: var(--space-3);
-  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--color-panel-border-dim);
   flex-shrink: 0;
 }
 
 .btn-cta-process {
   width: 100%;
-  height: 38px;
+  height: 34px;
   font-size: var(--text-base);
   font-weight: 700;
   letter-spacing: 0.8px;
@@ -1392,10 +1442,10 @@ input[type="range"] {
 }
 
 .cta-notice {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--color-text-dim);
-  margin: var(--space-2) 0 0;
-  line-height: 1.35;
+  margin: 3px 0 0;
+  line-height: 1.25;
   text-align: center;
   transition: color var(--transition-fast);
 }

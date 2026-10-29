@@ -20,6 +20,7 @@ import type {
   Zone,
 } from '../core/types';
 import { DEFAULT_MASTER_WAVE_CONFIG } from '../core/dsp/MasterWaveEnhancer';
+import { Knob } from '@abdsynths/shared/components';
 import {
   midiNoteToString,
   detuneToString,
@@ -78,6 +79,10 @@ export class ZoneInspector {
   private totalZones: number = 1;
   private workingMode: WorkingMode = 'classic';
   private activeDrawerTab: 'general' | 'extended' = 'general';
+  private detuneKnob: Knob | null = null;
+  private volumeKnob: Knob | null = null;
+  private panKnob: Knob | null = null;
+  private isDraggingKnob: boolean = false;
 
   constructor(
     container: HTMLElement,
@@ -158,15 +163,25 @@ export class ZoneInspector {
       sameZone &&
       sameCount &&
       !modeChanged &&
-      activeEl &&
-      this.drawerElement &&
-      this.drawerElement.contains(activeEl)
+      ((activeEl &&
+        this.drawerElement &&
+        this.drawerElement.contains(activeEl)) ||
+        this.isDraggingKnob)
     ) {
       this.syncActiveDom();
       return;
     }
     this.renderTable();
     this.renderDrawer();
+  }
+
+  private destroyZoneKnobs(): void {
+    this.detuneKnob?.destroy();
+    this.detuneKnob = null;
+    this.volumeKnob?.destroy();
+    this.volumeKnob = null;
+    this.panKnob?.destroy();
+    this.panKnob = null;
   }
 
   private syncActiveDom(): void {
@@ -179,6 +194,19 @@ export class ZoneInspector {
       if (dispLow) dispLow.textContent = midiNoteToString(z.lowKey);
       if (dispRoot) dispRoot.textContent = midiNoteToString(z.rootKey);
       if (dispHigh) dispHigh.textContent = midiNoteToString(z.highKey);
+
+      const valDetune = this.drawerElement.querySelector('#val-detune');
+      const valVolume = this.drawerElement.querySelector('#val-volume');
+      const valPan = this.drawerElement.querySelector('#val-pan');
+      if (valDetune) valDetune.textContent = detuneToString(z.detune);
+      if (valVolume) valVolume.textContent = volumeToLongString(z.volume);
+      if (valPan) valPan.textContent = panToString(z.pan);
+
+      if (!this.isDraggingKnob) {
+        this.detuneKnob?.setValue((Math.round(z.detune) + 99) / 198);
+        this.volumeKnob?.setValue((Math.round(z.volume) + 32) / 44);
+        this.panKnob?.setValue((Math.round(z.pan) + 50) / 100);
+      }
     }
 
     // Update the active row cells in the canonical Zone Table
@@ -321,6 +349,7 @@ export class ZoneInspector {
   }
 
   private renderDrawer(): void {
+    this.destroyZoneKnobs();
     if (!this.drawerElement || !this.currentZone) return;
     const z = this.currentZone;
     const zonesList = this.allZones.length > 0 ? this.allZones : [z];
@@ -487,32 +516,26 @@ export class ZoneInspector {
             </div>
           </div>
 
-          <!-- 3. Canonical Tuning, Volume & Pan Controls (MainFrame Sliders) -->
+          <!-- 3. Canonical Tuning, Volume & Pan Controls (Rotary Knobs from @abdsynths/shared) -->
           <div class="inspector-section section-trims">
             <div class="section-title">ZONE PARAMETERS (DETUNE / VOLUME / PAN)</div>
-            <div class="trims-controls-stack">
-              <div class="trim-control">
-                <label for="slider-detune">DETUNE (-99 .. +99)</label>
-                <div class="control-row">
-                  <input type="range" id="slider-detune" min="-99" max="99" value="${Math.round(z.detune)}" step="1" />
-                  <span class="val-display" id="val-detune">${detuneToString(z.detune)}</span>
-                </div>
+            <div class="zone-knobs-row">
+              <div class="synth-knob-cell" title="Fine Detune (-99 .. +99 cents). Double-click knob to reset to 0.">
+                <div id="knob-zone-detune"></div>
+                <span class="synth-knob-num stat-num" id="val-detune">${detuneToString(z.detune)}</span>
+                <span class="synth-knob-title">DETUNE (-99..+99)</span>
               </div>
 
-              <div class="trim-control">
-                <label for="slider-volume">VOLUME (-32dB .. +12dB)</label>
-                <div class="control-row">
-                  <input type="range" id="slider-volume" min="-32" max="12" value="${Math.round(z.volume)}" step="1" />
-                  <span class="val-display" id="val-volume">${volumeToLongString(z.volume)}</span>
-                </div>
+              <div class="synth-knob-cell" title="Zone Volume (-32dB .. +12dB). Double-click knob to reset to 0dB.">
+                <div id="knob-zone-volume"></div>
+                <span class="synth-knob-num stat-num" id="val-volume">${volumeToLongString(z.volume)}</span>
+                <span class="synth-knob-title">VOLUME (-32..+12dB)</span>
               </div>
 
-              <div class="trim-control">
-                <label for="slider-pan">PAN (-50 .. +50)</label>
-                <div class="control-row">
-                  <input type="range" id="slider-pan" min="-50" max="50" value="${Math.round(z.pan)}" step="1" />
-                  <span class="val-display" id="val-pan">${panToString(z.pan)}</span>
-                </div>
+              <div class="synth-knob-cell" title="Zone Pan (-50 .. +50). Double-click knob to reset to Center (0).">
+                <div id="knob-zone-pan"></div>
+                <span class="synth-knob-num stat-num" id="val-pan">${panToString(z.pan)}</span>
+                <span class="synth-knob-title">PAN (-50..+50)</span>
               </div>
             </div>
           </div>
@@ -945,30 +968,85 @@ export class ZoneInspector {
       this.handlers.onUpdateZone(z.id, { highKey: val });
     });
 
-    // Canonical integer Trims: Detune (-99..99), Volume (-32..12 dB), Pan (-50..50)
-    const slDetune = this.drawerElement.querySelector('#slider-detune') as HTMLInputElement | null;
+    // Canonical integer Trims via @abdsynths/shared Knob:
+    // Detune (-99..+99, center 0), Volume (-32..+12 dB, default 0 dB), Pan (-50..+50, center 0)
+    const detuneMount = this.drawerElement.querySelector('#knob-zone-detune') as HTMLElement | null;
     const valDetune = this.drawerElement.querySelector('#val-detune') as HTMLElement | null;
-    slDetune?.addEventListener('input', () => {
-      const val = Math.max(-99, Math.min(99, parseInt(slDetune.value, 10) || 0));
-      if (valDetune) valDetune.textContent = detuneToString(val);
-      this.handlers.onUpdateZone(z.id, { detune: val });
-    });
+    if (detuneMount) {
+      const initDetuneNorm = Math.max(0, Math.min(1, (Math.round(z.detune) + 99) / 198));
+      this.detuneKnob = new Knob(detuneMount, {
+        size: 42,
+        value: 0.5, // double-click resets to 0 cents
+        bipolar: true,
+        step: 1 / 198,
+        label: 'DETUNE',
+        format: (normVal: number) => detuneToString(Math.round(normVal * 198 - 99)),
+        onDragStart: () => {
+          this.isDraggingKnob = true;
+        },
+        onDragEnd: () => {
+          this.isDraggingKnob = false;
+        },
+        onChange: (normVal: number) => {
+          const val = Math.max(-99, Math.min(99, Math.round(normVal * 198 - 99)));
+          if (valDetune) valDetune.textContent = detuneToString(val);
+          this.handlers.onUpdateZone(z.id, { detune: val });
+        },
+      });
+      this.detuneKnob.setValue(initDetuneNorm);
+    }
 
-    const slVol = this.drawerElement.querySelector('#slider-volume') as HTMLInputElement | null;
+    const volMount = this.drawerElement.querySelector('#knob-zone-volume') as HTMLElement | null;
     const valVol = this.drawerElement.querySelector('#val-volume') as HTMLElement | null;
-    slVol?.addEventListener('input', () => {
-      const val = Math.max(-32, Math.min(12, parseInt(slVol.value, 10) || 0));
-      if (valVol) valVol.textContent = volumeToLongString(val);
-      this.handlers.onUpdateZone(z.id, { volume: val });
-    });
+    if (volMount) {
+      const initVolNorm = Math.max(0, Math.min(1, (Math.round(z.volume) + 32) / 44));
+      this.volumeKnob = new Knob(volMount, {
+        size: 42,
+        value: 32 / 44, // double-click resets to 0 dB
+        bipolar: false,
+        step: 1 / 44,
+        label: 'VOLUME',
+        format: (normVal: number) => volumeToLongString(Math.round(normVal * 44 - 32)),
+        onDragStart: () => {
+          this.isDraggingKnob = true;
+        },
+        onDragEnd: () => {
+          this.isDraggingKnob = false;
+        },
+        onChange: (normVal: number) => {
+          const val = Math.max(-32, Math.min(12, Math.round(normVal * 44 - 32)));
+          if (valVol) valVol.textContent = volumeToLongString(val);
+          this.handlers.onUpdateZone(z.id, { volume: val });
+        },
+      });
+      this.volumeKnob.setValue(initVolNorm);
+    }
 
-    const slPan = this.drawerElement.querySelector('#slider-pan') as HTMLInputElement | null;
+    const panMount = this.drawerElement.querySelector('#knob-zone-pan') as HTMLElement | null;
     const valPan = this.drawerElement.querySelector('#val-pan') as HTMLElement | null;
-    slPan?.addEventListener('input', () => {
-      const val = Math.max(-50, Math.min(50, parseInt(slPan.value, 10) || 0));
-      if (valPan) valPan.textContent = panToString(val);
-      this.handlers.onUpdateZone(z.id, { pan: val });
-    });
+    if (panMount) {
+      const initPanNorm = Math.max(0, Math.min(1, (Math.round(z.pan) + 50) / 100));
+      this.panKnob = new Knob(panMount, {
+        size: 42,
+        value: 0.5, // double-click resets to 0 (center)
+        bipolar: true,
+        step: 1 / 100,
+        label: 'PAN',
+        format: (normVal: number) => panToString(Math.round(normVal * 100 - 50)),
+        onDragStart: () => {
+          this.isDraggingKnob = true;
+        },
+        onDragEnd: () => {
+          this.isDraggingKnob = false;
+        },
+        onChange: (normVal: number) => {
+          const val = Math.max(-50, Math.min(50, Math.round(normVal * 100 - 50)));
+          if (valPan) valPan.textContent = panToString(val);
+          this.handlers.onUpdateZone(z.id, { pan: val });
+        },
+      });
+      this.panKnob.setValue(initPanNorm);
+    }
 
     // Velocity split slider (Extended Mode only; core clamps 2..127 and
     // forces 64 in classic, so this stays consistent even if reached otherwise)

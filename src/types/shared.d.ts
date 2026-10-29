@@ -92,13 +92,39 @@ declare module '@abdsynths/shared/components' {
   export function computeFit(p?: Record<string, unknown>): unknown;
   export function mountFitStage(el?: HTMLElement | null, p?: Record<string, unknown>): unknown;
 
+  export interface KnobOptions {
+    size?: number;
+    value?: number;
+    label?: string;
+    ariaLabel?: string | null;
+    skin?: string;
+    bipolar?: boolean;
+    step?: number;
+    paramIndex?: number | string | null;
+    format?: (normalised: number) => string;
+    onChange?: (normalised: number) => void;
+    onSettled?: (normalised: number) => void;
+    onDragStart?: () => void;
+    onDragEnd?: () => void;
+  }
+
+  export class Knob {
+    constructor(container: HTMLElement | string, options?: KnobOptions);
+    setValue(value: number): void;
+    getValue(): number;
+    setModulation(modAmount: number): void;
+    clearModulation(): void;
+    getModulation(): number;
+    render(): void;
+    destroy(): void;
+  }
+
   // Generic control components (not instantiated in this repo; kept as
   // opaque handles so the module surface stays complete without `any`).
   export type SharedControl = Record<string, unknown>;
   export const SynthNavBar: SharedControl;
   export const DEFAULT_NAVBAR_MENUS: SharedControl;
   export const AboutDialog: SharedControl;
-  export const Knob: SharedControl;
   export const Slider: SharedControl;
   export const Select: SharedControl;
   export const Segmented: SharedControl;
