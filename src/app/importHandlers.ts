@@ -907,10 +907,12 @@ export class ImportHandlers {
         return;
       }
 
-      // Classify expanded files into model folders (<NNN>.model), loose model files, and audio files
+      // Classify expanded files into model folders (<NNN>.model), loose model files, SF2/SFZ, and audio files
       const modelFolders = new Map<number, { name: string; buffer: ArrayBuffer }[]>();
       const looseModelFiles: { name: string; buffer: ArrayBuffer }[] = [];
       const audioFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const sf2Files: { name: string; buffer: ArrayBuffer }[] = [];
+      const sfzFiles: { name: string; buffer: ArrayBuffer }[] = [];
 
       for (const item of expanded) {
         const normPath = item.name.replace(/\\/g, '/');
@@ -919,6 +921,14 @@ export class ImportHandlers {
         if (base.startsWith('.') || base.startsWith('._')) continue;
 
         const lower = base.toLowerCase();
+        if (lower.endsWith('.sf2')) {
+          sf2Files.push({ name: base, buffer: item.buffer });
+          continue;
+        }
+        if (lower.endsWith('.sfz')) {
+          sfzFiles.push({ name: base, buffer: item.buffer });
+          continue;
+        }
         const isModelArtifact =
           lower.endsWith('.scape') ||
           lower.endsWith('.sphere') ||
@@ -942,6 +952,34 @@ export class ImportHandlers {
         } else if (isAudio) {
           audioFiles.push({ name: base, buffer: item.buffer });
         }
+      }
+
+      // If SoundFont 2 (.sf2) was provided, convert immediately into our native session format
+      if (sf2Files.length > 0) {
+        const sf2 = sf2Files[0];
+        const presets = this.ctx.core.listSf2Presets(sf2.buffer);
+        const session = await this.ctx.core.importSf2Buffer(sf2.buffer, 0);
+        this.ctx.session = session;
+        this.ctx.selectedZoneId = session.zones[0]?.id || null;
+        this.ctx.log(
+          `${sourceLabel}: imported SF2 "${sf2.name}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones, category: ${session.detectedInstrumentCategory ?? 'Auto'}, ${presets.length} preset(s) in file).`
+        );
+        this.ctx.refresh();
+        return;
+      }
+
+      // If SFZ (.sfz) was provided, convert immediately into our native session format
+      if (sfzFiles.length > 0) {
+        const sfz = sfzFiles[0];
+        const sfzText = new TextDecoder('utf-8').decode(sfz.buffer);
+        const session = await this.ctx.core.importSfzText(sfzText, sfz.name, audioFiles);
+        this.ctx.session = session;
+        this.ctx.selectedZoneId = session.zones[0]?.id || null;
+        this.ctx.log(
+          `${sourceLabel}: imported SFZ "${sfz.name}" -> "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${audioFiles.length} companion audio file(s)).`
+        );
+        this.ctx.refresh();
+        return;
       }
 
       const hasModelData = modelFolders.size > 0 || looseModelFiles.length > 0;
@@ -1065,13 +1103,26 @@ export class ImportHandlers {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.wav,.aif,.aiff,.zip';
+    fileInput.accept = '.wav,.aif,.aiff,.sf2,.sfz,.zip';
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
       if (!fileList || fileList.length === 0) return;
       const modeLabel =
-        mode === 'by-name' ? 'Import by Name (Ctrl+N)' : 'Import Samples (Ctrl+I)';
+        mode === 'by-name' ? 'Import by Name (Ctrl+N)' : 'Import Samples / SF2 / SFZ (Ctrl+I)';
       await this.importMixedFilesOrZip(fileList, 'audio', mode, modeLabel);
+    });
+    fileInput.click();
+  }
+
+  triggerSamplerImport(): void {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.accept = '.sf2,.sfz,.wav,.aif,.aiff,.zip';
+    fileInput.addEventListener('change', async () => {
+      const fileList = fileInput.files;
+      if (!fileList || fileList.length === 0) return;
+      await this.importMixedFilesOrZip(fileList, 'audio', 'samples', 'Import SoundFont / SFZ');
     });
     fileInput.click();
   }

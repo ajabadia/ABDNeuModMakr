@@ -13,6 +13,9 @@
 import type {
   Session,
   Zone,
+  ExtendedRegion,
+  SynthArticulationConfig,
+  Sf2PresetOption,
   ProcessConfig,
   ProcessProgress,
   GeneratedModel,
@@ -182,5 +185,40 @@ export interface CoreService {
 
   /** Reset session zones to a single contiguous 0..127 zone with Undo support */
   resetZonesToSingle(): Session;
+
+  // ── Phase 6: Extended Creation Mode & Universal Sampler Importer (.sf2 / .sfz) ──
+  /** List presets inside an .sf2 SoundFont buffer */
+  listSf2Presets(buffer: ArrayBuffer): Sf2PresetOption[];
+
+  /** Import a SoundFont 2 (.sf2) preset directly into our native session format */
+  importSf2Buffer(buffer: ArrayBuffer, presetIndex?: number): Promise<Session>;
+
+  /** Import an .sfz definition + companion audio files into our native session format */
+  importSfzText(
+    sfzText: string,
+    sfzFileName: string,
+    audioFiles: AudioFilePayload[]
+  ): Promise<Session>;
+
+  /** Get active 2D Extended Regions (synchronizing from classic zones if not yet initialized) */
+  getExtendedRegions(): ExtendedRegion[];
+
+  /** Update a 2D Extended Region and keep classic zones projected in sync */
+  updateExtendedRegion(
+    regionId: string,
+    changes: Partial<ExtendedRegion>
+  ): Promise<ExtendedRegion>;
+
+  /** Add a new 2D Extended Region in Extended Creation Mode */
+  addExtendedRegion(partial?: Partial<ExtendedRegion>): Promise<ExtendedRegion>;
+
+  /** Remove a 2D Extended Region in Extended Creation Mode */
+  removeExtendedRegion(regionId: string): Promise<void>;
+
+  /** Get current global SynthArticulationConfig (ADSR, Filter, LFO) */
+  getArticulation(): SynthArticulationConfig;
+
+  /** Update global SynthArticulationConfig (ADSR, Filter, LFO) with Undo support */
+  updateArticulation(changes: Partial<SynthArticulationConfig>): Session;
 }
 

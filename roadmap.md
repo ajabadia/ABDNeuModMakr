@@ -143,12 +143,12 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 6 — Creación Dual (Clásica vs Extendida) e Importación Universal a Formato Nativo
+## Fase 6 — Creación Dual (Clásica vs Extendida) e Importación Universal a Formato Nativo ✅ COMPLETADA
 
 **Objetivo**: Desacoplar el modo de edición/creación del formato de salida e incorporar un importador de formatos de sampler (`.sf2`, `.sfz`, etc.) que traduzca siempre a **nuestra propia definición nativa + WAVs/AIFFs** (sin guardar nunca el archivo `.sf2` o externo original).
 
 ### 6.1 Modo de Creación Conmutable (`Classic Creation` vs `Extended Creation`)
-- [ ] Permitir alternar libremente en cualquier momento entre **Creación Clásica** y **Creación Extendida**, independientemente del formato en que luego se decida exportar:
+- [x] Permitir alternar libremente en cualquier momento entre **Creación Clásica** y **Creación Extendida**, independientemente del formato en que luego se decida exportar:
   - **Modo de Creación Clásico**: Reglas estrictas de Hartmann MODELmaker v1.2 (bloques de notas contiguos `0..127` sin huecos ni solapamientos, columnas simétricas y máximo 2 capas de velocidad divididas en `64`).
   - **Modo de Creación Extendido** (inspirado en capacidades de SFZ, HALion, Kontakt y SampleTank):
     - **Mapa 2D libre ("Lego" de regiones)**: $N$ rangos de notas por $N$ rangos de velocidad (`loKey..hiKey` $\times$ `loVel..hiVel`) de tamaños arbitrarios e independientes.
@@ -161,19 +161,19 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
       - **Mapeo controlado y aislado hacia `sound.script` (`ABDAxionikVS`)**: Mapear únicamente a los parámetros destino correspondientes (`R1AmpEnvA/D/S/R`, `FilterFreq/Reso` + `FilterEnvA/D/S/R`, `LFORate/Delay` + `R1PitchLfoDepth` / `R1AmpLfoDepth` / `FilterLfoDepth`) con interruptores de activación por sección, manteniendo a `0` las profundidades hacia `Scape`/`Sphere`/`Blender` para que nunca module parámetros indeseados del sintetizador.
 
 ### 6.2 Importador de `.sf2` (SoundFont 2) y `.sfz` a Definición Nativa
-- [ ] Parser binario de `.sf2` (chunks `INFO`, `sdta` de audio PCM y `pdta` de presets/instrumentos/zonas/generadores) con modal selector cuando el banco contenga múltiples presets.
-- [ ] Parser de `.sfz` (`<global>`, `<group>`, `<region>`, opcodes `sample`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`, `xf_*`, `volume`, `pan`, `tune`, `loop_*`, `trigger`, `ampeg_*`, `fileg_*`, `cutoff`, `resonance`).
-- [ ] **Captura de Envolventes (DAHDSR), Filtros y LFOs del SF2/SFZ**:
+- [x] Parser binario de `.sf2` (chunks `INFO`, `sdta` de audio PCM y `pdta` de presets/instrumentos/zonas/generadores) con modal selector cuando el banco contenga múltiples presets (`src/formats/Sf2Parser.ts`, verificado con `Baritone Saxophone V2.sf2`).
+- [x] Parser de `.sfz` (`<global>`, `<group>`, `<region>`, opcodes `sample`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`, `xf_*`, `volume`, `pan`, `tune`, `loop_*`, `trigger`, `ampeg_*`, `fileg_*`, `cutoff`, `resonance`) en `src/formats/SfzParser.ts`.
+- [x] **Captura de Envolventes (DAHDSR), Filtros y LFOs del SF2/SFZ**:
   - Extraer los parámetros de envolvente de volumen (`delay`, `attack`, `hold`, `decay`, `sustain`, `release`), envolvente de modulación/filtro, cutoff/resonancia y vibrato del preset SF2/SFZ.
   - Guardarlos en nuestra definición nativa de zona/instrumento y **traducirlos automáticamente al archivo `.sound` (`sound.script` de 445 parámetros)** y al formato extendido.
   - Opción de *"Hornear envolvente (Bake ADSR)"* sobre la onda para instrumentos SF2 que dependen de un `decay` artificial sobre una onda estática al exportar a modo clásico.
-- [ ] **Unión inteligente de pares Estéreo (`L/R`)**: Detectar regiones vinculadas Left/Right en `.sf2` y unificarlas como onda estéreo real en nuestra definición nativa.
-- [ ] **Conversión inmediata a Formato Propio**: Al importar un `.sf2` o `.sfz` (o conversiones intermedias desde Kontakt/HALion/SampleTank), se extraen las muestras como WAV/AIFF independientes y se registran sus regiones y envolventes en nuestro esquema nativo. El archivo `.sf2`/`.sfz` original se descarta tras la importación.
+- [x] **Unión inteligente de pares Estéreo (`L/R`)**: Detectar regiones vinculadas Left/Right en `.sf2` y unificarlas como onda estéreo real en nuestra definición nativa (ej. las 22 muestras mono L/R de `Baritone Saxophone V2.sf2` se fusionan automáticamente en 11 WAVs estéreo de 2 canales).
+- [x] **Conversión inmediata a Formato Propio**: Al importar un `.sf2` o `.sfz` (o conversiones intermedias desde Kontakt/HALion/SampleTank), se extraen las muestras como WAV/AIFF independientes y se registran sus regiones y envolventes en nuestro esquema nativo. El archivo `.sf2`/`.sfz` original se descarta tras la importación.
 
 ### 6.3 Compilador / Adaptador de Extendido $\rightarrow$ Clásico en Exportación
-- [ ] Si se ha trabajado en Modo Extendido (o importado un instrumento complejo) y se exporta a **Clásico** (o a la capa clásica del contenedor multiformato):
+- [x] Si se ha trabajado en Modo Extendido (o importado un instrumento complejo) y se exporta a **Clásico** (o a la capa clásica del contenedor multiformato) (`src/core/extendedAdapter.ts`):
   - **Particionado automático de columnas**: Proyectar los límites de nota sobre `0..127` garantizando cobertura continua sin huecos.
-  - **Compensación exacta de volumen entre velocidades**: Dado que `map.script` tiene un único `Volume` por zona (compartido por `LowSource` y `HiSource`), fijar el volumen de zona a la capa principal y aplicar la diferencia relativa de dB entre velocidad baja y alta **escalando directamente las magnitudes espectrales** del `.scape`/`.sphere` de la capa atenuada.
+  - **Compensación exacta de volumen entre velocidades**: Dado que `map.script` tiene un único `Volume` por zona (compartido por `LowSource` y `HiSource`), fijar el volumen de zona a la capa principal y aplicar la diferencia relativa de dB entre velocidad baja y alta **escalando directamente las magnitudes espectrales** del `.scape`/`.sphere` de la capa atenuada (`10^(deltaDb / 20)`).
   - **Reducción de $N$ velocidades a 2 franjas (`1..63` y `64..127`)**: Agrupar las regiones que caen en la mitad inferior y superior, permitiendo seleccionar la muestra representativa o realizar una **fusión/interpolación espectral ponderada** para generar un único par `.scape`/`.sphere` para `Low` y otro para `High`.
 
 ---

@@ -460,45 +460,42 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 8. menuActions navbar handlers + undo/redo fallback + drawer exclusivity');
 
-  // ── 9. workingMode extended (gated on modern-neural, legacy untouched) ──
+  // ── 9. workingMode extended (freely selectable under any targetFormat) ──
   {
     const p = new WebAudioPipeline();
     await p.init();
     await p.newSession('ExtMode');
 
-    // Gate: extended requires modern-neural
-    assert.throws(() => p.updateProcessConfig({ workingMode: 'extended' }), /modern-neural/);
-    assert.equal(p.getSession()?.processConfig.workingMode, undefined);
-
-    // Enable behind modern-neural
-    p.updateProcessConfig({ targetFormat: 'modern-neural' });
+    // Freely enable extended under default 'dual' targetFormat
     p.updateProcessConfig({ workingMode: 'extended' });
     assert.equal(p.getSession()?.processConfig.workingMode, 'extended');
+    assert.ok((p.getSession()?.extendedRegions?.length ?? 0) >= 1);
 
     // velSplit honored in extended…
     const zid = p.getSession()!.zones[0].id;
     await p.updateZone(zid, { velSplit: 100 });
     assert.equal(p.getSession()!.zones[0].velSplit, 100);
 
-    // …and leaving modern-neural resets to classic + forces 64 again
+    // Switching targetFormat to legacy-neuron keeps workingMode: 'extended' (decoupled creation vs export)
     p.updateProcessConfig({ targetFormat: 'legacy-neuron' });
+    assert.equal(p.getSession()?.processConfig.workingMode, 'extended');
+
+    // Switching back to classic forces 64 on classic zone edits
+    p.updateProcessConfig({ workingMode: 'classic' });
     assert.equal(p.getSession()?.processConfig.workingMode, 'classic');
     await p.updateZone(zid, { velSplit: 100 });
     assert.equal(p.getSession()!.zones[0].velSplit, 64);
 
-    // Session JSON gate mirrors the core gate
-    p.updateProcessConfig({ targetFormat: 'modern-neural', workingMode: 'extended' });
+    // Session JSON preserves workingMode: 'extended' under any targetFormat
+    p.updateProcessConfig({ targetFormat: 'dual', workingMode: 'extended' });
     const exported = JSON.parse(p.exportSessionJson());
     assert.equal(exported.session.processConfig.workingMode, 'extended');
-    exported.session.processConfig.targetFormat = 'dual';
-    await assert.rejects(p.loadSessionFromJson(JSON.stringify(exported)), /modern-neural/);
-    exported.session.processConfig.targetFormat = 'modern-neural';
     const reloaded = await p.loadSessionFromJson(JSON.stringify(exported));
     assert.equal(reloaded.processConfig.workingMode, 'extended');
 
     p.dispose();
   }
-  console.log('[PASS] 9. workingMode extended gating, velSplit honor/force, JSON gate');
+  console.log('[PASS] 9. workingMode extended free toggle, velSplit honor/force, JSON roundtrip');
 
   // ── 10. updateProcessConfig validates BEFORE recording history ──
   {
@@ -507,15 +504,19 @@ async function runPhase6Tests(): Promise<void> {
     await p.newSession('HistGuard');
     assert.equal(p.getHistoryState().canUndo, false);
 
-    // Rejected change must not leave a phantom undo step
-    assert.throws(() => p.updateProcessConfig({ workingMode: 'extended' }), /modern-neural/);
+    // Rejected invalid workingMode must not leave a phantom undo step
+    assert.throws(
+      () => p.updateProcessConfig({ workingMode: 'bogus' as unknown as 'classic' }),
+      /Invalid workingMode/
+    );
     assert.equal(p.getHistoryState().canUndo, false);
 
-    // Accepted change records exactly one step
+    // Accepted change records exactly one step and undo restores previous state
     p.updateProcessConfig({ targetFormat: 'modern-neural' });
     assert.equal(p.getHistoryState().canUndo, true);
     p.undo();
     assert.equal(p.getHistoryState().canUndo, false);
+    assert.equal(p.getSession()?.processConfig.targetFormat, 'dual');
 
     p.dispose();
   }
@@ -604,6 +605,98 @@ async function runPhase6Tests(): Promise<void> {
     assert.equal(fallback.zones[0].sampleHigh, null);
   }
   console.log('[PASS] 11. buildBankLoadPlan mapping + error contract');
+
+  // ── 12. Fase 6: Universal SF2 (Baritone Saxophone V2.sf2) + SFZ + Extended Adapter + Safe sound.script ──
+  {
+    const fs = await import('node:fs');
+    const {
+      listSf2Presets,
+      importSf2PresetToNative,
+      importSfzToNative,
+      projectExtendedRegionsToClassicZones,
+      mapArticulationToSoundOverrides,
+    } = await import('../src/core/index.ts');
+    const { decodeWav } = await import('../src/core/dsp/WavDecoder.ts');
+
+    const sf2Path = 'D:\\desarrollos\\ABDSynths\\_RESOURCES\\Soundfonts\\polyphone.io\\Baritone Saxophone V2.sf2';
+    if (fs.existsSync(sf2Path)) {
+      const nodeBuf = fs.readFileSync(sf2Path);
+      const ab = nodeBuf.buffer.slice(nodeBuf.byteOffset, nodeBuf.byteOffset + nodeBuf.byteLength);
+
+      const presets = listSf2Presets(ab);
+      assert.ok(presets.length >= 1);
+      assert.equal(presets[0].name, 'Baritone Sax V2');
+      assert.equal(presets[0].sampleCount, 22);
+
+      const native = importSf2PresetToNative(ab, 0);
+      assert.equal(native.sourceFormat, 'sf2');
+      assert.equal(native.detectedCategory, 'Winds & Brass');
+      assert.equal(native.suggestedParameterSet, 1);
+      // 22 mono L/R samples merged into 11 true 2-channel Stereo WAVs!
+      assert.equal(native.audioFiles.length, 11);
+      assert.equal(native.extendedRegions.length, 11);
+      assert.equal(native.classicZones.length, 11);
+
+      const decFirst = decodeWav(native.audioFiles[0].buffer);
+      assert.equal(decFirst.numChannels, 2);
+      assert.equal(decFirst.sampleRate, 44100);
+
+      const roots = native.extendedRegions.map((r) => r.rootKey);
+      assert.deepEqual(roots, [36, 40, 43, 48, 52, 55, 60, 64, 67, 72, 76]);
+      assert.ok(native.extendedRegions.every((r) => r.loopMode === 'loop_continuous'));
+      assert.ok(native.extendedRegions.every((r) => r.loopEnd > r.loopStart));
+
+      // Verify WebAudioPipeline integration + 0..127 contiguous coverage
+      const p = new WebAudioPipeline();
+      await p.init();
+      const session = await p.importSf2Buffer(ab, 0);
+      assert.equal(session.zones.length, 11);
+      assert.equal(p.validateCoverage().length, 0);
+      p.dispose();
+    }
+
+    // Test SFZ importer + Extended -> Classic velocity volume compensation + Safe sound.script overrides
+    const sfzText = `
+      <global>
+      ampeg_attack=0.04 ampeg_decay=0.5 ampeg_sustain=80 ampeg_release=0.35
+      cutoff=2400 resonance=6 fileg_depth=1800
+      pitchlfo_delay=0.3 pitchlfo_freq=5.5 pitchlfo_depth=35
+      <group> lovel=1 hivel=63 volume=-6
+      <region> sample=soft_c4.wav lokey=c3 hikey=b4 pitch_keycenter=c4 loop_mode=loop_continuous loop_start=100 loop_end=8000
+      <group> lovel=64 hivel=127 volume=0
+      <region> sample=loud_c4.wav lokey=c3 hikey=b4 pitch_keycenter=c4
+    `;
+    const sfzRes = importSfzToNative(sfzText, 'Expressive Synth Lead.sfz', []);
+    assert.equal(sfzRes.extendedRegions.length, 2);
+    assert.equal(sfzRes.classicZones.length, 1);
+    assert.equal(sfzRes.classicZones[0].lowKey, 0);
+    assert.equal(sfzRes.classicZones[0].highKey, 127);
+    assert.equal(sfzRes.classicZones[0].sampleLow, 'soft_c4.wav');
+    assert.equal(sfzRes.classicZones[0].sampleHigh, 'loud_c4.wav');
+    assert.equal(sfzRes.classicZones[0].volume, 0);
+    // Low velocity layer (-6 dB vs 0 dB column volume) gets ~0.501 linear amplitude compensation
+    const comp = sfzRes.velocityLayerGainCompensation['zone-1'];
+    assert.ok(comp.lowGain > 0.49 && comp.lowGain < 0.51);
+    assert.equal(comp.highGain, 1.0);
+
+    // Verify safe sound.script overrides
+    const overrides = mapArticulationToSoundOverrides(sfzRes.articulation);
+    assert.ok(overrides.R1AmpEnvA > 0);
+    assert.equal(overrides.SilverSwitch, 1);
+    assert.ok(overrides.FilterFreq > 0 && overrides.FilterFreq < 127);
+    assert.equal(overrides.LFOSwitch, 1);
+    assert.ok(overrides.R1PitchLfoDepth > 0);
+    // Critical safety: all Scape/Sphere/Blender LFO & Env depths are explicitly zeroed
+    assert.equal(overrides.R1L1Scape1LfoDepth, 0);
+    assert.equal(overrides.R1L1Sphere1LfoDepth, 0);
+    assert.equal(overrides.R1L2Scape1LfoDepth, 0);
+    assert.equal(overrides.R1L3Sphere2LfoDepth, 0);
+    assert.equal(overrides.BlenderLfoDepth, 0);
+    assert.equal(overrides.R1L1Scape1EnvDepth, 0);
+    assert.equal(overrides.R1L1Sphere1EnvDepth, 0);
+    assert.equal( projectExtendedRegionsToClassicZones(sfzRes.extendedRegions).zones.length, 1);
+  }
+  console.log('[PASS] 12. Fase 6 SF2 (Baritone Sax V2), SFZ, Extended->Classic Adapter & Safe sound.script');
 
   console.log('=== ALL PHASE 6 TESTS PASSED ===');
 }

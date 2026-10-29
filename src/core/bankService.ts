@@ -25,6 +25,7 @@ import {
 } from '@abdsynths/shared/formats/neuron';
 import { createZone } from './sessionFactory.ts';
 import { DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
+import { mapArticulationToSoundOverrides } from './extendedAdapter.ts';
 import type {
   BankSummary,
   CoreEvent,
@@ -263,6 +264,7 @@ export class BankService {
       targetFormat:
         session?.processConfig.targetFormat ?? model?.targetFormat ?? 'legacy-neuron',
       sourceSamples,
+      soundParameterOverrides: mapArticulationToSoundOverrides(session?.articulation),
     });
   }
 

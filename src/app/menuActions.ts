@@ -73,6 +73,7 @@ export class MenuActions {
         }
       },
       onImportSamples: () => this.ctx.imports.triggerAudioImport('samples'),
+      onImportSampler: () => this.ctx.imports.triggerSamplerImport?.(),
       onImportFolder: () => this.ctx.imports.triggerFolderImport(),
       onImportByName: () => this.ctx.imports.triggerAudioImport('by-name'),
       onImportModelFolder: () => this.ctx.imports.triggerModelFolderImport(),
@@ -149,6 +150,11 @@ export class MenuActions {
       onSetTargetFormat: (format) => {
         this.ctx.session = this.ctx.core.updateProcessConfig({ targetFormat: format });
         this.ctx.shell.getTelemetry().addLog(`Target output profile set to: ${format}`);
+        this.ctx.refresh();
+      },
+      onSetWorkingMode: (mode) => {
+        this.ctx.session = this.ctx.core.updateProcessConfig({ workingMode: mode });
+        this.ctx.shell.getTelemetry().addLog(`Working creation mode set to: ${mode}`);
         this.ctx.refresh();
       },
       onToggleZoneDrawer: () => this.ctx.shell.getInspector().toggleDrawer(),

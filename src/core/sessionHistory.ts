@@ -8,11 +8,20 @@
 // JSON, never live references.
 // ─────────────────────────────────────────────────────────
 
-import type { HistoryState, ProcessConfig, Zone } from './types.ts';
+import type {
+  ExtendedRegion,
+  HistoryState,
+  ProcessConfig,
+  SynthArticulationConfig,
+  Zone,
+} from './types.ts';
 
 /** Mutable document slice covered by undo/redo. */
 export interface HistoryDocument {
   zones: Zone[];
+  extendedRegions?: ExtendedRegion[];
+  articulation?: SynthArticulationConfig;
+  detectedInstrumentCategory?: string;
   processConfig: ProcessConfig;
 }
 
@@ -68,6 +77,9 @@ export class SessionHistory {
     this.undoStack.push({
       label,
       zones: structuredClone(doc.zones),
+      extendedRegions: doc.extendedRegions ? structuredClone(doc.extendedRegions) : undefined,
+      articulation: doc.articulation ? structuredClone(doc.articulation) : undefined,
+      detectedInstrumentCategory: doc.detectedInstrumentCategory,
       processConfig: structuredClone(doc.processConfig),
       coalesceKey,
       timestampMs: now,
@@ -86,12 +98,18 @@ export class SessionHistory {
     this.redoStack.push({
       label: entry.label,
       zones: structuredClone(current.zones),
+      extendedRegions: current.extendedRegions ? structuredClone(current.extendedRegions) : undefined,
+      articulation: current.articulation ? structuredClone(current.articulation) : undefined,
+      detectedInstrumentCategory: current.detectedInstrumentCategory,
       processConfig: structuredClone(current.processConfig),
       timestampMs: Date.now(),
     });
     return {
       label: entry.label,
       zones: structuredClone(entry.zones),
+      extendedRegions: entry.extendedRegions ? structuredClone(entry.extendedRegions) : undefined,
+      articulation: entry.articulation ? structuredClone(entry.articulation) : undefined,
+      detectedInstrumentCategory: entry.detectedInstrumentCategory,
       processConfig: structuredClone(entry.processConfig),
     };
   }
@@ -103,12 +121,18 @@ export class SessionHistory {
     this.undoStack.push({
       label: entry.label,
       zones: structuredClone(current.zones),
+      extendedRegions: current.extendedRegions ? structuredClone(current.extendedRegions) : undefined,
+      articulation: current.articulation ? structuredClone(current.articulation) : undefined,
+      detectedInstrumentCategory: current.detectedInstrumentCategory,
       processConfig: structuredClone(current.processConfig),
       timestampMs: Date.now(),
     });
     return {
       label: entry.label,
       zones: structuredClone(entry.zones),
+      extendedRegions: entry.extendedRegions ? structuredClone(entry.extendedRegions) : undefined,
+      articulation: entry.articulation ? structuredClone(entry.articulation) : undefined,
+      detectedInstrumentCategory: entry.detectedInstrumentCategory,
       processConfig: structuredClone(entry.processConfig),
     };
   }

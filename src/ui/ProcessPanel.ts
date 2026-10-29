@@ -7,10 +7,8 @@
 import type { ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
 import { ICONS } from './icons';
 
-const EXTENDED_MODE_TITLE_OFF =
-  'Extended Working Mode requires Extended export — select EXPORT / SAVE MODE → Extended (.nmmodel) first. Variable velocity splits (2..127) live only in modern-neural sessions.';
 const EXTENDED_MODE_TITLE_ON =
-  'Extended Working Mode: honors per-zone velocity splits (2..127) from samples and the inspector slider. Only available with modern-neural export; never alters legacy .model binaries.';
+  'Extended Working Mode: N velocity layers, 2D Key x Velocity regions, crossfades, loop markers, keytrack, and ADSR/Filter/LFO articulation. Adapted automatically when exporting to Classic (.model/.sound).';
 
 const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
 
@@ -199,27 +197,23 @@ export class ProcessPanel {
   }
 
   /**
-   * Syncs Working Mode buttons with the current config. Extended is only
-   * selectable behind `targetFormat: 'modern-neural'` (same gate as the
-   * core); otherwise it stays disabled with an explanatory title.
+   * Syncs Working Mode buttons with the current config. Both Classic and
+   * Extended creation modes are freely selectable at any time; when
+   * exporting to classic ('legacy-neuron' or 'dual'), extended regions
+   * are automatically adapted via extendedAdapter.
    */
   private syncWorkingModeButtons(): void {
     const mode = this.currentConfig.workingMode ?? 'classic';
-    const canExtend = this.currentConfig.targetFormat === 'modern-neural';
     const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode');
     modeBtns.forEach((btn) => {
       const m = btn.getAttribute('data-working-mode');
       btn.classList.toggle('is-active', m === mode || (m === 'classic' && mode !== 'extended'));
       if (m === 'extended') {
-        btn.classList.toggle('is-disabled-future', !canExtend);
-        if (canExtend) {
-          btn.removeAttribute('disabled');
-        } else {
-          btn.setAttribute('disabled', '');
-        }
-        btn.title = canExtend ? EXTENDED_MODE_TITLE_ON : EXTENDED_MODE_TITLE_OFF;
+        btn.classList.remove('is-disabled-future');
+        btn.removeAttribute('disabled');
+        btn.title = EXTENDED_MODE_TITLE_ON;
         const tag = btn.querySelector('.mode-soon-tag') as HTMLElement | null;
-        if (tag) tag.hidden = canExtend;
+        if (tag) tag.hidden = true;
       }
     });
   }
@@ -290,12 +284,11 @@ export class ProcessPanel {
               </button>
               <button
                 type="button"
-                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'is-active' : ''} ${this.currentConfig.targetFormat === 'modern-neural' ? '' : 'is-disabled-future'}"
+                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'is-active' : ''}"
                 data-working-mode="extended"
-                ${this.currentConfig.targetFormat === 'modern-neural' ? '' : 'disabled'}
-                title="${this.currentConfig.targetFormat === 'modern-neural' ? EXTENDED_MODE_TITLE_ON : EXTENDED_MODE_TITLE_OFF}"
+                title="${EXTENDED_MODE_TITLE_ON}"
               >
-                Extended Mode <span class="mode-soon-tag" ${this.currentConfig.targetFormat === 'modern-neural' ? 'hidden' : ''}>SOON</span>
+                Extended Mode
               </button>
             </div>
           </div>
@@ -544,11 +537,6 @@ export class ProcessPanel {
       btn.addEventListener('click', () => {
         const fmt = (btn.getAttribute('data-target-format') || 'dual') as TargetFormat;
         this.currentConfig.targetFormat = fmt;
-        if (fmt !== 'modern-neural') {
-          // Mirrors the core reset in updateProcessConfig: extended lives
-          // only behind modern-neural, so leaving it drops back to classic.
-          this.currentConfig.workingMode = 'classic';
-        }
         this.syncWorkingModeButtons();
         targetBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
         const maxLen = this.getMaxNameLength();

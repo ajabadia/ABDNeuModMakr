@@ -5,6 +5,9 @@
 
 export * from './types.ts';
 export * from './CoreService.ts';
+export * from './extendedAdapter.ts';
+export * from '../formats/Sf2Parser.ts';
+export * from '../formats/SfzParser.ts';
 export { WebAudioPipeline, PARAMETER_SETS } from './WebAudioPipeline.ts';
 
 import type { CoreService } from './CoreService.ts';

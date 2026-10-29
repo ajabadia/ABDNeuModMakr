@@ -5,13 +5,14 @@
 
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
-import type { Session, HistoryState, TargetFormat } from '../core/types';
+import type { Session, HistoryState, TargetFormat, WorkingMode } from '../core/types';
 
 export interface NavbarHandlers {
   onNewSession: () => void;
   onOpenSession: () => void;
   onSaveSession: () => void;
   onImportSamples: () => void;
+  onImportSampler?: () => void;
   onImportFolder: () => void;
   onImportByName: () => void;
   onImportModelFolder: () => void;
@@ -28,6 +29,7 @@ export interface NavbarHandlers {
   onStartProcess: () => void;
   onValidateCoverage: () => void;
   onSetTargetFormat: (format: TargetFormat) => void;
+  onSetWorkingMode?: (mode: WorkingMode) => void;
   onToggleZoneDrawer: () => void;
   onToggleSpectral: () => void;
   onToggleBank: () => void;
@@ -52,6 +54,7 @@ export class AppNavbar {
   private docModalEl: HTMLElement | null = null;
   private currentTheme = 'ms2000';
   private currentTargetFormat: TargetFormat = 'dual';
+  private currentWorkingMode: WorkingMode = 'classic';
 
   constructor(container: HTMLElement, handlers: NavbarHandlers) {
     this.container = container;
@@ -83,6 +86,7 @@ export class AppNavbar {
           { id: 104, label: 'Import Audio Files (.wav / .aif)...', action: 'importSamples', shortcut: 'Ctrl+I' },
           { id: 1045, label: 'Import Audio by Name (Hartmann)...', action: 'importByName', shortcut: 'Ctrl+N' },
           { id: 105, label: 'Import Audio Folder...', action: 'importFolder' },
+          { id: 1055, label: 'Import SoundFont / SFZ (.sf2, .sfz)...', action: 'importSampler' },
           { separator: true },
           { id: 106, label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
@@ -116,7 +120,7 @@ export class AppNavbar {
             label: 'Working Mode',
             submenu: [
               { id: 304, label: 'Classic Mode (MODELmaker v1.2)', action: 'setWorkingMode', value: 'classic' },
-              { id: 305, label: 'Extended Mode (Soon)', action: 'noop', disabled: true },
+              { id: 305, label: 'Extended Mode (N-Layer / 2D Regions)', action: 'setWorkingMode', value: 'extended' },
             ],
           },
           {
@@ -266,6 +270,7 @@ export class AppNavbar {
 
   public updateSession(session: Session, coverageErrors: string[]): void {
     this.currentTargetFormat = session.processConfig.targetFormat ?? 'dual';
+    this.currentWorkingMode = session.processConfig.workingMode ?? 'classic';
     this.syncActiveMenuChecks();
 
     if (this.statusElement) {
@@ -296,7 +301,7 @@ export class AppNavbar {
 
   private syncActiveMenuChecks(): void {
     this.navBarInstance?.setActiveValues({
-      setWorkingMode: 'classic',
+      setWorkingMode: this.currentWorkingMode,
       setTargetFormat: this.currentTargetFormat,
       selectTheme: this.currentTheme,
     });
@@ -398,6 +403,7 @@ export class AppNavbar {
       case 'openSession': this.handlers.onOpenSession(); break;
       case 'saveSession': this.handlers.onSaveSession(); break;
       case 'importSamples': this.handlers.onImportSamples(); break;
+      case 'importSampler': this.handlers.onImportSampler?.(); break;
       case 'importFolder': this.handlers.onImportFolder(); break;
       case 'importByName': this.handlers.onImportByName(); break;
       case 'importModelFolder': this.handlers.onImportModelFolder(); break;
@@ -416,6 +422,11 @@ export class AppNavbar {
       case 'setTargetFormat':
         if (value === 'dual' || value === 'legacy-neuron' || value === 'modern-neural') {
           this.handlers.onSetTargetFormat(value);
+        }
+        break;
+      case 'setWorkingMode':
+        if (value === 'classic' || value === 'extended') {
+          this.handlers.onSetWorkingMode?.(value);
         }
         break;
       case 'toggleZoneDrawer': this.handlers.onToggleZoneDrawer(); break;

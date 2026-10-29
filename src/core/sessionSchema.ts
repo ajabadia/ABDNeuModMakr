@@ -12,13 +12,16 @@
 // ─────────────────────────────────────────────────────────
 
 import type {
+  ExtendedRegion,
   MidiNote,
   ProcessConfig,
   Session,
+  SynthArticulationConfig,
   TargetFormat,
   WorkingMode,
   Zone,
 } from './types.ts';
+import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
@@ -138,11 +141,6 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     if (workingModeRaw !== 'classic' && workingModeRaw !== 'extended') {
       throw fieldError('processConfig.workingMode', "must be 'classic' | 'extended'");
     }
-    if (workingModeRaw === 'extended' && targetFormat !== 'modern-neural') {
-      throw new Error(
-        "Invalid session JSON: processConfig.workingMode 'extended' requires targetFormat 'modern-neural'"
-      );
-    }
     workingMode = workingModeRaw;
   }
 
@@ -208,10 +206,69 @@ export function validateSessionPayload(payload: unknown): Session {
   const createdRaw = body['createdAt'];
   const now = new Date().toISOString();
 
+  const extRegionsRaw = body['extendedRegions'];
+  const extendedRegions: ExtendedRegion[] | undefined = Array.isArray(extRegionsRaw)
+    ? extRegionsRaw
+        .filter((r): r is Record<string, unknown> => isRecord(r))
+        .map((r, i) =>
+          cloneExtendedRegion({
+            id: typeof r.id === 'string' && r.id ? r.id : `ext-reg-${i + 1}`,
+            sampleName: typeof r.sampleName === 'string' ? r.sampleName : '',
+            lowKey: clampInt(asFiniteNumber(r.lowKey) ?? 0, 0, 127),
+            highKey: clampInt(asFiniteNumber(r.highKey) ?? 127, 0, 127),
+            rootKey: clampInt(asFiniteNumber(r.rootKey) ?? 60, 0, 127),
+            lowVel: clampInt(asFiniteNumber(r.lowVel) ?? 1, 1, 127),
+            highVel: clampInt(asFiniteNumber(r.highVel) ?? 127, 1, 127),
+            detune: clampNum(asFiniteNumber(r.detune) ?? 0, -99, 99),
+            volume: clampNum(asFiniteNumber(r.volume) ?? 0, -32, 12),
+            pan: clampNum(asFiniteNumber(r.pan) ?? 0, -50, 50),
+            pitchKeytrack: clampInt(asFiniteNumber(r.pitchKeytrack) ?? 100, 0, 100),
+            trigger:
+              r.trigger === 'release' || r.trigger === 'first' || r.trigger === 'legato'
+                ? r.trigger
+                : 'attack',
+            seqPosition: asFiniteNumber(r.seqPosition) ?? undefined,
+            seqLength: asFiniteNumber(r.seqLength) ?? undefined,
+            keyFadeIn: clampInt(asFiniteNumber(r.keyFadeIn) ?? 0, 0, 127),
+            keyFadeOut: clampInt(asFiniteNumber(r.keyFadeOut) ?? 0, 0, 127),
+            velFadeIn: clampInt(asFiniteNumber(r.velFadeIn) ?? 0, 0, 127),
+            velFadeOut: clampInt(asFiniteNumber(r.velFadeOut) ?? 0, 0, 127),
+            fadeCurve:
+              r.fadeCurve === 'linear' || r.fadeCurve === 'spectral-morph'
+                ? r.fadeCurve
+                : 'equal-power',
+            loopMode:
+              r.loopMode === 'loop_continuous' ||
+              r.loopMode === 'loop_sustain' ||
+              r.loopMode === 'one_shot'
+                ? r.loopMode
+                : 'no_loop',
+            loopStart: Math.max(0, Math.round(asFiniteNumber(r.loopStart) ?? 0)),
+            loopEnd: Math.max(0, Math.round(asFiniteNumber(r.loopEnd) ?? 0)),
+            loopCrossfadeMs: Math.max(0, Math.round(asFiniteNumber(r.loopCrossfadeMs) ?? 0)),
+            sampleRate: asFiniteNumber(r.sampleRate) ?? undefined,
+            numChannels: asFiniteNumber(r.numChannels) ?? undefined,
+          }),
+        )
+    : undefined;
+
+  const artRaw = body['articulation'];
+  const articulation: SynthArticulationConfig | undefined = isRecord(artRaw)
+    ? cloneArticulation(artRaw as unknown as SynthArticulationConfig)
+    : undefined;
+
+  const detectedInstrumentCategory =
+    typeof body['detectedInstrumentCategory'] === 'string'
+      ? body['detectedInstrumentCategory']
+      : undefined;
+
   return {
     id: typeof idRaw === 'string' && idRaw.length > 0 ? idRaw : `session_${Date.now()}`,
     name: typeof nameRaw === 'string' && nameRaw.length > 0 ? nameRaw : 'Imported Session',
     zones,
+    ...(extendedRegions ? { extendedRegions } : {}),
+    ...(articulation ? { articulation } : {}),
+    ...(detectedInstrumentCategory ? { detectedInstrumentCategory } : {}),
     processConfig: validateProcessConfig(body['processConfig']),
     dirty: false,
     createdAt: typeof createdRaw === 'string' ? createdRaw : now,

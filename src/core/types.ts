@@ -50,7 +50,112 @@ export type TargetFormat = 'dual' | 'legacy-neuron' | 'modern-neural';
 /**
  * Process configuration — the settings for model generation.
  */
+/**
+ * Editing working mode:
+ *   - 'classic': Canonical Hartmann MODELmaker v1.2 rules (contiguous 0..127 columns, 2 velocity layers split at 64).
+ *   - 'extended': Free 2D Key x Velocity regions (N velocity layers, asymmetric ranges, crossfades, loops, keytrack, ADSR/Filter/LFO).
+ * Can be toggled freely at any time; when exporting to classic ('legacy-neuron' or 'dual'), extended regions are adapted automatically.
+ */
 export type WorkingMode = 'classic' | 'extended';
+
+export type LoopMode = 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
+export type TriggerMode = 'attack' | 'release' | 'first' | 'legato';
+export type CrossfadeCurve = 'linear' | 'equal-power' | 'spectral-morph';
+
+/** 6-stage DAHDSR envelope (compatible with SF2, SFZ, HALion, Kontakt) */
+export interface DahdsrEnvelope {
+  delaySec: number;
+  attackSec: number;
+  holdSec: number;
+  decaySec: number;
+  sustainLevel: number; // 0..1 (1 = 0 dB attenuation, 0 = -100 dB)
+  releaseSec: number;
+}
+
+/** Filter configuration (safe-mapped to Neuron Silver filter when enabled) */
+export interface RegionFilterConfig {
+  enabled: boolean;
+  type: 'lpf' | 'hpf' | 'bpf';
+  cutoffHz: number;          // 20..20000 Hz
+  resonanceDb: number;       // 0..40 dB
+  envToFilterCents: number;  // -12000..+12000 cents
+  velToFilterCents: number;  // -12000..+12000 cents
+  keytrackCents: number;     // 0..1200 cents/octave (0..100%)
+}
+
+/** LFO configuration (safe-mapped to Neuron LFO with isolated destination depths) */
+export interface RegionLfoConfig {
+  enabled: boolean;
+  delaySec: number;
+  freqHz: number;            // 0.01..50 Hz
+  toPitchCents: number;      // Vibrato depth (-1200..+1200 cents)
+  toFilterCents: number;     // Wah/Filter LFO depth (-12000..+12000 cents)
+  toVolumeDb: number;        // Tremolo depth (0..24 dB)
+  waveform?: number;         // 0=Sine/Tri, etc.
+}
+
+/**
+ * Global instrument articulation & modulation extracted from SF2/SFZ/Sampler
+ * or edited in the Extended Editor. Safe-mapped to `sound.script` only for
+ * enabled blocks so it never modulates unintended synth parameters.
+ */
+export interface SynthArticulationConfig {
+  ampEnvEnabled: boolean;
+  ampEnv: DahdsrEnvelope;
+  modEnvEnabled: boolean;
+  modEnv: DahdsrEnvelope;
+  modEnvToPitchCents: number;
+  filter: RegionFilterConfig;
+  vibLfo: RegionLfoConfig;
+  modLfo: RegionLfoConfig;
+  /** Optional: bake amplitude/filter decay into the audio wave before classic spectral analysis */
+  bakeEnvelopeIntoWave?: boolean;
+}
+
+/**
+ * A free 2D Key x Velocity region in Extended Creation Mode ("Lego" layout).
+ * Stores native sampler parameters (N velocity layers, asymmetric key ranges,
+ * crossfades, loop points, pitch keytracking, trigger mode, and local overrides).
+ */
+export interface ExtendedRegion {
+  id: string;
+  sampleName: string;
+  lowKey: MidiNote;          // 0..127
+  highKey: MidiNote;         // 0..127
+  rootKey: MidiNote;         // 0..127
+  lowVel: number;            // 1..127
+  highVel: number;           // 1..127
+  detune: number;            // -99..+99 cents
+  volume: number;            // -32..+12 dB
+  pan: number;               // -50..+50
+  pitchKeytrack: number;     // 0..100 % (100 = chromatic, 0 = unpitched/drum)
+  trigger: TriggerMode;      // 'attack' | 'release' | 'first' | 'legato'
+  seqPosition?: number;      // Round-robin index (1..N)
+  seqLength?: number;        // Round-robin total (1..N)
+  keyFadeIn: number;         // Semitones fade-in at lowKey
+  keyFadeOut: number;        // Semitones fade-out at highKey
+  velFadeIn: number;         // Velocity units fade-in at lowVel
+  velFadeOut: number;        // Velocity units fade-out at highVel
+  fadeCurve: CrossfadeCurve;
+  loopMode: LoopMode;
+  loopStart: number;         // Loop start in sample frames
+  loopEnd: number;           // Loop end in sample frames
+  loopCrossfadeMs: number;   // Crossfade duration in ms for seamless looping
+  sampleRate?: number;
+  numChannels?: number;      // 1 = mono, 2 = stereo (merged L/R), 4 = quad
+  ampEnvOverride?: Partial<DahdsrEnvelope>;
+  filterOverride?: Partial<RegionFilterConfig>;
+}
+
+/** Summary of a preset inside a multi-preset SoundFont (.sf2) file */
+export interface Sf2PresetOption {
+  index: number;
+  name: string;
+  bank: number;
+  presetNumber: number;
+  regionCount: number;
+  sampleCount: number;
+}
 
 export interface ProcessConfig {
   modelNumber: ModelSlot;     // 0..511
@@ -59,15 +164,11 @@ export interface ProcessConfig {
   parameterSet: number;       // 0..9
   targetFormat?: TargetFormat; // default 'dual'
   /**
-   * Editing working mode. Absent (or 'classic') = canonical Hartmann
-   * behavior (`velSplit` forced to 64 in every edit path). 'extended'
-   * honors per-zone velocity splits (2..127): sample import adopts the
-   * WAV/AIFF `INST`/`smpl` lowVelocity, the inspector slider edits it,
-   * and ribbon/table labels render it. Only selectable with
-   * `targetFormat: 'modern-neural'`; leaving modern-neural resets it to
-   * 'classic'. It never alters legacy binaries — no DSP/export path
-   * consumes `velSplit`, so `.model`/`.sound` output is bit-identical
-   * either way; the value is session metadata for the modern engine.
+   * Editing working mode:
+   * - 'classic' (default): Canonical Hartmann MODELmaker v1.2 behavior (contiguous 0..127 columns, 2 velocity layers split at 64).
+   * - 'extended': Free 2D Key x Velocity regions (N velocity layers, asymmetric ranges, crossfades, loops, keytrack, ADSR/Filter/LFO).
+   * Can be toggled freely under any targetFormat ('dual', 'legacy-neuron', 'modern-neural').
+   * When exporting to classic formats from extended mode, regions are automatically adapted via extendedAdapter.
    */
   workingMode?: WorkingMode;
 }
@@ -87,12 +188,15 @@ export interface ProcessProgress {
 
 /**
  * A session — the top-level container for a MODELmaker editing session.
- * Contains zones + process config + metadata.
+ * Contains zones + process config + metadata + optional extended regions & articulation.
  */
 export interface Session {
   id: string;
   name: string;
   zones: Zone[];
+  extendedRegions?: ExtendedRegion[];
+  articulation?: SynthArticulationConfig;
+  detectedInstrumentCategory?: string;
   processConfig: ProcessConfig;
   dirty: boolean;
   createdAt: string;

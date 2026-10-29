@@ -60,6 +60,25 @@ import {
 } from '@abdsynths/shared/formats/neuron';
 
 import { parseSessionJson } from './sessionSchema.ts';
+import type {
+  ExtendedRegion,
+  SynthArticulationConfig,
+  Sf2PresetOption,
+  AudioFilePayload,
+} from './types.ts';
+import {
+  createDefaultArticulation,
+  cloneArticulation,
+  cloneExtendedRegion,
+  syncExtendedRegionsFromClassicZones,
+  projectExtendedRegionsToClassicZones,
+} from './extendedAdapter.ts';
+import {
+  listSf2Presets as parseSf2PresetsList,
+  importSf2PresetToNative,
+  type NativeSamplerImportResult,
+} from '../formats/Sf2Parser.ts';
+import { importSfzToNative } from '../formats/SfzParser.ts';
 import {
   persistSessionToLocalStorage,
   restoreSessionFromLocalStorage,
@@ -294,7 +313,13 @@ export class WebAudioPipeline implements CoreService {
   private pushHistory(label: string, coalesceKey?: string): void {
     if (!this.session) return;
     this.history.push(
-      { zones: this.session.zones, processConfig: this.session.processConfig },
+      {
+        zones: this.session.zones,
+        extendedRegions: this.session.extendedRegions,
+        articulation: this.session.articulation,
+        detectedInstrumentCategory: this.session.detectedInstrumentCategory,
+        processConfig: this.session.processConfig,
+      },
       label,
       coalesceKey
     );
@@ -305,9 +330,22 @@ export class WebAudioPipeline implements CoreService {
     return this.history.getState();
   }
 
-  private applyHistoryDocument(doc: { zones: Zone[]; processConfig: ProcessConfig }): void {
+  private applyHistoryDocument(doc: {
+    zones: Zone[];
+    extendedRegions?: ExtendedRegion[];
+    articulation?: SynthArticulationConfig;
+    detectedInstrumentCategory?: string;
+    processConfig: ProcessConfig;
+  }): void {
     if (!this.session) return;
     this.session.zones = structuredClone(doc.zones);
+    this.session.extendedRegions = doc.extendedRegions
+      ? structuredClone(doc.extendedRegions)
+      : undefined;
+    this.session.articulation = doc.articulation
+      ? structuredClone(doc.articulation)
+      : undefined;
+    this.session.detectedInstrumentCategory = doc.detectedInstrumentCategory;
     this.session.processConfig = structuredClone(doc.processConfig);
     this.session.dirty = true;
     this.session.modifiedAt = new Date().toISOString();
@@ -321,6 +359,9 @@ export class WebAudioPipeline implements CoreService {
     if (!this.session) return null;
     const restored = this.history.undo({
       zones: this.session.zones,
+      extendedRegions: this.session.extendedRegions,
+      articulation: this.session.articulation,
+      detectedInstrumentCategory: this.session.detectedInstrumentCategory,
       processConfig: this.session.processConfig,
     });
     if (!restored) return null;
@@ -332,6 +373,9 @@ export class WebAudioPipeline implements CoreService {
     if (!this.session) return null;
     const restored = this.history.redo({
       zones: this.session.zones,
+      extendedRegions: this.session.extendedRegions,
+      articulation: this.session.articulation,
+      detectedInstrumentCategory: this.session.detectedInstrumentCategory,
       processConfig: this.session.processConfig,
     });
     if (!restored) return null;
@@ -342,6 +386,15 @@ export class WebAudioPipeline implements CoreService {
   public updateProcessConfig(changes: Partial<ProcessConfig>): Session {
     if (!this.session) throw new Error('No active session');
     const keys = Object.keys(changes).sort().join(',');
+
+    // Validate before recording history so rejected changes never leave a phantom undo step
+    if (changes.workingMode !== undefined) {
+      if (changes.workingMode !== 'classic' && changes.workingMode !== 'extended') {
+        throw new Error("Invalid workingMode: must be 'classic' | 'extended'");
+      }
+    }
+
+    this.pushHistory(`Change Process Settings (${keys})`, `config:${keys}`);
 
     const cfg = this.session.processConfig;
     if (changes.modelNumber !== undefined) {
@@ -363,25 +416,27 @@ export class WebAudioPipeline implements CoreService {
       if (cfg.targetFormat !== 'modern-neural' && cfg.modelName.length > 11) {
         cfg.modelName = cfg.modelName.slice(0, 11);
       }
-      // P1.3: extended editing only exists behind modern-neural; leaving
-      // it silently on would fork behavior on the legacy binary path.
-      if (cfg.targetFormat !== 'modern-neural' && cfg.workingMode === 'extended') {
-        cfg.workingMode = 'classic';
-      }
     }
     if (changes.workingMode !== undefined) {
-      if (changes.workingMode !== 'classic' && changes.workingMode !== 'extended') {
-        throw new Error("Invalid workingMode: must be 'classic' | 'extended'");
-      }
-      if (changes.workingMode === 'extended' && cfg.targetFormat !== 'modern-neural') {
-        throw new Error("workingMode 'extended' requires targetFormat 'modern-neural'");
-      }
+      const prevMode = cfg.workingMode ?? 'classic';
       cfg.workingMode = changes.workingMode;
+      if (changes.workingMode === 'extended') {
+        this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+          this.session.zones,
+          this.session.extendedRegions,
+        );
+        if (!this.session.articulation) {
+          this.session.articulation = createDefaultArticulation();
+        }
+      } else if (prevMode === 'extended' && this.session.extendedRegions?.length) {
+        const projected = projectExtendedRegionsToClassicZones(
+          this.session.extendedRegions,
+          this.session.zones,
+        );
+        this.session.zones = projected.zones;
+      }
     }
 
-    // History AFTER validation: a rejected change (e.g. extended without
-    // modern-neural) must not leave a phantom undo step behind.
-    this.pushHistory(`Change Process Settings (${keys})`, `config:${keys}`);
     this.markDirty();
     return this.session;
   }
@@ -1764,11 +1819,40 @@ export class WebAudioPipeline implements CoreService {
     if (this.isRunning) throw new Error('Process already running');
 
     this.session.processConfig = { ...config };
+    let velocityGainMap: Record<string, { lowGain: number; highGain: number }> = {};
+    if (
+      this.session.processConfig.workingMode === 'extended' &&
+      this.session.extendedRegions &&
+      this.session.extendedRegions.length > 0
+    ) {
+      const projected = projectExtendedRegionsToClassicZones(
+        this.session.extendedRegions,
+        this.session.zones,
+      );
+      this.session.zones = projected.zones;
+      velocityGainMap = projected.velocityLayerGainCompensation;
+    }
+
     const zones = [...this.session.zones];
     this.ensureZoneDemoBuffers(zones);
     const forceReanalyze = options?.forceReanalyzeImported === true;
 
+    const scaleWavBufferGain = (rawBuf: ArrayBuffer | null, gain: number): ArrayBuffer | null => {
+      if (!rawBuf || Math.abs(gain - 1.0) < 1e-3) return rawBuf ? rawBuf.slice(0) : null;
+      try {
+        const dec = decodeWav(rawBuf);
+        const scaledMono = new Float32Array(dec.mono.length);
+        for (let i = 0; i < dec.mono.length; i++) {
+          scaledMono[i] = Math.max(-1, Math.min(1, dec.mono[i] * gain));
+        }
+        return encodePcm16Wav(scaledMono, dec.sampleRate, dec.instrument);
+      } catch {
+        return rawBuf.slice(0);
+      }
+    };
+
     const payloads: ZoneWavPayload[] = zones.map((zone) => {
+      const comp = velocityGainMap[zone.id] ?? { lowGain: 1.0, highGain: 1.0 };
       const buf = zone.sampleLow
         ? (this.sampleBuffers.get(zone.sampleLow) ?? null)
         : null;
@@ -1785,8 +1869,8 @@ export class WebAudioPipeline implements CoreService {
           : undefined;
       return {
         zone: { ...zone },
-        wavBuffer: buf ? buf.slice(0) : null,
-        highWavBuffer: highBuf ? highBuf.slice(0) : null,
+        wavBuffer: scaleWavBufferGain(buf, comp.lowGain),
+        highWavBuffer: scaleWavBufferGain(highBuf, comp.highGain),
         preservedLowBinary: preservedLow,
         preservedHighBinary: preservedHigh,
       };
@@ -1979,6 +2063,213 @@ export class WebAudioPipeline implements CoreService {
 
   public getProcessProgress(): ProcessProgress | null {
     return this.processProgress;
+  }
+
+  // ── Phase 6: Extended Creation Mode & Universal Sampler Importer (.sf2 / .sfz) ──
+
+  public listSf2Presets(buffer: ArrayBuffer): Sf2PresetOption[] {
+    return parseSf2PresetsList(buffer);
+  }
+
+  private applyNativeSamplerImport(imported: NativeSamplerImportResult): Session {
+    if (!this.session) {
+      this.session = createInitialSession(imported.presetName);
+    } else {
+      this.pushHistory(`Import ${imported.sourceFormat.toUpperCase()} "${imported.presetName}"`);
+    }
+
+    for (const audioFile of imported.audioFiles) {
+      try {
+        this.registerSampleBuffer(audioFile.name, audioFile.buffer);
+      } catch {
+        // Keep buffer directly if decode validation warns on large sample
+        this.sampleBuffers.set(audioFile.name, audioFile.buffer);
+      }
+    }
+
+    this.session.name = imported.presetName;
+    this.session.extendedRegions = imported.extendedRegions.map(cloneExtendedRegion);
+    this.session.zones = imported.classicZones.map((z) => ({ ...z }));
+    this.session.articulation = cloneArticulation(imported.articulation);
+    this.session.detectedInstrumentCategory = imported.detectedCategory;
+
+    const maxLen = this.session.processConfig.targetFormat === 'modern-neural' ? 32 : 11;
+    this.session.processConfig.modelName = imported.presetName.slice(0, maxLen) || imported.modelName;
+    this.session.processConfig.parameterSet = imported.suggestedParameterSet;
+
+    this.ensureZoneDemoBuffers(this.session.zones);
+    this.markDirty();
+    return this.session;
+  }
+
+  public async importSf2Buffer(buffer: ArrayBuffer, presetIndex = 0): Promise<Session> {
+    const imported = importSf2PresetToNative(buffer, presetIndex);
+    return this.applyNativeSamplerImport(imported);
+  }
+
+  public async importSfzText(
+    sfzText: string,
+    sfzFileName: string,
+    audioFiles: AudioFilePayload[]
+  ): Promise<Session> {
+    const imported = importSfzToNative(sfzText, sfzFileName, audioFiles);
+    return this.applyNativeSamplerImport(imported);
+  }
+
+  public getExtendedRegions(): ExtendedRegion[] {
+    if (!this.session) return [];
+    if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
+      this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
+    }
+    return this.session.extendedRegions.map(cloneExtendedRegion);
+  }
+
+  public async updateExtendedRegion(
+    regionId: string,
+    changes: Partial<ExtendedRegion>
+  ): Promise<ExtendedRegion> {
+    if (!this.session) throw new Error('No active session');
+    if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
+      this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
+    }
+    const idx = this.session.extendedRegions.findIndex((r) => r.id === regionId);
+    if (idx < 0) throw new Error(`Extended region '${regionId}' not found`);
+
+    const keys = Object.keys(changes).sort().join(',');
+    this.pushHistory(`Update Region ${regionId} (${keys})`, `ext-reg:${regionId}:${keys}`);
+
+    const curr = this.session.extendedRegions[idx];
+    const nextLowKey = changes.lowKey !== undefined ? clamp(Math.round(changes.lowKey), 0, 127) : curr.lowKey;
+    const nextHighKey = changes.highKey !== undefined ? clamp(Math.round(changes.highKey), nextLowKey, 127) : Math.max(nextLowKey, curr.highKey);
+    const nextRootKey = changes.rootKey !== undefined ? clamp(Math.round(changes.rootKey), 0, 127) : curr.rootKey;
+    const nextLowVel = changes.lowVel !== undefined ? clamp(Math.round(changes.lowVel), 1, 127) : curr.lowVel;
+    const nextHighVel = changes.highVel !== undefined ? clamp(Math.round(changes.highVel), nextLowVel, 127) : Math.max(nextLowVel, curr.highVel);
+
+    const updated: ExtendedRegion = {
+      ...curr,
+      ...changes,
+      id: curr.id,
+      lowKey: nextLowKey,
+      highKey: nextHighKey,
+      rootKey: nextRootKey,
+      lowVel: nextLowVel,
+      highVel: nextHighVel,
+      detune: changes.detune !== undefined ? clamp(Math.round(changes.detune), -99, 99) : curr.detune,
+      volume: changes.volume !== undefined ? clamp(Math.round(changes.volume), -32, 12) : curr.volume,
+      pan: changes.pan !== undefined ? clamp(Math.round(changes.pan), -50, 50) : curr.pan,
+      pitchKeytrack:
+        changes.pitchKeytrack !== undefined
+          ? clamp(Math.round(changes.pitchKeytrack), 0, 100)
+          : curr.pitchKeytrack,
+    };
+
+    this.session.extendedRegions[idx] = updated;
+    const projected = projectExtendedRegionsToClassicZones(
+      this.session.extendedRegions,
+      this.session.zones,
+    );
+    this.session.zones = projected.zones;
+    this.markDirty();
+    return cloneExtendedRegion(updated);
+  }
+
+  public async addExtendedRegion(partial?: Partial<ExtendedRegion>): Promise<ExtendedRegion> {
+    if (!this.session) throw new Error('No active session');
+    if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
+      this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
+    }
+    this.pushHistory('Add Extended Region');
+
+    const nextNum = this.session.extendedRegions.length + 1;
+    const defaultSample =
+      partial?.sampleName ??
+      this.session.extendedRegions[0]?.sampleName ??
+      this.session.zones[0]?.sampleLow ??
+      'Strings_60_C4.wav';
+
+    const newReg: ExtendedRegion = {
+      id: partial?.id ?? `ext-reg-${Date.now().toString(36)}-${nextNum}`,
+      sampleName: defaultSample,
+      lowKey: clamp(Math.round(partial?.lowKey ?? 0), 0, 127),
+      highKey: clamp(Math.round(partial?.highKey ?? 127), 0, 127),
+      rootKey: clamp(Math.round(partial?.rootKey ?? 60), 0, 127),
+      lowVel: clamp(Math.round(partial?.lowVel ?? 1), 1, 127),
+      highVel: clamp(Math.round(partial?.highVel ?? 127), 1, 127),
+      detune: clamp(Math.round(partial?.detune ?? 0), -99, 99),
+      volume: clamp(Math.round(partial?.volume ?? 0), -32, 12),
+      pan: clamp(Math.round(partial?.pan ?? 0), -50, 50),
+      pitchKeytrack: clamp(Math.round(partial?.pitchKeytrack ?? 100), 0, 100),
+      trigger: partial?.trigger ?? 'attack',
+      seqPosition: partial?.seqPosition,
+      seqLength: partial?.seqLength,
+      keyFadeIn: Math.max(0, Math.round(partial?.keyFadeIn ?? 0)),
+      keyFadeOut: Math.max(0, Math.round(partial?.keyFadeOut ?? 0)),
+      velFadeIn: Math.max(0, Math.round(partial?.velFadeIn ?? 0)),
+      velFadeOut: Math.max(0, Math.round(partial?.velFadeOut ?? 0)),
+      fadeCurve: partial?.fadeCurve ?? 'equal-power',
+      loopMode: partial?.loopMode ?? 'no_loop',
+      loopStart: Math.max(0, Math.round(partial?.loopStart ?? 0)),
+      loopEnd: Math.max(0, Math.round(partial?.loopEnd ?? 0)),
+      loopCrossfadeMs: Math.max(0, Math.round(partial?.loopCrossfadeMs ?? 0)),
+      sampleRate: partial?.sampleRate,
+      numChannels: partial?.numChannels,
+    };
+
+    this.session.extendedRegions.push(newReg);
+    const projected = projectExtendedRegionsToClassicZones(
+      this.session.extendedRegions,
+      this.session.zones,
+    );
+    this.session.zones = projected.zones;
+    this.ensureZoneDemoBuffers(this.session.zones);
+    this.markDirty();
+    return cloneExtendedRegion(newReg);
+  }
+
+  public async removeExtendedRegion(regionId: string): Promise<void> {
+    if (!this.session) throw new Error('No active session');
+    if (!this.session.extendedRegions || this.session.extendedRegions.length <= 1) {
+      return;
+    }
+    this.pushHistory(`Remove Extended Region ${regionId}`);
+    this.session.extendedRegions = this.session.extendedRegions.filter((r) => r.id !== regionId);
+    const projected = projectExtendedRegionsToClassicZones(
+      this.session.extendedRegions,
+      this.session.zones,
+    );
+    this.session.zones = projected.zones;
+    this.markDirty();
+  }
+
+  public getArticulation(): SynthArticulationConfig {
+    if (!this.session) return createDefaultArticulation();
+    if (!this.session.articulation) {
+      this.session.articulation = createDefaultArticulation();
+    }
+    return cloneArticulation(this.session.articulation);
+  }
+
+  public updateArticulation(changes: Partial<SynthArticulationConfig>): Session {
+    if (!this.session) throw new Error('No active session');
+    const keys = Object.keys(changes).sort().join(',');
+    this.pushHistory(`Update Articulation (${keys})`, `articulation:${keys}`);
+
+    const curr = this.session.articulation
+      ? cloneArticulation(this.session.articulation)
+      : createDefaultArticulation();
+
+    this.session.articulation = {
+      ...curr,
+      ...changes,
+      ampEnv: changes.ampEnv ? { ...curr.ampEnv, ...changes.ampEnv } : curr.ampEnv,
+      modEnv: changes.modEnv ? { ...curr.modEnv, ...changes.modEnv } : curr.modEnv,
+      filter: changes.filter ? { ...curr.filter, ...changes.filter } : curr.filter,
+      vibLfo: changes.vibLfo ? { ...curr.vibLfo, ...changes.vibLfo } : curr.vibLfo,
+      modLfo: changes.modLfo ? { ...curr.modLfo, ...changes.modLfo } : curr.modLfo,
+    };
+
+    this.markDirty();
+    return this.session;
   }
 
   // ── Bank & Export Packaging (delegated to BankService) ──

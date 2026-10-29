@@ -6,7 +6,13 @@
 // right-side sliding drawer for Zone Metadata editing.
 // ─────────────────────────────────────────────────────────
 
-import type { WorkingMode, Zone } from '../core/types';
+import type {
+  ExtendedRegion,
+  LoopMode,
+  SynthArticulationConfig,
+  WorkingMode,
+  Zone,
+} from '../core/types';
 import {
   midiNoteToString,
   detuneToString,
@@ -26,6 +32,11 @@ export interface ZoneInspectorHandlers {
   onDropMultipleFiles?: (files: FileList) => void;
   onToggleSpectral?: () => void;
   getLoadedSamples?: () => string[];
+  getExtendedRegions?: () => ExtendedRegion[];
+  onUpdateExtendedRegion?: (regionId: string, changes: Partial<ExtendedRegion>) => void;
+  getArticulation?: () => SynthArticulationConfig;
+  onUpdateArticulation?: (changes: Partial<SynthArticulationConfig>) => void;
+  getDetectedCategory?: () => string | undefined;
 }
 
 function basenameOf(samplePath: string | null | undefined): string {
@@ -260,14 +271,14 @@ export class ZoneInspector {
           <div class="zone-table-footer">
             <div class="zone-table-status">
               <span class="panel-badge">ZONE #${this.zoneIndex + 1} (${this.totalZones} / 128 MAX)</span>
-              <span class="panel-caption">${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)} | Root: ${midiNoteToString(z.rootKey)}</span>
+              <span class="panel-caption">${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)} | Root: ${midiNoteToString(z.rootKey)}${this.workingMode === 'extended' ? ` | EXTENDED (${this.handlers.getExtendedRegions?.().length ?? this.totalZones} 2D REGIONS${this.handlers.getDetectedCategory?.() ? ` • ${this.handlers.getDetectedCategory?.()}` : ''})` : ''}</span>
             </div>
             <div class="panel-actions">
               <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral & A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
                 ${ICONS.wave} Spectral / A-B
               </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Open Right Drawer to Edit Zone #${this.zoneIndex + 1} Metadata">
-                ${ICONS.settings} Edit Zone #${this.zoneIndex + 1}
+              <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Open Right Drawer to Edit Zone #${this.zoneIndex + 1} Metadata${this.workingMode === 'extended' ? ' & Extended ADSR / Filter / LFO / Loop' : ''}">
+                ${ICONS.settings} ${this.workingMode === 'extended' ? `Edit Zone #${this.zoneIndex + 1} + Articulation` : `Edit Zone #${this.zoneIndex + 1}`}
               </button>
               <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" ${!canSplit ? 'disabled' : ''} title="New Zone / Split at Root Key (Max 128 zones, 1 per MIDI key)">
                 ${ICONS.plus} New Zone
@@ -435,10 +446,163 @@ export class ZoneInspector {
             </div>
           </div>
         </div>
+        ${this.renderExtendedSectionsHtml(z, isExtended)}
       </div>
     `;
 
     this.bindDrawerEvents();
+  }
+
+  private renderExtendedSectionsHtml(z: Zone, isExtended: boolean): string {
+    if (!isExtended) return '';
+    const regions = this.handlers.getExtendedRegions?.() ?? [];
+    const activeReg =
+      regions.find(
+        (r) =>
+          r.sampleName === z.sampleLow &&
+          r.lowKey <= z.lowKey &&
+          r.highKey >= z.highKey
+      ) ??
+      regions.find((r) => r.sampleName === z.sampleLow) ??
+      regions[this.zoneIndex] ??
+      null;
+
+    const art = this.handlers.getArticulation?.();
+    const loopMode = activeReg?.loopMode ?? 'no_loop';
+    const loopStart = activeReg?.loopStart ?? 0;
+    const loopEnd = activeReg?.loopEnd ?? 0;
+    const loopXfade = activeReg?.loopCrossfadeMs ?? 0;
+    const keytrack = activeReg?.pitchKeytrack ?? 100;
+    const keyFadeIn = activeReg?.keyFadeIn ?? 0;
+    const keyFadeOut = activeReg?.keyFadeOut ?? 0;
+
+    return `
+      <!-- 4. Extended Region Loop, Keytrack & Crossfades -->
+      <div class="inspector-section section-extended-region" data-ext-region-id="${activeReg?.id ?? ''}">
+        <div class="section-title">EXTENDED REGION: LOOP, KEYTRACK & CROSSFADES</div>
+        <div class="keys-inputs-row">
+          <div class="form-group">
+            <label for="sel-ext-loop-mode">LOOP MODE</label>
+            <select id="sel-ext-loop-mode" class="sample-reuse-select">
+              <option value="no_loop" ${loopMode === 'no_loop' ? 'selected' : ''}>No Loop</option>
+              <option value="loop_continuous" ${loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous Loop</option>
+              <option value="loop_sustain" ${loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain Loop</option>
+              <option value="one_shot" ${loopMode === 'one_shot' ? 'selected' : ''}>One Shot</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="inp-ext-loop-start">LOOP START (FRAMES)</label>
+            <input type="number" id="inp-ext-loop-start" min="0" value="${loopStart}" />
+          </div>
+          <div class="form-group">
+            <label for="inp-ext-loop-end">LOOP END (FRAMES)</label>
+            <input type="number" id="inp-ext-loop-end" min="0" value="${loopEnd}" />
+          </div>
+        </div>
+        <div class="keys-inputs-row" style="margin-top:8px">
+          <div class="form-group">
+            <label for="inp-ext-loop-xfade">LOOP XFADE (MS)</label>
+            <input type="number" id="inp-ext-loop-xfade" min="0" max="5000" value="${loopXfade}" />
+          </div>
+          <div class="form-group">
+            <label for="inp-ext-keytrack">PITCH KEYTRACK (%)</label>
+            <input type="number" id="inp-ext-keytrack" min="0" max="100" value="${keytrack}" title="100% = Chromatic, 0% = Unpitched/Drum" />
+          </div>
+          <div class="form-group">
+            <label for="inp-ext-key-fade">KEY XFADE IN/OUT</label>
+            <div style="display:flex;gap:4px">
+              <input type="number" id="inp-ext-key-fade-in" min="0" max="64" value="${keyFadeIn}" title="Key Crossfade In (semitones)" />
+              <input type="number" id="inp-ext-key-fade-out" min="0" max="64" value="${keyFadeOut}" title="Key Crossfade Out (semitones)" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${
+        art
+          ? `
+      <!-- 5. Global Synth Articulation & Safe sound.script Mapping (ADSR, Filter, LFO) -->
+      <div class="inspector-section section-articulation">
+        <div class="section-title">SYNTH ARTICULATION (ADSR / FILTER / LFO -> SAFE SOUND.SCRIPT)</div>
+
+        <!-- Amp Envelope -->
+        <div class="articulation-block" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px">
+            <input type="checkbox" id="chk-art-amp-env" ${art.ampEnvEnabled ? 'checked' : ''} />
+            <span>Export Amp Envelope (DAHDSR -> R1AmpEnvA/D/S/R)</span>
+          </label>
+          <div class="keys-inputs-row">
+            <div class="form-group">
+              <label for="inp-art-amp-a">ATTACK (S)</label>
+              <input type="number" id="inp-art-amp-a" min="0" max="12" step="0.01" value="${art.ampEnv.attackSec}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-amp-d">DECAY (S)</label>
+              <input type="number" id="inp-art-amp-d" min="0" max="15" step="0.01" value="${art.ampEnv.decaySec}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-amp-s">SUSTAIN (0..1)</label>
+              <input type="number" id="inp-art-amp-s" min="0" max="1" step="0.05" value="${art.ampEnv.sustainLevel}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-amp-r">RELEASE (S)</label>
+              <input type="number" id="inp-art-amp-r" min="0" max="15" step="0.01" value="${art.ampEnv.releaseSec}" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="articulation-block" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px">
+            <input type="checkbox" id="chk-art-filter" ${art.filter.enabled ? 'checked' : ''} />
+            <span>Export Filter (Silver Filter Cutoff / Reso / Env)</span>
+          </label>
+          <div class="keys-inputs-row">
+            <div class="form-group">
+              <label for="sel-art-filter-type">TYPE</label>
+              <select id="sel-art-filter-type" class="sample-reuse-select">
+                <option value="lpf" ${art.filter.type === 'lpf' ? 'selected' : ''}>LPF</option>
+                <option value="bpf" ${art.filter.type === 'bpf' ? 'selected' : ''}>BPF</option>
+                <option value="hpf" ${art.filter.type === 'hpf' ? 'selected' : ''}>HPF</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="inp-art-filter-cutoff">CUTOFF (HZ)</label>
+              <input type="number" id="inp-art-filter-cutoff" min="20" max="20000" step="10" value="${art.filter.cutoffHz}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-filter-reso">RESO (DB)</label>
+              <input type="number" id="inp-art-filter-reso" min="0" max="40" step="0.5" value="${art.filter.resonanceDb}" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Vibrato / Mod LFO -->
+        <div class="articulation-block">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px" title="Safe-mapped: Scape, Sphere & Blender LFO depths are explicitly locked to 0 so LFO never causes unwanted spectral morphing">
+            <input type="checkbox" id="chk-art-lfo" ${art.vibLfo.enabled ? 'checked' : ''} />
+            <span>Export LFO (Isolated Pitch / Filter / Amp — Scape/Sphere Zeroed)</span>
+          </label>
+          <div class="keys-inputs-row">
+            <div class="form-group">
+              <label for="inp-art-lfo-freq">RATE (HZ)</label>
+              <input type="number" id="inp-art-lfo-freq" min="0.05" max="30" step="0.1" value="${art.vibLfo.freqHz}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-lfo-delay">DELAY (S)</label>
+              <input type="number" id="inp-art-lfo-delay" min="0" max="10" step="0.05" value="${art.vibLfo.delaySec}" />
+            </div>
+            <div class="form-group">
+              <label for="inp-art-lfo-pitch">PITCH (CENTS)</label>
+              <input type="number" id="inp-art-lfo-pitch" min="-1200" max="1200" step="5" value="${art.vibLfo.toPitchCents}" />
+            </div>
+          </div>
+        </div>
+      </div>
+      `
+          : ''
+      }
+    `;
   }
 
   private bindTableEvents(): void {
@@ -669,5 +833,114 @@ export class ZoneInspector {
     this.drawerElement.querySelector('#btn-play-high')?.addEventListener('click', () => {
       if (z.sampleHigh) this.handlers.onAuditionSample(z.sampleHigh);
     });
+
+    // Extended Region & Synth Articulation events
+    const extSection = this.drawerElement.querySelector('.section-extended-region');
+    const extRegionId = extSection?.getAttribute('data-ext-region-id') || '';
+    if (extRegionId && this.handlers.onUpdateExtendedRegion) {
+      const updateReg = (changes: Partial<ExtendedRegion>) => {
+        this.handlers.onUpdateExtendedRegion?.(extRegionId, changes);
+      };
+
+      const selLoopMode = this.drawerElement.querySelector('#sel-ext-loop-mode') as HTMLSelectElement | null;
+      selLoopMode?.addEventListener('change', () => {
+        updateReg({ loopMode: selLoopMode.value as LoopMode });
+      });
+
+      const inpLoopStart = this.drawerElement.querySelector('#inp-ext-loop-start') as HTMLInputElement | null;
+      inpLoopStart?.addEventListener('change', () => {
+        updateReg({ loopStart: Math.max(0, parseInt(inpLoopStart.value, 10) || 0) });
+      });
+
+      const inpLoopEnd = this.drawerElement.querySelector('#inp-ext-loop-end') as HTMLInputElement | null;
+      inpLoopEnd?.addEventListener('change', () => {
+        updateReg({ loopEnd: Math.max(0, parseInt(inpLoopEnd.value, 10) || 0) });
+      });
+
+      const inpLoopXfade = this.drawerElement.querySelector('#inp-ext-loop-xfade') as HTMLInputElement | null;
+      inpLoopXfade?.addEventListener('change', () => {
+        updateReg({ loopCrossfadeMs: Math.max(0, parseInt(inpLoopXfade.value, 10) || 0) });
+      });
+
+      const inpKeytrack = this.drawerElement.querySelector('#inp-ext-keytrack') as HTMLInputElement | null;
+      inpKeytrack?.addEventListener('change', () => {
+        updateReg({ pitchKeytrack: Math.max(0, Math.min(100, parseInt(inpKeytrack.value, 10) || 0)) });
+      });
+
+      const inpKeyFadeIn = this.drawerElement.querySelector('#inp-ext-key-fade-in') as HTMLInputElement | null;
+      inpKeyFadeIn?.addEventListener('change', () => {
+        updateReg({ keyFadeIn: Math.max(0, parseInt(inpKeyFadeIn.value, 10) || 0) });
+      });
+
+      const inpKeyFadeOut = this.drawerElement.querySelector('#inp-ext-key-fade-out') as HTMLInputElement | null;
+      inpKeyFadeOut?.addEventListener('change', () => {
+        updateReg({ keyFadeOut: Math.max(0, parseInt(inpKeyFadeOut.value, 10) || 0) });
+      });
+    }
+
+    if (this.handlers.onUpdateArticulation && this.handlers.getArticulation) {
+      const bindArt = () => {
+        const curr = this.handlers.getArticulation!();
+        const chkAmp = this.drawerElement?.querySelector('#chk-art-amp-env') as HTMLInputElement | null;
+        const inpAmpA = this.drawerElement?.querySelector('#inp-art-amp-a') as HTMLInputElement | null;
+        const inpAmpD = this.drawerElement?.querySelector('#inp-art-amp-d') as HTMLInputElement | null;
+        const inpAmpS = this.drawerElement?.querySelector('#inp-art-amp-s') as HTMLInputElement | null;
+        const inpAmpR = this.drawerElement?.querySelector('#inp-art-amp-r') as HTMLInputElement | null;
+
+        const chkFlt = this.drawerElement?.querySelector('#chk-art-filter') as HTMLInputElement | null;
+        const selFltType = this.drawerElement?.querySelector('#sel-art-filter-type') as HTMLSelectElement | null;
+        const inpFltCut = this.drawerElement?.querySelector('#inp-art-filter-cutoff') as HTMLInputElement | null;
+        const inpFltReso = this.drawerElement?.querySelector('#inp-art-filter-reso') as HTMLInputElement | null;
+
+        const chkLfo = this.drawerElement?.querySelector('#chk-art-lfo') as HTMLInputElement | null;
+        const inpLfoFreq = this.drawerElement?.querySelector('#inp-art-lfo-freq') as HTMLInputElement | null;
+        const inpLfoDelay = this.drawerElement?.querySelector('#inp-art-lfo-delay') as HTMLInputElement | null;
+        const inpLfoPitch = this.drawerElement?.querySelector('#inp-art-lfo-pitch') as HTMLInputElement | null;
+
+        this.handlers.onUpdateArticulation!({
+          ampEnvEnabled: Boolean(chkAmp?.checked),
+          ampEnv: {
+            ...curr.ampEnv,
+            attackSec: Math.max(0.002, parseFloat(inpAmpA?.value ?? String(curr.ampEnv.attackSec)) || 0.005),
+            decaySec: Math.max(0.005, parseFloat(inpAmpD?.value ?? String(curr.ampEnv.decaySec)) || 0.25),
+            sustainLevel: Math.max(0, Math.min(1, parseFloat(inpAmpS?.value ?? String(curr.ampEnv.sustainLevel)) || 0)),
+            releaseSec: Math.max(0.01, parseFloat(inpAmpR?.value ?? String(curr.ampEnv.releaseSec)) || 0.2),
+          },
+          filter: {
+            ...curr.filter,
+            enabled: Boolean(chkFlt?.checked),
+            type: (selFltType?.value === 'hpf' || selFltType?.value === 'bpf' ? selFltType.value : 'lpf'),
+            cutoffHz: Math.max(20, Math.min(20000, parseFloat(inpFltCut?.value ?? String(curr.filter.cutoffHz)) || 18000)),
+            resonanceDb: Math.max(0, Math.min(40, parseFloat(inpFltReso?.value ?? String(curr.filter.resonanceDb)) || 0)),
+          },
+          vibLfo: {
+            ...curr.vibLfo,
+            enabled: Boolean(chkLfo?.checked),
+            freqHz: Math.max(0.05, Math.min(50, parseFloat(inpLfoFreq?.value ?? String(curr.vibLfo.freqHz)) || 5)),
+            delaySec: Math.max(0, Math.min(10, parseFloat(inpLfoDelay?.value ?? String(curr.vibLfo.delaySec)) || 0)),
+            toPitchCents: Math.max(-1200, Math.min(1200, parseFloat(inpLfoPitch?.value ?? String(curr.vibLfo.toPitchCents)) || 0)),
+          },
+        });
+      };
+
+      const artSelectors = [
+        '#chk-art-amp-env',
+        '#inp-art-amp-a',
+        '#inp-art-amp-d',
+        '#inp-art-amp-s',
+        '#inp-art-amp-r',
+        '#chk-art-filter',
+        '#sel-art-filter-type',
+        '#inp-art-filter-cutoff',
+        '#inp-art-filter-reso',
+        '#chk-art-lfo',
+        '#inp-art-lfo-freq',
+        '#inp-art-lfo-delay',
+        '#inp-art-lfo-pitch',
+      ];
+      for (const sel of artSelectors) {
+        this.drawerElement.querySelector(sel)?.addEventListener('change', bindArt);
+      }
+    }
   }
 }

@@ -224,6 +224,18 @@ class App {
       },
       onToggleSpectral: () => this.toggleSpectralPanel(),
       getLoadedSamples: () => this.core.getLoadedSampleNames(),
+      getExtendedRegions: () => this.core.getExtendedRegions(),
+      onUpdateExtendedRegion: async (regionId, changes) => {
+        await this.core.updateExtendedRegion(regionId, changes);
+        this.session = this.core.getSession()!;
+        this.refreshUI();
+      },
+      getArticulation: () => this.core.getArticulation(),
+      onUpdateArticulation: (changes) => {
+        this.session = this.core.updateArticulation(changes);
+        this.refreshUI();
+      },
+      getDetectedCategory: () => this.session?.detectedInstrumentCategory,
     });
 
     // 3b. Spectral & A/B Resynthesis Monitor (Phase 4)
