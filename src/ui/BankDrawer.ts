@@ -15,6 +15,7 @@ import { createBankShell } from '@abdsynths/shared/components/bank/bankShell.js'
 import { bankCardHtml, bindBankCards } from '@abdsynths/shared/components/bank/bankCard.js';
 import { bankChipsHtml, bindBankChips, type BankChipItem } from '@abdsynths/shared/components/bank/bankChips.js';
 import { classifyBankCategory } from '@abdsynths/shared/components/bank/bankCategories.js';
+import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/formats/neuron';
 
 export type BankTab = 'models' | 'presets' | 'library';
 
@@ -72,6 +73,7 @@ export class BankDrawer {
   private shell: ReturnType<typeof createBankShell> | null = null;
   private unbindCards: (() => void) | null = null;
   private currentBank: BankSummary | null = null;
+  private dbEvaluation: NeuronDbEvaluation | null = null;
   private activeTab: BankTab = 'models';
   private readonly visibleTabs: BankTab[];
   private filterQuery: string = '';
@@ -146,6 +148,7 @@ export class BankDrawer {
 
   public setBank(bank: BankSummary, selectedSlot?: number | null): void {
     this.currentBank = bank;
+    this.dbEvaluation = evaluateNeuronDb(bank.models, bank.presets);
     if (selectedSlot !== undefined) {
       this.selectedSlot = selectedSlot;
     }
@@ -465,6 +468,12 @@ export class BankDrawer {
             const catClass = ps ? `cat-${ps.id}` : 'cat-neutral';
             const catName = ps ? `${ps.id}: ${ps.name}` : `Set ${m.parameterSet}`;
             const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
+            const dep = this.dbEvaluation?.modelDependencies.get(m.slot);
+            const usedCount = dep ? dep.usedByPresetSlots.length : 0;
+            const usageBadge =
+              usedCount > 0
+                ? `${usedCount} Sound${usedCount === 1 ? '' : 's'}`
+                : 'Unused';
             return bankCardHtml({
               slot: m.slot,
               catClass,
@@ -474,6 +483,7 @@ export class BankDrawer {
               badges: [
                 `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
                 `Lvl ${m.complexity}`,
+                usageBadge,
               ],
               actions: [
                 { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },

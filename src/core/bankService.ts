@@ -16,7 +16,13 @@ import {
   synthesizeDemoWav,
 } from './dsp/WavDecoder.ts';
 import type { ZoneBinaryPair, ZoneWavPayload } from './dsp/PipelineRunner.ts';
-import { buildModelExportZip } from '@abdsynths/shared/formats/neuron';
+import {
+  buildModelExportZip,
+  evaluateNeuronDb,
+  findNextFreeModelSlot,
+  PINNED_SINEW_SLOT,
+  type NeuronDbEvaluation,
+} from '@abdsynths/shared/formats/neuron';
 import { createZone } from './sessionFactory.ts';
 import { DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
 import type {
@@ -125,6 +131,21 @@ export class BankService {
       totalModels: this.generatedModels.length,
       totalPresets: this.bankPresets.length,
     };
+  }
+
+  /**
+   * Transparently evaluates Model <-> Sound dependencies (`BrainMapper` engine).
+   */
+  public evaluateDependencies(): NeuronDbEvaluation {
+    return evaluateNeuronDb(this.generatedModels, this.bankPresets);
+  }
+
+  /**
+   * Transparently picks a safe free/unused model slot in `000..510`, never overwriting
+   * `#511 sinew` or an `'in-use'` model referenced by presets.
+   */
+  public getNextAvailableSlot(preferredSlot = 0): number {
+    return findNextFreeModelSlot(this.generatedModels, this.bankPresets, preferredSlot);
   }
 
   /** True when slot has compiled `.scape`/`.sphere` binaries cached. */
@@ -381,14 +402,18 @@ export class BankService {
     _sourcePath: string,
     slot: number
   ): Promise<GeneratedModel> {
+    const safeSlot =
+      slot === PINNED_SINEW_SLOT
+        ? this.getNextAvailableSlot(0)
+        : slot;
     const model: GeneratedModel = {
-      slot,
-      name: `Imported${slot}`,
+      slot: safeSlot,
+      name: `Imported${safeSlot}`,
       zoneCount: 1,
       complexity: 8,
       parameterSet: 0,
       createdAt: new Date().toISOString(),
-      path: `Models/${String(slot).padStart(3, '0')}.model`,
+      path: `Models/${String(safeSlot).padStart(3, '0')}.model`,
     };
     this.upsertModel(model);
     this.persistBank();
@@ -405,16 +430,20 @@ export class BankService {
     neuronikModelJson: string,
     elapsedMs: number
   ): void {
-    this.modelZoneBinaries.set(config.modelNumber, zoneBinaries);
+    const targetSlot =
+      config.modelNumber === PINNED_SINEW_SLOT && config.modelName.toLowerCase() !== 'sinew'
+        ? this.getNextAvailableSlot(0)
+        : config.modelNumber;
+    this.modelZoneBinaries.set(targetSlot, zoneBinaries);
 
     const model: GeneratedModel = {
-      slot: config.modelNumber,
+      slot: targetSlot,
       name: config.modelName,
       zoneCount,
       complexity: config.complexity,
       parameterSet: config.parameterSet,
       createdAt: new Date().toISOString(),
-      path: `Models/${String(config.modelNumber).padStart(3, '0')}.model`,
+      path: `Models/${String(targetSlot).padStart(3, '0')}.model`,
       targetFormat: config.targetFormat ?? 'dual',
       zonesAnalysis,
       neuronikModelJson,
