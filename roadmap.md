@@ -135,50 +135,153 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 6 — WASM / C++ (Opcional)
+# 🚀 Nueva Etapa: Evolución Next-Gen (Fases 6 a 12)
 
-**Objetivo**: Aceleración nativa para batch processing.
-
-- [ ] Compilar el core C++ existente (si hay) a WASM con Emscripten
-- [ ] O reimplementar FFT/peak-picking en C++20 portable
-- [ ] Interfaz wasm-bindgen → `WasmCore` implementando `CoreService`
-- [ ] CLI standalone para procesamiento por lotes (Node.js + WASM)
-- [ ] Benchmarks: TypeScript vs WASM en diferentes tamaños de sample
+> Hoja de ruta para transformar `ABDNeuModMakr` en una factoría de modelos capaz de importar instrumentos complejos, mejorar la síntesis clásica con algoritmos modernos e IA, conservar el linaje completo de ondas sin "efecto fotocopia", y alimentar el motor extendido de `ABDAxionikVS` (C++ / JUCE 9).
 
 ---
 
-## Fase 7 — Testing y CI/CD
+## Fase 6 — Creación Dual (Clásica vs Extendida) e Importación Universal a Formato Nativo
 
-**Objetivo**: Garantizar calidad y estabilidad.
+**Objetivo**: Desacoplar el modo de edición/creación del formato de salida e incorporar un importador de formatos de sampler (`.sf2`, `.sfz`, etc.) que traduzca siempre a **nuestra propia definición nativa + WAVs/AIFFs** (sin guardar nunca el archivo `.sf2` o externo original).
 
-- [ ] Tests unitarios: WAV decoder, FFT, peak-picker, format writers
-- [ ] Tests de integración: pipeline completo (WAV → .model)
-- [ ] Tests E2E con Playwright: flujo completo de UI
-- [ ] GitHub Actions: build + test en push/PR
-- [ ] Lint (ESLint) + format (Prettier)
-- [ ] Lighthouse CI para performance web
+### 6.1 Modo de Creación Conmutable (`Classic Creation` vs `Extended Creation`)
+- [ ] Permitir alternar libremente en cualquier momento entre **Creación Clásica** y **Creación Extendida**, independientemente del formato en que luego se decida exportar:
+  - **Modo de Creación Clásico**: Reglas estrictas de Hartmann MODELmaker v1.2 (bloques de notas contiguos `0..127` sin huecos ni solapamientos, columnas simétricas y máximo 2 capas de velocidad divididas en `64`).
+  - **Modo de Creación Extendido** (inspirado en capacidades de SFZ, HALion, Kontakt y SampleTank):
+    - **Mapa 2D libre ("Lego" de regiones)**: $N$ rangos de notas por $N$ rangos de velocidad (`loKey..hiKey` $\times$ `loVel..hiVel`) de tamaños arbitrarios e independientes.
+    - **Crossfades en Altura y Velocidad (`keyFadeIn/Out`, `velFadeIn/Out`)**: Fundidos suaves entre zonas solapadas (en ganancia y/o en interpolación espectral).
+    - **Modos de Loop (`no_loop`, `loop_continuous`, `loop_sustain`)**: Puntos `loopStart`, `loopEnd` y `loopCrossfade` para sostener instrumentos acústicos y pads.
+    - **Seguimiento de Teclado (`pitchKeytrack`)**: Configurable de `0%` (percusión, baterías, efectos inarmónicos que no deben cambiar de pitch) a `100%` (instrumentos cromáticos) o valores intermedios.
+    - **Modos de Disparo y Variación (`trigger: attack | release`, `roundRobin`)**: Soporte para muestras de *release* y secuencias de alternancia.
+
+### 6.2 Importador de `.sf2` (SoundFont 2) y `.sfz` a Definición Nativa
+- [ ] Parser binario de `.sf2` (chunks `INFO`, `sdta` de audio PCM y `pdta` de presets/instrumentos/zonas/generadores) con modal selector cuando el banco contenga múltiples presets.
+- [ ] Parser de `.sfz` (`<global>`, `<group>`, `<region>`, opcodes `sample`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`, `xf_*`, `volume`, `pan`, `tune`, `loop_*`, `trigger`).
+- [ ] **Conversión inmediata a Formato Propio**: Al importar un `.sf2` o `.sfz` (o conversiones intermedias desde Kontakt/HALion/SampleTank), se extraen las muestras como WAV/AIFF independientes y se registran sus regiones en nuestro esquema nativo. El archivo `.sf2`/`.sfz` original se descarta tras la importación.
+
+### 6.3 Compilador / Adaptador de Extendido $\rightarrow$ Clásico en Exportación
+- [ ] Si se ha trabajado en Modo Extendido (o importado un instrumento complejo) y se exporta a **Clásico** (o a la capa clásica del contenedor multiformato):
+  - **Particionado automático de columnas**: Proyectar los límites de nota sobre `0..127` garantizando cobertura continua sin huecos.
+  - **Normalización y compensación de volumen**: Aplicar las ganancias individuales (`volumeDb` / atenuación SF2) directamente sobre la amplitud de las muestras o espectros antes de codificar.
+  - **Reducción de $N$ velocidades a 2 franjas (`1..63` y `64..127`)**: Agrupar las regiones que caen en la mitad inferior y superior, permitiendo seleccionar la muestra representativa o realizar una **fusión/interpolación espectral ponderada** para generar un único par `.scape`/`.sphere` para `Low` y otro para `High`.
 
 ---
 
-## Fase 8 — Distribución
+## Fase 7 — Autodetección Inteligente y Motor Clásico Mejorado (`Classic Enhanced`)
 
-**Objetivo**: Publicar como aplicación standalone.
+**Objetivo**: Obtener modelos 100% compatibles con el sintetizador clásico pero con calidad superior mediante nuevos algoritmos de análisis, manteniendo siempre la opción de usar el algoritmo original.
 
-- [ ] Build de producción optimizado (Vite build)
-- [ ] Empaquetado Electron o WebView2 (opcional, para distribución desktop)
-- [ ] Generación de instalador Windows (NSIS o similar)
-- [ ] Landing page del proyecto
-- [ ] Documentación de usuario (guía paso a paso)
+### 7.1 Autodetección de Nota Raíz ($f_0$) y Detector Percusivo / Ruido
+- [ ] Mejorar el detector de frecuencia fundamental combinando **YIN / MPM (McLeod Pitch Method)** en dominio temporal con **HPS + Least-Squares** en dominio frecuencial.
+- [ ] **Índice de Armonicidad / Confianza de Pitch**: Detectar automáticamente cuándo un sonido es **percusivo, inarmónico o ruido puro** (caja, plato, viento, FX) para no asignarle una fundamental errónea ni deformar la rejilla de parciales.
+
+### 7.2 Clasificador Automático de los 10 Parameter Sets (`0..9`)
+- [ ] Analizador de descriptores acústicos por muestra y conjunto de zonas:
+  - Tiempo y pendiente de ataque (`Log-Attack Time`).
+  - Coeficiente de inarmonicidad / rigidez física de parciales ($f_n$ frente a $n \cdot f_0$, clave para distinguir pianos, campanas y metales de cuerdas o vientos).
+  - Relación Armónico-Ruido (`HNR`), *Spectral Flatness* y *Zero-Crossing Rate* (soplido/turbulencia).
+  - Evolución temporal de la envolvente y detección de múltiples transitorios (para detectar bucles rítmicos de `Set 8: Loop Factory`).
+- [ ] Selección automática del mejor `Parameter Set` (`0..9`) con indicador de confianza en la UI (y posibilidad de sobreescritura manual).
+
+### 7.3 Nuevos Algoritmos para el Formato Clásico (`Legacy DSP` vs `Enhanced DSP`)
+- [ ] Conmutador de algoritmo de procesado clásico para conservar el comportamiento exacto de 2001 junto al nuevo motor mejorado:
+  - **Separación Transitorio / Estacionario (HPSS)**: Aislar el impacto/excitación real para el archivo `.scape` y dejar los parciales estacionarios limpios para el `.sphere`.
+  - **Reasignación Tiempo-Frecuencia y Consistencia de Fase**: Estabilizar las trayectorias de los 64 parciales y sus offsets de frecuencia para eliminar el sonido metálico/fasmagórico.
+  - **Ventanas STFT adaptativas según tipo de sonido y registro**: Mayor resolución temporal en ataques percusivos y mayor resolución frecuencial en notas graves/pads.
+- [ ] **Comparador A / B / C y Métrica de Calidad (`Quality Score`)**: Audición instantánea entre `Onda Fuente` vs `Clásico Original` vs `Clásico Mejorado`, con puntuación objetiva de fidelidad espectral y de transitorios.
 
 ---
 
-## Prioridades técnicas transversales
+## Fase 8 — Estándar de Audio Maestro (`Master Wave Format`) y Regeneración / Upscaling (DSP + IA)
 
-| Prioridad | Descripción |
-|---|---|
-| 🔴 Alta | Pipeline de audio TS (Fase 1) — es el corazón de la app |
-| 🔴 Alta | Formatos .model/.sound (Fase 2) — sin esto no hay output útil |
-| 🟡 Media | Gestión de archivos (Fase 3) — para flujo real de trabajo |
-| 🟡 Media | Visualización espectral (Fase 4) — feedback esencial |
-| 🟢 Baja | WASM (Fase 6) — optimización, no bloqueante |
-| 🟢 Baja | Distribución (Fase 8) — cuando todo lo demás funcione |
+**Objetivo**: Regenerar las ondas a partir de la librería actual (`NeuronDB`), o mejorar muestras procedentes de SoundFonts antiguos y grabaciones propias, llevándolas todas a un estándar de audio maestro de máxima calidad antes de re-analizarlas.
+
+### 8.1 Definición del Estándar de Audio Maestro (`Enhanced Wave Standard`)
+- [ ] Establecer un formato canónico de preservación y trabajo para las ondas mejoradas:
+  - **Profundidad de bits**: `24-bit PCM` (o `32-bit IEEE Float` en procesamiento interno).
+  - **Frecuencia de muestreo**: `96.000 Hz` (upsampling de alta precisión para evitar aliasing en manipulaciones espectrales y permitir extensión armónica por encima de 20 kHz).
+  - **Canales**: Conservar **Estéreo / Canales Originales** (o expansión pseudo-estéreo coherente en fase cuando se desee, manteniendo copia mono de referencia para el camino clásico `legacy-neuron`).
+- [ ] Pipeline de promoción a formato maestro con tres vías seleccionables:
+  1. **Conversión Directa**: Resampling sinc con ventana Kaiser-Bessel de fase lineal y conversión a 24-bit / 96 kHz.
+  2. **Mejora por Algoritmos DSP Modernos (100% en navegador/Worker)**.
+  3. **Mejora por Modelos de IA (Puente Local o Híbrido)**.
+
+### 8.2 Regeneración desde la Librería Original (`NeuronDB` `.scape` + `.sphere` $\rightarrow$ WAV Maestro)
+- [ ] Reconstrucción avanzada desde los ~500 modelos de `NeuronDB`:
+  - Interpolación por splines cúbicos entre las tramas de `.sphere` para eliminar escalones temporales.
+  - Síntesis de fase coherente e inyección de la envolvente y textura de excitación de `.scape`.
+  - Aplicación de **Extensión de Ancho de Banda (BWE)**, limpieza de ruido de cuantización (*spectral gating*) y reconstrucción de transitorios para devolver definición a los modelos de 2001.
+
+### 8.3 Integración con Modelos de IA (Arquitectura de Conexión)
+- [ ] Soportar una interfaz de plugins/proveedores de restauración IA (`AudioEnhancementProvider`):
+  - **AudioSR / Super-Resolución**: Reconstrucción neuronal de armónicos superiores hasta 48/96 kHz (ideal para resíntesis de `NeuronDB` y muestras SF2 antiguas de 22/32 kHz).
+  - **Demucs / Separación Transitorio-Cuerpo**: Separación quirúrgica de excitación (`Scape`) y resonancia (`Sphere`).
+  - **BigVGAN / Vocoders Neuronales**: Reconstrucción de fase orgánica a partir de espectrogramas de magnitud.
+
+---
+
+## Fase 9 — Contenedor Multiformato ("Cápsula del Tiempo" Anti-Efecto Fotocopia)
+
+**Objetivo**: Guardar en nuestro paquete de modelo todas las etapas del sonido (si existen) junto con las definiciones en nuestro formato nativo, evitando para siempre el "efecto fotocopia" al reprocesar en el futuro con mejores algoritmos.
+
+### 9.1 Estructura de las 5 Capas del Contenedor Multiformato
+Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
+1. **`01_raw_source/` (Onda Original WAV/AIFF + Mapa Nativo)**:
+   - Los archivos WAV/AIFF originales sin alterar (aportados por el usuario o extraídos de un SF2/SFZ al importarlo) junto con el manifiesto JSON de zonas/velocidades/loops en nuestro propio formato.
+2. **`02_legacy_original/` (Binario Clásico Original)**:
+   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` originales de fábrica (cuando el modelo proviene de `NeuronDB`).
+3. **`03_enhanced_audio/` (Onda Mejorada / Regenerada — Estándar Maestro 24-bit / 96 kHz)**:
+   - Las ondas regeneradas desde (2) o mejoradas desde (1) mediante nuestros algoritmos DSP o modelos de IA, en formato maestro (24-bit, 96 kHz, canales originales/estéreo).
+4. **`04_classic_enhanced/` (Binario Clásico Mejorado)**:
+   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` 100% compatibles con el modo clásico del sintetizador, pero calculados con los nuevos algoritmos de la Fase 7 a partir de (3) o (1).
+5. **`05_extended_model/` (Modelo Expandido / Neural)**:
+   - El formato definitivo para el modo extendido del sintetizador (matrices de alta resolución, campos de vectores / espacio latente IA, transitorios PCM reales y mapa 2D completo), calculado siempre desde (3) o (1).
+
+### 9.2 Regla de Linaje ("Cero Efecto Fotocopia")
+- [ ] Metadatos de procedencia (`provenance.json`): registra con qué versión de algoritmo/IA y a partir de qué capa fuente (`01_raw_source` o `02_legacy_original`) se generó cada capa derivada.
+- [ ] Al pulsar **"Reprocesar con Nuevos Algoritmos"**, el motor toma automáticamente la fuente primaria más pura disponible (`01` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario ya degradado.
+
+---
+
+## Fase 10 — Estrategia de Despliegue: Local, Cloud (GitHub / Vercel) o Híbrido
+
+**Objetivo**: Permitir que `ABDNeuModMakr` funcione desplegado en la nube (Vercel / GitHub Pages) desde cualquier navegador, sin renunciar a la potencia del hardware local cuando esté disponible.
+
+- [ ] **Modo 100% Web / Vercel (Client-Side Puro)**:
+  - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y modelos ligeros en **WebGPU / ONNX Runtime Web (`@huggingface/transformers`)** corren directamente en el navegador del usuario.
+  - Desplegable gratuitamente en **Vercel** o **GitHub Pages** como SPA estática (cero coste de servidor).
+- [ ] **Modo Híbrido con Puente Local ("Local Companion Bridge")**:
+  - Aun abriendo la aplicación desde la URL de Vercel (o en `localhost`), la web detecta opcionalmente si hay un micro-servidor local corriendo en la máquina del usuario (`http://127.0.0.1:8389` en Python/FastAPI o C++) con acceso a la GPU local (CUDA/MPS) y al sistema de archivos (`NeuronDB`) para ejecutar modelos de IA pesados (AudioSR, Demucs, entrenamientos de espacio latente) a máxima velocidad.
+
+---
+
+## Fase 11 — Procesado del Modo Extendido y Nuevos Resynators (Coordinado con `ABDAxionikVS`)
+
+> *Nota: Se abordará una vez consolidadas las fases anteriores, ya que implica diseñar nuevos motores de resíntesis (`Resynators`) en el sintetizador C++ / JUCE 9.*
+
+- [ ] **Formato Espectral de Alta Definición y Campos de Vectores / Espacio Latente**:
+  - Superar el límite de 64 parciales y 16 tramas; separación explícita entre envolvente espectral (formantes) y pitch para *Formant Shifting* real.
+  - Representación mediante **campos vectoriales de morphing** o coordenadas en un espacio latente neuronal (Autoencoder / VAE) para que los joysticks `Scape` y `Sphere` interpolen características acústicas reales en 2D/3D.
+- [ ] **Ataques PCM Híbridos + Cuerpo Resintetizado**:
+  - Disparo del transitorio original a 24-bit/96 kHz en los primeros milisegundos fundido en fase con el *Resynator* extendido en `ABDAxionikVS`.
+- [ ] **Morphing Continuo de Velocidad y Altura**:
+  - Aprovechar en el sintetizador las $N$ capas de velocidad y crossfades definidos en el Modo de Creación Extendido (Fase 6).
+
+---
+
+## Fase 12 — Procesamiento por Lotes (`Batch Processor`) *(Pospuesto para fase final)*
+
+> *Nota: Se pospone hasta haber validado y afinado los algoritmos yendo modelo por modelo en la interfaz.*
+
+- [ ] Utilidad de procesamiento desatendido por lotes sobre carpetas completas (`NeuronDB` con sus ~500 modelos, o conversión masiva de colecciones `.sf2`/`.sfz`).
+- [ ] Cola de trabajos con reporte de métricas de calidad, detección de errores y generación automática de los contenedores multiformato de 5 capas.
+
+---
+
+## Fase 13 — Testing, CI/CD y Distribución
+
+- [x] Suite de tests automatizados Fases 1 a 5 (`npm test` + `npm run test:types`)
+- [ ] Tests unitarios y de integración para importadores SF2/SFZ, clasificador de Parameter Sets, estándar 24-bit/96 kHz y contenedor multiformato
+- [ ] Configuración de despliegue continuo en Vercel conectado al repositorio de GitHub
+- [ ] Empaquetado opcional desktop (WebView2 / Tauri / Electron) junto al puente local de IA
