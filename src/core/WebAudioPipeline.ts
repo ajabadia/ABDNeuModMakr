@@ -62,9 +62,12 @@ import {
 import { parseSessionJson } from './sessionSchema.ts';
 import type {
   AcousticClassificationResult,
+  AssetStoreDiagnostics,
   ExtendedRegion,
   MasterWaveConfig,
   MasterWaveResult,
+  ModelProvenance,
+  ReprocessPurestOptions,
   SynthArticulationConfig,
   Sf2PresetOption,
   AudioFilePayload,
@@ -77,7 +80,14 @@ import {
 import {
   DEFAULT_MASTER_WAVE_CONFIG,
   promoteBufferToMasterWave,
+  regenerateMasterWaveFromLegacyBinaries,
 } from './dsp/MasterWaveEnhancer.ts';
+import { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
+import {
+  buildTimeCapsuleEntries,
+  extractTimeCapsuleFromFiles,
+  resolvePurestSourceForSample,
+} from './timeCapsule.ts';
 import {
   createDefaultArticulation,
   cloneArticulation,
@@ -141,6 +151,7 @@ export class WebAudioPipeline implements CoreService {
     string,
     PreservedSourceBinary & { complexity: number }
   > = new Map();
+  private readonly assetStore: NeuronAssetStore = new NeuronAssetStore();
   private readonly analyzer: SpectralAnalyzer = new SpectralAnalyzer();
 
   private worker: Worker | null = null;
@@ -187,6 +198,8 @@ export class WebAudioPipeline implements CoreService {
   private readonly bank: BankService = new BankService({
     getSession: () => this.session,
     getSampleBuffer: (name: string) => this.sampleBuffers.get(name),
+    getAssetStore: () => this.assetStore,
+    hasImportedBinary: (name: string) => this.importedSourceBinaries.has(name),
     ensureDemoBuffers: (zones: Zone[]) => this.ensureZoneDemoBuffers(zones),
     analyzeZone: (payload, cfg) => analyzeSingleZone(payload, cfg, this.analyzer),
     pushHistory: (label: string) => this.pushHistory(label),
@@ -207,6 +220,7 @@ export class WebAudioPipeline implements CoreService {
   // ── Lifecycle ───────────────────────────────────────────
 
   public async init(): Promise<void> {
+    await this.assetStore.hydrateFromIndexedDb();
     // Restore persisted session and bank from localStorage if available
     this.restoreFromLocalStorage();
   }
@@ -242,6 +256,7 @@ export class WebAudioPipeline implements CoreService {
   public async newSession(name = 'Untitled'): Promise<Session> {
     this.sampleBuffers.clear();
     this.importedSourceBinaries.clear();
+    this.assetStore.clearSessionAudioLayers();
     this.ribbonEnvelopeCache.clear();
     this.spectralCache.clear();
     this.session = createInitialSession(name);
@@ -748,7 +763,12 @@ export class WebAudioPipeline implements CoreService {
    */
   public registerSampleBuffer(
     sampleName: string,
-    wavBuffer: ArrayBuffer
+    wavBuffer: ArrayBuffer,
+    options?: {
+      isPromotedEnhanced?: boolean;
+      rawSourceName?: string;
+      isResynthesizedFromLegacy?: boolean;
+    }
   ): DecodedWav {
     if (wavBuffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES) {
       throw new Error(
@@ -759,6 +779,19 @@ export class WebAudioPipeline implements CoreService {
     this.sampleBuffers.set(sampleName, wavBuffer);
     this.importedSourceBinaries.delete(sampleName);
     this.ribbonEnvelopeCache.delete(sampleName);
+
+    if (options?.isPromotedEnhanced) {
+      this.assetStore.setEnhancedAudio(sampleName, wavBuffer);
+      if (options.rawSourceName) {
+        this.assetStore.linkPromotedToRawSource(
+          sampleName,
+          options.rawSourceName
+        );
+      }
+    } else if (!options?.isResynthesizedFromLegacy) {
+      this.assetStore.setRawSource(sampleName, wavBuffer);
+    }
+
     return decoded;
   }
 
@@ -1375,15 +1408,23 @@ export class WebAudioPipeline implements CoreService {
       name: f.name,
       data: new Uint8Array(f.buffer),
     }));
-    const bundle = parseModelFileSet(byteFiles, defaultSlot);
+    const extracted = extractTimeCapsuleFromFiles(byteFiles);
+    const parseInput =
+      extracted.modelParseFiles.length > 0
+        ? extracted.modelParseFiles
+        : byteFiles;
+    const bundle = parseModelFileSet(parseInput, defaultSlot);
 
     const hasEmbeddedSamples = Boolean(
-      bundle.embeddedSamples && bundle.embeddedSamples.size > 0
+      (bundle.embeddedSamples && bundle.embeddedSamples.size > 0) ||
+        extracted.rawSourceSamples.size > 0 ||
+        extracted.enhancedAudioSamples.size > 0
     );
     if (
       bundle.scapes.size === 0 &&
       bundle.spheres.size === 0 &&
       !bundle.neuronikModelJson &&
+      !extracted.extendedModelJson &&
       !hasEmbeddedSamples
     ) {
       if (bundle.hasMNameOrMapScript) {
@@ -1407,6 +1448,24 @@ export class WebAudioPipeline implements CoreService {
         } catch {
           // ignore non-decodable embedded file
         }
+      }
+    }
+
+    // Hydrate Time Capsule Layer 01 (raw sources) & Layer 03 (enhanced 24b/96k audio)
+    for (const [rawName, rawBuf] of extracted.rawSourceSamples.entries()) {
+      try {
+        this.registerSampleBuffer(rawName, rawBuf);
+      } catch {
+        // ignore invalid raw buffer
+      }
+    }
+    for (const [enhName, enhBuf] of extracted.enhancedAudioSamples.entries()) {
+      try {
+        this.registerSampleBuffer(enhName, enhBuf, {
+          isPromotedEnhanced: true,
+        });
+      } catch {
+        // ignore invalid enhanced buffer
       }
     }
 
@@ -1651,31 +1710,122 @@ export class WebAudioPipeline implements CoreService {
     }
 
     const neuronikModelJson =
-      bundle.neuronikModelJson ?? convertLegacyModelToModern(bundle);
+      extracted.extendedModelJson ??
+      bundle.neuronikModelJson ??
+      convertLegacyModelToModern(bundle);
 
-    this.session!.name = bundle.name;
+    // Record Layer 02 (`02_legacy_original`) untouched binaries in NeuronAssetStore
+    const hasRawSourcesInCapsule = extracted.rawSourceSamples.size > 0;
+    if (
+      extracted.legacyOriginalFiles.length > 0 ||
+      (!extracted.isTimeCapsule &&
+        !hasRawSourcesInCapsule &&
+        zoneBinaries.length > 0 &&
+        bundle.spheres.size > 0)
+    ) {
+      for (const [sName, impRec] of this.importedSourceBinaries.entries()) {
+        this.assetStore.setLegacyOriginalSample({
+          sampleName: sName,
+          scapeBinary: impRec.scapeBinary,
+          sphereBinary: impRec.sphereBinary,
+          origParameterSet: impRec.origParameterSet,
+          complexity: impRec.complexity,
+        });
+      }
+      this.assetStore.setLegacyOriginalSlotBundle({
+        slot: bundle.slot,
+        name: bundle.name,
+        zones: newZones,
+        mapScriptVersion: {
+          major: bundle.mapScript.versionMajor,
+          minor: bundle.mapScript.versionMinor,
+          build: bundle.mapScript.versionBuild,
+          lineEnding: '\n',
+        },
+        zoneBinaries,
+      });
+    }
+
+    this.session!.name = extracted.manifest?.modelName ?? bundle.name;
     this.session!.zones = newZones;
+    if (extracted.manifest?.extendedRegions?.length) {
+      this.session!.extendedRegions = structuredClone(
+        extracted.manifest.extendedRegions
+      );
+    }
+    if (extracted.manifest?.articulation) {
+      this.session!.articulation = cloneArticulation(
+        extracted.manifest.articulation
+      );
+    }
+    if (extracted.manifest?.detectedInstrumentCategory) {
+      this.session!.detectedInstrumentCategory =
+        extracted.manifest.detectedInstrumentCategory;
+    }
     this.session!.processConfig = {
-      modelName: bundle.name,
+      modelName: extracted.manifest?.modelName ?? bundle.name,
       modelNumber: bundle.slot,
-      parameterSet: inferredParamSet,
-      complexity: inferredComplexity,
-      targetFormat: 'legacy-neuron',
+      parameterSet:
+        extracted.manifest?.processConfig.parameterSet ?? inferredParamSet,
+      complexity:
+        extracted.manifest?.processConfig.complexity ?? inferredComplexity,
+      targetFormat:
+        extracted.manifest?.processConfig.targetFormat ?? 'legacy-neuron',
+      workingMode: extracted.manifest?.processConfig.workingMode,
+      dspAlgorithm: extracted.manifest?.processConfig.dspAlgorithm,
+      masterWaveConfig: extracted.manifest?.processConfig.masterWaveConfig,
     };
+
+    const { manifest: builtManifest, provenance: builtProvenance } =
+      buildTimeCapsuleEntries({
+        slot: bundle.slot,
+        modelName: this.session!.name,
+        processConfig: this.session!.processConfig,
+        zones: newZones,
+        extendedRegions: this.session!.extendedRegions,
+        articulation: this.session!.articulation,
+        detectedInstrumentCategory: this.session!.detectedInstrumentCategory,
+        rawSourceSamples: this.assetStore.getAllRawSourcesSync(),
+        legacyOriginalBundle:
+          this.assetStore.getLegacyOriginalSlotBundleSync(bundle.slot),
+        enhancedAudioSamples: this.assetStore.getAllEnhancedAudioSync(),
+        classicEnhancedBinaries: zoneBinaries,
+        mapScriptVersion: {
+          major: bundle.mapScript.versionMajor,
+          minor: bundle.mapScript.versionMinor,
+          build: bundle.mapScript.versionBuild,
+          lineEnding: '\n',
+        },
+        neuronikModelJson,
+        previousProvenance: extracted.provenance ?? undefined,
+      });
+
+    this.session!.provenance = builtProvenance;
     this.session!.dirty = false;
     this.session!.modifiedAt = new Date().toISOString();
 
+    this.assetStore.setCapsuleRecord({
+      slot: bundle.slot,
+      modelName: this.session!.name,
+      manifest: builtManifest,
+      provenance: builtProvenance,
+      classicEnhancedBinaries: zoneBinaries,
+      extendedModelJson: neuronikModelJson,
+      updatedAt: builtProvenance.updatedAt,
+    });
+
     const model: GeneratedModel = {
       slot: bundle.slot,
-      name: bundle.name,
+      name: this.session!.name,
       zoneCount: newZones.length,
-      complexity: inferredComplexity,
-      parameterSet: inferredParamSet,
+      complexity: this.session!.processConfig.complexity,
+      parameterSet: this.session!.processConfig.parameterSet,
       createdAt: new Date().toISOString(),
       path: `Models/${String(bundle.slot).padStart(3, '0')}.model`,
       targetFormat: 'dual',
       zonesAnalysis,
       neuronikModelJson,
+      provenance: builtProvenance,
     };
 
     this.bank.registerImportedBundle(bundle.slot, zoneBinaries, {
@@ -2431,14 +2581,11 @@ export class WebAudioPipeline implements CoreService {
     if (!zone) return null;
 
     this.ensureZoneDemoBuffers([zone]);
-    const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
-    const rawBuf =
-      (zone.sampleLow ? this.sampleBuffers.get(zone.sampleLow) : null) ??
-      synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
+    const currentSampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
 
     const extRegions = this.getExtendedRegions();
     const matchReg = extRegions.find(
-      (r) => r.sampleName === sampleName || r.id === `ext-${zone.id}-low`
+      (r) => r.sampleName === currentSampleName || r.id === `ext-${zone.id}-low`
     );
 
     const mergedCfg: MasterWaveConfig = {
@@ -2448,29 +2595,76 @@ export class WebAudioPipeline implements CoreService {
     };
     this.session.processConfig.masterWaveConfig = mergedCfg;
 
-    const promoted = await promoteBufferToMasterWave(
-      rawBuf,
-      sampleName,
-      zone.id,
-      mergedCfg,
-      {
-        rootKey: zone.rootKey,
-        detuneCents: zone.detune,
-        loopStart: matchReg?.loopStart,
-        loopEnd: matchReg?.loopEnd,
-        loopMode: matchReg?.loopMode,
-      }
+    // Anti-Photocopy Rule: Always resolve the purest origin layer (`01_raw_source` or `02_legacy_original`)
+    const purest = resolvePurestSourceForSample(
+      currentSampleName,
+      this.assetStore,
+      this.sampleBuffers
     );
 
-    this.pushHistory(`Promote "${sampleName}" to 24-bit/96kHz Master Wave`);
-    this.registerSampleBuffer(promoted.result.masterSampleName, promoted.wav24Buffer);
+    let promoted: { result: MasterWaveResult; wav24Buffer: ArrayBuffer };
+    let originSampleName = currentSampleName;
+    let sourceLayerUsed: '01_raw_source' | '02_legacy_original' = '01_raw_source';
+
+    if (purest?.sourceLayer === '02_legacy_original') {
+      sourceLayerUsed = '02_legacy_original';
+      originSampleName = purest.sampleName;
+      promoted = regenerateMasterWaveFromLegacyBinaries(
+        purest.legacyRecord.scapeBinary,
+        purest.legacyRecord.sphereBinary,
+        zone.rootKey,
+        zone.id,
+        originSampleName,
+        mergedCfg
+      );
+    } else {
+      sourceLayerUsed = '01_raw_source';
+      originSampleName = purest?.rawSampleName ?? currentSampleName;
+      const rawBuf =
+        purest?.rawBuffer ??
+        (zone.sampleLow ? this.sampleBuffers.get(zone.sampleLow) : null) ??
+        synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
+
+      // Ensure unaltered raw source is stored in `01_raw_source` before promotion
+      if (!this.assetStore.hasRawSource(originSampleName)) {
+        this.assetStore.setRawSource(originSampleName, rawBuf);
+      }
+
+      promoted = await promoteBufferToMasterWave(
+        rawBuf,
+        originSampleName,
+        zone.id,
+        mergedCfg,
+        {
+          rootKey: zone.rootKey,
+          detuneCents: zone.detune,
+          loopStart: matchReg?.loopStart,
+          loopEnd: matchReg?.loopEnd,
+          loopMode: matchReg?.loopMode,
+        }
+      );
+    }
+
+    this.pushHistory(`Promote "${originSampleName}" to 24-bit/96kHz Master Wave`);
+    this.registerSampleBuffer(
+      promoted.result.masterSampleName,
+      promoted.wav24Buffer,
+      {
+        isPromotedEnhanced: true,
+        rawSourceName: originSampleName,
+      }
+    );
     zone.sampleLow = promoted.result.masterSampleName;
 
     if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
       this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
     }
     for (const reg of this.session.extendedRegions) {
-      if (reg.sampleName === sampleName || reg.id === `ext-${zone.id}-low`) {
+      if (
+        reg.sampleName === currentSampleName ||
+        reg.sampleName === originSampleName ||
+        reg.id === `ext-${zone.id}-low`
+      ) {
         reg.sampleName = promoted.result.masterSampleName;
         reg.sampleRate = promoted.result.masterSampleRate;
         reg.numChannels = promoted.result.numChannels;
@@ -2480,6 +2674,23 @@ export class WebAudioPipeline implements CoreService {
           reg.loopMode = 'loop_continuous';
         }
       }
+    }
+
+    // Record lineage step in session provenance
+    const prevProv = this.getModelProvenance();
+    const step = {
+      timestamp: new Date().toISOString(),
+      sourceLayer: sourceLayerUsed,
+      targetLayer: '03_enhanced_audio' as const,
+      algorithm: `MasterWave-${mergedCfg.promotionMethod}-96kHz-24bit-${promoted.result.numChannels}ch`,
+      details: `Promoted "${originSampleName}" -> "${promoted.result.masterSampleName}" from ${sourceLayerUsed}`,
+    };
+    if (prevProv) {
+      prevProv.history.push(step);
+      prevProv.masterWavePromoted = true;
+      prevProv.activeAnalysisSourceLayer = '03_enhanced_audio';
+      prevProv.updatedAt = step.timestamp;
+      this.session.provenance = prevProv;
     }
 
     this.spectralCache.delete(zone.id);
@@ -2497,6 +2708,175 @@ export class WebAudioPipeline implements CoreService {
       if (res) results.push(res);
     }
     return results;
+  }
+
+  // ── Phase 9: 5-Layer Time Capsule, Provenance & Zero-Generation-Loss Reprocess ──
+
+  public getAssetStoreDiagnostics(): AssetStoreDiagnostics {
+    return this.assetStore.getDiagnostics();
+  }
+
+  public getModelProvenance(slot?: number): ModelProvenance | null {
+    const activeSlot =
+      slot ?? this.session?.processConfig.modelNumber ?? 0;
+    const stored = this.assetStore.getCapsuleRecordSync(activeSlot);
+    if (!this.session) {
+      return stored?.provenance ?? null;
+    }
+
+    const zones = this.session.zones;
+    this.ensureZoneDemoBuffers(zones);
+    const rawSourceSamples = new Map<string, ArrayBuffer>();
+    const enhancedAudioSamples = new Map<string, ArrayBuffer>();
+
+    for (const z of zones) {
+      for (const sName of [z.sampleLow, z.sampleHigh]) {
+        if (!sName) continue;
+        const rawName = this.assetStore.resolveRawSampleName(sName);
+        const rawBuf = this.assetStore.getRawSourceSync(rawName);
+        if (rawBuf) {
+          rawSourceSamples.set(rawName, rawBuf);
+        } else if (
+          !this.importedSourceBinaries.has(sName) &&
+          !this.assetStore.hasEnhancedAudio(sName)
+        ) {
+          const activeBuf = this.sampleBuffers.get(sName);
+          if (activeBuf) {
+            rawSourceSamples.set(sName, activeBuf);
+          }
+        }
+        const enhBuf = this.assetStore.getEnhancedAudioSync(sName);
+        if (enhBuf) {
+          enhancedAudioSamples.set(sName, enhBuf);
+        }
+      }
+    }
+
+    const modelRecord = this.bank.getModelRecord(activeSlot);
+    const classicBins = this.bank.getModelBinaries(activeSlot) ?? [];
+    const { provenance } = buildTimeCapsuleEntries({
+      slot: activeSlot,
+      modelName: this.session.processConfig.modelName,
+      processConfig: this.session.processConfig,
+      zones,
+      extendedRegions: this.session.extendedRegions,
+      articulation: this.session.articulation,
+      detectedInstrumentCategory: this.session.detectedInstrumentCategory,
+      rawSourceSamples,
+      legacyOriginalBundle:
+        this.assetStore.getLegacyOriginalSlotBundleSync(activeSlot),
+      enhancedAudioSamples,
+      classicEnhancedBinaries: classicBins,
+      neuronikModelJson: modelRecord?.neuronikModelJson,
+      previousProvenance:
+        this.session.provenance ??
+        modelRecord?.provenance ??
+        stored?.provenance,
+      includeTopLevelCompatibility: false,
+    });
+
+    this.session.provenance = provenance;
+    return provenance;
+  }
+
+  /**
+   * Strictly re-processes the active session from its purest origin layer
+   * (`01_raw_source` if available, otherwise `02_legacy_original` regenerated into `03_enhanced_audio`),
+   * NEVER re-compressing or re-analyzing a degraded `04_classic_enhanced` `.sphere` derivative.
+   */
+  public async reprocessFromPurestSource(
+    options?: ReprocessPurestOptions
+  ): Promise<ModelProvenance> {
+    if (!this.session) {
+      throw new Error('No active session to reprocess');
+    }
+
+    const prevProv = this.getModelProvenance();
+    const cfg = this.session.processConfig;
+    if (options?.dspAlgorithm !== undefined) {
+      cfg.dspAlgorithm = options.dspAlgorithm;
+    }
+    if (options?.complexity !== undefined) {
+      cfg.complexity = clamp(Math.round(options.complexity), 1, 10);
+    }
+    if (options?.parameterSet !== undefined) {
+      cfg.parameterSet = clamp(Math.round(options.parameterSet), 0, 9);
+    }
+    if (options?.masterWaveConfig) {
+      cfg.masterWaveConfig = {
+        ...DEFAULT_MASTER_WAVE_CONFIG,
+        ...(cfg.masterWaveConfig ?? {}),
+        ...options.masterWaveConfig,
+      };
+    }
+
+    let primaryUsed: '01_raw_source' | '02_legacy_original' =
+      prevProv?.primarySourceLayer ?? '01_raw_source';
+
+    // Step 1: Restore or promote every zone strictly from its purest origin layer (`01_raw_source` or `02_legacy_original`)
+    const shouldPromoteMasterWave =
+      options?.promoteToMasterWave ??
+      Boolean(prevProv?.masterWavePromoted);
+
+    for (const zone of this.session.zones) {
+      const currentLow = zone.sampleLow;
+      if (!currentLow) continue;
+
+      const purest = resolvePurestSourceForSample(
+        currentLow,
+        this.assetStore,
+        this.sampleBuffers
+      );
+      if (!purest) continue;
+
+      primaryUsed = purest.sourceLayer;
+
+      if (shouldPromoteMasterWave || purest.sourceLayer === '02_legacy_original') {
+        await this.promoteZoneToMasterWave(zone.id, cfg.masterWaveConfig);
+      } else if (purest.sourceLayer === '01_raw_source') {
+        // Restore zone directly to unaltered 01_raw_source WAV buffer
+        this.sampleBuffers.set(purest.rawSampleName, purest.rawBuffer);
+        zone.sampleLow = purest.rawSampleName;
+      }
+    }
+
+    // Step 2: Increment reprocessCount & record anti-photocopy lineage step
+    const nextReprocessCount = (prevProv?.reprocessCount ?? 0) + 1;
+    const analysisSource:
+      | '01_raw_source'
+      | '02_legacy_original'
+      | '03_enhanced_audio' =
+      shouldPromoteMasterWave || primaryUsed === '02_legacy_original'
+        ? '03_enhanced_audio'
+        : primaryUsed;
+
+    const reprocessStep = {
+      timestamp: new Date().toISOString(),
+      sourceLayer: analysisSource,
+      targetLayer: '04_classic_enhanced' as const,
+      algorithm: `Reprocess#${nextReprocessCount}-NAS-${cfg.dspAlgorithm ?? 'legacy'}-c${cfg.complexity}-ps${cfg.parameterSet}`,
+      details: `Zero-generation-loss reprocess #${nextReprocessCount} from purest origin (${primaryUsed} -> ${analysisSource} -> 04_classic_enhanced & 05_extended_model)`,
+    };
+
+    if (this.session.provenance) {
+      this.session.provenance.reprocessCount = nextReprocessCount;
+      this.session.provenance.primarySourceLayer = primaryUsed;
+      this.session.provenance.history.push(reprocessStep);
+    }
+
+    // Step 3: Run full spectral analysis with `forceReanalyzeImported: true` so it computes fresh
+    // `04_classic_enhanced` and `05_extended_model` from `03_enhanced_audio` / `01_raw_source`
+    await this.startProcess(this.session.processConfig, {
+      forceReanalyzeImported: true,
+    });
+
+    const finalProv = this.getModelProvenance()!;
+    finalProv.reprocessCount = Math.max(
+      finalProv.reprocessCount,
+      nextReprocessCount
+    );
+    finalProv.primarySourceLayer = primaryUsed;
+    return finalProv;
   }
 
   // ── Bank & Export Packaging (delegated to BankService) ──

@@ -17,7 +17,6 @@ import {
 } from './dsp/WavDecoder.ts';
 import type { ZoneBinaryPair, ZoneWavPayload } from './dsp/PipelineRunner.ts';
 import {
-  buildModelExportZip,
   evaluateNeuronDb,
   findNextFreeModelSlot,
   PINNED_SINEW_SLOT,
@@ -26,12 +25,18 @@ import {
 import { createZone } from './sessionFactory.ts';
 import { DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
 import { mapArticulationToSoundOverrides } from './extendedAdapter.ts';
+import {
+  buildTimeCapsuleEntries,
+  buildTimeCapsuleZipArchive,
+} from './timeCapsule.ts';
+import type { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
 import type {
   BankSummary,
   CoreEvent,
   GeneratedModel,
   ProcessConfig,
   ProcessProgress,
+  ProvenanceStep,
   Session,
   Zone,
   ZoneAnalysisSummary,
@@ -49,6 +54,8 @@ export interface MapScriptVersion {
 export interface BankContext {
   getSession(): Session | null;
   getSampleBuffer(name: string): ArrayBuffer | undefined;
+  getAssetStore(): NeuronAssetStore;
+  hasImportedBinary(sampleName: string): boolean;
   ensureDemoBuffers(zones: Zone[]): void;
   analyzeZone(
     payload: Pick<ZoneWavPayload, 'zone' | 'wavBuffer'>,
@@ -240,32 +247,93 @@ export class BankService {
       this.modelZoneBinaries.set(activeSlot, zoneBinaries);
     }
 
-    const sourceSamples: { name: string; data: Uint8Array }[] = [];
+    const assetStore = this.ctx.getAssetStore();
+    const rawSourceSamples = new Map<string, ArrayBuffer>();
+    const enhancedAudioSamples = new Map<string, ArrayBuffer>();
     const seenSamples = new Set<string>();
+
     for (const z of zones) {
       for (const sName of [z.sampleLow, z.sampleHigh]) {
-        if (sName && !seenSamples.has(sName)) {
-          seenSamples.add(sName);
-          const buf = this.ctx.getSampleBuffer(sName);
-          if (buf) {
-            sourceSamples.push({ name: sName, data: new Uint8Array(buf) });
+        if (!sName || seenSamples.has(sName)) continue;
+        seenSamples.add(sName);
+
+        const rawName = assetStore.resolveRawSampleName(sName);
+        const rawBuf = assetStore.getRawSourceSync(rawName);
+        if (rawBuf) {
+          rawSourceSamples.set(rawName, rawBuf);
+        } else if (
+          !this.ctx.hasImportedBinary(sName) &&
+          !assetStore.hasEnhancedAudio(sName)
+        ) {
+          const activeBuf = this.ctx.getSampleBuffer(sName);
+          if (activeBuf) {
+            rawSourceSamples.set(sName, activeBuf);
           }
+        }
+
+        const enhBuf = assetStore.getEnhancedAudioSync(sName);
+        if (enhBuf) {
+          enhancedAudioSamples.set(sName, enhBuf);
         }
       }
     }
 
-    return buildModelExportZip({
+    const legacyOriginalBundle =
+      assetStore.getLegacyOriginalSlotBundleSync(activeSlot);
+    const effectiveCfg: ProcessConfig = session?.processConfig ?? {
+      modelName,
+      modelNumber: activeSlot,
+      parameterSet: model?.parameterSet ?? 0,
+      complexity: model?.complexity ?? 8,
+      targetFormat: model?.targetFormat ?? 'legacy-neuron',
+    };
+
+    const { zipBytes, manifest, provenance } = buildTimeCapsuleZipArchive({
       slot: activeSlot,
-      name: modelName,
+      modelName,
+      processConfig: {
+        ...effectiveCfg,
+        targetFormat:
+          session?.processConfig.targetFormat ??
+          model?.targetFormat ??
+          'legacy-neuron',
+      },
       zones,
-      zoneBinaries,
+      extendedRegions: session?.extendedRegions,
+      articulation: session?.articulation,
+      detectedInstrumentCategory: session?.detectedInstrumentCategory,
+      rawSourceSamples,
+      legacyOriginalBundle,
+      enhancedAudioSamples,
+      classicEnhancedBinaries: zoneBinaries,
       mapScriptVersion: this.modelMapScriptVersions.get(activeSlot),
       neuronikModelJson: model?.neuronikModelJson,
-      targetFormat:
-        session?.processConfig.targetFormat ?? model?.targetFormat ?? 'legacy-neuron',
-      sourceSamples,
-      soundParameterOverrides: mapArticulationToSoundOverrides(session?.articulation),
+      soundParameterOverrides: mapArticulationToSoundOverrides(
+        session?.articulation
+      ),
+      previousProvenance: session?.provenance ?? model?.provenance,
+      includeTopLevelCompatibility: true,
     });
+
+    if (session) {
+      session.provenance = provenance;
+    }
+    if (model) {
+      model.provenance = provenance;
+    }
+    assetStore.setCapsuleRecord({
+      slot: activeSlot,
+      modelName,
+      manifest,
+      provenance,
+      classicEnhancedBinaries: zoneBinaries,
+      extendedModelJson:
+        model?.neuronikModelJson ??
+        JSON.stringify({ name: modelName, slot: activeSlot, format: 2 }),
+      updatedAt: provenance.updatedAt,
+    });
+
+    return zipBytes;
   }
 
   public async exportModel(slot: number, targetPath: string): Promise<void> {
@@ -430,13 +498,68 @@ export class BankService {
     zonesAnalysis: ZoneAnalysisSummary[],
     zoneBinaries: ZoneBinaryPair[],
     neuronikModelJson: string,
-    elapsedMs: number
+    elapsedMs: number,
+    appendStep?: ProvenanceStep
   ): void {
     const targetSlot =
       config.modelNumber === PINNED_SINEW_SLOT && config.modelName.toLowerCase() !== 'sinew'
         ? this.getNextAvailableSlot(0)
         : config.modelNumber;
     this.modelZoneBinaries.set(targetSlot, zoneBinaries);
+
+    const session = this.ctx.getSession();
+    const assetStore = this.ctx.getAssetStore();
+    const zones = session?.zones ?? [];
+    const rawSourceSamples = new Map<string, ArrayBuffer>();
+    const enhancedAudioSamples = new Map<string, ArrayBuffer>();
+    for (const z of zones) {
+      for (const sName of [z.sampleLow, z.sampleHigh]) {
+        if (!sName) continue;
+        const rawName = assetStore.resolveRawSampleName(sName);
+        const rawBuf = assetStore.getRawSourceSync(rawName);
+        if (rawBuf) {
+          rawSourceSamples.set(rawName, rawBuf);
+        }
+        const enhBuf = assetStore.getEnhancedAudioSync(sName);
+        if (enhBuf) {
+          enhancedAudioSamples.set(sName, enhBuf);
+        }
+      }
+    }
+
+    const existingModel = this.getModelRecord(targetSlot);
+    const { manifest, provenance } = buildTimeCapsuleEntries({
+      slot: targetSlot,
+      modelName: config.modelName,
+      processConfig: config,
+      zones,
+      extendedRegions: session?.extendedRegions,
+      articulation: session?.articulation,
+      detectedInstrumentCategory: session?.detectedInstrumentCategory,
+      rawSourceSamples,
+      legacyOriginalBundle:
+        assetStore.getLegacyOriginalSlotBundleSync(targetSlot),
+      enhancedAudioSamples,
+      classicEnhancedBinaries: zoneBinaries,
+      mapScriptVersion: this.modelMapScriptVersions.get(targetSlot),
+      neuronikModelJson,
+      previousProvenance: session?.provenance ?? existingModel?.provenance,
+      appendStep,
+    });
+
+    if (session) {
+      session.provenance = provenance;
+    }
+
+    assetStore.setCapsuleRecord({
+      slot: targetSlot,
+      modelName: config.modelName,
+      manifest,
+      provenance,
+      classicEnhancedBinaries: zoneBinaries,
+      extendedModelJson: neuronikModelJson,
+      updatedAt: provenance.updatedAt,
+    });
 
     const model: GeneratedModel = {
       slot: targetSlot,
@@ -449,6 +572,7 @@ export class BankService {
       targetFormat: config.targetFormat ?? 'dual',
       zonesAnalysis,
       neuronikModelJson,
+      provenance,
     };
 
     this.upsertModel(model);

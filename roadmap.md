@@ -239,27 +239,27 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 9 — Contenedor Multiformato ("Cápsula del Tiempo" Anti-Efecto Fotocopia) e `IndexedDB`
+## Fase 9 — Contenedor Multiformato ("Cápsula del Tiempo" Anti-Efecto Fotocopia) e `IndexedDB` (100% COMPLETADA)
 
 **Objetivo**: Guardar en nuestro paquete de modelo todas las etapas del sonido (si existen) junto con las definiciones en nuestro formato nativo, evitando para siempre el "efecto fotocopia" al reprocesar en el futuro con mejores algoritmos.
 
 ### 9.1 Estructura de las 5 Capas del Contenedor Multiformato
-Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
+Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/timeCapsule.ts`):
 1. **`01_raw_source/` (Onda Original WAV/AIFF + Mapa Nativo)**:
-   - Los archivos WAV/AIFF originales sin alterar (aportados por el usuario o extraídos de un SF2/SFZ al importarlo) junto con el manifiesto JSON de zonas, velocidades, loops y envolventes DAHDSR en nuestro propio formato.
+   - Los archivos WAV/AIFF originales sin alterar (aportados por el usuario o extraídos de un SF2/SFZ al importarlo) junto con `native_map.json` (zonas, regiones 2D, velocidades y loops).
 2. **`02_legacy_original/` (Binario Clásico Original)**:
-   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` originales de fábrica (cuando el modelo proviene de `NeuronDB`).
+   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` originales e intactos de fábrica (cuando el modelo proviene de `NeuronDB`).
 3. **`03_enhanced_audio/` (Onda Mejorada / Regenerada — Estándar Maestro 24-bit / 96 kHz)**:
-   - Las ondas regeneradas desde (2) o mejoradas desde (1) mediante nuestros algoritmos DSP o modelos de IA, en formato maestro (24-bit, 96 kHz, canales originales/estéreo/surround, con marcas de loop extendidas).
+   - Las ondas regeneradas desde (2) (`regenerateMasterWaveFromLegacyBinaries`) o mejoradas desde (1) (`promoteBufferToMasterWave`) en formato maestro (`24-bit`, `96.000 Hz`, Mono/Estéreo/Quad Surround, con marcas de loop extendidas).
 4. **`04_classic_enhanced/` (Binario Clásico Mejorado)**:
-   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` 100% compatibles con el modo clásico del sintetizador, pero calculados con los nuevos algoritmos de la Fase 7 a partir de (3) o (1).
+   - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` 100% compatibles con el modo clásico del sintetizador, calculados a partir de (3) o (1).
 5. **`05_extended_model/` (Modelo Expandido / Neural / Surround)**:
-   - El formato definitivo para el modo extendido del sintetizador (matrices de alta resolución, campos de vectores / espacio latente IA, canales estéreo/surround, transitorios PCM reales y mapa 2D completo), calculado siempre desde (3) o (1).
+   - `model.nmmodel` (Float32 JSON de alta resolución) y `extended_map.json` (regiones 2D, articulación DAHDSR/Filtro/LFO y configuración Surround), calculados siempre desde (3) o (1).
 
 ### 9.2 Regla de Linaje ("Cero Efecto Fotocopia") y Persistencia en `IndexedDB`
-- [ ] Metadatos de procedencia (`provenance.json`): registra con qué versión de algoritmo/IA y a partir de qué capa fuente (`01_raw_source` o `02_legacy_original`) se generó cada capa derivada.
-- [ ] Al pulsar **"Reprocesar con Nuevos Algoritmos"**, el motor toma automáticamente la fuente primaria más pura disponible (`01` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario ya degradado.
-- [ ] **Migración de buffers pesados a `IndexedDB`**: Mantener configuraciones ligeras en `localStorage` y almacenar los buffers de audio a 24-bit/96 kHz y las 5 capas binarias en `IndexedDB` para soportar cientos de megabytes en el navegador sin chocar con el límite de 5 MB de `localStorage`.
+- [x] Metadatos de procedencia (`provenance.json` y `manifest.json`): registra con qué versión de algoritmo/IA y a partir de qué capa fuente (`01_raw_source` o `02_legacy_original`) se generó cada capa derivada (`ModelProvenance`, `TimeCapsuleManifest`).
+- [x] Al ejecutar **`reprocessFromPurestSource` ("Reprocess Purest Source")**, el motor resuelve automáticamente la fuente primaria más pura disponible (`resolvePurestSourceForSample`: `01` o `02` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario `04_classic_enhanced` ya degradado.
+- [x] **Persistencia de activos pesados en `IndexedDB` (`src/core/storage/NeuronAssetStore.ts`)**: Mantiene configuraciones ligeras en `localStorage` y almacena las 5 capas binarias (`raw_sources`, `legacy_originals`, `enhanced_audio`, `model_capsules`) en `IndexedDB` con caché write-through en memoria y fallback automático para tests en Node.js.
 
 ---
 

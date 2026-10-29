@@ -32,6 +32,9 @@ import type {
   ProcessSourcesInspection,
   DecodedWav,
   AudioFilePayload,
+  ModelProvenance,
+  ReprocessPurestOptions,
+  AssetStoreDiagnostics,
 } from './types.ts';
 
 export type CoreEventListener = (event: CoreEvent) => void;
@@ -267,5 +270,31 @@ export interface CoreService {
     loopStart: number;
     loopEnd: number;
   } | null;
+
+  // ── Phase 9: 5-Layer Time Capsule Container, Provenance & IndexedDB ──
+  /**
+   * Returns the 5-layer Time Capsule lineage (`ModelProvenance`) for the specified slot
+   * or the active session, computing live layer telemetry when needed.
+   */
+  getModelProvenance(slot?: number): ModelProvenance | null;
+
+  /**
+   * Strictly re-processes the active session from its purest origin layer
+   * (`01_raw_source` if available, otherwise `02_legacy_original` regenerated into `03_enhanced_audio`),
+   * NEVER re-compressing or re-analyzing a degraded `04_classic_enhanced` `.sphere` derivative.
+   */
+  reprocessFromPurestSource(
+    options?: ReprocessPurestOptions
+  ): Promise<ModelProvenance>;
+
+  /**
+   * Returns live diagnostics of the `NeuronAssetStore` (`IndexedDB` + write-through cache).
+   */
+  getAssetStoreDiagnostics(): AssetStoreDiagnostics;
+
+  /**
+   * Builds the multi-format 5-Layer Time Capsule `.zip` bytes for `slot`.
+   */
+  buildModelZipBytes(slot: number): Uint8Array;
 }
 

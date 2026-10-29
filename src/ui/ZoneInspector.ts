@@ -8,12 +8,14 @@
 
 import type {
   AcousticClassificationResult,
+  AssetStoreDiagnostics,
   CrossfadeCurve,
   ExtendedRegion,
   LoopMode,
   MasterChannelLayout,
   MasterPromotionMethod,
   MasterWaveConfig,
+  ModelProvenance,
   SynthArticulationConfig,
   TriggerMode,
   WorkingMode,
@@ -59,6 +61,10 @@ export interface ZoneInspectorHandlers {
   } | null;
   onPromoteZoneToMasterWave?: (zoneId: string, config: Partial<MasterWaveConfig>) => void;
   onPromoteAllZonesToMasterWave?: (config: Partial<MasterWaveConfig>) => void;
+  getModelProvenance?: () => ModelProvenance | null;
+  getAssetStoreDiagnostics?: () => AssetStoreDiagnostics;
+  onReprocessFromPurestSource?: () => void;
+  onExportTimeCapsule?: () => void;
 }
 
 function basenameOf(samplePath: string | null | undefined): string {
@@ -846,6 +852,72 @@ export class ZoneInspector {
           </div>
         </div>`;
         })()}
+
+        ${(() => {
+          const prov = this.handlers.getModelProvenance?.() ?? null;
+          const diag = this.handlers.getAssetStoreDiagnostics?.() ?? null;
+          const primaryLabel =
+            prov?.primarySourceLayer === '02_legacy_original'
+              ? '02_legacy_original (.scape/.sphere)'
+              : '01_raw_source (Lossless WAV)';
+          const activeLabel = prov?.activeAnalysisSourceLayer ?? '01_raw_source';
+          const reprocessCnt = prov?.reprocessCount ?? 0;
+          const storeKb = diag ? Math.round(diag.totalBytes / 1024) : 0;
+          const storeBadge = diag
+            ? `${diag.backend === 'indexeddb' ? 'IndexedDB' : 'Memory'} • ${storeKb} KB (${prov?.presentLayers.length ?? 0}/5 layers)`
+            : '5-Layer Container';
+          const layerList: Array<{ id: '01_raw_source' | '02_legacy_original' | '03_enhanced_audio' | '04_classic_enhanced' | '05_extended_model'; label: string }> = [
+            { id: '01_raw_source', label: '01 Raw Source' },
+            { id: '02_legacy_original', label: '02 Legacy Orig' },
+            { id: '03_enhanced_audio', label: '03 Master 24/96' },
+            { id: '04_classic_enhanced', label: '04 Classic Enh' },
+            { id: '05_extended_model', label: '05 Extended Mod' },
+          ];
+          return `
+        <!-- 7. Fase 9: 5-Layer Time Capsule Container & Anti-Photocopy Lineage -->
+        <div class="inspector-section">
+          <div class="section-header-row">
+            <div class="section-title">TIME CAPSULE (5-LAYER CONTAINER &amp; ANTI-PHOTOCOPY LINEAGE)</div>
+            <span class="val-pill" title="NeuronAssetStore Persistence Status">${storeBadge}</span>
+          </div>
+          <div class="acoustic-stats-grid">
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">PUREST ORIGIN LAYER</span>
+              <span class="stat-chip-val">${primaryLabel}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">ACTIVE ANALYSIS INPUT</span>
+              <span class="stat-chip-val">${activeLabel}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">REPROCESS PASSES</span>
+              <span class="stat-chip-val">${reprocessCnt} (0 Gen-Loss)</span>
+            </div>
+            ${layerList
+              .map((l) => {
+                const st = prov?.layerStats?.[l.id];
+                const kb = st ? (st.totalBytes / 1024).toFixed(1) : '0.0';
+                return `
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">${l.label.toUpperCase()}</span>
+              <span class="stat-chip-val">${st?.present ? `Present (${st.fileCount}f • ${kb} KB)` : '—'}</span>
+            </div>`;
+              })
+              .join('')}
+          </div>
+          <div class="articulation-card-header" style="margin-top:8px">
+            <span class="stat-chip-lbl" title="Guarantees re-analysis always pulls from 01_raw_source or 02_legacy_original, never re-compressing 04_classic_enhanced">Zero Generation-Loss Lineage Active</span>
+            <div class="section-header-row">
+              <button type="button" class="btn btn-xs btn-accent" id="btn-reprocess-purest" title="Re-analyze all zones strictly from purest origin layer (01_raw_source or 02_legacy_original) with zero generation loss">
+                ${ICONS.cpu} Reprocess Purest Source
+              </button>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-export-time-capsule" title="Export 5-Layer Multi-Format Time Capsule (.zip) with manifest.json & provenance.json">
+                ${ICONS.database} Export Time Capsule (.zip)
+              </button>
+            </div>
+          </div>
+        </div>`;
+        })()}
       </div>
       `
           : ''
@@ -1339,6 +1411,18 @@ export class ZoneInspector {
         .querySelector('#btn-promote-all-mw')
         ?.addEventListener('click', () => {
           this.handlers.onPromoteAllZonesToMasterWave?.(readMwConfig());
+        });
+
+      this.drawerElement
+        .querySelector('#btn-reprocess-purest')
+        ?.addEventListener('click', () => {
+          this.handlers.onReprocessFromPurestSource?.();
+        });
+
+      this.drawerElement
+        .querySelector('#btn-export-time-capsule')
+        ?.addEventListener('click', () => {
+          this.handlers.onExportTimeCapsule?.();
         });
     }
   }

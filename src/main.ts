@@ -293,6 +293,33 @@ class App {
           this.refreshUI();
         }
       },
+      getModelProvenance: () => this.core.getModelProvenance(),
+      getAssetStoreDiagnostics: () => this.core.getAssetStoreDiagnostics(),
+      onReprocessFromPurestSource: async () => {
+        const prov = await this.core.reprocessFromPurestSource();
+        this.session = this.core.getSession()!;
+        this.telemetryDrawer.addLog(
+          `Time Capsule Reprocess #${prov.reprocessCount}: Purest origin=${prov.primarySourceLayer} -> activeInput=${prov.activeAnalysisSourceLayer} (${prov.presentLayers.length}/5 layers active).`
+        );
+        toast(
+          `Reprocessed #${prov.reprocessCount} from ${prov.primarySourceLayer} (0 Generation-Loss)`,
+          'success'
+        );
+        this.refreshUI();
+      },
+      onExportTimeCapsule: async () => {
+        const slot = this.session?.processConfig.modelNumber ?? 0;
+        const name = (this.session?.processConfig.modelName ?? 'Model').replace(/[^A-Za-z0-9_-]/g, '_');
+        await this.core.exportModel(
+          slot,
+          `TimeCapsule_${String(slot).padStart(3, '0')}_${name}.zip`
+        );
+        this.telemetryDrawer.addLog(
+          `Exported 5-Layer Time Capsule (.zip) for Slot #${String(slot).padStart(3, '0')} (${name}).`
+        );
+        toast(`Exported Time Capsule #${String(slot).padStart(3, '0')} (.zip)`, 'success');
+        this.refreshUI();
+      },
     });
 
     // 3b. Spectral & A/B/C Resynthesis Monitor (Phase 4 & Phase 7)

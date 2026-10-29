@@ -919,7 +919,227 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 14. Fase 8 Master Wave (24-bit/96kHz), Short-Loop Expansion, Quad Surround & AI Bridge');
 
-  console.log('=== ALL PHASE 6, 7 & 8 TESTS PASSED ===');
+  // ── 15. Fase 9: 5-Layer Time Capsule Container, Provenance & Zero Photocopy Effect ──
+  {
+    const {
+      parseZipArchive,
+      serializeMName,
+      serializeCanonicalMapScript,
+    } = await import('@abdsynths/shared/formats/neuron');
+    const { encodeWavPcm16 } = await import('../src/core/dsp/WavDecoder.ts');
+    const { NeuronAssetStore } = await import(
+      '../src/core/storage/NeuronAssetStore.ts'
+    );
+    const { extractTimeCapsuleFromFiles } = await import(
+      '../src/core/timeCapsule.ts'
+    );
+
+    // 1. Test NeuronAssetStore persistence & diagnostics
+    const store = new NeuronAssetStore();
+    await store.hydrateFromIndexedDb();
+    const rawTone = new Float32Array(22050);
+    for (let i = 0; i < rawTone.length; i++) {
+      rawTone[i] = 0.65 * Math.sin((2 * Math.PI * 330 * i) / 22050);
+    }
+    const rawWav = encodeWavPcm16([rawTone], 22050, {
+      rootKey: 64,
+      loopStart: 2205,
+      loopEnd: 18000,
+    });
+    await store.saveRawSource('pure_lead.wav', rawWav);
+    const loadedRaw = await store.loadRawSource('pure_lead.wav');
+    assert.ok(loadedRaw instanceof ArrayBuffer);
+    assert.equal(loadedRaw!.byteLength, rawWav.byteLength);
+    const diag = store.getDiagnostics();
+    assert.equal(diag.rawSourceCount, 1);
+    assert.equal(diag.rawSourceBytes, rawWav.byteLength);
+
+    // 2. Test 5-Layer Time Capsule Packaging, Provenance & Anti-Photocopy Reprocess from `01_raw_source`
+    const p1 = new WebAudioPipeline();
+    await p1.init();
+    await p1.newSession('TimeCapsuleRawSession');
+    const z0 = p1.getSession()!.zones[0];
+    p1.registerSampleBuffer('pure_lead.wav', rawWav);
+    await p1.updateZone(z0.id, { sampleLow: 'pure_lead.wav', rootKey: 64 });
+
+    // Promote to 24-bit / 96.000 Hz Master Wave (`03_enhanced_audio`)
+    const promo1 = await p1.promoteZoneToMasterWave(z0.id, {
+      promotionMethod: 'dsp-enhanced',
+      channelLayout: 'stereo',
+      minLoopDurationSec: 1.5,
+    });
+    assert.ok(promo1 !== null);
+    assert.equal(promo1!.masterSampleRate, 96000);
+    assert.equal(promo1!.bitDepth, 24);
+
+    // Compile model (`04_classic_enhanced` & `05_extended_model`)
+    await p1.startProcess({
+      modelNumber: 88,
+      modelName: 'Capsule88',
+      parameterSet: 1,
+      complexity: 6,
+      targetFormat: 'dual',
+      workingMode: 'extended',
+      dspAlgorithm: 'enhanced',
+    });
+
+    const prov1 = p1.getModelProvenance(88);
+    assert.ok(prov1 !== null);
+    assert.equal(prov1!.primarySourceLayer, '01_raw_source');
+    assert.equal(prov1!.activeAnalysisSourceLayer, '03_enhanced_audio');
+    assert.equal(prov1!.masterWavePromoted, true);
+    assert.ok(prov1!.presentLayers.includes('01_raw_source'));
+    assert.ok(prov1!.presentLayers.includes('03_enhanced_audio'));
+    assert.ok(prov1!.presentLayers.includes('04_classic_enhanced'));
+    assert.ok(prov1!.presentLayers.includes('05_extended_model'));
+
+    // Reprocess twice from purest source ("Anti-Photocopy") and verify `01_raw_source` never degrades
+    const rawBytesBeforeReprocess = prov1!.layerStats['01_raw_source'].totalBytes;
+    const provReproc1 = await p1.reprocessFromPurestSource({
+      dspAlgorithm: 'enhanced',
+      promoteToMasterWave: true,
+      complexity: 8,
+    });
+    assert.equal(provReproc1.reprocessCount, 1);
+    assert.equal(provReproc1.primarySourceLayer, '01_raw_source');
+    assert.equal(
+      provReproc1.layerStats['01_raw_source'].totalBytes,
+      rawBytesBeforeReprocess
+    );
+
+    const provReproc2 = await p1.reprocessFromPurestSource({
+      dspAlgorithm: 'legacy',
+      promoteToMasterWave: true,
+      complexity: 7,
+    });
+    assert.equal(provReproc2.reprocessCount, 2);
+    assert.equal(provReproc2.primarySourceLayer, '01_raw_source');
+    assert.equal(
+      provReproc2.layerStats['01_raw_source'].totalBytes,
+      rawBytesBeforeReprocess,
+      '01_raw_source byte size must remain 100% unaltered across multiple reprocesses'
+    );
+
+    // Export 5-Layer Time Capsule ZIP & verify archive structure
+    const capsuleZip = p1.buildModelZipBytes(88);
+    const zipEntries = parseZipArchive(capsuleZip);
+    const paths = zipEntries.map((e) => e.path);
+    assert.ok(paths.includes('manifest.json'), 'Missing manifest.json');
+    assert.ok(paths.includes('provenance.json'), 'Missing provenance.json');
+    assert.ok(
+      paths.some((p) => p.startsWith('01_raw_source/pure_lead.wav')),
+      'Missing 01_raw_source/pure_lead.wav'
+    );
+    assert.ok(
+      paths.includes('01_raw_source/native_map.json'),
+      'Missing 01_raw_source/native_map.json'
+    );
+    assert.ok(
+      paths.some((p) => p.startsWith('03_enhanced_audio/')),
+      'Missing 03_enhanced_audio/* Master Wave'
+    );
+    assert.ok(
+      paths.includes('04_classic_enhanced/MName'),
+      'Missing 04_classic_enhanced/MName'
+    );
+    assert.ok(
+      paths.includes('04_classic_enhanced/000001.sphere'),
+      'Missing 04_classic_enhanced/000001.sphere'
+    );
+    assert.ok(
+      paths.includes('05_extended_model/model.nmmodel'),
+      'Missing 05_extended_model/model.nmmodel'
+    );
+    assert.ok(
+      paths.includes('05_extended_model/extended_map.json'),
+      'Missing 05_extended_model/extended_map.json'
+    );
+
+    const extracted = extractTimeCapsuleFromFiles([
+      { name: 'Capsule88.zip', data: capsuleZip },
+    ]);
+    assert.equal(extracted.isTimeCapsule, true);
+    assert.equal(extracted.manifest?.magic, 'NEURONMM_TIMECAPSULE');
+    assert.equal(extracted.provenance?.reprocessCount, 2);
+    assert.ok(extracted.rawSourceSamples.has('pure_lead.wav'));
+
+    // Re-import Time Capsule ZIP into a fresh WebAudioPipeline
+    const p2 = new WebAudioPipeline();
+    await p2.init();
+    const imported = await p2.importModelFiles([
+      {
+        name: 'Capsule88.zip',
+        buffer: capsuleZip.buffer.slice(
+          capsuleZip.byteOffset,
+          capsuleZip.byteOffset + capsuleZip.byteLength
+        ) as ArrayBuffer,
+      },
+    ]);
+    assert.equal(imported.slot, 88);
+    assert.equal(imported.provenance?.primarySourceLayer, '01_raw_source');
+    assert.equal(imported.provenance?.reprocessCount, 2);
+
+    // 3. Test Legacy `.model` Import Lineage (`02_legacy_original` -> `03_enhanced_audio` -> `04_classic_enhanced`)
+    const p3 = new WebAudioPipeline();
+    await p3.init();
+    const dummyZones = [createZone(0, 60, 127, '000001.scape')];
+    const scapeBin = zipEntries.find(
+      (e) => e.path === '04_classic_enhanced/000001.scape'
+    )!.data;
+    const sphereBin = zipEntries.find(
+      (e) => e.path === '04_classic_enhanced/000001.sphere'
+    )!.data;
+    const mapBytes = new TextEncoder().encode(serializeCanonicalMapScript(dummyZones));
+    const mnameBytes = serializeMName('LegacyOrig');
+
+    const toAb = (u8: Uint8Array): ArrayBuffer => {
+      const c = new Uint8Array(u8.byteLength);
+      c.set(u8);
+      return c.buffer;
+    };
+    await p3.importModelFiles([
+      { name: 'Models/091.model/MName', buffer: toAb(mnameBytes) },
+      { name: 'Models/091.model/map.script', buffer: toAb(mapBytes) },
+      { name: 'Models/091.model/000001.scape', buffer: toAb(scapeBin) },
+      { name: 'Models/091.model/000001.sphere', buffer: toAb(sphereBin) },
+    ]);
+
+    const provLegacyBefore = p3.getModelProvenance(91);
+    assert.ok(provLegacyBefore !== null);
+    assert.equal(provLegacyBefore!.primarySourceLayer, '02_legacy_original');
+    assert.ok(provLegacyBefore!.presentLayers.includes('02_legacy_original'));
+
+    const provLegacyAfter = await p3.reprocessFromPurestSource({
+      dspAlgorithm: 'enhanced',
+      promoteToMasterWave: true,
+      masterWaveConfig: { channelLayout: 'quad-surround', minLoopDurationSec: 2.5 },
+    });
+    assert.equal(provLegacyAfter.primarySourceLayer, '02_legacy_original');
+    assert.equal(provLegacyAfter.activeAnalysisSourceLayer, '03_enhanced_audio');
+    assert.equal(provLegacyAfter.reprocessCount, 1);
+    assert.ok(provLegacyAfter.presentLayers.includes('02_legacy_original'));
+    assert.ok(provLegacyAfter.presentLayers.includes('03_enhanced_audio'));
+    assert.ok(provLegacyAfter.presentLayers.includes('04_classic_enhanced'));
+    assert.ok(provLegacyAfter.presentLayers.includes('05_extended_model'));
+
+    const legZip = p3.buildModelZipBytes(91);
+    const legPaths = parseZipArchive(legZip).map((e) => e.path);
+    assert.ok(
+      legPaths.includes('02_legacy_original/000001.sphere'),
+      'Untouched 02_legacy_original/000001.sphere must be preserved inside the Time Capsule'
+    );
+    assert.ok(
+      legPaths.some((p) => p.startsWith('03_enhanced_audio/')),
+      'Regenerated 24-bit/96kHz 03_enhanced_audio must be present'
+    );
+
+    p1.dispose();
+    p2.dispose();
+    p3.dispose();
+  }
+  console.log('[PASS] 15. Fase 9 5-Layer Time Capsule Container, Provenance, Anti-Photocopy Reprocess & IndexedDB Store');
+
+  console.log('=== ALL PHASE 6, 7, 8 & 9 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {

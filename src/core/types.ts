@@ -306,6 +306,7 @@ export interface Session {
   extendedRegions?: ExtendedRegion[];
   articulation?: SynthArticulationConfig;
   detectedInstrumentCategory?: string;
+  provenance?: ModelProvenance;
   processConfig: ProcessConfig;
   dirty: boolean;
   createdAt: string;
@@ -326,6 +327,7 @@ export interface GeneratedModel {
   targetFormat?: TargetFormat;
   zonesAnalysis?: ZoneAnalysisSummary[];
   neuronikModelJson?: string;
+  provenance?: ModelProvenance;
 }
 
 /**
@@ -474,4 +476,100 @@ export interface AudioFilePayload {
   name: string;
   buffer: ArrayBuffer;
 }
+
+// ── Phase 9: Multi-Format Time Capsule Container (5 Layers), Provenance & IndexedDB ──
+
+/**
+ * The 5 canonical layers inside a Time Capsule container (`.zip` / `.nmpack`):
+ * - `01_raw_source`: Unaltered original WAV/AIFF samples + `native_map.json`
+ * - `02_legacy_original`: Original untouched factory `MName`, `map.script`, `%06d.scape`, `%06d.sphere`
+ * - `03_enhanced_audio`: Master Wave (`24-bit / 96.000 Hz`, Mono/Stereo/Quad Surround, expanded loops)
+ * - `04_classic_enhanced`: `MName`, `map.script`, `%06d.scape`, `%06d.sphere` 100% compatible with Classic mode
+ * - `05_extended_model`: High-resolution `.nmmodel` Float32 JSON + 2D extended map & articulation
+ */
+export type CapsuleLayerId =
+  | '01_raw_source'
+  | '02_legacy_original'
+  | '03_enhanced_audio'
+  | '04_classic_enhanced'
+  | '05_extended_model';
+
+export interface ProvenanceStep {
+  timestamp: string;
+  targetLayer: CapsuleLayerId;
+  sourceLayer: CapsuleLayerId;
+  algorithm: string;
+  details: string;
+}
+
+export interface CapsuleLayerStats {
+  layerId: CapsuleLayerId;
+  present: boolean;
+  fileCount: number;
+  totalBytes: number;
+  updatedAt?: string;
+}
+
+/**
+ * Lineage metadata (`provenance.json`) preventing the "Photocopy Effect" (generation loss).
+ * Any future re-processing always pulls from `primarySourceLayer` (`01_raw_source` if available,
+ * otherwise `02_legacy_original` regenerated into `03_enhanced_audio`), never from `04_classic_enhanced`.
+ */
+export interface ModelProvenance {
+  schemaVersion: '1.0';
+  slot: ModelSlot;
+  modelName: string;
+  /** The purest primary origin layer available for zero-generation-loss re-processing */
+  primarySourceLayer: '01_raw_source' | '02_legacy_original';
+  /** Active source layer used to compute `04_classic_enhanced` and `05_extended_model` */
+  activeAnalysisSourceLayer: '01_raw_source' | '02_legacy_original' | '03_enhanced_audio';
+  presentLayers: CapsuleLayerId[];
+  layerStats: Record<CapsuleLayerId, CapsuleLayerStats>;
+  dspAlgorithm: DspAlgorithmMode;
+  masterWavePromoted: boolean;
+  reprocessCount: number;
+  createdAt: string;
+  updatedAt: string;
+  history: ProvenanceStep[];
+}
+
+/**
+ * Root `manifest.json` stored at the top of the Time Capsule container.
+ */
+export interface TimeCapsuleManifest {
+  magic: 'NEURONMM_TIMECAPSULE';
+  version: '1.0.0';
+  createdAt: string;
+  slot: ModelSlot;
+  modelName: string;
+  processConfig: ProcessConfig;
+  zones: Zone[];
+  extendedRegions: ExtendedRegion[];
+  articulation: SynthArticulationConfig;
+  detectedInstrumentCategory?: string;
+  presentLayers: CapsuleLayerId[];
+}
+
+/** Options for re-processing a model strictly from its purest origin layer (`01_raw_source` or `02_legacy_original`) */
+export interface ReprocessPurestOptions {
+  dspAlgorithm?: DspAlgorithmMode;
+  promoteToMasterWave?: boolean;
+  masterWaveConfig?: Partial<MasterWaveConfig>;
+  complexity?: number;
+  parameterSet?: number;
+}
+
+/** Diagnostics summary of the asynchronous `NeuronAssetStore` (`IndexedDB` + write-through cache) */
+export interface AssetStoreDiagnostics {
+  backend: 'indexeddb' | 'memory-fallback';
+  rawSourceCount: number;
+  rawSourceBytes: number;
+  legacyOriginalCount: number;
+  legacyOriginalBytes: number;
+  enhancedAudioCount: number;
+  enhancedAudioBytes: number;
+  capsuleCount: number;
+  totalBytes: number;
+}
+
 
