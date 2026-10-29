@@ -157,13 +157,18 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ### 6.2 Importador de `.sf2` (SoundFont 2) y `.sfz` a Definición Nativa
 - [ ] Parser binario de `.sf2` (chunks `INFO`, `sdta` de audio PCM y `pdta` de presets/instrumentos/zonas/generadores) con modal selector cuando el banco contenga múltiples presets.
-- [ ] Parser de `.sfz` (`<global>`, `<group>`, `<region>`, opcodes `sample`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`, `xf_*`, `volume`, `pan`, `tune`, `loop_*`, `trigger`).
-- [ ] **Conversión inmediata a Formato Propio**: Al importar un `.sf2` o `.sfz` (o conversiones intermedias desde Kontakt/HALion/SampleTank), se extraen las muestras como WAV/AIFF independientes y se registran sus regiones en nuestro esquema nativo. El archivo `.sf2`/`.sfz` original se descarta tras la importación.
+- [ ] Parser de `.sfz` (`<global>`, `<group>`, `<region>`, opcodes `sample`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`, `xf_*`, `volume`, `pan`, `tune`, `loop_*`, `trigger`, `ampeg_*`, `fileg_*`, `cutoff`, `resonance`).
+- [ ] **Captura de Envolventes (DAHDSR), Filtros y LFOs del SF2/SFZ**:
+  - Extraer los parámetros de envolvente de volumen (`delay`, `attack`, `hold`, `decay`, `sustain`, `release`), envolvente de modulación/filtro, cutoff/resonancia y vibrato del preset SF2/SFZ.
+  - Guardarlos en nuestra definición nativa de zona/instrumento y **traducirlos automáticamente al archivo `.sound` (`sound.script` de 445 parámetros)** y al formato extendido.
+  - Opción de *"Hornear envolvente (Bake ADSR)"* sobre la onda para instrumentos SF2 que dependen de un `decay` artificial sobre una onda estática al exportar a modo clásico.
+- [ ] **Unión inteligente de pares Estéreo (`L/R`)**: Detectar regiones vinculadas Left/Right en `.sf2` y unificarlas como onda estéreo real en nuestra definición nativa.
+- [ ] **Conversión inmediata a Formato Propio**: Al importar un `.sf2` o `.sfz` (o conversiones intermedias desde Kontakt/HALion/SampleTank), se extraen las muestras como WAV/AIFF independientes y se registran sus regiones y envolventes en nuestro esquema nativo. El archivo `.sf2`/`.sfz` original se descarta tras la importación.
 
 ### 6.3 Compilador / Adaptador de Extendido $\rightarrow$ Clásico en Exportación
 - [ ] Si se ha trabajado en Modo Extendido (o importado un instrumento complejo) y se exporta a **Clásico** (o a la capa clásica del contenedor multiformato):
   - **Particionado automático de columnas**: Proyectar los límites de nota sobre `0..127` garantizando cobertura continua sin huecos.
-  - **Normalización y compensación de volumen**: Aplicar las ganancias individuales (`volumeDb` / atenuación SF2) directamente sobre la amplitud de las muestras o espectros antes de codificar.
+  - **Compensación exacta de volumen entre velocidades**: Dado que `map.script` tiene un único `Volume` por zona (compartido por `LowSource` y `HiSource`), fijar el volumen de zona a la capa principal y aplicar la diferencia relativa de dB entre velocidad baja y alta **escalando directamente las magnitudes espectrales** del `.scape`/`.sphere` de la capa atenuada.
   - **Reducción de $N$ velocidades a 2 franjas (`1..63` y `64..127`)**: Agrupar las regiones que caen en la mitad inferior y superior, permitiendo seleccionar la muestra representativa o realizar una **fusión/interpolación espectral ponderada** para generar un único par `.scape`/`.sphere` para `Low` y otro para `High`.
 
 ---
@@ -193,61 +198,70 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 8 — Estándar de Audio Maestro (`Master Wave Format`) y Regeneración / Upscaling (DSP + IA)
+## Fase 8 — Estándar de Audio Maestro (`Master Wave Format`), Expansión de Loops y Regeneración (DSP + IA)
 
-**Objetivo**: Regenerar las ondas a partir de la librería actual (`NeuronDB`), o mejorar muestras procedentes de SoundFonts antiguos y grabaciones propias, llevándolas todas a un estándar de audio maestro de máxima calidad antes de re-analizarlas.
+**Objetivo**: Regenerar las ondas a partir de la librería actual (`NeuronDB`), o mejorar muestras procedentes de SoundFonts antiguos y grabaciones propias, llevándolas todas a un estándar de audio maestro de máxima calidad (incluyendo extensión de loops cortos y espacialización Estéreo/Surround) antes de re-analizarlas.
 
 ### 8.1 Definición del Estándar de Audio Maestro (`Enhanced Wave Standard`)
 - [ ] Establecer un formato canónico de preservación y trabajo para las ondas mejoradas:
-  - **Profundidad de bits**: `24-bit PCM` (o `32-bit IEEE Float` en procesamiento interno).
-  - **Frecuencia de muestreo**: `96.000 Hz` (upsampling de alta precisión para evitar aliasing en manipulaciones espectrales y permitir extensión armónica por encima de 20 kHz).
-  - **Canales**: Conservar **Estéreo / Canales Originales** (o expansión pseudo-estéreo coherente en fase cuando se desee, manteniendo copia mono de referencia para el camino clásico `legacy-neuron`).
+  - **Profundidad de bits**: `24-bit PCM` (con procesamiento interno en `32-bit / 64-bit IEEE Float`).
+  - **Frecuencia de muestreo**: `96.000 Hz` (upsampling de alta precisión para evitar aliasing en manipulaciones espectrales y permitir extensión armónica hasta 48 kHz).
+  - **Canales y Espacialización (Mono / Estéreo / Surround / Pseudo-Surround)**:
+    - Conservar **Canales Originales (Mono o Estéreo)** o expandir mediante síntesis espacial coherente a **Estéreo (2.0)** y **Quad / Surround (4.0 / 5.1)** (recuperando y superando el concepto cuadrafónico del Hartmann Neuron hardware original, mientras se mantiene una reducción limpia a Mono 44.1 kHz para el binario clásico).
 - [ ] Pipeline de promoción a formato maestro con tres vías seleccionables:
   1. **Conversión Directa**: Resampling sinc con ventana Kaiser-Bessel de fase lineal y conversión a 24-bit / 96 kHz.
   2. **Mejora por Algoritmos DSP Modernos (100% en navegador/Worker)**.
   3. **Mejora por Modelos de IA (Puente Local o Híbrido)**.
 
-### 8.2 Regeneración desde la Librería Original (`NeuronDB` `.scape` + `.sphere` $\rightarrow$ WAV Maestro)
+### 8.2 Ampliación Inteligente de Loops Cortos (`Loop Expansion & Auto-Loop Relocator`)
+- [ ] Para muestras de `.sf2` o WAVs con bucles muy cortos (que producen efecto estático o "metralleta"):
+  - **Extensión de duración a $X$ segundos (ej. 3 a 6 s)**: Desenrollar el bucle original con crossfade de fase y aplicar **variación orgánica por IA (*Audio Outpainting* / variación latente) o micro-modulación estocástica de fase/formantes por DSP** para que el sostenido evolucione de forma viva sin repeticiones idénticas perceptibles.
+  - **Recálculo automático de las marcas de Loop (`Auto-Loop Finder`)**: Buscar automáticamente los nuevos puntos `loopStart` y `loopEnd` óptimos ajustados al nuevo tiempo de $X$ segundos (cruce por cero con máxima correlación de fase y continuidad de envolvente espectral) y grabarlos en el WAV/AIFF mejorado y en nuestra definición nativa.
+
+### 8.3 Regeneración desde la Librería Original (`NeuronDB` `.scape` + `.sphere` $\rightarrow$ WAV Maestro)
 - [ ] Reconstrucción avanzada desde los ~500 modelos de `NeuronDB`:
   - Interpolación por splines cúbicos entre las tramas de `.sphere` para eliminar escalones temporales.
   - Síntesis de fase coherente e inyección de la envolvente y textura de excitación de `.scape`.
   - Aplicación de **Extensión de Ancho de Banda (BWE)**, limpieza de ruido de cuantización (*spectral gating*) y reconstrucción de transitorios para devolver definición a los modelos de 2001.
 
-### 8.3 Integración con Modelos de IA (Arquitectura de Conexión)
+### 8.4 Integración con Modelos de IA (Arquitectura de Conexión)
 - [ ] Soportar una interfaz de plugins/proveedores de restauración IA (`AudioEnhancementProvider`):
   - **AudioSR / Super-Resolución**: Reconstrucción neuronal de armónicos superiores hasta 48/96 kHz (ideal para resíntesis de `NeuronDB` y muestras SF2 antiguas de 22/32 kHz).
   - **Demucs / Separación Transitorio-Cuerpo**: Separación quirúrgica de excitación (`Scape`) y resonancia (`Sphere`).
-  - **BigVGAN / Vocoders Neuronales**: Reconstrucción de fase orgánica a partir de espectrogramas de magnitud.
+  - **BigVGAN / Vocoders Neuronales & Audio Outpainting**: Reconstrucción de fase orgánica a partir de espectrogramas de magnitud y extensión natural de bucles cortos.
 
 ---
 
-## Fase 9 — Contenedor Multiformato ("Cápsula del Tiempo" Anti-Efecto Fotocopia)
+## Fase 9 — Contenedor Multiformato ("Cápsula del Tiempo" Anti-Efecto Fotocopia) e `IndexedDB`
 
 **Objetivo**: Guardar en nuestro paquete de modelo todas las etapas del sonido (si existen) junto con las definiciones en nuestro formato nativo, evitando para siempre el "efecto fotocopia" al reprocesar en el futuro con mejores algoritmos.
 
 ### 9.1 Estructura de las 5 Capas del Contenedor Multiformato
 Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
 1. **`01_raw_source/` (Onda Original WAV/AIFF + Mapa Nativo)**:
-   - Los archivos WAV/AIFF originales sin alterar (aportados por el usuario o extraídos de un SF2/SFZ al importarlo) junto con el manifiesto JSON de zonas/velocidades/loops en nuestro propio formato.
+   - Los archivos WAV/AIFF originales sin alterar (aportados por el usuario o extraídos de un SF2/SFZ al importarlo) junto con el manifiesto JSON de zonas, velocidades, loops y envolventes DAHDSR en nuestro propio formato.
 2. **`02_legacy_original/` (Binario Clásico Original)**:
    - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` originales de fábrica (cuando el modelo proviene de `NeuronDB`).
 3. **`03_enhanced_audio/` (Onda Mejorada / Regenerada — Estándar Maestro 24-bit / 96 kHz)**:
-   - Las ondas regeneradas desde (2) o mejoradas desde (1) mediante nuestros algoritmos DSP o modelos de IA, en formato maestro (24-bit, 96 kHz, canales originales/estéreo).
+   - Las ondas regeneradas desde (2) o mejoradas desde (1) mediante nuestros algoritmos DSP o modelos de IA, en formato maestro (24-bit, 96 kHz, canales originales/estéreo/surround, con marcas de loop extendidas).
 4. **`04_classic_enhanced/` (Binario Clásico Mejorado)**:
    - Los archivos `MName`, `map.script`, `*.scape` y `*.sphere` 100% compatibles con el modo clásico del sintetizador, pero calculados con los nuevos algoritmos de la Fase 7 a partir de (3) o (1).
-5. **`05_extended_model/` (Modelo Expandido / Neural)**:
-   - El formato definitivo para el modo extendido del sintetizador (matrices de alta resolución, campos de vectores / espacio latente IA, transitorios PCM reales y mapa 2D completo), calculado siempre desde (3) o (1).
+5. **`05_extended_model/` (Modelo Expandido / Neural / Surround)**:
+   - El formato definitivo para el modo extendido del sintetizador (matrices de alta resolución, campos de vectores / espacio latente IA, canales estéreo/surround, transitorios PCM reales y mapa 2D completo), calculado siempre desde (3) o (1).
 
-### 9.2 Regla de Linaje ("Cero Efecto Fotocopia")
+### 9.2 Regla de Linaje ("Cero Efecto Fotocopia") y Persistencia en `IndexedDB`
 - [ ] Metadatos de procedencia (`provenance.json`): registra con qué versión de algoritmo/IA y a partir de qué capa fuente (`01_raw_source` o `02_legacy_original`) se generó cada capa derivada.
 - [ ] Al pulsar **"Reprocesar con Nuevos Algoritmos"**, el motor toma automáticamente la fuente primaria más pura disponible (`01` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario ya degradado.
+- [ ] **Migración de buffers pesados a `IndexedDB`**: Mantener configuraciones ligeras en `localStorage` y almacenar los buffers de audio a 24-bit/96 kHz y las 5 capas binarias en `IndexedDB` para soportar cientos de megabytes en el navegador sin chocar con el límite de 5 MB de `localStorage`.
 
 ---
 
-## Fase 10 — Estrategia de Despliegue: Local, Cloud (GitHub / Vercel) o Híbrido
+## Fase 10 — Estrategia de Despliegue: Vendorizado de `ABDShared`, Vercel y Puente Híbrido
 
-**Objetivo**: Permitir que `ABDNeuModMakr` funcione desplegado en la nube (Vercel / GitHub Pages) desde cualquier navegador, sin renunciar a la potencia del hardware local cuando esté disponible.
+**Objetivo**: Permitir que `ABDNeuModMakr` funcione desplegado en la nube (Vercel / GitHub Pages) de forma 100% autónoma, sin renunciar a la potencia del hardware local cuando esté disponible.
 
+- [ ] **Vendorizado Sincronizado de `@abdsynths/shared` y `@abdsynths/midi-keyb` (`vendor:sync`)**:
+  - Script automatizado que empaqueta/sincroniza los módulos compartidos dentro del propio repositorio de `ABDNeuModMakr` para que GitHub y Vercel puedan compilar el proyecto sin depender de rutas fuera del repositorio, manteniendo la edición en vivo con `ABDShared` durante el desarrollo local.
 - [ ] **Modo 100% Web / Vercel (Client-Side Puro)**:
   - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y modelos ligeros en **WebGPU / ONNX Runtime Web (`@huggingface/transformers`)** corren directamente en el navegador del usuario.
   - Desplegable gratuitamente en **Vercel** o **GitHub Pages** como SPA estática (cero coste de servidor).
@@ -256,17 +270,20 @@ Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
 
 ---
 
-## Fase 11 — Procesado del Modo Extendido y Nuevos Resynators (Coordinado con `ABDAxionikVS`)
+## Fase 11 — Procesado del Modo Extendido, Modelos Surround y Nuevos Resynators (`ABDAxionikVS`)
 
-> *Nota: Se abordará una vez consolidadas las fases anteriores, ya que implica diseñar nuevos motores de resíntesis (`Resynators`) en el sintetizador C++ / JUCE 9.*
+> *Nota: Se abordará una vez consolidadas las fases anteriores, ya que implica diseñar nuevos motores de resíntesis (`Resynators`) y buses multicanal en el sintetizador C++ / JUCE 9.*
 
 - [ ] **Formato Espectral de Alta Definición y Campos de Vectores / Espacio Latente**:
   - Superar el límite de 64 parciales y 16 tramas; separación explícita entre envolvente espectral (formantes) y pitch para *Formant Shifting* real.
   - Representación mediante **campos vectoriales de morphing** o coordenadas en un espacio latente neuronal (Autoencoder / VAE) para que los joysticks `Scape` y `Sphere` interpolen características acústicas reales en 2D/3D.
+- [ ] **Modelos Estéreo, Surround (Quad 4.0 / 5.1) y Pseudo-Surround Espectral**:
+  - Recuperar y expandir el espíritu Surround del Hartmann Neuron hardware original: mientras el formato clásico era mono y solo paneaba al final, nuestro modelo extendido permitirá **información espacial real por componente y por capa**:
+    - Ejemplo de separación espacial nativa: **Excitación (`Scape`)** enfocada y definida en el plano frontal (`Front L/R`) mientras la **Resonancia del cuerpo (`Sphere`)** o las capas secundarias (`Layers 1..3`) envuelven al oyente en los canales traseros (`Rear L/R`) o mediante decorrelación espectral de fase (Pseudo-Surround compatible con Estéreo / Binaural y con buses 4.0/5.1 en JUCE 9).
 - [ ] **Ataques PCM Híbridos + Cuerpo Resintetizado**:
   - Disparo del transitorio original a 24-bit/96 kHz en los primeros milisegundos fundido en fase con el *Resynator* extendido en `ABDAxionikVS`.
 - [ ] **Morphing Continuo de Velocidad y Altura**:
-  - Aprovechar en el sintetizador las $N$ capas de velocidad y crossfades definidos en el Modo de Creación Extendido (Fase 6).
+  - Aprovechar en el sintetizador las $N$ capas de velocidad, crossfades y envolventes capturadas en el Modo de Creación Extendido (Fase 6).
 
 ---
 
