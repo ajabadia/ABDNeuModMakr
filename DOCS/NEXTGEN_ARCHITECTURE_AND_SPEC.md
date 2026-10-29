@@ -96,19 +96,34 @@ Cuando una sesión con regiones extendidas se compila hacia el formato Clásico 
    - Calcula la **Periodicidad / Armonicidad (Confidence $0..1$)**, la **Planicidad Espectral (*Spectral Flatness*)** y la **Tasa de Cruce por Cero (*ZCR*)**.
    - Si la confianza armónica es baja (p. ej. $< 0,35$), marca automáticamente la muestra como **Inarmónica / Percusiva / Ruido** (`isUnpitched = true`, `pitchKeytrack = 0` en modo extendido), evitando deformar el análisis con una fundamental fantasma.
 
-### 4.2 Clasificador Automático de los 10 Parameter Sets (`0..9`)
-Analiza los descriptores acústicos de las muestras de la sesión para elegir automáticamente el `Parameter Set` óptimo cuando se trabaja con modos clásicos:
+### 4.2 Clasificador Automático de Tipo de Instrumento y de los 10 Parameter Sets (`0..9`)
+Para no tener que clasificar nunca los sonidos ni los bancos a mano, el analizador (combinando descriptores acústicos DSP, modelos de clasificación de audio por IA como YAMNet / CLAP / AST en ONNX o Python, y metadatos GM cuando existan) detecta automáticamente tanto la **Familia/Tipo de Instrumento** entre las categorías disponibles del ecosistema (`@abdsynths/shared` `bankCategories`) como el **`Parameter Set (0..9)`**:
 
-| Descriptor Acústico | Qué mide | Parameter Sets que discrimina |
+1. **Detección del Tipo de Instrumento y Categoría del Banco**:
+   - Clasifica automáticamente el sonido dentro del catálogo canónico del sintetizador y del `BankDrawer`:
+     - **`Strings / Bowed / Solo` (`cat-1`)**: Violín, Cello, Cuerdas orquestales, Synth Strings.
+     - **`Bells / Mallet / World Percussion` (`cat-2`)**: Campanas, Vibráfono, Marimba, Kalimba, Gongs.
+     - **`Bass / Plucked / Guitar` (`cat-3`)**: Bajo eléctrico/acústico, Synth Bass, Guitarra acústica/eléctrica, Arpa, Pizzicato.
+     - **`Pads / Orchestral / Ambient` (`cat-4`)**: Warm Pad, Glass Pad, Lush Strings Pad, Ensemble.
+     - **`Keys / Piano / Organ` (`cat-5`)**: Piano acústico, Rhodes / Wurlitzer / FM E-Piano, Clavinet, Órgano Hammond / Litúrgico.
+     - **`Winds / Brass / Vocal / Choir` (`cat-6`)**: Flauta, Oboe, Clarinete, Saxo, Trompeta, Brass Section, Coros, Voz solista.
+     - **`Textures / Drones / FX` (`cat-7`)**: Drones oscuros, Atmósferas de cine, Sci-Fi FX, Ruido evolutivo.
+     - **`Arp / Loops / Sequenced` (`cat-8`)**: Bucles rítmicos, Arpegios sincronizados, Slicers.
+     - **`Drums / Rhythm / Corpus` (`cat-9`)**: Baterías, Kicks, Snares, Hi-Hats, Percusión seca y efectos de cuerpo acústico.
+     - **`General / Neutral Synth` (`cat-0`)**: Formas de onda puras, Leads genéricos.
+
+2. **Matriz de Descriptores Acústicos para Parameter Set (`0..9`) y Familia**:
+
+| Descriptor Acústico | Qué mide | Parameter Sets y Familias que discrimina |
 | :--- | :--- | :--- |
 | **Log-Attack Time (LAT) & Attack Slope** | Tiempo desde el inicio hasta el pico de energía ($\log_{10}(t_{\text{peak}} - t_{\text{onset}})$) | Ataques rápidos ($< 20\text{ ms}$): `2 (Plucked & Bells)`, `3 (Plucked & Picked)`, `5 (Piano)` vs. Ataques lentos ($> 120\text{ ms}$): `1 (Bowed)`, `4 (Carpet Shop)`, `7 (Extreme Pads)` |
 | **Coeficiente de Inarmonicidad ($\beta$)** | Estiramiento de parciales superiores $f_n = n f_0 \sqrt{1 + \beta n^2}$ | Alta inarmonicidad/rigidez: `2 (Bells)`, `4 (Glass/Stiffness)`, `5 (Piano)` vs. Armónicos puros ($\beta \approx 0$): `1 (Strings)`, `6 (Woodwinds)` |
-| **Relación Armónico-Ruido (HNR) & ZCR** | Proporción de energía periódica frente a soplido/turbulencia | Ruido de soplido modulado + predominio impar: `6 (Woodwinds)` |
-| **Flujo Espectral (Spectral Flux) & Modulación** | Variación del espectro frame a frame | Alta evolución tímbrica en sostén: `7 (Extreme Pads)` vs. Estacionario denso: `4 (Carpet Shop)` |
+| **Relación Armónico-Ruido (HNR) & ZCR** | Proporción de energía periódica frente a soplido/turbulencia | Ruido de soplido modulado + predominio impar: `6 (Woodwinds)` / Percusión inarmónica: `9 (Drums/Rhythm)` |
+| **Flujo Espectral (Spectral Flux) & Modulación** | Variación del espectro frame a frame | Alta evolución tímbrica en sostén: `7 (Extreme Pads / Textures)` vs. Estacionario denso: `4 (Carpet Shop)` |
 | **Densidad de Onsets Temporales** | Número de picos transitorios distintos a lo largo de la muestra | Múltiples ataques rítmicos ($\ge 3$ onsets): `8 (Loop Factory)` |
 | **Balance Cuerpo / Resonancia Acústica** | Energía de formantes graves/medios en decaimiento | `9 (Multipurpose / Body)` y `0 (Default Neutral)` |
 
-La UI ofrecerá selección automática (`Auto-Detect Best Set`) mostrando el ranking de confianza (ej. *Set 2: 88%, Set 5: 74%*).
+La UI ofrecerá selección automática (`Auto-Detect Instrument & Parameter Set`) mostrando la familia detectada, las etiquetas sugeridas y el ranking de confianza (ej. *Instrumento: Piano / Keys (`cat-5`) — Set 5: 88%, Set 2: 74%*).
 
 ### 4.3 Nuevos Algoritmos para el Binario Clásico (`Legacy DSP` vs. `Enhanced DSP`)
 Mantenemos siempre un selector para elegir entre el algoritmo clásico actual y el nuevo motor mejorado (**"Caballo de Troya"**: escribe exactamente el mismo formato `.scape`/`.sphere`, pero con matemáticas modernas):

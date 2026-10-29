@@ -186,13 +186,15 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 - [ ] Mejorar el detector de frecuencia fundamental combinando **YIN / MPM (McLeod Pitch Method)** en dominio temporal con **HPS + Least-Squares** en dominio frecuencial.
 - [ ] **Índice de Armonicidad / Confianza de Pitch**: Detectar automáticamente cuándo un sonido es **percusivo, inarmónico o ruido puro** (caja, plato, viento, FX) para no asignarle una fundamental errónea ni deformar la rejilla de parciales.
 
-### 7.2 Clasificador Automático de los 10 Parameter Sets (`0..9`)
-- [ ] Analizador de descriptores acústicos por muestra y conjunto de zonas:
+### 7.2 Clasificador Automático de Tipo de Instrumento y de los 10 Parameter Sets (`0..9`)
+- [ ] **Detección automática del Tipo de Instrumento / Categoría (`InstrumentClassifier`)**:
+  - Identificar mediante descriptores acústicos y/o modelos de clasificación de audio IA (YAMNet / CLAP / AST) a qué categoría del ecosistema (`Strings`, `Bells/Mallet`, `Bass/Plucked`, `Pads`, `Keys/Piano/Organ`, `Winds/Brass/Vocal`, `Textures/FX`, `Arp/Loops`, `Drums/Rhythm`) pertenece el sonido para no tener que etiquetarlo ni clasificarlo a mano en el banco.
+- [ ] Analizador de descriptores acústicos por muestra y conjunto de zonas para el `Parameter Set (0..9)`:
   - Tiempo y pendiente de ataque (`Log-Attack Time`).
   - Coeficiente de inarmonicidad / rigidez física de parciales ($f_n$ frente a $n \cdot f_0$, clave para distinguir pianos, campanas y metales de cuerdas o vientos).
   - Relación Armónico-Ruido (`HNR`), *Spectral Flatness* y *Zero-Crossing Rate* (soplido/turbulencia).
   - Evolución temporal de la envolvente y detección de múltiples transitorios (para detectar bucles rítmicos de `Set 8: Loop Factory`).
-- [ ] Selección automática del mejor `Parameter Set` (`0..9`) con indicador de confianza en la UI (y posibilidad de sobreescritura manual).
+- [ ] Selección automática del tipo de instrumento y del mejor `Parameter Set` (`0..9`) con indicador de confianza en la UI (y posibilidad de sobreescritura manual).
 
 ### 7.3 Nuevos Algoritmos para el Formato Clásico (`Legacy DSP` vs `Enhanced DSP`)
 - [ ] Conmutador de algoritmo de procesado clásico para conservar el comportamiento exacto de 2001 junto al nuevo motor mejorado:
