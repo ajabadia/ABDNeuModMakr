@@ -123,7 +123,7 @@ ABDNeuModMakr/
   - [x] Auto-reparación en 1 clic de cobertura MIDI `0..127` (`autoRepairCoverage()`) desde `Navbar` y `TelemetryDrawer`
   - [x] Validación en tiempo real sin pérdida de foco en `ProcessPanel.ts` (`0..511` slot, `11` chars en `legacy-neuron`/`dual` vs `32` chars en `modern-neural`, `recDepth` modes) y división de zonas con `Double-Click` / `Alt+Click` en `ZoneRibbon.ts`
   - [x] Atajos completos (`Ctrl+Z`, `Ctrl+Y`/`Ctrl+Shift+Z`, `Ctrl+S/O/I/N/P/T/B/L`, `Insert`, `Delete`, `←`/`→`, `Space`) y suite `tests/phase5_ux.test.ts`
-- [x] **Documentación técnica en `DOCS/`** — `DOCS/NEURON_MM_SPEC.md`, `DOCS/ARCHITECTURE_DUAL_TARGET.md` y `DOCS/NASANALYSIS_DECOMPILATION.md`
+- [x] **Documentación técnica en `DOCS/`** — `DOCS/NEURON_MM_SPEC.md`, `DOCS/ARCHITECTURE_DUAL_TARGET.md`, `DOCS/NASANALYSIS_DECOMPILATION.md` y **`DOCS/NEXTGEN_ARCHITECTURE_AND_SPEC.md`** (especificación maestra de las Fases 6 a 13).
 - [x] **main.ts** — Orquestación de eventos: selección de zona, audición A/B, Undo/Redo, menús, atajos de teclado, drawers, modal y telemetría espectral real
 - [x] **Sistema de diseño** — Integración con `@abdsynths/shared` (tokens, paletas, SynthNavBar)
 - [x] **Iconos vectoriales** — Sincronizados con `ABDShared/Assets/icons`

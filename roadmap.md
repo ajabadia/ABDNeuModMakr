@@ -135,9 +135,11 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-# 🚀 Nueva Etapa: Evolución Next-Gen (Fases 6 a 12)
+# 🚀 Nueva Etapa: Evolución Next-Gen (Fases 6 a 13)
 
 > Hoja de ruta para transformar `ABDNeuModMakr` en una factoría de modelos capaz de importar instrumentos complejos, mejorar la síntesis clásica con algoritmos modernos e IA, conservar el linaje completo de ondas sin "efecto fotocopia", y alimentar el motor extendido de `ABDAxionikVS` (C++ / JUCE 9).
+>
+> 📄 **Especificación Técnica Completa y Detallada**: Ver [`DOCS/NEXTGEN_ARCHITECTURE_AND_SPEC.md`](DOCS/NEXTGEN_ARCHITECTURE_AND_SPEC.md) (incluye fórmulas, reglas de conversión Extendido $\rightarrow$ Clásico, tablas de descriptores para los 10 Parameter Sets, estructura del contenedor de 5 capas, ampliación de loops, DAHDSR, Surround y arquitectura híbrida Vercel/Local).
 
 ---
 
