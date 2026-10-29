@@ -121,6 +121,42 @@ export interface DspQualityScore {
   transientFidelity: number;       // 0..1
 }
 
+/**
+ * Fase 8 — Master Wave Standard (24-bit PCM / 96.000 Hz) & Loop Expansion types.
+ */
+export type MasterPromotionMethod = 'direct-conversion' | 'dsp-enhanced' | 'ai-bridge';
+export type MasterChannelLayout = 'original' | 'stereo' | 'quad-surround';
+
+export interface MasterWaveConfig {
+  promotionMethod: MasterPromotionMethod;
+  channelLayout: MasterChannelLayout;
+  targetSampleRate: number;        // 96000 Hz canonical
+  targetBitDepth: 24;
+  minLoopDurationSec: number;      // e.g. 4.0s (0 disables short-loop unrolling)
+  enableBandwidthExtension: boolean;
+  enableDenoiseGate: boolean;
+  aiBridgeEndpoint?: string;       // e.g. 'http://127.0.0.1:7860/api/enhance'
+}
+
+export interface MasterWaveResult {
+  zoneId: string;
+  sampleName: string;
+  masterSampleName: string;
+  originalSampleRate: number;
+  masterSampleRate: number;
+  bitDepth: 24;
+  numChannels: number;             // 1 (Mono), 2 (Stereo), or 4 (Quad Surround)
+  originalDurationSec: number;
+  masterDurationSec: number;
+  loopExpanded: boolean;
+  loopStart: number;               // in masterSampleRate samples
+  loopEnd: number;                 // in masterSampleRate samples
+  loopDurationSec: number;
+  zeroCrossingCorrelation: number; // 0..1 seam correlation
+  promotionMethodUsed: MasterPromotionMethod;
+  aiProviderUsed?: string;
+}
+
 export type LoopMode = 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
 export type TriggerMode = 'attack' | 'release' | 'first' | 'legato';
 export type CrossfadeCurve = 'linear' | 'equal-power' | 'spectral-morph';
@@ -240,6 +276,10 @@ export interface ProcessConfig {
    * - 'enhanced': HPSS transient/stationary separation, YIN/MPM + HPS pitch detection, and trajectory smoothing.
    */
   dspAlgorithm?: DspAlgorithmMode;
+  /**
+   * Fase 8 — Master Wave (24-bit / 96 kHz) & Short-Loop Expansion configuration.
+   */
+  masterWaveConfig?: MasterWaveConfig;
 }
 
 /** Process execution state */

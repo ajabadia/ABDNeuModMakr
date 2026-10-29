@@ -17,6 +17,8 @@ import type {
   SynthArticulationConfig,
   Sf2PresetOption,
   AcousticClassificationResult,
+  MasterWaveConfig,
+  MasterWaveResult,
   ProcessConfig,
   ProcessProgress,
   GeneratedModel,
@@ -233,5 +235,37 @@ export interface CoreService {
     zoneId?: string,
     applyToSession?: boolean
   ): AcousticClassificationResult;
+
+  // ── Phase 8: Master Wave Standard (24-bit / 96 kHz), Short-Loop Expansion & Surround ──
+  /**
+   * Promotes the selected zone's audio sample to the canonical 24-bit PCM / 96.000 Hz
+   * Master Wave Standard (with optional short-loop expansion to X seconds, zero-crossing
+   * Auto-Loop Finder, DSP BWE/De-noise or AI Bridge, and Stereo/Quad Surround expansion).
+   */
+  promoteZoneToMasterWave(
+    zoneId?: string,
+    config?: Partial<MasterWaveConfig>
+  ): Promise<MasterWaveResult | null>;
+
+  /**
+   * Promotes all zones in the active session to the 24-bit / 96.000 Hz Master Wave Standard.
+   */
+  promoteAllZonesToMasterWave(
+    config?: Partial<MasterWaveConfig>
+  ): Promise<MasterWaveResult[]>;
+
+  /**
+   * Returns current decoded format metadata (sampleRate, bitsPerSample, numChannels, durationSec, loopStart/loopEnd)
+   * for the specified zone's primary sample.
+   */
+  getZoneSampleFormatInfo(zoneId?: string): {
+    sampleName: string;
+    sampleRate: number;
+    bitsPerSample: number;
+    numChannels: number;
+    durationSec: number;
+    loopStart: number;
+    loopEnd: number;
+  } | null;
 }
 

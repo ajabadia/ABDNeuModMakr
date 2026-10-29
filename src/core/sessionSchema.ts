@@ -14,6 +14,9 @@
 import type {
   DspAlgorithmMode,
   ExtendedRegion,
+  MasterChannelLayout,
+  MasterPromotionMethod,
+  MasterWaveConfig,
   MidiNote,
   ProcessConfig,
   Session,
@@ -23,6 +26,7 @@ import type {
   Zone,
 } from './types.ts';
 import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
+import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
@@ -154,6 +158,38 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     dspAlgorithm = dspAlgorithmRaw;
   }
 
+  let masterWaveConfig: MasterWaveConfig | undefined;
+  if (isRecord(cfg['masterWaveConfig'])) {
+    const m = cfg['masterWaveConfig'];
+    const pm = m['promotionMethod'];
+    const cl = m['channelLayout'];
+    masterWaveConfig = {
+      promotionMethod:
+        pm === 'direct-conversion' || pm === 'dsp-enhanced' || pm === 'ai-bridge'
+          ? (pm as MasterPromotionMethod)
+          : DEFAULT_MASTER_WAVE_CONFIG.promotionMethod,
+      channelLayout:
+        cl === 'original' || cl === 'stereo' || cl === 'quad-surround'
+          ? (cl as MasterChannelLayout)
+          : DEFAULT_MASTER_WAVE_CONFIG.channelLayout,
+      targetSampleRate: clampInt(asFiniteNumber(m['targetSampleRate']) ?? 96000, 44100, 192000),
+      targetBitDepth: 24,
+      minLoopDurationSec: clampNum(asFiniteNumber(m['minLoopDurationSec']) ?? 4.0, 0, 30),
+      enableBandwidthExtension:
+        typeof m['enableBandwidthExtension'] === 'boolean'
+          ? m['enableBandwidthExtension']
+          : DEFAULT_MASTER_WAVE_CONFIG.enableBandwidthExtension,
+      enableDenoiseGate:
+        typeof m['enableDenoiseGate'] === 'boolean'
+          ? m['enableDenoiseGate']
+          : DEFAULT_MASTER_WAVE_CONFIG.enableDenoiseGate,
+      aiBridgeEndpoint:
+        typeof m['aiBridgeEndpoint'] === 'string'
+          ? m['aiBridgeEndpoint']
+          : DEFAULT_MASTER_WAVE_CONFIG.aiBridgeEndpoint,
+    };
+  }
+
   const slotRaw = cfg['modelNumber'] ?? 1;
   const complexityRaw = cfg['complexity'] ?? 8;
   const paramSetRaw = cfg['parameterSet'] ?? 0;
@@ -178,6 +214,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     targetFormat,
     ...(workingMode !== undefined ? { workingMode } : {}),
     ...(dspAlgorithm !== undefined ? { dspAlgorithm } : {}),
+    ...(masterWaveConfig !== undefined ? { masterWaveConfig } : {}),
   };
 }
 

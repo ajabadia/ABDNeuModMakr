@@ -135,6 +135,10 @@ ABDNeuModMakr/
   - [x] `src/ui/ZoneInspector.ts` y `src/style.css` — Pestañas tipo pill **`General`** y **`Extended`** en el drawer de metadatos de zona (`Extended` visible únicamente cuando `workingMode === 'extended'`), ancho ampliado hasta el `50%` del viewport disponible (`clamp(420px, 48dvw, 50dvw)`) con `@container` queries responsivas y tokens `@abdsynths/shared` sin colores hardcodeados.
   - [x] `src/ui/SpectralView.ts` y `src/ui/ProcessPanel.ts` — Comparador de audición **A / B / C** (`A: Original`, `B: Legacy DSP`, `C: Enhanced DSP`), indicador de `Quality Score` en vivo, selector `Legacy DSP` vs `Enhanced DSP` y botones `Auto-Detect`.
   - [x] Fase 13 (`Waveform Loop Editor` visual interactivo) documentada en `roadmap.md` y `DOCS/NEXTGEN_ARCHITECTURE_AND_SPEC.md`.
+- [x] **Fase 8 — Estándar de Audio Maestro (`24-bit PCM / 96.000 Hz`), Expansión Inteligente de Loops Cortos, Espacialización Estéreo/Quad Surround y Puente IA**:
+  - [x] `src/core/dsp/WavDecoder.ts` (`encodeWavPcm24` + parser de loops en chunk `smpl`) y `src/core/dsp/MasterWaveEnhancer.ts` (`promoteBufferToMasterWave`, `expandShortLoopAndRelocate`, `findOptimalZeroCrossingLoop`, `expandSpatialChannels`, `downmixToClassicMono44k1`, `applyDspEnhancement96k`, `regenerateMasterWaveFromModel`, `AudioEnhancementProvider` / `HttpAiBridgeProvider`).
+  - [x] Integrado en `WebAudioPipeline.ts` (`promoteZoneToMasterWave`, `promoteAllZonesToMasterWave`, `getZoneSampleFormatInfo`) y en la pestaña **`Extended`** de `ZoneInspector.ts` (`MASTER WAVE (24-BIT / 96 KHZ), LOOP EXPANSION & SURROUND`).
+  - [x] Verificado al 100% en la sección 14 de `tests/phase6_units.test.ts` + `vite build`.
 - [x] **Documentación técnica en `DOCS/`** — `DOCS/NEURON_MM_SPEC.md`, `DOCS/ARCHITECTURE_DUAL_TARGET.md`, `DOCS/NASANALYSIS_DECOMPILATION.md` y **`DOCS/NEXTGEN_ARCHITECTURE_AND_SPEC.md`** (especificación maestra de las Fases 6 a 13).
 - [x] **main.ts** — Orquestación de eventos: selección de zona, audición A/B, Undo/Redo, menús, atajos de teclado, drawers, modal y telemetría espectral real
 - [x] **Sistema de diseño** — Integración con `@abdsynths/shared` (tokens, paletas, SynthNavBar)

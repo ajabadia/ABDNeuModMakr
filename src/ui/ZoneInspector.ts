@@ -11,11 +11,15 @@ import type {
   CrossfadeCurve,
   ExtendedRegion,
   LoopMode,
+  MasterChannelLayout,
+  MasterPromotionMethod,
+  MasterWaveConfig,
   SynthArticulationConfig,
   TriggerMode,
   WorkingMode,
   Zone,
 } from '../core/types';
+import { DEFAULT_MASTER_WAVE_CONFIG } from '../core/dsp/MasterWaveEnhancer';
 import {
   midiNoteToString,
   detuneToString,
@@ -42,6 +46,18 @@ export interface ZoneInspectorHandlers {
   getDetectedCategory?: () => string | undefined;
   getZoneClassification?: (zoneId: string) => AcousticClassificationResult | undefined;
   onAutoDetectZone?: (zoneId: string) => void;
+  getMasterWaveConfig?: () => MasterWaveConfig;
+  getZoneSampleFormatInfo?: (zoneId: string) => {
+    sampleName: string;
+    sampleRate: number;
+    bitsPerSample: number;
+    numChannels: number;
+    durationSec: number;
+    loopStart: number;
+    loopEnd: number;
+  } | null;
+  onPromoteZoneToMasterWave?: (zoneId: string, config: Partial<MasterWaveConfig>) => void;
+  onPromoteAllZonesToMasterWave?: (config: Partial<MasterWaveConfig>) => void;
 }
 
 function basenameOf(samplePath: string | null | undefined): string {
@@ -741,6 +757,72 @@ export class ZoneInspector {
             </div>
           </div>
         </div>
+
+        ${(() => {
+          const mwCfg = this.handlers.getMasterWaveConfig?.() ?? DEFAULT_MASTER_WAVE_CONFIG;
+          const fmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id) ?? null;
+          const chBadge =
+            fmtInfo?.numChannels === 4
+              ? '4.0 Quad Surround'
+              : fmtInfo?.numChannels === 2
+                ? '2.0 Stereo'
+                : fmtInfo?.numChannels === 1
+                  ? '1.0 Mono'
+                  : 'Unassigned';
+          const fmtBadge = fmtInfo
+            ? `${(fmtInfo.sampleRate / 1000).toFixed(1)} kHz / ${fmtInfo.bitsPerSample}-bit • ${chBadge} • ${fmtInfo.durationSec.toFixed(2)}s`
+            : 'No Sample Loaded';
+          return `
+        <!-- 6. Fase 8: Master Wave Standard (24-bit / 96 kHz), Loop Expansion & Surround -->
+        <div class="inspector-section">
+          <div class="section-header-row">
+            <div class="section-title">MASTER WAVE (24-BIT / 96 KHZ), LOOP EXPANSION &amp; SURROUND</div>
+            <span class="val-pill" title="Current Zone Wave Format">${fmtBadge}</span>
+          </div>
+          <div class="articulation-card is-enabled">
+            <div class="drawer-grid-3">
+              <div class="form-group">
+                <label for="sel-mw-method" title="Selects how audio is promoted to 24-bit / 96.000 Hz Master Wave">PROMOTION ENGINE</label>
+                <select id="sel-mw-method" class="drawer-select">
+                  <option value="direct-conversion" ${mwCfg.promotionMethod === 'direct-conversion' ? 'selected' : ''}>Direct (Sinc 96k / 24b)</option>
+                  <option value="dsp-enhanced" ${mwCfg.promotionMethod === 'dsp-enhanced' ? 'selected' : ''}>DSP Enhanced (BWE + DeNoise)</option>
+                  <option value="ai-bridge" ${mwCfg.promotionMethod === 'ai-bridge' ? 'selected' : ''}>AI Bridge (AudioSR/BigVGAN)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sel-mw-channels" title="Preserve original channels or expand to Stereo 2.0 or Quad Surround 4.0">SPATIAL CHANNELS</label>
+                <select id="sel-mw-channels" class="drawer-select">
+                  <option value="original" ${mwCfg.channelLayout === 'original' ? 'selected' : ''}>Original Channels</option>
+                  <option value="stereo" ${mwCfg.channelLayout === 'stereo' ? 'selected' : ''}>Stereo 2.0 (Mono-Safe)</option>
+                  <option value="quad-surround" ${mwCfg.channelLayout === 'quad-surround' ? 'selected' : ''}>Quad Surround 4.0 (Neuron)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="inp-mw-loop-sec" title="Unroll short SF2/WAV loops to X seconds with organic modulation & zero-crossing Auto-Loop Finder (0 = keep original length)">MIN LOOP DURATION (S)</label>
+                <input type="number" id="inp-mw-loop-sec" class="drawer-input" min="0" max="16" step="0.5" value="${mwCfg.minLoopDurationSec}" />
+              </div>
+            </div>
+            <div class="articulation-card-header">
+              <label class="articulation-sub-toggle" title="Harmonic Bandwidth Extension up to 42 kHz in 96 kHz Master Wave">
+                <input type="checkbox" class="articulation-checkbox" id="chk-mw-bwe" ${mwCfg.enableBandwidthExtension ? 'checked' : ''} />
+                <span>Ultrasonic BWE (42 kHz Air)</span>
+              </label>
+              <label class="articulation-sub-toggle" title="Suppress quantization floor noise from legacy 8/16-bit samples">
+                <input type="checkbox" class="articulation-checkbox" id="chk-mw-denoise" ${mwCfg.enableDenoiseGate ? 'checked' : ''} />
+                <span>Quantization De-Noise Gate</span>
+              </label>
+              <div class="section-header-row">
+                <button type="button" class="btn btn-xs btn-accent" id="btn-promote-zone-mw" title="Promote current zone sample to 24-bit / 96.000 Hz Master Wave & relocate optimal loop markers">
+                  ${ICONS.wave} Promote Zone (24b/96k)
+                </button>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-promote-all-mw" title="Promote all zones in session to 24-bit / 96.000 Hz Master Wave">
+                  ${ICONS.layers} Promote All Zones
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+        })()}
       </div>
       `
           : ''
@@ -1141,6 +1223,45 @@ export class ZoneInspector {
       for (const sel of artSelectors) {
         this.drawerElement.querySelector(sel)?.addEventListener('change', bindArt);
       }
+
+      // Fase 8 Master Wave promotion bindings
+      const readMwConfig = (): Partial<MasterWaveConfig> => {
+        const selMethod = this.drawerElement?.querySelector<HTMLSelectElement>('#sel-mw-method');
+        const selChannels = this.drawerElement?.querySelector<HTMLSelectElement>('#sel-mw-channels');
+        const inpLoopSec = this.drawerElement?.querySelector<HTMLInputElement>('#inp-mw-loop-sec');
+        const chkBwe = this.drawerElement?.querySelector<HTMLInputElement>('#chk-mw-bwe');
+        const chkDenoise = this.drawerElement?.querySelector<HTMLInputElement>('#chk-mw-denoise');
+
+        const pm = selMethod?.value;
+        const cl = selChannels?.value;
+        return {
+          promotionMethod:
+            pm === 'direct-conversion' || pm === 'ai-bridge'
+              ? (pm as MasterPromotionMethod)
+              : 'dsp-enhanced',
+          channelLayout:
+            cl === 'stereo' || cl === 'quad-surround'
+              ? (cl as MasterChannelLayout)
+              : 'original',
+          targetSampleRate: 96000,
+          targetBitDepth: 24,
+          minLoopDurationSec: Math.max(0, Math.min(30, parseFloat(inpLoopSec?.value ?? '4') || 0)),
+          enableBandwidthExtension: Boolean(chkBwe?.checked ?? true),
+          enableDenoiseGate: Boolean(chkDenoise?.checked ?? true),
+        };
+      };
+
+      this.drawerElement
+        .querySelector('#btn-promote-zone-mw')
+        ?.addEventListener('click', () => {
+          this.handlers.onPromoteZoneToMasterWave?.(z.id, readMwConfig());
+        });
+
+      this.drawerElement
+        .querySelector('#btn-promote-all-mw')
+        ?.addEventListener('click', () => {
+          this.handlers.onPromoteAllZonesToMasterWave?.(readMwConfig());
+        });
     }
   }
 }

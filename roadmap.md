@@ -205,37 +205,37 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 8 — Estándar de Audio Maestro (`Master Wave Format`), Expansión de Loops y Regeneración (DSP + IA)
+## Fase 8 — Estándar de Audio Maestro (`Master Wave Format`), Expansión de Loops y Regeneración (DSP + IA) ✅ COMPLETADA
 
 **Objetivo**: Regenerar las ondas a partir de la librería actual (`NeuronDB`), o mejorar muestras procedentes de SoundFonts antiguos y grabaciones propias, llevándolas todas a un estándar de audio maestro de máxima calidad (incluyendo extensión de loops cortos y espacialización Estéreo/Surround) antes de re-analizarlas.
 
 ### 8.1 Definición del Estándar de Audio Maestro (`Enhanced Wave Standard`)
-- [ ] Establecer un formato canónico de preservación y trabajo para las ondas mejoradas:
-  - **Profundidad de bits**: `24-bit PCM` (con procesamiento interno en `32-bit / 64-bit IEEE Float`).
-  - **Frecuencia de muestreo**: `96.000 Hz` (upsampling de alta precisión para evitar aliasing en manipulaciones espectrales y permitir extensión armónica hasta 48 kHz).
-  - **Canales y Espacialización (Mono / Estéreo / Surround / Pseudo-Surround)**:
-    - Conservar **Canales Originales (Mono o Estéreo)** o expandir mediante síntesis espacial coherente a **Estéreo (2.0)** y **Quad / Surround (4.0 / 5.1)** (recuperando y superando el concepto cuadrafónico del Hartmann Neuron hardware original, mientras se mantiene una reducción limpia a Mono 44.1 kHz para el binario clásico).
-- [ ] Pipeline de promoción a formato maestro con tres vías seleccionables:
-  1. **Conversión Directa**: Resampling sinc con ventana Kaiser-Bessel de fase lineal y conversión a 24-bit / 96 kHz.
-  2. **Mejora por Algoritmos DSP Modernos (100% en navegador/Worker)**.
-  3. **Mejora por Modelos de IA (Puente Local o Híbrido)**.
+- [x] Establecer un formato canónico de preservación y trabajo para las ondas mejoradas (`src/core/dsp/WavDecoder.ts` `encodeWavPcm24` + `src/core/dsp/MasterWaveEnhancer.ts`):
+  - **Profundidad de bits**: `24-bit PCM` con dithering TPDF determinista y chunk `smpl` de marcas de loop embebido (con procesamiento interno en `32-bit / 64-bit IEEE Float`).
+  - **Frecuencia de muestreo**: `96.000 Hz` (upsampling sinc con ventana de fase lineal para evitar aliasing en manipulaciones espectrales y permitir extensión armónica hasta 42–48 kHz).
+  - **Canales y Espacialización (Mono / Estéreo / Surround / Pseudo-Surround)** (`expandSpatialChannels` + `downmixToClassicMono44k1`):
+    - Conservar **Canales Originales (Mono o Estéreo)** o expandir mediante síntesis espacial coherente a **Estéreo (2.0)** (`+Side`/`-Side` 100% mono-compatible) y **Quad / Surround (4.0)** (`[FL, FR, RL, RR]`, recuperando y superando el concepto cuadrafónico del Hartmann Neuron hardware original, mientras se mantiene una reducción limpia en fase a Mono 44.1 kHz para el binario clásico).
+- [x] Pipeline de promoción a formato maestro con tres vías seleccionables (`promoteBufferToMasterWave`):
+  1. **Conversión Directa (`direct-conversion`)**: Resampling sinc de fase lineal y conversión a 24-bit / 96 kHz.
+  2. **Mejora por Algoritmos DSP Modernos (`dsp-enhanced`, 100% en navegador/Worker)**: Puerta de de-noising de cuantización + Extensión de Ancho de Banda Armónica (BWE ultrasónico hasta 42 kHz).
+  3. **Mejora por Modelos de IA (`ai-bridge`, Puente Local o Híbrido)**: Conector `AudioEnhancementProvider` (`HttpAiBridgeProvider` + fallback transparente a `dsp-enhanced`).
 
 ### 8.2 Ampliación Inteligente de Loops Cortos (`Loop Expansion & Auto-Loop Relocator`)
-- [ ] Para muestras de `.sf2` o WAVs con bucles muy cortos (que producen efecto estático o "metralleta"):
-  - **Extensión de duración a $X$ segundos (ej. 3 a 6 s)**: Desenrollar el bucle original con crossfade de fase y aplicar **variación orgánica por IA (*Audio Outpainting* / variación latente) o micro-modulación estocástica de fase/formantes por DSP** para que el sostenido evolucione de forma viva sin repeticiones idénticas perceptibles.
-  - **Recálculo automático de las marcas de Loop (`Auto-Loop Finder`)**: Buscar automáticamente los nuevos puntos `loopStart` y `loopEnd` óptimos ajustados al nuevo tiempo de $X$ segundos (cruce por cero con máxima correlación de fase y continuidad de envolvente espectral) y grabarlos en el WAV/AIFF mejorado y en nuestra definición nativa.
+- [x] Para muestras de `.sf2` o WAVs con bucles muy cortos (que producen efecto estático o "metralleta") (`expandShortLoopAndRelocate` + `findOptimalZeroCrossingLoop`):
+  - **Extensión de duración a $X$ segundos (ej. 3 a 6 s)**: Desenrollar el bucle original con crossfade de igual potencia (`sin`/`cos`) y aplicar **micro-modulación orgánica no repetitiva de fase/formantes/respiración** (o *Audio Outpainting* vía puente IA) para que el sostenido evolucione de forma viva sin repeticiones idénticas perceptibles.
+  - **Recálculo automático de las marcas de Loop (`Auto-Loop Finder`)**: Buscar automáticamente los nuevos puntos `loopStart` y `loopEnd` óptimos ajustados al nuevo tiempo de $X$ segundos (cruce por cero ascendente con máxima correlación cruzada normalizada `NCC` y cierre libre de clics) y grabarlos tanto en el chunk `smpl` del WAV de 24-bit / 96 kHz como en nuestra definición nativa (`ExtendedRegion`).
 
 ### 8.3 Regeneración desde la Librería Original (`NeuronDB` `.scape` + `.sphere` $\rightarrow$ WAV Maestro)
-- [ ] Reconstrucción avanzada desde los ~500 modelos de `NeuronDB`:
-  - Interpolación por splines cúbicos entre las tramas de `.sphere` para eliminar escalones temporales.
-  - Síntesis de fase coherente e inyección de la envolvente y textura de excitación de `.scape`.
-  - Aplicación de **Extensión de Ancho de Banda (BWE)**, limpieza de ruido de cuantización (*spectral gating*) y reconstrucción de transitorios para devolver definición a los modelos de 2001.
+- [x] Reconstrucción avanzada desde modelos de `NeuronDB` (`regenerateMasterWaveFromModel`):
+  - Interpolación por **splines cúbicos Catmull-Rom** entre las tramas de `.sphere` para eliminar escalones temporales.
+  - Síntesis de fase continua coherente e inyección de la envolvente de `.scape`.
+  - Aplicación de **Extensión de Ancho de Banda (BWE)**, limpieza de ruido de cuantización (*spectral gating*) y espacialización Estéreo/Quad Surround a `24-bit / 96.000 Hz`.
 
 ### 8.4 Integración con Modelos de IA (Arquitectura de Conexión)
-- [ ] Soportar una interfaz de plugins/proveedores de restauración IA (`AudioEnhancementProvider`):
-  - **AudioSR / Super-Resolución**: Reconstrucción neuronal de armónicos superiores hasta 48/96 kHz (ideal para resíntesis de `NeuronDB` y muestras SF2 antiguas de 22/32 kHz).
-  - **Demucs / Separación Transitorio-Cuerpo**: Separación quirúrgica de excitación (`Scape`) y resonancia (`Sphere`).
-  - **BigVGAN / Vocoders Neuronales & Audio Outpainting**: Reconstrucción de fase orgánica a partir de espectrogramas de magnitud y extensión natural de bucles cortos.
+- [x] Soportar la interfaz de proveedores de restauración IA (`AudioEnhancementProvider` / `registerAiEnhancementProvider` / `HttpAiBridgeProvider`):
+  - **AudioSR / Super-Resolución (`audiosr`)**: Reconstrucción neuronal de armónicos superiores hasta 48/96 kHz.
+  - **Demucs / Separación Transitorio-Cuerpo (`htdemucs`)**: Separación quirúrgica de excitación (`Scape`) y resonancia (`Sphere`).
+  - **BigVGAN / Vocoders Neuronales & Audio Outpainting (`bigvgan`, `outpaint-loop`)**: Reconstrucción de fase orgánica y extensión natural de bucles cortos.
 
 ---
 

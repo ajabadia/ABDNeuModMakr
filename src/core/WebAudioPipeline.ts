@@ -63,6 +63,8 @@ import { parseSessionJson } from './sessionSchema.ts';
 import type {
   AcousticClassificationResult,
   ExtendedRegion,
+  MasterWaveConfig,
+  MasterWaveResult,
   SynthArticulationConfig,
   Sf2PresetOption,
   AudioFilePayload,
@@ -72,6 +74,10 @@ import {
   classifyAcousticSample,
   extractAcousticDescriptors,
 } from './dsp/AcousticIntelligence.ts';
+import {
+  DEFAULT_MASTER_WAVE_CONFIG,
+  promoteBufferToMasterWave,
+} from './dsp/MasterWaveEnhancer.ts';
 import {
   createDefaultArticulation,
   cloneArticulation,
@@ -451,6 +457,12 @@ export class WebAudioPipeline implements CoreService {
     if (changes.dspAlgorithm !== undefined) {
       cfg.dspAlgorithm = changes.dspAlgorithm === 'enhanced' ? 'enhanced' : 'legacy';
       this.spectralCache.clear();
+    }
+    if (changes.masterWaveConfig !== undefined) {
+      cfg.masterWaveConfig = {
+        ...(cfg.masterWaveConfig ?? DEFAULT_MASTER_WAVE_CONFIG),
+        ...changes.masterWaveConfig,
+      };
     }
 
     this.markDirty();
@@ -2361,6 +2373,130 @@ export class WebAudioPipeline implements CoreService {
     }
 
     return result;
+  }
+
+  // ── Phase 8: Master Wave Standard (24-bit / 96 kHz), Short-Loop Expansion & Surround ──
+
+  public getZoneSampleFormatInfo(zoneId?: string): {
+    sampleName: string;
+    sampleRate: number;
+    bitsPerSample: number;
+    numChannels: number;
+    durationSec: number;
+    loopStart: number;
+    loopEnd: number;
+  } | null {
+    if (!this.session) return null;
+    const zone =
+      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : null) ??
+      this.session.zones[0];
+    if (!zone || !zone.sampleLow) return null;
+    const buf = this.sampleBuffers.get(zone.sampleLow);
+    if (!buf) return null;
+    try {
+      const dec = decodeWav(buf);
+      const reg = this.session.extendedRegions?.find(
+        (r) => r.sampleName === zone.sampleLow || r.id === `ext-${zone.id}-low`
+      );
+      const loopStart =
+        reg && reg.loopEnd > reg.loopStart
+          ? reg.loopStart
+          : (dec.instrument?.loopStart ?? 0);
+      const loopEnd =
+        reg && reg.loopEnd > reg.loopStart
+          ? reg.loopEnd
+          : (dec.instrument?.loopEnd ?? 0);
+      return {
+        sampleName: zone.sampleLow,
+        sampleRate: dec.sampleRate,
+        bitsPerSample: dec.bitsPerSample,
+        numChannels: dec.numChannels,
+        durationSec: Number(dec.durationSec.toFixed(3)),
+        loopStart,
+        loopEnd,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  public async promoteZoneToMasterWave(
+    zoneId?: string,
+    config?: Partial<MasterWaveConfig>
+  ): Promise<MasterWaveResult | null> {
+    if (!this.session) return null;
+    const zone =
+      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : null) ??
+      this.session.zones[0];
+    if (!zone) return null;
+
+    this.ensureZoneDemoBuffers([zone]);
+    const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
+    const rawBuf =
+      (zone.sampleLow ? this.sampleBuffers.get(zone.sampleLow) : null) ??
+      synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
+
+    const extRegions = this.getExtendedRegions();
+    const matchReg = extRegions.find(
+      (r) => r.sampleName === sampleName || r.id === `ext-${zone.id}-low`
+    );
+
+    const mergedCfg: MasterWaveConfig = {
+      ...DEFAULT_MASTER_WAVE_CONFIG,
+      ...(this.session.processConfig.masterWaveConfig ?? {}),
+      ...(config ?? {}),
+    };
+    this.session.processConfig.masterWaveConfig = mergedCfg;
+
+    const promoted = await promoteBufferToMasterWave(
+      rawBuf,
+      sampleName,
+      zone.id,
+      mergedCfg,
+      {
+        rootKey: zone.rootKey,
+        detuneCents: zone.detune,
+        loopStart: matchReg?.loopStart,
+        loopEnd: matchReg?.loopEnd,
+        loopMode: matchReg?.loopMode,
+      }
+    );
+
+    this.pushHistory(`Promote "${sampleName}" to 24-bit/96kHz Master Wave`);
+    this.registerSampleBuffer(promoted.result.masterSampleName, promoted.wav24Buffer);
+    zone.sampleLow = promoted.result.masterSampleName;
+
+    if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
+      this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
+    }
+    for (const reg of this.session.extendedRegions) {
+      if (reg.sampleName === sampleName || reg.id === `ext-${zone.id}-low`) {
+        reg.sampleName = promoted.result.masterSampleName;
+        reg.sampleRate = promoted.result.masterSampleRate;
+        reg.numChannels = promoted.result.numChannels;
+        reg.loopStart = promoted.result.loopStart;
+        reg.loopEnd = promoted.result.loopEnd;
+        if (reg.loopMode === 'no_loop' && promoted.result.loopEnd > promoted.result.loopStart) {
+          reg.loopMode = 'loop_continuous';
+        }
+      }
+    }
+
+    this.spectralCache.delete(zone.id);
+    this.markDirty();
+    return promoted.result;
+  }
+
+  public async promoteAllZonesToMasterWave(
+    config?: Partial<MasterWaveConfig>
+  ): Promise<MasterWaveResult[]> {
+    if (!this.session) return [];
+    const results: MasterWaveResult[] = [];
+    for (const z of this.session.zones) {
+      const res = await this.promoteZoneToMasterWave(z.id, config);
+      if (res) results.push(res);
+    }
+    return results;
   }
 
   // ── Bank & Export Packaging (delegated to BankService) ──

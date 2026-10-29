@@ -6,6 +6,7 @@
 import './style.css';
 import {
   createCoreService,
+  DEFAULT_MASTER_WAVE_CONFIG,
   type CoreService,
   type Zone,
   type Session,
@@ -259,6 +260,37 @@ class App {
           this.refreshUI();
         } else {
           toast('Assign an audio sample to this zone before running Auto-Detect.', 'warning');
+        }
+      },
+      getMasterWaveConfig: () =>
+        this.session?.processConfig.masterWaveConfig ?? DEFAULT_MASTER_WAVE_CONFIG,
+      getZoneSampleFormatInfo: (zoneId) => this.core.getZoneSampleFormatInfo(zoneId),
+      onPromoteZoneToMasterWave: async (zoneId, cfg) => {
+        const res = await this.core.promoteZoneToMasterWave(zoneId, cfg);
+        if (res) {
+          this.session = this.core.getSession()!;
+          this.telemetryDrawer.addLog(
+            `Master Wave [${res.zoneId}]: "${res.sampleName}" -> "${res.masterSampleName}" (${(res.masterSampleRate / 1000).toFixed(1)} kHz / ${res.bitDepth}-bit, ${res.numChannels}ch, ${res.masterDurationSec}s, Loop: ${res.loopDurationSec}s, ZC Corr: ${Math.round(res.zeroCrossingCorrelation * 100)}%)`
+          );
+          toast(
+            `Promoted to 24-bit / 96 kHz (${res.numChannels}ch, Loop ${res.loopDurationSec}s)`,
+            'success'
+          );
+          this.refreshUI();
+        }
+      },
+      onPromoteAllZonesToMasterWave: async (cfg) => {
+        const results = await this.core.promoteAllZonesToMasterWave(cfg);
+        if (results.length > 0) {
+          this.session = this.core.getSession()!;
+          this.telemetryDrawer.addLog(
+            `Promoted ${results.length} zone(s) to 24-bit / 96.000 Hz Master Wave (${results[0].numChannels}ch, engine=${results[0].promotionMethodUsed}).`
+          );
+          toast(
+            `Promoted all ${results.length} zone(s) to 24-bit / 96 kHz Master Wave`,
+            'success'
+          );
+          this.refreshUI();
         }
       },
     });

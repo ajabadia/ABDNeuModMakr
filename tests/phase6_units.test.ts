@@ -793,7 +793,133 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 13. Fase 7 Hybrid Pitch Detection, Acoustic Classifier, Enhanced DSP & Quality Score');
 
-  console.log('=== ALL PHASE 6 & 7 TESTS PASSED ===');
+  // ── 14. Fase 8: Master Wave Standard (24-bit / 96 kHz), Short-Loop Expansion, Surround & AI Bridge ──
+  {
+    const {
+      expandShortLoopAndRelocate,
+      expandSpatialChannels,
+      downmixToClassicMono44k1,
+      regenerateMasterWaveFromModel,
+      registerAiEnhancementProvider,
+    } = await import('../src/core/dsp/MasterWaveEnhancer.ts');
+    const { decodeWav, encodeWavPcm16, encodeWavPcm24 } = await import(
+      '../src/core/dsp/WavDecoder.ts'
+    );
+    const { SpectralAnalyzer } = await import('../src/core/dsp/SpectralAnalyzer.ts');
+
+    const sr = 22050; // Simulate a legacy 22.05 kHz SF2 sample with a short 0.25s loop
+    const n = Math.round(sr * 0.45);
+    const shortWave = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      shortWave[i] =
+        0.5 * Math.sin(2 * Math.PI * 220 * t) +
+        0.25 * Math.sin(2 * Math.PI * 440 * t) +
+        0.12 * Math.sin(2 * Math.PI * 660 * t);
+    }
+
+    // 1. Test 24-bit / 96 kHz WAV encoder + `smpl` loop chunk round-trip
+    const wav24 = encodeWavPcm24([shortWave], 96000, {
+      rootKey: 57,
+      detune: -5,
+      loopStart: 1200,
+      loopEnd: 8400,
+    });
+    const dec24 = decodeWav(wav24);
+    assert.equal(dec24.bitsPerSample, 24);
+    assert.equal(dec24.sampleRate, 96000);
+    assert.equal(dec24.instrument?.rootKey, 57);
+    assert.equal(dec24.instrument?.loopStart, 1200);
+    assert.equal(dec24.instrument?.loopEnd, 8400);
+
+    // 2. Test Smart Short-Loop Expansion (0.25s -> >= 2.0s) & Auto-Loop Finder
+    const expanded = expandShortLoopAndRelocate(
+      [shortWave],
+      sr,
+      Math.round(sr * 0.1),
+      Math.round(sr * 0.35),
+      2.0
+    );
+    assert.equal(expanded.loopExpanded, true);
+    const newLoopSec = (expanded.loopEnd - expanded.loopStart) / sr;
+    assert.ok(newLoopSec >= 1.75, `Expected expanded loop >= 1.75s, got ${newLoopSec}s`);
+    assert.ok(expanded.zeroCrossingCorrelation > 0.7);
+
+    // 3. Test Spatial Expansion (Mono-compatible Stereo 2.0 & Quad Surround 4.0)
+    const stereo = expandSpatialChannels([shortWave], sr, 'stereo');
+    assert.equal(stereo.length, 2);
+    const quad = expandSpatialChannels([shortWave], sr, 'quad-surround');
+    assert.equal(quad.length, 4);
+    const downmixed = downmixToClassicMono44k1(quad, sr);
+    assert.ok(downmixed.length > shortWave.length); // 22050 -> 44100 Hz
+
+    // 4. Test NeuronDB Model -> 24-bit / 96 kHz Cubic-Spline Regeneration
+    const analyzer = new SpectralAnalyzer();
+    const model = analyzer.analyzeTemporal(shortWave, sr, 220, 8);
+    const regen = regenerateMasterWaveFromModel(model, 57, 1.0, {
+      targetSampleRate: 96000,
+      channelLayout: 'quad-surround',
+    });
+    assert.equal(regen.channels.length, 4);
+    assert.equal(regen.channels[0].length, 96000);
+    assert.ok(regen.loopEnd > regen.loopStart);
+
+    // 5. Test WebAudioPipeline.promoteZoneToMasterWave + Pluggable AI Provider Bridge
+    const p = new WebAudioPipeline();
+    await p.init();
+    await p.newSession('Phase8MasterWave');
+    const z0 = p.getSession()!.zones[0];
+    const srcWav = encodeWavPcm16([shortWave], sr, {
+      rootKey: 57,
+      loopStart: Math.round(sr * 0.1),
+      loopEnd: Math.round(sr * 0.35),
+    });
+    p.registerSampleBuffer('vintage_sax_22k.wav', srcWav);
+    await p.updateZone(z0.id, { sampleLow: 'vintage_sax_22k.wav', rootKey: 57 });
+
+    const fmtBefore = p.getZoneSampleFormatInfo(z0.id);
+    assert.equal(fmtBefore?.sampleRate, 22050);
+    assert.equal(fmtBefore?.bitsPerSample, 16);
+
+    // Register a mock AI provider to verify the AI Bridge path
+    registerAiEnhancementProvider({
+      id: 'test-audiosr',
+      name: 'Mock AudioSR + BigVGAN',
+      capabilities: ['audiosr', 'bigvgan'],
+      isAvailable: async () => true,
+      enhance: async (req) => ({
+        channels: req.channels,
+        sampleRate: req.sampleRate,
+        loopStart: req.loopStart,
+        loopEnd: req.loopEnd,
+        providerName: 'Mock AudioSR 96k',
+      }),
+    });
+
+    const mwRes = await p.promoteZoneToMasterWave(z0.id, {
+      promotionMethod: 'ai-bridge',
+      channelLayout: 'quad-surround',
+      minLoopDurationSec: 1.5,
+    });
+    registerAiEnhancementProvider(null);
+
+    assert.ok(mwRes !== null);
+    assert.equal(mwRes!.masterSampleRate, 96000);
+    assert.equal(mwRes!.bitDepth, 24);
+    assert.equal(mwRes!.numChannels, 4);
+    assert.equal(mwRes!.loopExpanded, true);
+    assert.equal(mwRes!.aiProviderUsed, 'Mock AudioSR 96k');
+
+    const fmtAfter = p.getZoneSampleFormatInfo(z0.id);
+    assert.equal(fmtAfter?.sampleRate, 96000);
+    assert.equal(fmtAfter?.bitsPerSample, 24);
+    assert.equal(fmtAfter?.numChannels, 4);
+
+    p.dispose();
+  }
+  console.log('[PASS] 14. Fase 8 Master Wave (24-bit/96kHz), Short-Loop Expansion, Quad Surround & AI Bridge');
+
+  console.log('=== ALL PHASE 6, 7 & 8 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {

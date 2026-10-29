@@ -20,6 +20,9 @@ export interface AiffInstrumentInfo {
   lowVelocity: number;
   highVelocity: number;
   gainDb: number;
+  loopStart?: number;
+  loopEnd?: number;
+  loopMode?: 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
 }
 
 export interface DecodedWav {
@@ -269,6 +272,7 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
       chunkDataStart + 7 <= buffer.byteLength
     ) {
       instrument = {
+        ...instrument,
         rootKey: view.getUint8(chunkDataStart),
         detune: view.getInt8(chunkDataStart + 1),
         gainDb: view.getInt8(chunkDataStart + 2),
@@ -280,20 +284,39 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
     } else if (
       chunkId === 'smpl' &&
       chunkSize >= 36 &&
-      chunkDataStart + 36 <= buffer.byteLength &&
-      !instrument
+      chunkDataStart + 36 <= buffer.byteLength
     ) {
       const midiUnityNote = view.getUint32(chunkDataStart + 12, true);
       const pitchFraction = view.getUint32(chunkDataStart + 16, true);
       const cents = Math.round((pitchFraction / 4294967296.0) * 100);
+      const numSampleLoops = view.getUint32(chunkDataStart + 28, true);
+      let loopStart: number | undefined;
+      let loopEnd: number | undefined;
+      let loopMode: AiffInstrumentInfo['loopMode'];
+      if (
+        numSampleLoops > 0 &&
+        chunkSize >= 60 &&
+        chunkDataStart + 60 <= buffer.byteLength
+      ) {
+        const lStart = view.getUint32(chunkDataStart + 44, true);
+        const lEnd = view.getUint32(chunkDataStart + 48, true);
+        if (lEnd > lStart) {
+          loopStart = lStart;
+          loopEnd = lEnd;
+          loopMode = 'loop_continuous';
+        }
+      }
       instrument = {
-        rootKey: Math.max(0, Math.min(127, midiUnityNote)),
-        detune: cents,
-        lowKey: 0,
-        highKey: 127,
-        lowVelocity: 1,
-        highVelocity: 127,
-        gainDb: 0,
+        rootKey: instrument?.rootKey ?? Math.max(0, Math.min(127, midiUnityNote)),
+        detune: instrument?.detune ?? cents,
+        lowKey: instrument?.lowKey ?? 0,
+        highKey: instrument?.highKey ?? 127,
+        lowVelocity: instrument?.lowVelocity ?? 1,
+        highVelocity: instrument?.highVelocity ?? 127,
+        gainDb: instrument?.gainDb ?? 0,
+        loopStart: loopStart ?? instrument?.loopStart,
+        loopEnd: loopEnd ?? instrument?.loopEnd,
+        loopMode: loopMode ?? instrument?.loopMode,
       };
     }
 
@@ -475,6 +498,133 @@ export function encodePcm16Wav(
   instrument?: Partial<AiffInstrumentInfo>
 ): ArrayBuffer {
   return encodeWavPcm16([mono], sampleRate, instrument);
+}
+
+/**
+ * Fase 8.1 — Master Wave Standard Encoder (`24-bit signed PCM / 96.000 Hz`).
+ * Encodes 1ch (Mono), 2ch (Stereo), or 4ch (Quad Surround) Float32Array buffers
+ * into a canonical 24-bit PCM RIFF/WAVE ArrayBuffer with optional TPDF dithering,
+ * `inst` chunk, and standard `smpl` loop chunk (`loopStart` / `loopEnd`).
+ */
+export function encodeWavPcm24(
+  channels: Float32Array[],
+  sampleRate = 96000,
+  instrument?: Partial<AiffInstrumentInfo>,
+  enableTpdfDither = true
+): ArrayBuffer {
+  const numChannels = Math.max(1, channels.length);
+  const numSamples = channels[0]?.length ?? 0;
+  const bytesPerSample = 3; // 24-bit signed little-endian PCM
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numSamples * blockAlign;
+  const paddedDataSize = dataSize + (dataSize & 1);
+
+  const hasInst = instrument !== undefined;
+  const instChunkBytes = hasInst ? 16 : 0; // 'inst' (4) + size=7 (4) + 7 bytes + 1 pad
+  const hasLoop =
+    instrument !== undefined &&
+    typeof instrument.loopStart === 'number' &&
+    typeof instrument.loopEnd === 'number' &&
+    instrument.loopEnd > instrument.loopStart;
+  const smplPayloadBytes = hasLoop ? 60 : 36;
+  const smplChunkBytes = hasInst ? 8 + smplPayloadBytes : 0;
+
+  const totalBytes = 44 + paddedDataSize + instChunkBytes + smplChunkBytes;
+  const buffer = new ArrayBuffer(totalBytes);
+  const view = new DataView(buffer);
+
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      view.setUint8(off + i, s.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, totalBytes - 8, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, WAVE_FORMAT_PCM, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 24, true); // 24-bit PCM
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Deterministic LCG for TPDF dithering (±1 LSB at 24-bit)
+  let rngState = 0x13579bdf;
+  const nextUniform = (): number => {
+    rngState = (Math.imul(rngState, 1664525) + 1013904223) >>> 0;
+    return rngState / 4294967296.0;
+  };
+
+  let ptr = 44;
+  const maxPos = 8388607;
+  const maxNeg = -8388608;
+  for (let i = 0; i < numSamples; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = Math.max(-1.0, Math.min(1.0, channels[ch][i] ?? 0));
+      let scaled = s * maxPos;
+      if (enableTpdfDither) {
+        scaled += (nextUniform() - nextUniform()) * 0.5;
+      }
+      const int24 = Math.max(maxNeg, Math.min(maxPos, Math.round(scaled)));
+      view.setUint8(ptr, int24 & 0xff);
+      view.setUint8(ptr + 1, (int24 >> 8) & 0xff);
+      view.setUint8(ptr + 2, (int24 >> 16) & 0xff);
+      ptr += 3;
+    }
+  }
+  if (dataSize & 1) {
+    view.setUint8(ptr, 0);
+    ptr += 1;
+  }
+
+  if (hasInst && instrument) {
+    writeStr(ptr, 'inst');
+    view.setUint32(ptr + 4, 7, true);
+    view.setUint8(ptr + 8, Math.max(0, Math.min(127, instrument.rootKey ?? 60)));
+    view.setInt8(ptr + 9, Math.max(-50, Math.min(50, instrument.detune ?? 0)));
+    view.setInt8(ptr + 10, Math.max(-64, Math.min(64, Math.round(instrument.gainDb ?? 0))));
+    view.setUint8(ptr + 11, Math.max(0, Math.min(127, instrument.lowKey ?? 0)));
+    view.setUint8(ptr + 12, Math.max(0, Math.min(127, instrument.highKey ?? 127)));
+    view.setUint8(ptr + 13, Math.max(1, Math.min(127, instrument.lowVelocity ?? 1)));
+    view.setUint8(ptr + 14, Math.max(1, Math.min(127, instrument.highVelocity ?? 127)));
+    view.setUint8(ptr + 15, 0);
+    ptr += 16;
+
+    writeStr(ptr, 'smpl');
+    view.setUint32(ptr + 4, smplPayloadBytes, true);
+    const smplData = ptr + 8;
+    view.setUint32(smplData + 0, 0, true); // manufacturer
+    view.setUint32(smplData + 4, 0, true); // product
+    view.setUint32(smplData + 8, Math.round(1000000000 / sampleRate), true); // samplePeriod ns
+    view.setUint32(smplData + 12, Math.max(0, Math.min(127, instrument.rootKey ?? 60)), true);
+    const detune = Math.max(-50, Math.min(50, instrument.detune ?? 0));
+    const pitchFrac = detune >= 0 ? Math.round((detune / 100) * 4294967296) : 0;
+    view.setUint32(smplData + 16, pitchFrac >>> 0, true);
+    view.setUint32(smplData + 20, 0, true); // SMPTE format
+    view.setUint32(smplData + 24, 0, true); // SMPTE offset
+    view.setUint32(smplData + 28, hasLoop ? 1 : 0, true); // numSampleLoops
+    view.setUint32(smplData + 32, 0, true); // samplerData
+    if (hasLoop) {
+      view.setUint32(smplData + 36, 0, true); // cuePointId
+      view.setUint32(smplData + 40, 0, true); // type = 0 (loop forward)
+      view.setUint32(smplData + 44, Math.max(0, Math.round(instrument.loopStart ?? 0)), true);
+      view.setUint32(
+        smplData + 48,
+        Math.min(Math.max(0, numSamples - 1), Math.round(instrument.loopEnd ?? 0)),
+        true
+      );
+      view.setUint32(smplData + 52, 0, true); // fraction
+      view.setUint32(smplData + 56, 0, true); // playCount = 0 (infinite)
+    }
+  }
+
+  return buffer;
 }
 
 /**
