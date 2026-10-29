@@ -156,6 +156,9 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
     - **Modos de Loop (`no_loop`, `loop_continuous`, `loop_sustain`)**: Puntos `loopStart`, `loopEnd` y `loopCrossfade` para sostener instrumentos acústicos y pads.
     - **Seguimiento de Teclado (`pitchKeytrack`)**: Configurable de `0%` (percusión, baterías, efectos inarmónicos que no deben cambiar de pitch) a `100%` (instrumentos cromáticos) o valores intermedios.
     - **Modos de Disparo y Variación (`trigger: attack | release`, `roundRobin`)**: Soporte para muestras de *release* y secuencias de alternancia.
+    - **Panel de Articulación y Modulación en el Editor Extendido (Loop por Zona + ADSR / Filtro / LFO con Mapeo Seguro al Sintetizador)**:
+      - Visualización y edición de **Loop** (por onda/zona) y de **ADSR de Amplitud, Filtro/Env y LFO** (tanto por zona como global del instrumento) cargados desde `.sf2`, `.sfz`, HALion, SampleTank, etc.
+      - **Mapeo controlado y aislado hacia `sound.script` (`ABDAxionikVS`)**: Mapear únicamente a los parámetros destino correspondientes (`R1AmpEnvA/D/S/R`, `FilterFreq/Reso` + `FilterEnvA/D/S/R`, `LFORate/Delay` + `R1PitchLfoDepth` / `R1AmpLfoDepth` / `FilterLfoDepth`) con interruptores de activación por sección, manteniendo a `0` las profundidades hacia `Scape`/`Sphere`/`Blender` para que nunca module parámetros indeseados del sintetizador.
 
 ### 6.2 Importador de `.sf2` (SoundFont 2) y `.sfz` a Definición Nativa
 - [ ] Parser binario de `.sf2` (chunks `INFO`, `sdta` de audio PCM y `pdta` de presets/instrumentos/zonas/generadores) con modal selector cuando el banco contenga múltiples presets.

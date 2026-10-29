@@ -44,11 +44,15 @@ Cada región en nuestra definición nativa soporta:
 5. **Disparo y Alternancia (`Trigger` & `Round-Robin`)**:
    - `trigger`: `'attack' | 'release' | 'first' | 'legato'`.
    - `seqPosition` y `seqLength` para variaciones *Round-Robin*.
-6. **Envolventes DAHDSR, Filtro y LFOs por Región/Instrumento**:
-   - **Amplitud (`ampEnv`)**: `delaySec`, `attackSec`, `holdSec`, `decaySec`, `sustainLevel` (`0..1`), `releaseSec`.
-   - **Modulación/Filtro (`modEnv`)**: `delaySec`, `attackSec`, `holdSec`, `decaySec`, `sustainLevel`, `releaseSec`, `toPitchCents`, `toFilterCents`.
-   - **Filtro inicial**: `cutoffHz`, `resonanceDb`, `filterType` (`lpf`, `hpf`, `bpf`).
-   - **LFOs (`modLfo`, `vibLfo`)**: `delaySec`, `freqHz`, `toPitchCents`, `toFilterCents`, `toVolumeDb`.
+6. **Envolventes DAHDSR, Filtro y LFOs (Por Zona vs. Global y Mapeo Seguro al Sintetizador)**:
+   - **Ámbito Dual (Por Zona/Onda vs. Global del Instrumento)**:
+     - **Por Onda / Región (`Per-Region`)**: Puntos de Loop (`loopMode`, `loopStart`, `loopEnd`, `loopCrossfadeMs`), `pitchKeytrack`, `trigger`, `crossfades`, y (cuando el SF2/SFZ define ajustes específicos para una nota/velocidad) su envolvente DAHDSR local con opción de *"Bake ADSR into Wave"* (hornear la caída en la onda para el modo clásico).
+     - **Global del Modelo / Preset (`Global Synth Articulation`)**: Envolvente de Amplitud (`Amp ADSR`), Filtro + Envolvente de Filtro (`Filter + Env`) y `LFO` generales del instrumento, visibles y editables en un panel dedicado del editor extendido.
+   - **Matriz de Mapeo Seguro a `sound.script` (`ABDAxionikVS` — 445 parámetros) para NO modular lo que no debe**:
+     - En `sound.script`, cada modulador tiene profundidades (`Depth`) independientes por destino. Para evitar modulaciones parásitas al importar de SF2/SFZ/HALion/SampleTank, el mapeo es explícito y con interruptores (` Enable `) por bloque:
+       - **Amp ADSR** $\rightarrow$ `R1AmpEnvA`, `R1AmpEnvD`, `R1AmpEnvS`, `R1AmpEnvR` (`0..127`), manteniendo `R1ResEnv*` y `R1L*Scape/SphereEnvDepth = 0` para no deformar los ejes Scape/Sphere salvo que el usuario lo active explícitamente.
+       - **Filter & Filter Env** $\rightarrow$ Solo activa `SilverSwitch = 1` si el preset SF2/SFZ realmente filtra (`cutoff < 18 kHz` o `FilterEnvDepth != 0`); mapea a `FilterType = 0 (LPF)`, `FilterFreq` (`0..127`), `FilterReso` (`0..127`), `FilterEnvA/D/S/R` y `FilterEnvDepth` (`-64..63`), dejando todos los efectos de Silver (`EQ_Switch`, `CR_Switch`, `FreqFXSwitch`, `TimeFXSwitch`) en `0`.
+       - **LFO (Vibrato / Tremolo / Filter LFO)** $\rightarrow$ `LFOSwitch`, `LFORate` (`0..1000`), `LFODelay` (`-64..63`), `LFODepth = 127`, aplicando la intensidad **exclusivamente** al destino que tenía en el SF2/SFZ (`R1PitchLfoDepth` para vibrato, `R1AmpLfoDepth` para trémolo, `FilterLfoDepth` para wah) y forzando a `0` el resto de destinos (`R1L*Scape/SphereLfoDepth = 0`, `BlenderLfoDepth = 0`).
 
 ### 2.3 Algoritmo del Adaptador Extendido $\rightarrow$ Clásico
 Cuando una sesión con regiones extendidas se compila hacia el formato Clásico (`legacy-neuron` o capa `04_classic_enhanced`):
