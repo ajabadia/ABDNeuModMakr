@@ -16,6 +16,7 @@ import type {
   ExtendedRegion,
   SynthArticulationConfig,
   Sf2PresetOption,
+  AcousticClassificationResult,
   ProcessConfig,
   ProcessProgress,
   GeneratedModel,
@@ -149,10 +150,10 @@ export interface CoreService {
   /** Compute or retrieve cached 2D spectrogram, partial tracks, and A/B waveforms for a zone */
   inspectZoneSpectrum(zoneId: string): ZoneSpectralInspection;
 
-  /** Play either the original sample ('original') or the additive Scape/Sphere resynthesis ('resynthesis') */
+  /** Play either the original sample ('original'), Legacy DSP ('resynthesis'), or Enhanced DSP ('enhanced') */
   auditionZoneComparison(
     zoneId: string,
-    mode: 'original' | 'resynthesis',
+    mode: 'original' | 'resynthesis' | 'enhanced',
     targetNote?: MidiNote
   ): Promise<void>;
 
@@ -164,7 +165,7 @@ export interface CoreService {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
-    mode: 'original' | 'resynthesis' | null;
+    mode: 'original' | 'resynthesis' | 'enhanced' | null;
   };
 
   // ── Phase 5: UX Avanzada (Undo/Redo, Config & Auto-Repair) ──
@@ -220,5 +221,17 @@ export interface CoreService {
 
   /** Update global SynthArticulationConfig (ADSR, Filter, LFO) with Undo support */
   updateArticulation(changes: Partial<SynthArticulationConfig>): Session;
+
+  // ── Phase 7: Acoustic Intelligence, Auto-Classification & Enhanced DSP ──
+  /**
+   * Analyzes the target zone's audio signal (hybrid YIN/MPM + HPS pitch, harmonicity,
+   * log-attack time, inharmonicity B, spectral flatness, centroid, transient density),
+   * returns the acoustic classification result, and optionally applies the detected
+   * rootKey/detune + recommended Parameter Set (0..9) + Instrument Category to the session.
+   */
+  autoDetectZonePitchAndParameterSet(
+    zoneId?: string,
+    applyToSession?: boolean
+  ): AcousticClassificationResult;
 }
 

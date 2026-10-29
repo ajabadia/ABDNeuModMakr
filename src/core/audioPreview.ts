@@ -12,15 +12,17 @@ import { clamp, linearToDb } from './dsp/DspMath.ts';
 import { DEFAULT_SAMPLE_NAME, parseRootKeyFromFilename } from './sampleNaming.ts';
 import type { MidiNote, Zone } from './types.ts';
 
-export type PreviewPlaybackMode = 'original' | 'resynthesis';
+export type PreviewPlaybackMode = 'original' | 'resynthesis' | 'enhanced';
 
 export interface PreviewSources {
   getZone(zoneId: string): Zone | undefined;
   getFirstZone(): Zone | undefined;
   getSampleBuffer(name: string): ArrayBuffer | undefined;
   setSampleBuffer(name: string, buffer: ArrayBuffer): void;
-  /** Resynthesized mono PCM for the zone, if already inspected. */
+  /** Resynthesized mono PCM for the zone (Legacy DSP), if already inspected. */
   getResynthMono(zoneId: string): Float32Array | undefined;
+  /** Enhanced DSP resynthesized mono PCM for the zone, if already inspected. */
+  getEnhancedMono?(zoneId: string): Float32Array | undefined;
   /** Ensure the zone has been spectrally inspected (populates resynth). */
   ensureSpectrum(zoneId: string): void;
 }
@@ -88,12 +90,12 @@ export class AudioPreviewService {
   }
 
   /**
-   * Plays either the Original sample ('original') or the additive Scape/Sphere
-   * neural resynthesis ('resynthesis') for `zoneId`, optionally pitch-shifted to `targetNote`.
+   * Plays either the Original sample ('original'), Legacy Scape/Sphere resynthesis ('resynthesis'),
+   * or Phase 7 Enhanced DSP resynthesis ('enhanced') for `zoneId`, optionally pitch-shifted to `targetNote`.
    */
   public async auditionZoneComparison(
     zoneId: string,
-    mode: 'original' | 'resynthesis',
+    mode: PreviewPlaybackMode,
     targetNote?: MidiNote
   ): Promise<void> {
     if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
@@ -110,10 +112,13 @@ export class AudioPreviewService {
 
     this.stopAudition();
 
-    if (mode === 'resynthesis' && !this.sources.getResynthMono(zone.id)) {
+    if ((mode === 'resynthesis' || mode === 'enhanced') && !this.sources.getResynthMono(zone.id)) {
       this.sources.ensureSpectrum(zone.id);
     }
-    const resynthMono = this.sources.getResynthMono(zone.id);
+    const resynthMono =
+      mode === 'enhanced'
+        ? (this.sources.getEnhancedMono?.(zone.id) ?? this.sources.getResynthMono(zone.id))
+        : this.sources.getResynthMono(zone.id);
 
     const semitoneShift =
       targetNote !== undefined
@@ -123,7 +128,7 @@ export class AudioPreviewService {
     const linearGain = Math.pow(10.0, (zone.volume || 0) / 20.0);
 
     let audioBuffer: AudioBuffer;
-    if (mode === 'resynthesis' && resynthMono) {
+    if ((mode === 'resynthesis' || mode === 'enhanced') && resynthMono) {
       const mono = resynthMono;
       audioBuffer = this.audioCtx.createBuffer(1, mono.length, 44100);
       audioBuffer.copyToChannel(new Float32Array(mono), 0);
@@ -202,7 +207,7 @@ export class AudioPreviewService {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
-    mode: 'original' | 'resynthesis' | null;
+    mode: PreviewPlaybackMode | null;
   } {
     if (!this.analyserNode || !this.activeSourceNode) {
       return {

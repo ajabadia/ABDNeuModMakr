@@ -61,11 +61,17 @@ import {
 
 import { parseSessionJson } from './sessionSchema.ts';
 import type {
+  AcousticClassificationResult,
   ExtendedRegion,
   SynthArticulationConfig,
   Sf2PresetOption,
   AudioFilePayload,
 } from './types.ts';
+import {
+  applyEnhancedSpectralModel,
+  classifyAcousticSample,
+  extractAcousticDescriptors,
+} from './dsp/AcousticIntelligence.ts';
 import {
   createDefaultArticulation,
   cloneArticulation,
@@ -147,13 +153,19 @@ export class WebAudioPipeline implements CoreService {
       this.sampleBuffers.set(name, buffer);
     },
     getResynthMono: (zoneId: string) => this.spectralCache.get(zoneId)?.resynthMono,
+    getEnhancedMono: (zoneId: string) => this.spectralCache.get(zoneId)?.enhancedMono,
     ensureSpectrum: (zoneId: string) => {
       this.inspectZoneSpectrum(zoneId);
     },
   });
   private readonly spectralCache: Map<
     string,
-    { key: string; inspection: ZoneSpectralInspection; resynthMono: Float32Array }
+    {
+      key: string;
+      inspection: ZoneSpectralInspection;
+      resynthMono: Float32Array;
+      enhancedMono: Float32Array;
+    }
   > = new Map();
   private readonly ribbonEnvelopeCache: Map<string, number[]> = new Map();
 
@@ -435,6 +447,10 @@ export class WebAudioPipeline implements CoreService {
         );
         this.session.zones = projected.zones;
       }
+    }
+    if (changes.dspAlgorithm !== undefined) {
+      cfg.dspAlgorithm = changes.dspAlgorithm === 'enhanced' ? 'enhanced' : 'legacy';
+      this.spectralCache.clear();
     }
 
     this.markDirty();
@@ -815,7 +831,7 @@ export class WebAudioPipeline implements CoreService {
       synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
 
     const cfg = this.session.processConfig;
-    const cacheKey = `${zone.id}|${sampleName}|${wavBuffer.byteLength}|${zone.rootKey}|${zone.detune}|${cfg.complexity}|${cfg.parameterSet}`;
+    const cacheKey = `${zone.id}|${sampleName}|${wavBuffer.byteLength}|${zone.rootKey}|${zone.detune}|${cfg.complexity}|${cfg.parameterSet}|${cfg.dspAlgorithm ?? 'legacy'}`;
     const cached = this.spectralCache.get(zone.id);
     if (cached && cached.key === cacheKey) {
       return cached.inspection;
@@ -834,7 +850,12 @@ export class WebAudioPipeline implements CoreService {
       false,
       'descriptors'
     );
-    const layerView = buildLayerView(spectralModel, this.analyzer.lastOctaveFold());
+    const enhancedModel = applyEnhancedSpectralModel(
+      spectralModel,
+      summary.acousticDescriptors
+    );
+    const activeModel = (cfg.dspAlgorithm ?? 'legacy') === 'enhanced' ? enhancedModel : spectralModel;
+    const layerView = buildLayerView(activeModel, this.analyzer.lastOctaveFold());
 
     const isImportedModelSource = Boolean(
       zone.sampleLow && this.importedSourceBinaries.has(zone.sampleLow)
@@ -844,6 +865,14 @@ export class WebAudioPipeline implements CoreService {
       ? decoded.mono
       : resynthesizeModelToPcm(
           spectralModel,
+          resynthDuration,
+          44100,
+          summary.detectedF0Hz
+        );
+    const enhancedMono = isImportedModelSource
+      ? decoded.mono
+      : resynthesizeModelToPcm(
+          enhancedModel,
           resynthDuration,
           44100,
           summary.detectedF0Hz
@@ -885,6 +914,7 @@ export class WebAudioPipeline implements CoreService {
 
     const waveformPeaks = computeEnvelopePeaks(decoded.mono, 180);
     const resynthPeaks = computeEnvelopePeaks(resynthMono, 180);
+    const enhancedResynthPeaks = computeEnvelopePeaks(enhancedMono, 180);
 
     // Compute 2D STFT spectrogram (up to 40 time columns x 96 frequency bins)
     const maxAnalysisSamples = Math.min(
@@ -950,17 +980,17 @@ export class WebAudioPipeline implements CoreService {
       const peakAmp = layerView.peakOfPartial[k];
       if (peakAmp < 1e-4 && (summary.amplitudes[k] ?? 0) < 1e-4) continue;
 
-      const nFrames = Math.max(1, spectralModel.numFramesOf(assignedLayer));
+      const nFrames = Math.max(1, activeModel.numFramesOf(assignedLayer));
       const frames: { timeNorm: number; freqHz: number; amplitude: number }[] = [];
       let ampSum = 0;
 
       for (let f = 0; f < nFrames; f++) {
         const timeNorm = nFrames > 1 ? f / (nFrames - 1) : 0;
-        const amp = Math.abs(spectralModel.ampAt(assignedLayer, f, k));
-        const offHz = spectralModel.offsetAt(assignedLayer, f, k);
+        const amp = Math.abs(activeModel.ampAt(assignedLayer, f, k));
+        const offHz = activeModel.offsetAt(assignedLayer, f, k);
         const f0Frame =
-          spectralModel.f0AtLayer(assignedLayer, f) > 0
-            ? spectralModel.f0AtLayer(assignedLayer, f)
+          activeModel.f0AtLayer(assignedLayer, f) > 0
+            ? activeModel.f0AtLayer(assignedLayer, f)
             : summary.detectedF0Hz;
         const freqHz = Math.max(20, (k + 1) * f0Frame + offHz);
         ampSum += amp;
@@ -992,6 +1022,9 @@ export class WebAudioPipeline implements CoreService {
       summary,
       waveformPeaks,
       resynthPeaks,
+      enhancedResynthPeaks,
+      qualityScore: summary.qualityScore,
+      classification: summary.classification,
       spectrogram: {
         frameCount: magnitudes.length,
         binCount: displayBins,
@@ -1005,6 +1038,7 @@ export class WebAudioPipeline implements CoreService {
       key: cacheKey,
       inspection,
       resynthMono,
+      enhancedMono,
     });
 
     return inspection;
@@ -1021,12 +1055,12 @@ export class WebAudioPipeline implements CoreService {
   }
 
   /**
-   * Plays either the Original sample ('original') or the additive Scape/Sphere
-   * neural resynthesis ('resynthesis') for `zoneId`, optionally pitch-shifted to `targetNote`.
+   * Plays either the Original sample ('original'), Legacy Scape/Sphere resynthesis ('resynthesis'),
+   * or Phase 7 Enhanced DSP resynthesis ('enhanced') for `zoneId`, optionally pitch-shifted to `targetNote`.
    */
   public async auditionZoneComparison(
     zoneId: string,
-    mode: 'original' | 'resynthesis',
+    mode: 'original' | 'resynthesis' | 'enhanced',
     targetNote?: MidiNote
   ): Promise<void> {
     return this.preview.auditionZoneComparison(zoneId, mode, targetNote);
@@ -1043,7 +1077,7 @@ export class WebAudioPipeline implements CoreService {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
-    mode: 'original' | 'resynthesis' | null;
+    mode: 'original' | 'resynthesis' | 'enhanced' | null;
   } {
     return this.preview.getRealtimeSpectrum();
   }
@@ -2270,6 +2304,63 @@ export class WebAudioPipeline implements CoreService {
 
     this.markDirty();
     return this.session;
+  }
+
+  // ── Phase 7: Acoustic Intelligence & Auto-Detection ─────
+
+  public autoDetectZonePitchAndParameterSet(
+    zoneId?: string,
+    applyToSession = true
+  ): AcousticClassificationResult {
+    if (!this.session) throw new Error('No active session');
+    const zone =
+      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : null) ??
+      this.session.zones[0];
+    if (!zone) throw new Error('No zone available for acoustic detection');
+
+    this.ensureZoneDemoBuffers([zone]);
+    const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
+    const wavBuffer =
+      (zone.sampleLow ? this.sampleBuffers.get(zone.sampleLow) : null) ??
+      synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
+
+    const decoded = decodeWav(wavBuffer);
+    const nominalF0Hz = midiNoteToHz(zone.rootKey);
+    const descriptors = extractAcousticDescriptors(
+      decoded.channels,
+      decoded.sampleRate,
+      this.analyzer,
+      nominalF0Hz
+    );
+    const result = classifyAcousticSample(descriptors, sampleName);
+
+    if (applyToSession) {
+      this.pushHistory(`Auto-Detect Pitch & Parameter Set (${sampleName})`);
+      if (!descriptors.isPercussiveOrNoise && descriptors.pitchConfidence >= 0.35) {
+        zone.rootKey = clamp(descriptors.detectedMidiNote, 0, 127);
+        zone.detune = clamp(descriptors.detectedCentOffset, -99, 99);
+      } else if (
+        descriptors.isPercussiveOrNoise &&
+        this.session.extendedRegions
+      ) {
+        const reg = this.session.extendedRegions.find(
+          (r) => r.sampleName === zone.sampleLow
+        );
+        if (reg) {
+          reg.pitchKeytrack = 0;
+        }
+      }
+      this.session.processConfig.parameterSet = clamp(
+        result.recommendedParameterSet,
+        0,
+        9
+      );
+      this.session.detectedInstrumentCategory = result.detectedCategory;
+      this.spectralCache.delete(zone.id);
+      this.markDirty();
+    }
+
+    return result;
   }
 
   // ── Bank & Export Packaging (delegated to BankService) ──

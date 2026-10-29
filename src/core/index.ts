@@ -6,6 +6,7 @@
 export * from './types.ts';
 export * from './CoreService.ts';
 export * from './extendedAdapter.ts';
+export * from './dsp/AcousticIntelligence.ts';
 export * from '../formats/Sf2Parser.ts';
 export * from '../formats/SfzParser.ts';
 export { WebAudioPipeline, PARAMETER_SETS } from './WebAudioPipeline.ts';

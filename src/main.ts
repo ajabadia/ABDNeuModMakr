@@ -236,23 +236,56 @@ class App {
         this.refreshUI();
       },
       getDetectedCategory: () => this.session?.detectedInstrumentCategory,
+      getZoneClassification: (zoneId) => {
+        try {
+          return this.core.inspectZoneSpectrum(zoneId)?.classification ?? undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      onAutoDetectZone: (zoneId) => {
+        const res = this.core.autoDetectZonePitchAndParameterSet(zoneId, true);
+        if (res) {
+          this.session = this.core.getSession()!;
+          const pSetInfo = this.core.getParameterSets().find((p) => p.id === res.recommendedParameterSet);
+          const pSetName = pSetInfo?.name ?? `Set ${res.recommendedParameterSet}`;
+          this.telemetryDrawer.addLog(
+            `Auto-detected [${zoneId}]: f0=${res.descriptors.detectedF0Hz} Hz (MIDI ${res.descriptors.detectedMidiNote}, ${res.descriptors.detectedCentOffset >= 0 ? '+' : ''}${res.descriptors.detectedCentOffset} ct) | ${res.detectedCategory} -> ParamSet #${res.recommendedParameterSet} (${pSetName})`
+          );
+          toast(
+            `Auto-detected: MIDI ${res.descriptors.detectedMidiNote} (${res.descriptors.detectedF0Hz} Hz) • ${res.detectedCategory} (Set #${res.recommendedParameterSet})`,
+            'success'
+          );
+          this.refreshUI();
+        } else {
+          toast('Assign an audio sample to this zone before running Auto-Detect.', 'warning');
+        }
+      },
     });
 
-    // 3b. Spectral & A/B Resynthesis Monitor (Phase 4)
+    // 3b. Spectral & A/B/C Resynthesis Monitor (Phase 4 & Phase 7)
     this.spectralView = new SpectralView(spectralMount, {
       onAuditionZone: (zoneId, mode) => {
-        this.telemetryDrawer.addLog(
-          `A/B Audition [${mode === 'original' ? 'A: Original' : 'B: Resynthesis'}] on zone ${zoneId}`
-        );
+        const modeLabel =
+          mode === 'original'
+            ? 'A: Original'
+            : mode === 'enhanced'
+              ? 'C: Enhanced DSP'
+              : 'B: Legacy DSP';
+        this.telemetryDrawer.addLog(`A/B/C Audition [${modeLabel}] on zone ${zoneId}`);
         void this.core.auditionZoneComparison(zoneId, mode);
       },
       onStopAudition: () => {
         this.core.stopAudition();
       },
       onKeyboardModeChange: (mode) => {
-        this.telemetryDrawer.addLog(
-          `Keyboard audition mode switched to ${mode === 'original' ? 'A: Original Sample' : 'B: Neural Resynthesis'}`
-        );
+        const modeLabel =
+          mode === 'original'
+            ? 'A: Original Sample'
+            : mode === 'enhanced'
+              ? 'C: Enhanced DSP Resynthesis'
+              : 'B: Legacy DSP Resynthesis';
+        this.telemetryDrawer.addLog(`Keyboard audition mode switched to ${modeLabel}`);
       },
       getRealtimeSpectrum: () => this.core.getRealtimeSpectrum()
     });
@@ -273,7 +306,26 @@ class App {
           this.inspector.setZone(this.getActiveZone(), this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
           this.updateSpectralView(this.getActiveZone());
         },
-        onStartProcess: () => this.handleStartProcess()
+        onStartProcess: () => this.handleStartProcess(),
+        onAutoDetectParameterSet: () => {
+          const active = this.getActiveZone();
+          const res = this.core.autoDetectZonePitchAndParameterSet(active?.id, true);
+          if (res) {
+            this.session = this.core.getSession()!;
+            const pSetInfo = this.core.getParameterSets().find((p) => p.id === res.recommendedParameterSet);
+            const pSetName = pSetInfo?.name ?? `Set ${res.recommendedParameterSet}`;
+            this.telemetryDrawer.addLog(
+              `Auto-detected Parameter Set: #${res.recommendedParameterSet} (${pSetName}) [${res.detectedCategory}] — ${res.rationale}`
+            );
+            toast(
+              `Auto-selected Set #${res.recommendedParameterSet}: ${pSetName} (${res.detectedCategory})`,
+              'success'
+            );
+            this.refreshUI();
+          } else {
+            toast('Load at least one audio sample to auto-detect Parameter Set.', 'warning');
+          }
+        },
       },
       {
         errors: this.core.validateCoverage(),

@@ -19,7 +19,14 @@ import {
   complexityToLimits,
   generateScapeSphereFrames,
   patchBinaryPairParameterSet,
+  resynthesizeModelToPcm,
 } from './ScapeSphereGenerator.ts';
+import {
+  applyEnhancedSpectralModel,
+  classifyAcousticSample,
+  computeDspQualityScore,
+  extractAcousticDescriptors,
+} from './AcousticIntelligence.ts';
 
 export interface PreservedSourceBinary {
   scapeBinary: Uint8Array;
@@ -85,25 +92,27 @@ export function analyzeSingleZone(
   // 1. Decode RIFF/WAVE
   const decoded = decodeWav(rawBuffer);
 
-  // 2. Compute target F0 from rootKey + detune cents, and detect actual F0 from audio
+  // 2. Compute target F0 from rootKey + detune cents, and run Fase 7 Hybrid Pitch + Acoustic Intelligence
   const detuneRatio = Math.pow(2.0, (zone.detune || 0) / 1200.0);
   const nominalF0Hz = midiNoteToHz(zone.rootKey) * detuneRatio;
 
-  const detectedF0Hz = analyzer.detectPitch(decoded.channels, decoded.sampleRate);
-  const resolvedF0Hz =
-    detectedF0Hz > 0
-      ? analyzer.resolveOctaveByGlobalResidual(
-          decoded.channels,
-          decoded.sampleRate,
-          detectedF0Hz
-        )
-      : nominalF0Hz;
+  const acousticDescriptors = extractAcousticDescriptors(
+    decoded.channels,
+    decoded.sampleRate,
+    analyzer,
+    nominalF0Hz
+  );
+  const classification = classifyAcousticSample(acousticDescriptors, sampleName);
 
-  const analysisF0Hz = resolvedF0Hz > 0 ? resolvedF0Hz : nominalF0Hz;
+  // If sound is unpitched/percussive noise, anchor partial grid to nominalF0Hz so partials don't warp
+  const analysisF0Hz =
+    !acousticDescriptors.isPercussiveOrNoise && acousticDescriptors.detectedF0Hz > 0
+      ? acousticDescriptors.detectedF0Hz
+      : nominalF0Hz;
 
   // 3. Multi-frame temporal spectral analysis + layer clustering
   const { targetFrames } = complexityToLimits(config.complexity);
-  const spectralModel = analyzer.analyzeTemporal(
+  const legacyModel = analyzer.analyzeTemporal(
     decoded.channels,
     decoded.sampleRate,
     analysisF0Hz,
@@ -111,15 +120,38 @@ export function analyzeSingleZone(
     false,
     'descriptors'
   );
+  const enhancedModel = applyEnhancedSpectralModel(legacyModel, acousticDescriptors);
+  const dspAlgorithm = config.dspAlgorithm ?? 'legacy';
+  const activeModel = dspAlgorithm === 'enhanced' ? enhancedModel : legacyModel;
 
   // 4. Generate Scape/Sphere frames & canonical .neuronikmodel JSON
-  const compiled = generateScapeSphereFrames(spectralModel, {
+  const compiled = generateScapeSphereFrames(activeModel, {
     ...config,
     modelName: `${config.modelName}_Z${zone.lowKey}_${zone.highKey}`,
   });
 
   const fold = analyzer.lastOctaveFold();
-  const layerView = buildLayerView(spectralModel, fold);
+  const layerView = buildLayerView(activeModel, fold);
+  const gridResidualCents = Number(analyzer.lastGridResidualCents().toFixed(2));
+
+  // 5. Compute objective Quality Score (Original vs Legacy DSP vs Enhanced DSP)
+  const evalDur = Math.min(0.6, Math.max(0.2, decoded.durationSec));
+  const legacyPcm = resynthesizeModelToPcm(legacyModel, evalDur, decoded.sampleRate, analysisF0Hz);
+  const enhancedPcm = resynthesizeModelToPcm(
+    enhancedModel,
+    evalDur,
+    decoded.sampleRate,
+    analysisF0Hz
+  );
+  const qualityScore = computeDspQualityScore(
+    decoded.channels,
+    legacyPcm,
+    enhancedPcm,
+    legacyModel,
+    enhancedModel,
+    dspAlgorithm,
+    gridResidualCents
+  );
 
   const summary: ZoneAnalysisSummary = {
     zoneId: zone.id,
@@ -131,19 +163,23 @@ export function analyzeSingleZone(
     durationSec: Number(decoded.durationSec.toFixed(3)),
     detectedF0Hz: Number(analysisF0Hz.toFixed(2)),
     targetF0Hz: Number(nominalF0Hz.toFixed(2)),
-    gridResidualCents: Number(analyzer.lastGridResidualCents().toFixed(2)),
+    gridResidualCents,
     gridObservations: analyzer.lastGridObservations(),
     gridBand: analyzer.gridResidualBand(),
     gridNotice: analyzer.gridResidualNotice(),
-    layerCount: spectralModel.layerCount,
-    frameCount: spectralModel.frameCount,
+    layerCount: activeModel.layerCount,
+    frameCount: activeModel.frameCount,
     activePartials: layerView.activePartials,
     octaveFoldCents: Number(fold.foldCents.toFixed(2)),
     biGrid: fold.biGrid,
-    amplitudes: Array.from(spectralModel.amplitudes, (v) => Number(v.toFixed(5))),
-    frequencyOffsets: Array.from(spectralModel.frequencyOffsets, (v) =>
+    amplitudes: Array.from(activeModel.amplitudes, (v) => Number(v.toFixed(5))),
+    frequencyOffsets: Array.from(activeModel.frequencyOffsets, (v) =>
       Number(v.toFixed(3))
     ),
+    dspAlgorithm,
+    acousticDescriptors,
+    classification,
+    qualityScore,
   };
 
   return {

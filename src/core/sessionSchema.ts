@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type {
+  DspAlgorithmMode,
   ExtendedRegion,
   MidiNote,
   ProcessConfig,
@@ -144,6 +145,15 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     workingMode = workingModeRaw;
   }
 
+  const dspAlgorithmRaw = cfg['dspAlgorithm'];
+  let dspAlgorithm: DspAlgorithmMode | undefined;
+  if (dspAlgorithmRaw !== undefined) {
+    if (dspAlgorithmRaw !== 'legacy' && dspAlgorithmRaw !== 'enhanced') {
+      throw fieldError('processConfig.dspAlgorithm', "must be 'legacy' | 'enhanced'");
+    }
+    dspAlgorithm = dspAlgorithmRaw;
+  }
+
   const slotRaw = cfg['modelNumber'] ?? 1;
   const complexityRaw = cfg['complexity'] ?? 8;
   const paramSetRaw = cfg['parameterSet'] ?? 0;
@@ -167,6 +177,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     parameterSet: paramSetNum,
     targetFormat,
     ...(workingMode !== undefined ? { workingMode } : {}),
+    ...(dspAlgorithm !== undefined ? { dspAlgorithm } : {}),
   };
 }
 

@@ -178,30 +178,30 @@ Flujo completo de extremo a extremo: arrastrar muestras o modelos existentes →
 
 ---
 
-## Fase 7 — Autodetección Inteligente y Motor Clásico Mejorado (`Classic Enhanced`)
+## Fase 7 — Autodetección Inteligente y Motor Clásico Mejorado (`Classic Enhanced`) ✅ COMPLETADA
 
 **Objetivo**: Obtener modelos 100% compatibles con el sintetizador clásico pero con calidad superior mediante nuevos algoritmos de análisis, manteniendo siempre la opción de usar el algoritmo original.
 
 ### 7.1 Autodetección de Nota Raíz ($f_0$) y Detector Percusivo / Ruido
-- [ ] Mejorar el detector de frecuencia fundamental combinando **YIN / MPM (McLeod Pitch Method)** en dominio temporal con **HPS + Least-Squares** en dominio frecuencial.
-- [ ] **Índice de Armonicidad / Confianza de Pitch**: Detectar automáticamente cuándo un sonido es **percusivo, inarmónico o ruido puro** (caja, plato, viento, FX) para no asignarle una fundamental errónea ni deformar la rejilla de parciales.
+- [x] Mejorar el detector de frecuencia fundamental combinando **YIN / MPM (McLeod Pitch Method)** en dominio temporal con **HPS + Least-Squares** en dominio frecuencial (`src/core/dsp/AcousticIntelligence.ts`).
+- [x] **Índice de Armonicidad / Confianza de Pitch**: Detectar automáticamente cuándo un sonido es **percusivo, inarmónico o ruido puro** (caja, plato, viento, FX) para no asignarle una fundamental errónea ni deformar la rejilla de parciales.
 
 ### 7.2 Clasificador Automático de Tipo de Instrumento y de los 10 Parameter Sets (`0..9`)
-- [ ] **Detección automática del Tipo de Instrumento / Categoría (`InstrumentClassifier`)**:
-  - Identificar mediante descriptores acústicos y/o modelos de clasificación de audio IA (YAMNet / CLAP / AST) a qué categoría del ecosistema (`Strings`, `Bells/Mallet`, `Bass/Plucked`, `Pads`, `Keys/Piano/Organ`, `Winds/Brass/Vocal`, `Textures/FX`, `Arp/Loops`, `Drums/Rhythm`) pertenece el sonido para no tener que etiquetarlo ni clasificarlo a mano en el banco.
-- [ ] Analizador de descriptores acústicos por muestra y conjunto de zonas para el `Parameter Set (0..9)`:
-  - Tiempo y pendiente de ataque (`Log-Attack Time`).
-  - Coeficiente de inarmonicidad / rigidez física de parciales ($f_n$ frente a $n \cdot f_0$, clave para distinguir pianos, campanas y metales de cuerdas o vientos).
-  - Relación Armónico-Ruido (`HNR`), *Spectral Flatness* y *Zero-Crossing Rate* (soplido/turbulencia).
-  - Evolución temporal de la envolvente y detección de múltiples transitorios (para detectar bucles rítmicos de `Set 8: Loop Factory`).
-- [ ] Selección automática del tipo de instrumento y del mejor `Parameter Set` (`0..9`) con indicador de confianza en la UI (y posibilidad de sobreescritura manual).
+- [x] **Detección automática del Tipo de Instrumento / Categoría (`InstrumentClassifier`)**:
+  - Identificar mediante descriptores acústicos (`classifyAcousticSample`) y/o heurísticas semánticas a qué categoría del ecosistema (`Plucked Strings`, `Winds & Brass`, `Bells & Mallets`, `Keys & Organ`, `Bowed Strings`, `Pads & Textures`, `Synth & Lead`, `Rhythmic Loops`, `Drums & Perc`) pertenece el sonido para no tener que etiquetarlo ni clasificarlo a mano en el banco.
+- [x] Analizador de descriptores acústicos por muestra y conjunto de zonas para el `Parameter Set (0..9)` (`extractAcousticDescriptors`):
+  - Tiempo y pendiente de ataque (`Log-Attack Time`, `attackMs`).
+  - Coeficiente de inarmonicidad / rigidez física de parciales ($B$, clave para distinguir pianos, campanas y metales de cuerdas o vientos).
+  - Relación Armónico-Ruido (`harmonicity`), *Spectral Flatness*, *Spectral Centroid* y *Zero-Crossing Rate* (soplido/turbulencia).
+  - Evolución temporal de la envolvente (`sustainRatio`) y detección de múltiples transitorios (`transientDensityHz`, para detectar bucles rítmicos de `Set 8: Loop Factory`).
+- [x] Selección automática del tipo de instrumento y del mejor `Parameter Set` (`0..9`) con indicador de confianza y justificación en la UI (`autoDetectZonePitchAndParameterSet`, botones `Auto-Detect` en `ProcessPanel.ts` y `ZoneInspector.ts`).
 
 ### 7.3 Nuevos Algoritmos para el Formato Clásico (`Legacy DSP` vs `Enhanced DSP`)
-- [ ] Conmutador de algoritmo de procesado clásico para conservar el comportamiento exacto de 2001 junto al nuevo motor mejorado:
-  - **Separación Transitorio / Estacionario (HPSS)**: Aislar el impacto/excitación real para el archivo `.scape` y dejar los parciales estacionarios limpios para el `.sphere`.
-  - **Reasignación Tiempo-Frecuencia y Consistencia de Fase**: Estabilizar las trayectorias de los 64 parciales y sus offsets de frecuencia para eliminar el sonido metálico/fasmagórico.
-  - **Ventanas STFT adaptativas según tipo de sonido y registro**: Mayor resolución temporal en ataques percusivos y mayor resolución frecuencial en notas graves/pads.
-- [ ] **Comparador A / B / C y Métrica de Calidad (`Quality Score`)**: Audición instantánea entre `Onda Fuente` vs `Clásico Original` vs `Clásico Mejorado`, con puntuación objetiva de fidelidad espectral y de transitorios.
+- [x] Conmutador de algoritmo de procesado clásico (`dspAlgorithm: 'legacy' | 'enhanced'`) en `ProcessPanel.ts` para conservar el comportamiento exacto de 2001 junto al nuevo motor mejorado (`applyEnhancedSpectralModel`):
+  - **Separación Transitorio / Estacionario (HPSS)**: Aislar el impacto/excitación real en el ataque y suavizar mediante filtro de mediana + media ponderada las trayectorias estacionarias.
+  - **Reasignación Tiempo-Frecuencia y Consistencia de Fase**: Estabilizar las trayectorias de los 64 parciales y sus offsets de frecuencia para eliminar saltos espurios de bin.
+  - **Supresión adaptativa de piso de ruido en armónicos superiores**: Atenuación de ruido de cuantización en parciales de orden alto según `harmonicity` y `spectralFlatness`.
+- [x] **Comparador A / B / C y Métrica de Calidad (`Quality Score`)**: Audición instantánea entre `A: Original` vs `B: Legacy DSP` vs `C: Enhanced DSP` en `SpectralView.ts`, con puntuación objetiva (`computeDspQualityScore`: fidelidad armónica, correlación de envolvente y SNR espectral).
 
 ---
 
@@ -303,9 +303,20 @@ Cada modelo empaquetado podrá almacenar de forma estructurada y trazable:
 
 ---
 
-## Fase 13 — Testing, CI/CD y Distribución
+## Fase 13 — Editor Visual Interactivo de Loops (`Waveform Loop Editor`) *(Fase Final)*
 
-- [x] Suite de tests automatizados Fases 1 a 5 (`npm test` + `npm run test:types`)
-- [ ] Tests unitarios y de integración para importadores SF2/SFZ, clasificador de Parameter Sets, estándar 24-bit/96 kHz y contenedor multiformato
+> *Nota: Se abordará en la recta final del proyecto tras investigar las mejores prácticas de editores de samplers profesionales (HALion, Kontakt, Falcon, Polyphone).*
+
+- [ ] **Visor de Onda Interactivo con Marcas de Loop (`Loop Start` / `Loop End` / `Crossfade`)**:
+  - Visualización de la forma de onda completa (mono/estéreo) con zoom horizontal/vertical y cursores arrastrables a mano para `Loop Start`, `Loop End` y zona de `Loop Crossfade`.
+  - **Vista de Empalme / Cruce por Cero (`Loop Seam / Zero-Crossing Magnifier`)**: Ventana de zoom de alta precisión donde se superponen el final (`loopEnd`) y el principio (`loopStart`) del bucle para verificar visualmente la continuidad de fase y pendiente sin clics.
+  - **Controles y Lectura en Vivo**: Valores numéricos en muestras (`frames`) y tiempo (`ms`/`s`), selector de tipo de loop (`no_loop`, `loop_continuous`, `loop_sustain`, `ping_pong`/`alternating`, `one_shot`), *Snap to Zero-Crossing* automático y botón de audición en bucle en tiempo real mientras se mueven los marcadores.
+
+---
+
+## Fase 14 — Testing, CI/CD y Distribución
+
+- [x] Suite de tests automatizados Fases 1 a 6 (`npm test` + `npm run test:types`)
+- [ ] Tests unitarios y de integración para clasificador acústico de Parameter Sets, motor DSP mejorado, estándar 24-bit/96 kHz, editor de loops y contenedor multiformato
 - [ ] Configuración de despliegue continuo en Vercel conectado al repositorio de GitHub
 - [ ] Empaquetado opcional desktop (WebView2 / Tauri / Electron) junto al puente local de IA

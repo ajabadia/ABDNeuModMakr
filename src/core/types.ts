@@ -58,6 +58,69 @@ export type TargetFormat = 'dual' | 'legacy-neuron' | 'modern-neural';
  */
 export type WorkingMode = 'classic' | 'extended';
 
+/**
+ * Fase 7 — Classic DSP Analysis Algorithm:
+ *   - 'legacy': Canonical 2001 Hartmann NASAnalysis.dll spectral peak-picking & frame quantization.
+ *   - 'enhanced': Phase 7 Classic Enhanced DSP with HPSS transient/stationary separation,
+ *                 hybrid YIN/MPM + HPS pitch detection, and temporal partial trajectory smoothing.
+ */
+export type DspAlgorithmMode = 'legacy' | 'enhanced';
+
+/**
+ * Fase 7.1 & 7.2 — Acoustic descriptors extracted from a zone's audio waveform and spectrum.
+ */
+export interface AcousticDescriptors {
+  detectedF0Hz: number;
+  detectedMidiNote: MidiNote;
+  detectedCentOffset: number;
+  /** Time-domain YIN/MPM harmonic periodicity (0 = pure noise, 1 = pure periodic wave) */
+  harmonicity: number;
+  /** Combined time + frequency pitch confidence (0..1) */
+  pitchConfidence: number;
+  /** True when sound is percussive, inharmonic, or noise (suggests pitchKeytrack = 0 in Extended mode) */
+  isPercussiveOrNoise: boolean;
+  /** log10(attackSec) from 10% to 90% peak envelope */
+  logAttackTime: number;
+  /** Attack duration in milliseconds */
+  attackMs: number;
+  /** Partial stiffness / inharmonicity coefficient B (f_n = n * f0 * sqrt(1 + B * n^2)) */
+  inharmonicityB: number;
+  /** Wiener entropy / spectral flatness (0 = pure tone, 1 = white noise) */
+  spectralFlatness: number;
+  /** Brightness center of mass in Hz */
+  spectralCentroidHz: number;
+  /** Normalized zero-crossing rate (0..1) */
+  zeroCrossingRate: number;
+  /** Ratio of sustain RMS to peak RMS (0..1) */
+  sustainRatio: number;
+  /** Detected rhythmic onset density in onsets/sec (identifies Set 8 Loop Factory) */
+  transientDensityHz: number;
+}
+
+/**
+ * Fase 7.2 — Automatic Instrument Category & Parameter Set (0..9) classification result.
+ */
+export interface AcousticClassificationResult {
+  detectedCategory: string;
+  recommendedParameterSet: number; // 0..9
+  confidence: number;              // 0..1
+  rationale: string;
+  descriptors: AcousticDescriptors;
+}
+
+/**
+ * Fase 7.3 — Objective quality comparison between Original Source (A), Legacy DSP (B), and Enhanced DSP (C).
+ */
+export interface DspQualityScore {
+  overallScore: number;            // 0..100 (for active DSP algorithm)
+  legacyScore: number;             // 0..100
+  enhancedScore: number;           // 0..100
+  spectralSnrDb: number;
+  envelopeCorrelation: number;     // 0..1
+  harmonicFidelity: number;        // 0..1
+  transientFidelity: number;       // 0..1
+}
+
 export type LoopMode = 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
 export type TriggerMode = 'attack' | 'release' | 'first' | 'legato';
 export type CrossfadeCurve = 'linear' | 'equal-power' | 'spectral-morph';
@@ -171,6 +234,12 @@ export interface ProcessConfig {
    * When exporting to classic formats from extended mode, regions are automatically adapted via extendedAdapter.
    */
   workingMode?: WorkingMode;
+  /**
+   * Fase 7 — Classic DSP Analysis Algorithm:
+   * - 'legacy': Original 2001 NASAnalysis.dll spectral analysis.
+   * - 'enhanced': HPSS transient/stationary separation, YIN/MPM + HPS pitch detection, and trajectory smoothing.
+   */
+  dspAlgorithm?: DspAlgorithmMode;
 }
 
 /** Process execution state */
@@ -243,6 +312,10 @@ export interface ZoneAnalysisSummary {
   biGrid: boolean;
   amplitudes: number[];        // 64 canonical harmonic partial amplitudes (0..1)
   frequencyOffsets: number[];  // 64 canonical harmonic frequency offsets (Hz)
+  dspAlgorithm?: DspAlgorithmMode;
+  acousticDescriptors?: AcousticDescriptors;
+  classification?: AcousticClassificationResult;
+  qualityScore?: DspQualityScore;
 }
 
 /**
@@ -275,6 +348,12 @@ export interface ZoneSpectralInspection {
   waveformPeaks: { min: number[]; max: number[]; rmsDb: number };
   /** Downsampled [min, max] envelope peaks (e.g. 200 columns) for the Scape/Sphere resynthesis (B) */
   resynthPeaks: { min: number[]; max: number[]; rmsDb: number };
+  /** Downsampled [min, max] envelope peaks for the Enhanced DSP resynthesis (C) */
+  enhancedResynthPeaks?: { min: number[]; max: number[]; rmsDb: number };
+  /** Objective quality comparison between Original (A), Legacy DSP (B), and Enhanced DSP (C) */
+  qualityScore?: DspQualityScore;
+  /** Automatic acoustic classification for this zone */
+  classification?: AcousticClassificationResult;
   /** 2D time-frequency spectrogram grid (normalized 0..1 dB magnitude) */
   spectrogram: {
     frameCount: number;

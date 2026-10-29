@@ -218,3 +218,11 @@ Cuando abordemos la expansión de los *Resynators* en el sintetizador C++ / JUCE
    - Disparo híbrido del micro-ataque PCM real en los primeros milisegundos fundido en fase con la resíntesis espectral del cuerpo.
 4. **Modelos Surround / Quad (4.0 / 5.1) y Pseudo-Surround Espectral**:
    - Expansión espacial nativa donde la excitación (`Scape`) puede proyectarse focalizada en el plano frontal (`Front L/R`) mientras la resonancia del cuerpo (`Sphere`) y las capas espectrales (`Layers 0..3`) se distribuyen en un campo envolvente 360° (`Rear L/R` en salidas multicanal JUCE 9, o mediante decorrelación espectral / binaural en modo Pseudo-Surround sobre salidas Estéreo convencionales).
+
+---
+
+## 9. Editor Visual Interactivo de Loops (`Waveform Loop Editor` — Fase Final)
+
+- **Canvas de Forma de Onda con Handles Arrastrables**: Visualización completa de la onda con marcadores interactivos de `Loop Start`, `Loop End` y rampa de `Loop Crossfade (ms)`.
+- **Lupa de Empalme de Fase (`Seam / Zero-Crossing Magnifier`)**: Vista ampliada del punto de unión (`loopEnd` $\rightarrow$ `loopStart`) con ajuste automático a cruces por cero de igual pendiente (*Snap to Zero-Crossing*) y pre-escucha continua en tiempo real mientras se arrastran los puntos.
+- **Controles de Loop**: Selección visual de modo (`no_loop`, `loop_continuous`, `loop_sustain`, `one_shot`, y futuro `ping_pong`), edición numérica en `frames` y `ms`, e integración directa con el `Auto-Loop Finder` de la Fase 8.

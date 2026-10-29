@@ -4,7 +4,7 @@
 // 10 Canonical Parameter Set Buttons, and Target Format Buttons)
 // ─────────────────────────────────────────────────────────
 
-import type { ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
+import type { DspAlgorithmMode, ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
 import { ICONS } from './icons';
 
 const EXTENDED_MODE_TITLE_ON =
@@ -28,6 +28,7 @@ const PARAM_SET_ICONS: Record<number, string> = {
 export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
+  onAutoDetectParameterSet?: () => void;
 }
 
 export interface ProcessValidationState {
@@ -192,6 +193,14 @@ export class ProcessPanel {
       btn.classList.toggle('is-active', fmt === activeTarget);
     });
 
+    // Sync DSP Algorithm buttons (Legacy vs Enhanced)
+    const activeDsp = this.currentConfig.dspAlgorithm ?? 'legacy';
+    const dspBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-dsp-algorithm');
+    dspBtns.forEach((btn) => {
+      const alg = btn.getAttribute('data-dsp-algorithm');
+      btn.classList.toggle('is-active', alg === activeDsp);
+    });
+
     this.syncWorkingModeButtons();
     this.syncCtaButton();
   }
@@ -204,7 +213,7 @@ export class ProcessPanel {
    */
   private syncWorkingModeButtons(): void {
     const mode = this.currentConfig.workingMode ?? 'classic';
-    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode');
+    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode[data-working-mode]');
     modeBtns.forEach((btn) => {
       const m = btn.getAttribute('data-working-mode');
       btn.classList.toggle('is-active', m === mode || (m === 'classic' && mode !== 'extended'));
@@ -346,7 +355,17 @@ export class ProcessPanel {
 
           <!-- 3. Parameter Set (0..9) in Single Column with Representative Icons -->
           <div class="form-group param-set-group">
-            <label title="Selects the 20 mnAN/fdAN morphing axes for Scape and Sphere">PARAMETER SET (0..9)</label>
+            <div class="label-with-val">
+              <label title="Selects the 20 mnAN/fdAN morphing axes for Scape and Sphere">PARAMETER SET (0..9)</label>
+              <button
+                type="button"
+                class="btn btn-xs btn-outline"
+                id="btn-auto-detect-param-set"
+                title="Auto-detect instrument category and optimal Parameter Set (0..9) from zone audio"
+              >
+                ${ICONS.cpu} Auto-Detect
+              </button>
+            </div>
             <div class="param-set-buttons-grid" role="radiogroup" aria-label="Parameter Set (0..9)">
               ${this.parameterSets
                 .map(
@@ -373,6 +392,29 @@ export class ProcessPanel {
                 <span class="param-set-name" id="disp-param-name">${activeSet.id}: ${activeSet.name}</span>
               </div>
               <div class="param-set-desc" id="disp-param-desc">${activeSet.description}</div>
+            </div>
+          </div>
+
+          <!-- 3b. DSP Algorithm Mode (Legacy 2001 DSP vs Enhanced Neural DSP) -->
+          <div class="form-group param-set-group">
+            <label title="Selects between canonical 2001 Legacy DSP and Enhanced DSP (HPSS + trajectory smoothing + noise floor suppression)">DSP ALGORITHM</label>
+            <div class="working-mode-buttons-grid" role="radiogroup" aria-label="DSP Algorithm">
+              <button
+                type="button"
+                class="btn-working-mode btn-dsp-algorithm ${(this.currentConfig.dspAlgorithm ?? 'legacy') !== 'enhanced' ? 'is-active' : ''}"
+                data-dsp-algorithm="legacy"
+                title="Legacy 2001 DSP: Canonical Hartmann MODELmaker v1.2 partial extraction"
+              >
+                Legacy DSP
+              </button>
+              <button
+                type="button"
+                class="btn-working-mode btn-dsp-algorithm ${(this.currentConfig.dspAlgorithm ?? 'legacy') === 'enhanced' ? 'is-active' : ''}"
+                data-dsp-algorithm="enhanced"
+                title="Enhanced DSP: HPSS harmonic-percussive separation, trajectory smoothing &amp; high-order noise floor suppression"
+              >
+                Enhanced DSP
+              </button>
             </div>
           </div>
 
@@ -519,7 +561,7 @@ export class ProcessPanel {
       });
     });
 
-    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode');
+    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode[data-working-mode]');
     modeBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         if (btn.hasAttribute('disabled')) return;
@@ -531,6 +573,21 @@ export class ProcessPanel {
       });
     });
     this.syncWorkingModeButtons();
+
+    const dspBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-dsp-algorithm');
+    dspBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const alg = (btn.getAttribute('data-dsp-algorithm') === 'enhanced' ? 'enhanced' : 'legacy') as DspAlgorithmMode;
+        if ((this.currentConfig.dspAlgorithm ?? 'legacy') === alg) return;
+        this.currentConfig.dspAlgorithm = alg;
+        dspBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
+        this.handlers.onConfigChange({ ...this.currentConfig });
+      });
+    });
+
+    this.container.querySelector('#btn-auto-detect-param-set')?.addEventListener('click', () => {
+      this.handlers.onAutoDetectParameterSet?.();
+    });
 
     const targetBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-target-format');
     targetBtns.forEach((btn) => {

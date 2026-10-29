@@ -14,7 +14,7 @@ import type { ZoneSpectralInspection } from '../core/types';
 import { ICONS } from './icons';
 
 export type SpectralDisplayMode = 'spectrogram' | 'partials' | 'waveform-ab' | 'log-curve';
-export type AuditionTargetMode = 'original' | 'resynthesis';
+export type AuditionTargetMode = 'original' | 'resynthesis' | 'enhanced';
 
 export interface SpectralViewHandlers {
   onAuditionZone: (zoneId: string, mode: AuditionTargetMode) => void;
@@ -128,16 +128,26 @@ export class SpectralView {
             ? 'band-orange'
             : 'band-nodata';
 
+    const qScore = this.inspection.qualityScore ?? summary.qualityScore;
+    const enhancedPeaks = this.inspection.enhancedResynthPeaks ?? this.inspection.resynthPeaks;
+
     this.container.innerHTML = `
       <div class="spectral-view-panel">
         <div class="spectral-header">
           <div class="spectral-title-group">
-            <span class="panel-badge">${ICONS.wave} SPECTRAL &amp; A/B MONITOR</span>
+            <span class="panel-badge">${ICONS.wave} SPECTRAL &amp; A/B/C MONITOR</span>
             <span class="spectral-sample-title" title="${sampleName}">${sampleName}</span>
             <span class="spectral-meta-pill">${(sampleRate / 1000).toFixed(1)} kHz | ${durationSec.toFixed(2)}s</span>
             <span class="spectral-grid-pill ${bandClass}" title="${summary.gridNotice}">
               f0: ${summary.detectedF0Hz.toFixed(2)} Hz (${summary.gridResidualCents.toFixed(1)} ct) | ${summary.activePartials} Partials | ${summary.layerCount} Layer${summary.layerCount > 1 ? 's' : ''}
             </span>
+            ${
+              qScore
+                ? `<span class="spectral-meta-pill" title="Objective Resynthesis Quality Score (Cosine Similarity + Envelope Correlation + Residual SNR)">
+                    Quality: Enhanced ${qScore.enhancedScore.toFixed(1)}% | Legacy ${qScore.legacyScore.toFixed(1)}%
+                  </span>`
+                : ''
+            }
           </div>
 
           <div class="spectral-mode-tabs">
@@ -183,21 +193,27 @@ export class SpectralView {
             <button type="button" class="btn btn-xs btn-info" id="btn-play-orig" title="Play Original Sample (A) [Space]">
               ${ICONS.play} A: Original (${this.inspection.waveformPeaks.rmsDb} dB)
             </button>
-            <button type="button" class="btn btn-xs btn-accent" id="btn-play-resynth" title="Play Additive Scape/Sphere Resynthesis (B)">
-              ${ICONS.cpu} B: Resynthesis (${this.inspection.resynthPeaks.rmsDb} dB)
+            <button type="button" class="btn btn-xs btn-accent" id="btn-play-resynth" title="Play Legacy Additive Scape/Sphere Resynthesis (B)">
+              ${ICONS.cpu} B: Legacy DSP (${this.inspection.resynthPeaks.rmsDb} dB)
+            </button>
+            <button type="button" class="btn btn-xs btn-accent" id="btn-play-enhanced" title="Play Enhanced DSP Resynthesis (C: HPSS + Trajectory Smoothing + Noise Floor Gate)">
+              ${ICONS.cpu} C: Enhanced DSP (${enhancedPeaks.rmsDb} dB)
             </button>
             <button type="button" class="btn btn-xs btn-outline" id="btn-stop-audition" title="Stop Playback [Space]">
               ${ICONS.stop} Stop
             </button>
           </div>
 
-          <div class="ab-keyb-toggle" title="Choose whether clicking the bottom MIDI keyboard plays Original (A) or Neural Resynthesis (B)">
+          <div class="ab-keyb-toggle" title="Choose whether clicking the bottom MIDI keyboard plays Original (A), Legacy DSP (B), or Enhanced DSP (C)">
             <span class="keyb-mode-label">${ICONS.piano} KEYBOARD AUDITION:</span>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'original' ? 'is-active' : ''}" data-keyb="original">
               A: ORIGINAL
             </button>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'resynthesis' ? 'is-active' : ''}" data-keyb="resynthesis">
-              B: RESYNTHESIS
+              B: LEGACY
+            </button>
+            <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'enhanced' ? 'is-active' : ''}" data-keyb="enhanced">
+              C: ENHANCED
             </button>
           </div>
 
@@ -258,6 +274,13 @@ export class SpectralView {
       .querySelector('#btn-play-resynth')
       ?.addEventListener('click', () => {
         this.handlers.onAuditionZone(zoneId, 'resynthesis');
+        this.ensureRealtimeLoop();
+      });
+
+    this.container
+      .querySelector('#btn-play-enhanced')
+      ?.addEventListener('click', () => {
+        this.handlers.onAuditionZone(zoneId, 'enhanced');
         this.ensureRealtimeLoop();
       });
 

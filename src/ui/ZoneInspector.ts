@@ -7,9 +7,12 @@
 // ─────────────────────────────────────────────────────────
 
 import type {
+  AcousticClassificationResult,
+  CrossfadeCurve,
   ExtendedRegion,
   LoopMode,
   SynthArticulationConfig,
+  TriggerMode,
   WorkingMode,
   Zone,
 } from '../core/types';
@@ -37,6 +40,8 @@ export interface ZoneInspectorHandlers {
   getArticulation?: () => SynthArticulationConfig;
   onUpdateArticulation?: (changes: Partial<SynthArticulationConfig>) => void;
   getDetectedCategory?: () => string | undefined;
+  getZoneClassification?: (zoneId: string) => AcousticClassificationResult | undefined;
+  onAutoDetectZone?: (zoneId: string) => void;
 }
 
 function basenameOf(samplePath: string | null | undefined): string {
@@ -56,6 +61,7 @@ export class ZoneInspector {
   private zoneIndex: number = 0;
   private totalZones: number = 1;
   private workingMode: WorkingMode = 'classic';
+  private activeDrawerTab: 'general' | 'extended' = 'general';
 
   constructor(
     container: HTMLElement,
@@ -120,6 +126,9 @@ export class ZoneInspector {
     const modeChanged = workingMode !== undefined && workingMode !== this.workingMode;
     if (workingMode !== undefined) {
       this.workingMode = workingMode;
+      if (this.workingMode !== 'extended') {
+        this.activeDrawerTab = 'general';
+      }
     }
     const sameZone = this.currentZone && zone && this.currentZone.id === zone.id;
     const sameCount = allZones ? allZones.length === this.allZones.length : true;
@@ -310,6 +319,10 @@ export class ZoneInspector {
     // sessions always store 64, so this renders identically there).
     const split = Math.max(2, Math.min(127, z.velSplit ?? 64));
     const isExtended = this.workingMode === 'extended';
+    if (!isExtended && this.activeDrawerTab === 'extended') {
+      this.activeDrawerTab = 'general';
+    }
+    const activeTab = isExtended ? this.activeDrawerTab : 'general';
     const loadedSamples = this.handlers.getLoadedSamples?.() ?? [];
     const lowOptionsHtml = [
       `<option value="">-- Select Loaded Sample --</option>`,
@@ -335,118 +348,167 @@ export class ZoneInspector {
         <button type="button" class="btn btn-close-drawer" id="btn-close-zone-drawer" title="Close Zone Metadata Drawer">${ICONS.close}</button>
       </div>
 
+      <div class="drawer-tab-bar" role="tablist" aria-label="Zone Metadata Tabs">
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${activeTab === 'general'}"
+          class="drawer-tab-pill ${activeTab === 'general' ? 'is-active' : ''}"
+          data-drawer-tab="general"
+          title="General Zone Parameters (Key Range, Velocity Samples, Detune, Volume, Pan)"
+        >
+          <span class="tab-pill-icon">${ICONS.layers}</span>
+          <span>General</span>
+        </button>
+        ${
+          isExtended
+            ? `
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${activeTab === 'extended'}"
+          class="drawer-tab-pill ${activeTab === 'extended' ? 'is-active' : ''}"
+          data-drawer-tab="extended"
+          title="Extended Mode Parameters (Loop, Keytrack, Crossfades, ADSR, Filter, LFO & Acoustic Intelligence)"
+        >
+          <span class="tab-pill-icon">${ICONS.sliders}</span>
+          <span>Extended</span>
+        </button>
+        `
+            : ''
+        }
+      </div>
+
       <div class="drawer-body zone-drawer-body">
-        <!-- 1. Key Range & Root -->
-        <div class="inspector-section section-keys">
-          <div class="section-title">KEY ZONE BOUNDARIES (MIDI 0 C-2 .. 127 G8)</div>
-          <div class="keys-inputs-row">
-            <div class="form-group">
-              <label for="inp-low-key">LOW KEY</label>
-              <div class="input-with-note">
-                <input type="number" id="inp-low-key" min="${minLowKey}" max="${maxLowKey}" value="${z.lowKey}" ${!prevZone ? 'disabled title="First zone always starts at 0 C-2"' : ''} />
-                <span class="note-display" id="disp-low-note">${midiNoteToString(z.lowKey)}</span>
-              </div>
+        <div class="drawer-tab-pane ${activeTab === 'general' ? 'is-active' : 'is-hidden'}" data-tab-pane="general">
+          <!-- 1. Key Range & Root -->
+          <div class="inspector-section section-keys">
+            <div class="section-header-row">
+              <div class="section-title">KEY ZONE BOUNDARIES (MIDI 0 C-2 .. 127 G8)</div>
+              ${
+                this.handlers.onAutoDetectZone
+                  ? `<button type="button" class="btn btn-xs btn-outline" id="btn-auto-detect-zone-general" title="Auto-detect root note (YIN/MPM + HPS) and optimal Parameter Set (0..9) from audio signal">
+                      ${ICONS.cpu} Auto-Detect Pitch &amp; Set
+                    </button>`
+                  : ''
+              }
             </div>
-
-            <div class="form-group is-highlight">
-              <label for="inp-root-key">ROOT KEY</label>
-              <div class="input-with-note">
-                <input type="number" id="inp-root-key" min="0" max="127" value="${z.rootKey}" />
-                <span class="note-display" id="disp-root-note">${midiNoteToString(z.rootKey)}</span>
+            <div class="keys-inputs-row">
+              <div class="form-group">
+                <label for="inp-low-key">LOW KEY</label>
+                <div class="input-with-note">
+                  <input type="number" id="inp-low-key" min="${minLowKey}" max="${maxLowKey}" value="${z.lowKey}" ${!prevZone ? 'disabled title="First zone always starts at 0 C-2"' : ''} />
+                  <span class="note-display" id="disp-low-note">${midiNoteToString(z.lowKey)}</span>
+                </div>
               </div>
-            </div>
 
-            <div class="form-group">
-              <label for="inp-high-key">HIGH KEY</label>
-              <div class="input-with-note">
-                <input type="number" id="inp-high-key" min="${minHighKey}" max="${maxHighKey}" value="${z.highKey}" ${!nextZone ? 'disabled title="Last zone always ends at 127 G8"' : ''} />
-                <span class="note-display" id="disp-high-note">${midiNoteToString(z.highKey)}</span>
+              <div class="form-group is-highlight">
+                <label for="inp-root-key">ROOT KEY</label>
+                <div class="input-with-note">
+                  <input type="number" id="inp-root-key" min="0" max="127" value="${z.rootKey}" />
+                  <span class="note-display" id="disp-root-note">${midiNoteToString(z.rootKey)}</span>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 2. Sample Assignment (Low Vel & High Vel) -->
-        <div class="inspector-section section-samples">
-          <div class="section-title">VELOCITY SAMPLE LAYERS (${isExtended ? `SPLIT 1..${split - 1} / ${split}..127` : 'CANONICAL 1..63 / 64..127'})</div>
-          <div class="samples-slots-stack">
-            <div class="sample-slot-card ${z.sampleLow ? 'has-file' : 'is-empty'}" id="card-sample-low">
-              <div class="sample-slot-header">
-                <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? split - 1 : 127})</span>
-                ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Low Vel Audio">${ICONS.play} Audition</button>` : ''}
-              </div>
-              <div class="sample-slot-body">
-                <select class="sample-reuse-select" id="sel-reuse-low" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
-                  ${lowOptionsHtml}
-                </select>
-                <div class="sample-actions">
-                  <input type="file" id="file-input-low" accept=".wav,.aif,.aiff" multiple style="display:none" />
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
-                  ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Low Vel Sample">${ICONS.close}</button>` : ''}
+              <div class="form-group">
+                <label for="inp-high-key">HIGH KEY</label>
+                <div class="input-with-note">
+                  <input type="number" id="inp-high-key" min="${minHighKey}" max="${maxHighKey}" value="${z.highKey}" ${!nextZone ? 'disabled title="Last zone always ends at 127 G8"' : ''} />
+                  <span class="note-display" id="disp-high-note">${midiNoteToString(z.highKey)}</span>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="sample-slot-card ${z.sampleHigh ? 'has-file' : 'is-empty'}" id="card-sample-high">
-              <div class="sample-slot-header">
-                <span class="sample-slot-tag" id="tag-vel-high">HIGH VEL SAMPLE (${hasHighVel ? `VEL ${split}..127` : 'OPTIONAL 64..127'})</span>
-                ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-high" title="Audition High Vel Audio">${ICONS.play} Audition</button>` : ''}
+          <!-- 2. Sample Assignment (Low Vel & High Vel) -->
+          <div class="inspector-section section-samples">
+            <div class="section-title">VELOCITY SAMPLE LAYERS (${isExtended ? `SPLIT 1..${split - 1} / ${split}..127` : 'CANONICAL 1..63 / 64..127'})</div>
+            <div class="samples-slots-stack">
+              <div class="sample-slot-card ${z.sampleLow ? 'has-file' : 'is-empty'}" id="card-sample-low">
+                <div class="sample-slot-header">
+                  <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? split - 1 : 127})</span>
+                  ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Low Vel Audio">${ICONS.play} Audition</button>` : ''}
+                </div>
+                <div class="sample-slot-body">
+                  <select class="sample-reuse-select" id="sel-reuse-low" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
+                    ${lowOptionsHtml}
+                  </select>
+                  <div class="sample-actions">
+                    <input type="file" id="file-input-low" accept=".wav,.aif,.aiff" multiple class="is-hidden-file" />
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
+                    ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Low Vel Sample">${ICONS.close}</button>` : ''}
+                  </div>
+                </div>
               </div>
-              <div class="sample-slot-body">
-                <select class="sample-reuse-select" id="sel-reuse-high" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
-                  ${highOptionsHtml}
-                </select>
-                <div class="sample-actions">
-                  <input type="file" id="file-input-high" accept=".wav,.aif,.aiff" style="display:none" />
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-browse-high" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
-                  ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-high" title="Clear High Vel Sample">${ICONS.close}</button>` : ''}
+
+              <div class="sample-slot-card ${z.sampleHigh ? 'has-file' : 'is-empty'}" id="card-sample-high">
+                <div class="sample-slot-header">
+                  <span class="sample-slot-tag" id="tag-vel-high">HIGH VEL SAMPLE (${hasHighVel ? `VEL ${split}..127` : 'OPTIONAL 64..127'})</span>
+                  ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-high" title="Audition High Vel Audio">${ICONS.play} Audition</button>` : ''}
+                </div>
+                <div class="sample-slot-body">
+                  <select class="sample-reuse-select" id="sel-reuse-high" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
+                    ${highOptionsHtml}
+                  </select>
+                  <div class="sample-actions">
+                    <input type="file" id="file-input-high" accept=".wav,.aif,.aiff" class="is-hidden-file" />
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-browse-high" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
+                    ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-high" title="Clear High Vel Sample">${ICONS.close}</button>` : ''}
+                  </div>
+                </div>
+              </div>
+
+              <div class="sample-vel-split-control ${isExtended ? '' : 'is-disabled'}">
+                <label for="slider-vel-split" class="sample-vel-split-label">
+                  <span>VELOCITY SPLIT POINT</span>
+                  <span class="val-display" id="val-vel-split">${isExtended ? `${split} (1–${split - 1} / ${split}–127)` : '64 (Fixed: 1–63 / 64–127)'}</span>
+                </label>
+                <input type="range" id="slider-vel-split" min="${isExtended ? 2 : 64}" max="${isExtended ? 127 : 64}" value="${split}" ${isExtended ? '' : 'disabled'} title="${isExtended ? `Extended Mode: velocity split point (Low Vel 1..${split - 1} / High Vel ${split}..127). Stored in the session; legacy .model binaries always render the canonical 1..63 / 64..127 layers.` : 'Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Switch WORKING MODE → Extended to edit.'}" />
+                <div class="sample-vel-split-hint">
+                  ${isExtended ? `Extended Mode: split at ${split} (Low: 1–${split - 1}, High: ${split}–127).` : 'Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.'}
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="sample-vel-split-control ${isExtended ? '' : 'is-disabled'}">
-              <label for="slider-vel-split" class="sample-vel-split-label">
-                <span>VELOCITY SPLIT POINT</span>
-                <span class="val-display" id="val-vel-split">${isExtended ? `${split} (1–${split - 1} / ${split}–127)` : '64 (Fixed: 1–63 / 64–127)'}</span>
-              </label>
-              <input type="range" id="slider-vel-split" min="${isExtended ? 2 : 64}" max="${isExtended ? 127 : 64}" value="${split}" ${isExtended ? '' : 'disabled'} title="${isExtended ? `Extended Mode: velocity split point (Low Vel 1..${split - 1} / High Vel ${split}..127). Stored in the session; legacy .model binaries always render the canonical 1..63 / 64..127 layers.` : 'Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Switch WORKING MODE → Extended (requires modern-neural export) to edit.'}" />
-              <div class="sample-vel-split-hint">
-                ${isExtended ? `Extended Mode: split at ${split} (Low: 1–${split - 1}, High: ${split}–127).` : 'Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Arbitrary split reserved for Extended Mode.'}
+          <!-- 3. Canonical Tuning, Volume & Pan Controls (MainFrame Sliders) -->
+          <div class="inspector-section section-trims">
+            <div class="section-title">ZONE PARAMETERS (DETUNE / VOLUME / PAN)</div>
+            <div class="trims-controls-stack">
+              <div class="trim-control">
+                <label for="slider-detune">DETUNE (-99 .. +99)</label>
+                <div class="control-row">
+                  <input type="range" id="slider-detune" min="-99" max="99" value="${Math.round(z.detune)}" step="1" />
+                  <span class="val-display" id="val-detune">${detuneToString(z.detune)}</span>
+                </div>
+              </div>
+
+              <div class="trim-control">
+                <label for="slider-volume">VOLUME (-32dB .. +12dB)</label>
+                <div class="control-row">
+                  <input type="range" id="slider-volume" min="-32" max="12" value="${Math.round(z.volume)}" step="1" />
+                  <span class="val-display" id="val-volume">${volumeToLongString(z.volume)}</span>
+                </div>
+              </div>
+
+              <div class="trim-control">
+                <label for="slider-pan">PAN (-50 .. +50)</label>
+                <div class="control-row">
+                  <input type="range" id="slider-pan" min="-50" max="50" value="${Math.round(z.pan)}" step="1" />
+                  <span class="val-display" id="val-pan">${panToString(z.pan)}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 3. Canonical Tuning, Volume & Pan Controls (MainFrame Sliders) -->
-        <div class="inspector-section section-trims">
-          <div class="section-title">ZONE PARAMETERS (DETUNE / VOLUME / PAN)</div>
-          <div class="trims-controls-stack">
-            <div class="trim-control">
-              <label for="slider-detune">DETUNE (-99 .. +99)</label>
-              <div class="control-row">
-                <input type="range" id="slider-detune" min="-99" max="99" value="${Math.round(z.detune)}" step="1" />
-                <span class="val-display" id="val-detune">${detuneToString(z.detune)}</span>
-              </div>
-            </div>
-
-            <div class="trim-control">
-              <label for="slider-volume">VOLUME (-32dB .. +12dB)</label>
-              <div class="control-row">
-                <input type="range" id="slider-volume" min="-32" max="12" value="${Math.round(z.volume)}" step="1" />
-                <span class="val-display" id="val-volume">${volumeToLongString(z.volume)}</span>
-              </div>
-            </div>
-
-            <div class="trim-control">
-              <label for="slider-pan">PAN (-50 .. +50)</label>
-              <div class="control-row">
-                <input type="range" id="slider-pan" min="-50" max="50" value="${Math.round(z.pan)}" step="1" />
-                <span class="val-display" id="val-pan">${panToString(z.pan)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        ${this.renderExtendedSectionsHtml(z, isExtended)}
+        ${
+          isExtended
+            ? `<div class="drawer-tab-pane ${activeTab === 'extended' ? 'is-active' : 'is-hidden'}" data-tab-pane="extended">
+                ${this.renderExtendedSectionsHtml(z, isExtended)}
+              </div>`
+            : ''
+        }
       </div>
     `;
 
@@ -468,22 +530,65 @@ export class ZoneInspector {
       null;
 
     const art = this.handlers.getArticulation?.();
+    const cls = this.handlers.getZoneClassification?.(z.id);
+    const detectedCat = cls?.detectedCategory ?? this.handlers.getDetectedCategory?.() ?? 'Synth & Neutral';
     const loopMode = activeReg?.loopMode ?? 'no_loop';
     const loopStart = activeReg?.loopStart ?? 0;
     const loopEnd = activeReg?.loopEnd ?? 0;
     const loopXfade = activeReg?.loopCrossfadeMs ?? 0;
     const keytrack = activeReg?.pitchKeytrack ?? 100;
+    const triggerMode = activeReg?.trigger ?? 'attack';
     const keyFadeIn = activeReg?.keyFadeIn ?? 0;
     const keyFadeOut = activeReg?.keyFadeOut ?? 0;
+    const velFadeIn = activeReg?.velFadeIn ?? 0;
+    const velFadeOut = activeReg?.velFadeOut ?? 0;
+    const fadeCurve = activeReg?.fadeCurve ?? 'equal-power';
 
     return `
-      <!-- 4. Extended Region Loop, Keytrack & Crossfades -->
+      <!-- 1. Fase 7 Acoustic Intelligence & Auto-Classification -->
+      <div class="inspector-section section-acoustic-intel">
+        <div class="section-header-row">
+          <div class="section-title">ACOUSTIC INTELLIGENCE &amp; AUTO-CLASSIFICATION</div>
+          <button type="button" class="btn btn-xs btn-accent" id="btn-auto-detect-zone-ext" title="Run YIN/MPM + HPS Pitch Detection &amp; Acoustic Parameter Set Classifier">
+            ${ICONS.cpu} Auto-Detect Pitch &amp; Set
+          </button>
+        </div>
+        <div class="acoustic-intel-grid">
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">INSTRUMENT CATEGORY</span>
+            <span class="stat-chip-val is-accent">${detectedCat}</span>
+          </div>
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">RECOMMENDED SET</span>
+            <span class="stat-chip-val">Set ${cls ? cls.recommendedParameterSet : 'Auto'} ${cls ? `(${Math.round(cls.confidence * 100)}%)` : ''}</span>
+          </div>
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">DETECTED PITCH (F0)</span>
+            <span class="stat-chip-val">${cls ? `${cls.descriptors.detectedF0Hz.toFixed(1)} Hz (${midiNoteToString(cls.descriptors.detectedMidiNote)})` : midiNoteToString(z.rootKey)}</span>
+          </div>
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">HARMONICITY / TYPE</span>
+            <span class="stat-chip-val">${cls ? `${Math.round(cls.descriptors.harmonicity * 100)}% • ${cls.descriptors.isPercussiveOrNoise ? 'Perc/Noise' : 'Harmonic'}` : 'Harmonic'}</span>
+          </div>
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">ATTACK / SUSTAIN</span>
+            <span class="stat-chip-val">${cls ? `${cls.descriptors.attackMs} ms • ${Math.round(cls.descriptors.sustainRatio * 100)}%` : '—'}</span>
+          </div>
+          <div class="acoustic-stat-chip">
+            <span class="stat-chip-lbl">STIFFNESS (B) / CENTROID</span>
+            <span class="stat-chip-val">${cls ? `${cls.descriptors.inharmonicityB.toFixed(4)} • ${cls.descriptors.spectralCentroidHz} Hz` : '—'}</span>
+          </div>
+        </div>
+        ${cls?.rationale ? `<div class="acoustic-rationale-banner">${cls.rationale}</div>` : ''}
+      </div>
+
+      <!-- 2. Extended Region Loop, Keytrack, Trigger & Crossfades -->
       <div class="inspector-section section-extended-region" data-ext-region-id="${activeReg?.id ?? ''}">
-        <div class="section-title">EXTENDED REGION: LOOP, KEYTRACK & CROSSFADES</div>
-        <div class="keys-inputs-row">
+        <div class="section-title">EXTENDED REGION: LOOP, KEYTRACK &amp; CROSSFADES</div>
+        <div class="drawer-grid-3">
           <div class="form-group">
             <label for="sel-ext-loop-mode">LOOP MODE</label>
-            <select id="sel-ext-loop-mode" class="sample-reuse-select">
+            <select id="sel-ext-loop-mode" class="drawer-select">
               <option value="no_loop" ${loopMode === 'no_loop' ? 'selected' : ''}>No Loop</option>
               <option value="loop_continuous" ${loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous Loop</option>
               <option value="loop_sustain" ${loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain Loop</option>
@@ -492,28 +597,56 @@ export class ZoneInspector {
           </div>
           <div class="form-group">
             <label for="inp-ext-loop-start">LOOP START (FRAMES)</label>
-            <input type="number" id="inp-ext-loop-start" min="0" value="${loopStart}" />
+            <input type="number" id="inp-ext-loop-start" class="drawer-input" min="0" value="${loopStart}" />
           </div>
           <div class="form-group">
             <label for="inp-ext-loop-end">LOOP END (FRAMES)</label>
-            <input type="number" id="inp-ext-loop-end" min="0" value="${loopEnd}" />
+            <input type="number" id="inp-ext-loop-end" class="drawer-input" min="0" value="${loopEnd}" />
           </div>
         </div>
-        <div class="keys-inputs-row" style="margin-top:8px">
+
+        <div class="drawer-grid-3">
           <div class="form-group">
             <label for="inp-ext-loop-xfade">LOOP XFADE (MS)</label>
-            <input type="number" id="inp-ext-loop-xfade" min="0" max="5000" value="${loopXfade}" />
+            <input type="number" id="inp-ext-loop-xfade" class="drawer-input" min="0" max="5000" value="${loopXfade}" />
           </div>
           <div class="form-group">
             <label for="inp-ext-keytrack">PITCH KEYTRACK (%)</label>
-            <input type="number" id="inp-ext-keytrack" min="0" max="100" value="${keytrack}" title="100% = Chromatic, 0% = Unpitched/Drum" />
+            <input type="number" id="inp-ext-keytrack" class="drawer-input" min="0" max="100" value="${keytrack}" title="100% = Chromatic, 0% = Unpitched/Drum" />
           </div>
           <div class="form-group">
-            <label for="inp-ext-key-fade">KEY XFADE IN/OUT</label>
-            <div style="display:flex;gap:4px">
-              <input type="number" id="inp-ext-key-fade-in" min="0" max="64" value="${keyFadeIn}" title="Key Crossfade In (semitones)" />
-              <input type="number" id="inp-ext-key-fade-out" min="0" max="64" value="${keyFadeOut}" title="Key Crossfade Out (semitones)" />
+            <label for="sel-ext-trigger">TRIGGER MODE</label>
+            <select id="sel-ext-trigger" class="drawer-select">
+              <option value="attack" ${triggerMode === 'attack' ? 'selected' : ''}>Attack</option>
+              <option value="release" ${triggerMode === 'release' ? 'selected' : ''}>Release</option>
+              <option value="first" ${triggerMode === 'first' ? 'selected' : ''}>First Note</option>
+              <option value="legato" ${triggerMode === 'legato' ? 'selected' : ''}>Legato</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="drawer-grid-3">
+          <div class="form-group">
+            <label for="inp-ext-key-fade-in">KEY XFADE IN / OUT (SEMI)</label>
+            <div class="drawer-pair-inputs">
+              <input type="number" id="inp-ext-key-fade-in" class="drawer-input" min="0" max="64" value="${keyFadeIn}" title="Key Crossfade In (semitones)" />
+              <input type="number" id="inp-ext-key-fade-out" class="drawer-input" min="0" max="64" value="${keyFadeOut}" title="Key Crossfade Out (semitones)" />
             </div>
+          </div>
+          <div class="form-group">
+            <label for="inp-ext-vel-fade-in">VEL XFADE IN / OUT</label>
+            <div class="drawer-pair-inputs">
+              <input type="number" id="inp-ext-vel-fade-in" class="drawer-input" min="0" max="127" value="${velFadeIn}" title="Velocity Crossfade In" />
+              <input type="number" id="inp-ext-vel-fade-out" class="drawer-input" min="0" max="127" value="${velFadeOut}" title="Velocity Crossfade Out" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="sel-ext-fade-curve">XFADE CURVE</label>
+            <select id="sel-ext-fade-curve" class="drawer-select">
+              <option value="equal-power" ${fadeCurve === 'equal-power' ? 'selected' : ''}>Equal Power</option>
+              <option value="linear" ${fadeCurve === 'linear' ? 'selected' : ''}>Linear</option>
+              <option value="spectral-morph" ${fadeCurve === 'spectral-morph' ? 'selected' : ''}>Spectral Morph</option>
+            </select>
           </div>
         </div>
       </div>
@@ -521,80 +654,90 @@ export class ZoneInspector {
       ${
         art
           ? `
-      <!-- 5. Global Synth Articulation & Safe sound.script Mapping (ADSR, Filter, LFO) -->
+      <!-- 3. Global Synth Articulation & Safe sound.script Mapping (ADSR, Filter, LFO) -->
       <div class="inspector-section section-articulation">
-        <div class="section-title">SYNTH ARTICULATION (ADSR / FILTER / LFO -> SAFE SOUND.SCRIPT)</div>
+        <div class="section-title">SYNTH ARTICULATION (ADSR / FILTER / LFO &rarr; SAFE SOUND.SCRIPT)</div>
 
         <!-- Amp Envelope -->
-        <div class="articulation-block" style="margin-bottom:10px">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px">
-            <input type="checkbox" id="chk-art-amp-env" ${art.ampEnvEnabled ? 'checked' : ''} />
-            <span>Export Amp Envelope (DAHDSR -> R1AmpEnvA/D/S/R)</span>
-          </label>
-          <div class="keys-inputs-row">
+        <div class="articulation-card ${art.ampEnvEnabled ? 'is-enabled' : ''}">
+          <div class="articulation-card-header">
+            <label class="articulation-toggle-label">
+              <input type="checkbox" class="articulation-checkbox" id="chk-art-amp-env" ${art.ampEnvEnabled ? 'checked' : ''} />
+              <span>Export Amp Envelope (DAHDSR &rarr; R1AmpEnvA/D/S/R)</span>
+            </label>
+            <label class="articulation-sub-toggle" title="Bake amplitude decay contour into classic wave before analysis">
+              <input type="checkbox" class="articulation-checkbox" id="chk-art-bake-env" ${art.bakeEnvelopeIntoWave ? 'checked' : ''} />
+              <span>Bake ADSR</span>
+            </label>
+          </div>
+          <div class="drawer-grid-4">
             <div class="form-group">
               <label for="inp-art-amp-a">ATTACK (S)</label>
-              <input type="number" id="inp-art-amp-a" min="0" max="12" step="0.01" value="${art.ampEnv.attackSec}" />
+              <input type="number" id="inp-art-amp-a" class="drawer-input" min="0" max="12" step="0.01" value="${art.ampEnv.attackSec}" />
             </div>
             <div class="form-group">
               <label for="inp-art-amp-d">DECAY (S)</label>
-              <input type="number" id="inp-art-amp-d" min="0" max="15" step="0.01" value="${art.ampEnv.decaySec}" />
+              <input type="number" id="inp-art-amp-d" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.decaySec}" />
             </div>
             <div class="form-group">
               <label for="inp-art-amp-s">SUSTAIN (0..1)</label>
-              <input type="number" id="inp-art-amp-s" min="0" max="1" step="0.05" value="${art.ampEnv.sustainLevel}" />
+              <input type="number" id="inp-art-amp-s" class="drawer-input" min="0" max="1" step="0.05" value="${art.ampEnv.sustainLevel}" />
             </div>
             <div class="form-group">
               <label for="inp-art-amp-r">RELEASE (S)</label>
-              <input type="number" id="inp-art-amp-r" min="0" max="15" step="0.01" value="${art.ampEnv.releaseSec}" />
+              <input type="number" id="inp-art-amp-r" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.releaseSec}" />
             </div>
           </div>
         </div>
 
         <!-- Filter -->
-        <div class="articulation-block" style="margin-bottom:10px">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px">
-            <input type="checkbox" id="chk-art-filter" ${art.filter.enabled ? 'checked' : ''} />
-            <span>Export Filter (Silver Filter Cutoff / Reso / Env)</span>
-          </label>
-          <div class="keys-inputs-row">
+        <div class="articulation-card ${art.filter.enabled ? 'is-enabled' : ''}">
+          <div class="articulation-card-header">
+            <label class="articulation-toggle-label">
+              <input type="checkbox" class="articulation-checkbox" id="chk-art-filter" ${art.filter.enabled ? 'checked' : ''} />
+              <span>Export Filter (Silver Filter Cutoff / Reso / Env)</span>
+            </label>
+          </div>
+          <div class="drawer-grid-3">
             <div class="form-group">
               <label for="sel-art-filter-type">TYPE</label>
-              <select id="sel-art-filter-type" class="sample-reuse-select">
-                <option value="lpf" ${art.filter.type === 'lpf' ? 'selected' : ''}>LPF</option>
-                <option value="bpf" ${art.filter.type === 'bpf' ? 'selected' : ''}>BPF</option>
-                <option value="hpf" ${art.filter.type === 'hpf' ? 'selected' : ''}>HPF</option>
+              <select id="sel-art-filter-type" class="drawer-select">
+                <option value="lpf" ${art.filter.type === 'lpf' ? 'selected' : ''}>LPF (Low-Pass)</option>
+                <option value="bpf" ${art.filter.type === 'bpf' ? 'selected' : ''}>BPF (Band-Pass)</option>
+                <option value="hpf" ${art.filter.type === 'hpf' ? 'selected' : ''}>HPF (High-Pass)</option>
               </select>
             </div>
             <div class="form-group">
               <label for="inp-art-filter-cutoff">CUTOFF (HZ)</label>
-              <input type="number" id="inp-art-filter-cutoff" min="20" max="20000" step="10" value="${art.filter.cutoffHz}" />
+              <input type="number" id="inp-art-filter-cutoff" class="drawer-input" min="20" max="20000" step="10" value="${art.filter.cutoffHz}" />
             </div>
             <div class="form-group">
               <label for="inp-art-filter-reso">RESO (DB)</label>
-              <input type="number" id="inp-art-filter-reso" min="0" max="40" step="0.5" value="${art.filter.resonanceDb}" />
+              <input type="number" id="inp-art-filter-reso" class="drawer-input" min="0" max="40" step="0.5" value="${art.filter.resonanceDb}" />
             </div>
           </div>
         </div>
 
         <!-- Vibrato / Mod LFO -->
-        <div class="articulation-block">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:6px" title="Safe-mapped: Scape, Sphere & Blender LFO depths are explicitly locked to 0 so LFO never causes unwanted spectral morphing">
-            <input type="checkbox" id="chk-art-lfo" ${art.vibLfo.enabled ? 'checked' : ''} />
-            <span>Export LFO (Isolated Pitch / Filter / Amp — Scape/Sphere Zeroed)</span>
-          </label>
-          <div class="keys-inputs-row">
+        <div class="articulation-card ${art.vibLfo.enabled ? 'is-enabled' : ''}">
+          <div class="articulation-card-header">
+            <label class="articulation-toggle-label" title="Safe-mapped: Scape, Sphere & Blender LFO depths are explicitly locked to 0 so LFO never causes unwanted spectral morphing">
+              <input type="checkbox" class="articulation-checkbox" id="chk-art-lfo" ${art.vibLfo.enabled ? 'checked' : ''} />
+              <span>Export LFO (Isolated Pitch / Filter / Amp &mdash; Scape/Sphere Zeroed)</span>
+            </label>
+          </div>
+          <div class="drawer-grid-3">
             <div class="form-group">
               <label for="inp-art-lfo-freq">RATE (HZ)</label>
-              <input type="number" id="inp-art-lfo-freq" min="0.05" max="30" step="0.1" value="${art.vibLfo.freqHz}" />
+              <input type="number" id="inp-art-lfo-freq" class="drawer-input" min="0.05" max="30" step="0.1" value="${art.vibLfo.freqHz}" />
             </div>
             <div class="form-group">
               <label for="inp-art-lfo-delay">DELAY (S)</label>
-              <input type="number" id="inp-art-lfo-delay" min="0" max="10" step="0.05" value="${art.vibLfo.delaySec}" />
+              <input type="number" id="inp-art-lfo-delay" class="drawer-input" min="0" max="10" step="0.05" value="${art.vibLfo.delaySec}" />
             </div>
             <div class="form-group">
               <label for="inp-art-lfo-pitch">PITCH (CENTS)</label>
-              <input type="number" id="inp-art-lfo-pitch" min="-1200" max="1200" step="5" value="${art.vibLfo.toPitchCents}" />
+              <input type="number" id="inp-art-lfo-pitch" class="drawer-input" min="-1200" max="1200" step="5" value="${art.vibLfo.toPitchCents}" />
             </div>
           </div>
         </div>
@@ -664,6 +807,40 @@ export class ZoneInspector {
     this.drawerElement.querySelector('#btn-close-zone-drawer')?.addEventListener('click', () => {
       this.closeDrawer();
     });
+
+    // Tab pills ("General" & "Extended")
+    const tabBtns = this.drawerElement.querySelectorAll<HTMLButtonElement>('.drawer-tab-pill');
+    tabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-drawer-tab') === 'extended' ? 'extended' : 'general';
+        if (target === this.activeDrawerTab) return;
+        this.activeDrawerTab = target;
+        tabBtns.forEach((b) => {
+          const isMatch = b.getAttribute('data-drawer-tab') === target;
+          b.classList.toggle('is-active', isMatch);
+          b.setAttribute('aria-selected', String(isMatch));
+        });
+        this.drawerElement
+          ?.querySelectorAll<HTMLElement>('.drawer-tab-pane')
+          .forEach((pane) => {
+            const isMatch = pane.getAttribute('data-tab-pane') === target;
+            pane.classList.toggle('is-active', isMatch);
+            pane.classList.toggle('is-hidden', !isMatch);
+          });
+      });
+    });
+
+    // Fase 7 Auto-Detect Pitch & Parameter Set buttons
+    const triggerAutoDetect = () => {
+      this.handlers.onAutoDetectZone?.(z.id);
+      this.renderDrawer();
+    };
+    this.drawerElement
+      .querySelector('#btn-auto-detect-zone-general')
+      ?.addEventListener('click', triggerAutoDetect);
+    this.drawerElement
+      .querySelector('#btn-auto-detect-zone-ext')
+      ?.addEventListener('click', triggerAutoDetect);
 
     // Keys inputs
     const inpLow = this.drawerElement.querySelector('#inp-low-key') as HTMLInputElement | null;
@@ -876,12 +1053,33 @@ export class ZoneInspector {
       inpKeyFadeOut?.addEventListener('change', () => {
         updateReg({ keyFadeOut: Math.max(0, parseInt(inpKeyFadeOut.value, 10) || 0) });
       });
+
+      const selTrigger = this.drawerElement.querySelector('#sel-ext-trigger') as HTMLSelectElement | null;
+      selTrigger?.addEventListener('change', () => {
+        updateReg({ trigger: selTrigger.value as TriggerMode });
+      });
+
+      const inpVelFadeIn = this.drawerElement.querySelector('#inp-ext-vel-fade-in') as HTMLInputElement | null;
+      inpVelFadeIn?.addEventListener('change', () => {
+        updateReg({ velFadeIn: Math.max(0, Math.min(127, parseInt(inpVelFadeIn.value, 10) || 0)) });
+      });
+
+      const inpVelFadeOut = this.drawerElement.querySelector('#inp-ext-vel-fade-out') as HTMLInputElement | null;
+      inpVelFadeOut?.addEventListener('change', () => {
+        updateReg({ velFadeOut: Math.max(0, Math.min(127, parseInt(inpVelFadeOut.value, 10) || 0)) });
+      });
+
+      const selFadeCurve = this.drawerElement.querySelector('#sel-ext-fade-curve') as HTMLSelectElement | null;
+      selFadeCurve?.addEventListener('change', () => {
+        updateReg({ fadeCurve: selFadeCurve.value as CrossfadeCurve });
+      });
     }
 
     if (this.handlers.onUpdateArticulation && this.handlers.getArticulation) {
       const bindArt = () => {
         const curr = this.handlers.getArticulation!();
         const chkAmp = this.drawerElement?.querySelector('#chk-art-amp-env') as HTMLInputElement | null;
+        const chkBake = this.drawerElement?.querySelector('#chk-art-bake-env') as HTMLInputElement | null;
         const inpAmpA = this.drawerElement?.querySelector('#inp-art-amp-a') as HTMLInputElement | null;
         const inpAmpD = this.drawerElement?.querySelector('#inp-art-amp-d') as HTMLInputElement | null;
         const inpAmpS = this.drawerElement?.querySelector('#inp-art-amp-s') as HTMLInputElement | null;
@@ -899,6 +1097,7 @@ export class ZoneInspector {
 
         this.handlers.onUpdateArticulation!({
           ampEnvEnabled: Boolean(chkAmp?.checked),
+          bakeEnvelopeIntoWave: Boolean(chkBake?.checked),
           ampEnv: {
             ...curr.ampEnv,
             attackSec: Math.max(0.002, parseFloat(inpAmpA?.value ?? String(curr.ampEnv.attackSec)) || 0.005),
@@ -925,6 +1124,7 @@ export class ZoneInspector {
 
       const artSelectors = [
         '#chk-art-amp-env',
+        '#chk-art-bake-env',
         '#inp-art-amp-a',
         '#inp-art-amp-d',
         '#inp-art-amp-s',

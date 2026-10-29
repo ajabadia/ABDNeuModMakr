@@ -698,7 +698,102 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 12. Fase 6 SF2 (Baritone Sax V2), SFZ, Extended->Classic Adapter & Safe sound.script');
 
-  console.log('=== ALL PHASE 6 TESTS PASSED ===');
+  // ── 13. Fase 7: Hybrid YIN/MPM Pitch Detection, Acoustic Classifier, Enhanced DSP & Quality Score ──
+  {
+    const {
+      detectPitchYinMpm,
+      hzToMidiAndCents,
+      extractAcousticDescriptors,
+      classifyAcousticSample,
+      applyEnhancedSpectralModel,
+      computeDspQualityScore,
+    } = await import('../src/core/dsp/AcousticIntelligence.ts');
+    const { SpectralAnalyzer } = await import('../src/core/dsp/SpectralAnalyzer.ts');
+    const { resynthesizeModelToPcm } = await import('../src/core/dsp/ScapeSphereGenerator.ts');
+    const { encodeWavPcm16 } = await import('../src/core/dsp/WavDecoder.ts');
+
+    const sr = 44100;
+    const len = sr; // 1.0 sec
+    // Synthesize a harmonic 220 Hz (A3 = MIDI 57) plucked string signal with exponential decay
+    const harmonicPcm = new Float32Array(len);
+    const f0Target = 220.0;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const env = t < 0.005 ? t / 0.005 : Math.exp(-(t - 0.005) * 4.5);
+      let s = 0;
+      for (let h = 1; h <= 8; h++) {
+        s += (1 / h) * Math.sin(2 * Math.PI * f0Target * h * t);
+      }
+      harmonicPcm[i] = s * env * 0.4;
+    }
+
+    const pitch = detectPitchYinMpm(harmonicPcm, sr);
+    assert.ok(Math.abs(pitch.f0Hz - 220.0) < 1.5, `Expected ~220 Hz, got ${pitch.f0Hz}`);
+    assert.ok(pitch.harmonicity > 0.65, `Expected high harmonicity, got ${pitch.harmonicity}`);
+
+    const midiMap = hzToMidiAndCents(pitch.f0Hz);
+    assert.equal(midiMap.midiNote, 57);
+    assert.ok(Math.abs(midiMap.centOffset) <= 12);
+
+    const analyzer = new SpectralAnalyzer();
+    const desc = extractAcousticDescriptors(harmonicPcm, sr, analyzer, 220.0);
+    assert.equal(desc.detectedMidiNote, 57);
+    assert.equal(desc.isPercussiveOrNoise, false);
+    assert.ok(desc.attackMs < 35, `Expected fast plucked attack, got ${desc.attackMs} ms`);
+
+    const cls = classifyAcousticSample(desc, 'acoustic_guitar_a3.wav');
+    assert.ok(cls.detectedCategory.startsWith('Plucked'));
+    assert.equal(cls.recommendedParameterSet, 3);
+    assert.ok(cls.confidence > 0.5);
+
+    // Enhanced DSP model & Quality Score
+    const legacyModel = analyzer.analyzeTemporal(harmonicPcm, sr, pitch.f0Hz, 16);
+    const enhancedModel = applyEnhancedSpectralModel(legacyModel, desc);
+    assert.equal(enhancedModel.numFramesOf(0), legacyModel.numFramesOf(0));
+
+    const legacyResynth = resynthesizeModelToPcm(legacyModel, 0.5, sr, pitch.f0Hz);
+    const enhancedResynth = resynthesizeModelToPcm(enhancedModel, 0.5, sr, pitch.f0Hz);
+    const qScore = computeDspQualityScore(
+      harmonicPcm,
+      legacyResynth,
+      enhancedResynth,
+      legacyModel,
+      enhancedModel,
+      'enhanced',
+      analyzer.lastGridResidualCents()
+    );
+    assert.ok(qScore.overallScore > 40);
+    assert.ok(qScore.enhancedScore >= qScore.legacyScore);
+
+    // Verify WebAudioPipeline autoDetectZonePitchAndParameterSet & dspAlgorithm config
+    const p = new WebAudioPipeline();
+    await p.init();
+    await p.newSession('Phase7Test');
+    p.updateProcessConfig({ dspAlgorithm: 'enhanced' });
+    assert.equal(p.getSession()?.processConfig.dspAlgorithm, 'enhanced');
+
+    const z0 = p.getSession()!.zones[0];
+    const wavBuf = encodeWavPcm16([harmonicPcm], sr);
+    p.registerSampleBuffer('plucked_a3.wav', wavBuf);
+    await p.updateZone(z0.id, { sampleLow: 'plucked_a3.wav', rootKey: 60 });
+
+    const autoRes = p.autoDetectZonePitchAndParameterSet(z0.id, true);
+    assert.ok(autoRes !== null);
+    assert.equal(autoRes!.descriptors.detectedMidiNote, 57);
+    assert.equal(p.getSession()!.zones[0].rootKey, 57);
+    assert.equal(p.getSession()!.processConfig.parameterSet, 3);
+
+    const spec = p.inspectZoneSpectrum(z0.id);
+    assert.ok(spec !== null);
+    assert.ok(spec!.qualityScore !== undefined);
+    assert.ok(spec!.enhancedResynthPeaks !== undefined);
+    assert.ok(spec!.classification !== undefined);
+
+    p.dispose();
+  }
+  console.log('[PASS] 13. Fase 7 Hybrid Pitch Detection, Acoustic Classifier, Enhanced DSP & Quality Score');
+
+  console.log('=== ALL PHASE 6 & 7 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {
