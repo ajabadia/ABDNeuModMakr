@@ -231,6 +231,23 @@ class App {
         this.session = this.core.getSession()!;
         this.refreshUI();
       },
+      onAddExtendedRegion: async (partial) => {
+        const reg = await this.core.addExtendedRegion(partial);
+        this.session = this.core.getSession()!;
+        this.telemetryDrawer.addLog(
+          `Added Extended Region [${reg.id}]: Keys ${reg.lowKey}..${reg.highKey} (Root ${reg.rootKey}), Vel ${reg.lowVel}..${reg.highVel}${reg.sampleName ? `, Sample: ${reg.sampleName}` : ''}`
+        );
+        this.refreshUI();
+      },
+      onRemoveExtendedRegion: async (regionId) => {
+        await this.core.removeExtendedRegion(regionId);
+        this.session = this.core.getSession()!;
+        this.telemetryDrawer.addLog(`Removed Extended Region [${regionId}]`);
+        this.refreshUI();
+      },
+      onLoadSampleFileIntoRegion: (regionId, file) => {
+        void this.imports.loadSampleFileIntoRegion(regionId, file);
+      },
       getArticulation: () => this.core.getArticulation(),
       onUpdateArticulation: (changes) => {
         this.session = this.core.updateArticulation(changes);

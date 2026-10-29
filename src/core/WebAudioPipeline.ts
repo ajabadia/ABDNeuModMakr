@@ -454,10 +454,11 @@ export class WebAudioPipeline implements CoreService {
       const prevMode = cfg.workingMode ?? 'classic';
       cfg.workingMode = changes.workingMode;
       if (changes.workingMode === 'extended') {
-        this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
-          this.session.zones,
-          this.session.extendedRegions,
-        );
+        if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
+          this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+            this.session.zones
+          );
+        }
         if (!this.session.articulation) {
           this.session.articulation = createDefaultArticulation();
         }
@@ -488,6 +489,9 @@ export class WebAudioPipeline implements CoreService {
     if (!this.session) throw new Error('No active session');
     this.pushHistory('Reset to Single 0..127 Zone');
     this.session.zones = [createZone(0, 60, 127, null)];
+    this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+      this.session.zones
+    );
     this.markDirty();
     return this.session;
   }
@@ -541,6 +545,10 @@ export class WebAudioPipeline implements CoreService {
     }
 
     this.session.zones = capped;
+    this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+      this.session.zones,
+      this.session.extendedRegions
+    );
     this.ensureZoneDemoBuffers(this.session.zones);
     this.markDirty();
     return this.session;
@@ -594,6 +602,10 @@ export class WebAudioPipeline implements CoreService {
     }
 
     zones.splice(hostIdx + 1, 0, newZone);
+    this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+      zones,
+      this.session.extendedRegions
+    );
     this.ensureZoneDemoBuffers([newZone]);
     this.markDirty();
     return newZone;
@@ -675,6 +687,10 @@ export class WebAudioPipeline implements CoreService {
       zone.sampleHigh = changes.sampleHigh;
     }
 
+    this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
+      zones,
+      this.session.extendedRegions
+    );
     this.ensureZoneDemoBuffers([zone]);
     this.markDirty();
     return zone;
@@ -1366,6 +1382,9 @@ export class WebAudioPipeline implements CoreService {
     }
 
     this.session!.zones = newZones;
+    this.session!.extendedRegions = syncExtendedRegionsFromClassicZones(
+      newZones
+    );
     if (newZones[0]?.sampleLow) {
       this.maybeAutoDeriveModelName(newZones[0].sampleLow);
     }
@@ -1752,6 +1771,9 @@ export class WebAudioPipeline implements CoreService {
       this.session!.extendedRegions = structuredClone(
         extracted.manifest.extendedRegions
       );
+    } else {
+      this.session!.extendedRegions =
+        syncExtendedRegionsFromClassicZones(newZones);
     }
     if (extracted.manifest?.articulation) {
       this.session!.articulation = cloneArticulation(

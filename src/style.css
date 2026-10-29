@@ -720,6 +720,7 @@ input[type="range"] {
   min-height: 180px;
   overflow-y: auto;
   overflow-x: auto;
+  container-type: inline-size;
   border-bottom: 1px solid var(--color-panel-border-dim);
 }
 
@@ -796,6 +797,20 @@ input[type="range"] {
   width: 84px;
   text-align: left;
   white-space: pre;
+}
+
+.canonical-zone-table th.col-vel,
+.canonical-zone-table td.col-vel {
+  width: 74px;
+  text-align: center;
+}
+
+.canonical-zone-table th.col-mode,
+.canonical-zone-table td.col-mode {
+  width: 146px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Unified accented table cells (was 2 identical rules) */

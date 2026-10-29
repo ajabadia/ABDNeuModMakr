@@ -74,6 +74,29 @@ export class ImportHandlers {
     }
   }
 
+  async loadSampleFileIntoRegion(
+    regionId: string,
+    file: File
+  ): Promise<void> {
+    try {
+      const buffer = await file.arrayBuffer();
+      const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
+      const changes: Parameters<CoreService['updateExtendedRegion']>[1] = {
+        sampleName: file.name,
+      };
+      await this.ctx.core.updateExtendedRegion(regionId, changes);
+      this.ctx.session = this.ctx.core.getSession()!;
+      this.ctx.log(
+        `Loaded ${file.name} into Region [${regionId}] (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
+      );
+      this.ctx.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.log(`Error loading ${file.name}: ${msg}`);
+      toast(`Failed to decode audio file "${file.name}": ${msg}`, 'error');
+    }
+  }
+
   async handleDroppedFiles(fileList: FileList): Promise<void> {
     if (!fileList || fileList.length === 0) return;
     await this.importMixedFilesOrZip(fileList, 'model', 'samples', 'Drag & Drop');
