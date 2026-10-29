@@ -110,6 +110,7 @@ export class ZoneInspector {
   private selectedRegionId: string | null = null;
   private lastExtendedRegionCount: number = 0;
   private activeDrawerTab: 'general' | 'extended' = 'general';
+  private activeExtendedSubTab: 'region' | 'articulation' | 'master' | 'capsule' = 'region';
   private detuneKnob: Knob | null = null;
   private volumeKnob: Knob | null = null;
   private panKnob: Knob | null = null;
@@ -916,6 +917,7 @@ export class ZoneInspector {
         ? explicitRegion
         : this.getExtendedContext().activeRegion;
 
+    const subTab = this.activeExtendedSubTab;
     const art = this.handlers.getArticulation?.();
     const cls = this.handlers.getZoneClassification?.(z.id);
     const detectedCat = cls?.detectedCategory ?? this.handlers.getDetectedCategory?.() ?? 'Synth & Neutral';
@@ -931,220 +933,295 @@ export class ZoneInspector {
     const velFadeOut = activeReg?.velFadeOut ?? 0;
     const fadeCurve = activeReg?.fadeCurve ?? 'equal-power';
 
+    const mwCfg = this.handlers.getMasterWaveConfig?.() ?? DEFAULT_MASTER_WAVE_CONFIG;
+    const fmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id) ?? null;
+    const chBadge =
+      fmtInfo?.numChannels === 4
+        ? '4.0 Quad Surround'
+        : fmtInfo?.numChannels === 2
+          ? '2.0 Stereo'
+          : fmtInfo?.numChannels === 1
+            ? '1.0 Mono'
+            : 'Unassigned';
+    const fmtBadge = fmtInfo
+      ? `${(fmtInfo.sampleRate / 1000).toFixed(1)} kHz / ${fmtInfo.bitsPerSample}-bit • ${chBadge} • ${fmtInfo.durationSec.toFixed(2)}s`
+      : 'No Sample Loaded';
+
+    const prov = this.handlers.getModelProvenance?.() ?? null;
+    const diag = this.handlers.getAssetStoreDiagnostics?.() ?? null;
+    const primaryLabel =
+      prov?.primarySourceLayer === '02_legacy_original'
+        ? '02_legacy_original (.scape/.sphere)'
+        : '01_raw_source (Lossless WAV)';
+    const activeLabel = prov?.activeAnalysisSourceLayer ?? '01_raw_source';
+    const reprocessCnt = prov?.reprocessCount ?? 0;
+    const storeKb = diag ? Math.round(diag.totalBytes / 1024) : 0;
+    const storeBadge = diag
+      ? `${diag.backend === 'indexeddb' ? 'IndexedDB' : 'Memory'} • ${storeKb} KB (${prov?.presentLayers.length ?? 0}/5 layers)`
+      : '5-Layer Container';
+    const layerList: Array<{
+      id: '01_raw_source' | '02_legacy_original' | '03_enhanced_audio' | '04_classic_enhanced' | '05_extended_model';
+      label: string;
+    }> = [
+      { id: '01_raw_source', label: '01 Raw Source' },
+      { id: '02_legacy_original', label: '02 Legacy Orig' },
+      { id: '03_enhanced_audio', label: '03 Master 24/96' },
+      { id: '04_classic_enhanced', label: '04 Classic Enh' },
+      { id: '05_extended_model', label: '05 Extended Mod' },
+    ];
+
     return `
-      <!-- 1. Fase 7 Acoustic Intelligence & Auto-Classification -->
-      <div class="inspector-section section-acoustic-intel">
-        <div class="section-header-row">
-          <div class="section-title">ACOUSTIC INTELLIGENCE &amp; AUTO-CLASSIFICATION</div>
-          <button type="button" class="btn btn-xs btn-accent" id="btn-auto-detect-zone-ext" title="Run YIN/MPM + HPS Pitch Detection &amp; Acoustic Parameter Set Classifier">
-            ${ICONS.cpu} Auto-Detect Pitch &amp; Set
-          </button>
-        </div>
-        <div class="acoustic-intel-grid">
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">INSTRUMENT CATEGORY</span>
-            <span class="stat-chip-val is-accent">${detectedCat}</span>
-          </div>
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">RECOMMENDED SET</span>
-            <span class="stat-chip-val">Set ${cls ? cls.recommendedParameterSet : 'Auto'} ${cls ? `(${Math.round(cls.confidence * 100)}%)` : ''}</span>
-          </div>
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">DETECTED PITCH (F0)</span>
-            <span class="stat-chip-val">${cls ? `${cls.descriptors.detectedF0Hz.toFixed(1)} Hz (${midiNoteToString(cls.descriptors.detectedMidiNote)})` : midiNoteToString(activeReg?.rootKey ?? z.rootKey)}</span>
-          </div>
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">HARMONICITY / TYPE</span>
-            <span class="stat-chip-val">${cls ? `${Math.round(cls.descriptors.harmonicity * 100)}% • ${cls.descriptors.isPercussiveOrNoise ? 'Perc/Noise' : 'Harmonic'}` : 'Harmonic'}</span>
-          </div>
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">ATTACK / SUSTAIN</span>
-            <span class="stat-chip-val">${cls ? `${cls.descriptors.attackMs} ms • ${Math.round(cls.descriptors.sustainRatio * 100)}%` : '—'}</span>
-          </div>
-          <div class="acoustic-stat-chip">
-            <span class="stat-chip-lbl">STIFFNESS (B) / CENTROID</span>
-            <span class="stat-chip-val">${cls ? `${cls.descriptors.inharmonicityB.toFixed(4)} • ${cls.descriptors.spectralCentroidHz} Hz` : '—'}</span>
-          </div>
-        </div>
-        ${cls?.rationale ? `<div class="acoustic-rationale-banner">${cls.rationale}</div>` : ''}
+      <!-- Sub-navigation pills inside Extended Tab to reduce visual load -->
+      <div class="drawer-subtab-bar" role="tablist" aria-label="Extended Subsections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${subTab === 'region'}"
+          class="drawer-subtab-pill ${subTab === 'region' ? 'is-active' : ''}"
+          data-ext-subtab="region"
+          title="Region Loop, Keytrack, Trigger, Crossfades &amp; Acoustic Intelligence"
+        >
+          ${ICONS.layers} <span>Region &amp; Loop</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${subTab === 'articulation'}"
+          class="drawer-subtab-pill ${subTab === 'articulation' ? 'is-active' : ''}"
+          data-ext-subtab="articulation"
+          title="Synth Articulation (ADSR Envelope, Silver Filter &amp; Isolated LFO)"
+        >
+          ${ICONS.sliders} <span>Articulation</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${subTab === 'master'}"
+          class="drawer-subtab-pill ${subTab === 'master' ? 'is-active' : ''}"
+          data-ext-subtab="master"
+          title="Master Wave 24-bit / 96 kHz Promotion, Loop Expansion &amp; Quad Surround"
+        >
+          ${ICONS.wave} <span>Master 24/96</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="${subTab === 'capsule'}"
+          class="drawer-subtab-pill ${subTab === 'capsule' ? 'is-active' : ''}"
+          data-ext-subtab="capsule"
+          title="5-Layer Time Capsule Container &amp; Zero Generation-Loss Lineage"
+        >
+          ${ICONS.database} <span>Time Capsule</span>
+        </button>
       </div>
 
-      <!-- 2. Extended Region Loop, Keytrack, Trigger & Crossfades -->
-      <div class="inspector-section section-extended-region" data-ext-region-id="${activeReg?.id ?? ''}">
-        <div class="section-title">EXTENDED REGION: LOOP, KEYTRACK &amp; CROSSFADES</div>
-        <div class="drawer-grid-3">
-          <div class="form-group">
-            <label for="sel-ext-loop-mode">LOOP MODE</label>
-            <select id="sel-ext-loop-mode" class="drawer-select">
-              <option value="no_loop" ${loopMode === 'no_loop' ? 'selected' : ''}>No Loop</option>
-              <option value="loop_continuous" ${loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous Loop</option>
-              <option value="loop_sustain" ${loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain Loop</option>
-              <option value="one_shot" ${loopMode === 'one_shot' ? 'selected' : ''}>One Shot</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="inp-ext-loop-start">LOOP START (FRAMES)</label>
-            <input type="number" id="inp-ext-loop-start" class="drawer-input" min="0" value="${loopStart}" />
-          </div>
-          <div class="form-group">
-            <label for="inp-ext-loop-end">LOOP END (FRAMES)</label>
-            <input type="number" id="inp-ext-loop-end" class="drawer-input" min="0" value="${loopEnd}" />
-          </div>
-        </div>
-
-        <div class="drawer-grid-3">
-          <div class="form-group">
-            <label for="inp-ext-loop-xfade">LOOP XFADE (MS)</label>
-            <input type="number" id="inp-ext-loop-xfade" class="drawer-input" min="0" max="5000" value="${loopXfade}" />
-          </div>
-          <div class="form-group">
-            <label for="inp-ext-keytrack">PITCH KEYTRACK (%)</label>
-            <input type="number" id="inp-ext-keytrack" class="drawer-input" min="0" max="100" value="${keytrack}" title="100% = Chromatic, 0% = Unpitched/Drum" />
-          </div>
-          <div class="form-group">
-            <label for="sel-ext-trigger">TRIGGER MODE</label>
-            <select id="sel-ext-trigger" class="drawer-select">
-              <option value="attack" ${triggerMode === 'attack' ? 'selected' : ''}>Attack</option>
-              <option value="release" ${triggerMode === 'release' ? 'selected' : ''}>Release</option>
-              <option value="first" ${triggerMode === 'first' ? 'selected' : ''}>First Note</option>
-              <option value="legato" ${triggerMode === 'legato' ? 'selected' : ''}>Legato</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="drawer-grid-3">
-          <div class="form-group">
-            <label for="inp-ext-key-fade-in">KEY XFADE IN / OUT (SEMI)</label>
-            <div class="drawer-pair-inputs">
-              <input type="number" id="inp-ext-key-fade-in" class="drawer-input" min="0" max="64" value="${keyFadeIn}" title="Key Crossfade In (semitones)" />
-              <input type="number" id="inp-ext-key-fade-out" class="drawer-input" min="0" max="64" value="${keyFadeOut}" title="Key Crossfade Out (semitones)" />
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="inp-ext-vel-fade-in">VEL XFADE IN / OUT</label>
-            <div class="drawer-pair-inputs">
-              <input type="number" id="inp-ext-vel-fade-in" class="drawer-input" min="0" max="127" value="${velFadeIn}" title="Velocity Crossfade In" />
-              <input type="number" id="inp-ext-vel-fade-out" class="drawer-input" min="0" max="127" value="${velFadeOut}" title="Velocity Crossfade Out" />
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="sel-ext-fade-curve">XFADE CURVE</label>
-            <select id="sel-ext-fade-curve" class="drawer-select">
-              <option value="equal-power" ${fadeCurve === 'equal-power' ? 'selected' : ''}>Equal Power</option>
-              <option value="linear" ${fadeCurve === 'linear' ? 'selected' : ''}>Linear</option>
-              <option value="spectral-morph" ${fadeCurve === 'spectral-morph' ? 'selected' : ''}>Spectral Morph</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      ${
-        art
-          ? `
-      <!-- 3. Global Synth Articulation & Safe sound.script Mapping (ADSR, Filter, LFO) -->
-      <div class="inspector-section section-articulation">
-        <div class="section-title">SYNTH ARTICULATION (ADSR / FILTER / LFO &rarr; SAFE SOUND.SCRIPT)</div>
-
-        <!-- Amp Envelope -->
-        <div class="articulation-card ${art.ampEnvEnabled ? 'is-enabled' : ''}">
-          <div class="articulation-card-header">
-            <label class="articulation-toggle-label">
-              <input type="checkbox" class="articulation-checkbox" id="chk-art-amp-env" ${art.ampEnvEnabled ? 'checked' : ''} />
-              <span>Export Amp Envelope (DAHDSR &rarr; R1AmpEnvA/D/S/R)</span>
-            </label>
-            <label class="articulation-sub-toggle" title="Bake amplitude decay contour into classic wave before analysis">
-              <input type="checkbox" class="articulation-checkbox" id="chk-art-bake-env" ${art.bakeEnvelopeIntoWave ? 'checked' : ''} />
-              <span>Bake ADSR</span>
-            </label>
-          </div>
-          <div class="drawer-grid-4">
-            <div class="form-group">
-              <label for="inp-art-amp-a">ATTACK (S)</label>
-              <input type="number" id="inp-art-amp-a" class="drawer-input" min="0" max="12" step="0.01" value="${art.ampEnv.attackSec}" />
-            </div>
-            <div class="form-group">
-              <label for="inp-art-amp-d">DECAY (S)</label>
-              <input type="number" id="inp-art-amp-d" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.decaySec}" />
-            </div>
-            <div class="form-group">
-              <label for="inp-art-amp-s">SUSTAIN (0..1)</label>
-              <input type="number" id="inp-art-amp-s" class="drawer-input" min="0" max="1" step="0.05" value="${art.ampEnv.sustainLevel}" />
-            </div>
-            <div class="form-group">
-              <label for="inp-art-amp-r">RELEASE (S)</label>
-              <input type="number" id="inp-art-amp-r" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.releaseSec}" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Filter -->
-        <div class="articulation-card ${art.filter.enabled ? 'is-enabled' : ''}">
-          <div class="articulation-card-header">
-            <label class="articulation-toggle-label">
-              <input type="checkbox" class="articulation-checkbox" id="chk-art-filter" ${art.filter.enabled ? 'checked' : ''} />
-              <span>Export Filter (Silver Filter Cutoff / Reso / Env)</span>
-            </label>
-          </div>
+      <!-- SUB-PANE 1: Region & Loop + Acoustic Intelligence -->
+      <div class="drawer-subtab-pane ${subTab === 'region' ? 'is-active' : 'is-hidden'}" data-ext-subpane="region">
+        <!-- 1. Extended Region Loop, Keytrack, Trigger & Crossfades -->
+        <div class="inspector-section section-extended-region" data-ext-region-id="${activeReg?.id ?? ''}">
+          <div class="section-title">EXTENDED REGION: LOOP, KEYTRACK &amp; CROSSFADES</div>
           <div class="drawer-grid-3">
             <div class="form-group">
-              <label for="sel-art-filter-type">TYPE</label>
-              <select id="sel-art-filter-type" class="drawer-select">
-                <option value="lpf" ${art.filter.type === 'lpf' ? 'selected' : ''}>LPF (Low-Pass)</option>
-                <option value="bpf" ${art.filter.type === 'bpf' ? 'selected' : ''}>BPF (Band-Pass)</option>
-                <option value="hpf" ${art.filter.type === 'hpf' ? 'selected' : ''}>HPF (High-Pass)</option>
+              <label for="sel-ext-loop-mode">LOOP MODE</label>
+              <select id="sel-ext-loop-mode" class="drawer-select">
+                <option value="no_loop" ${loopMode === 'no_loop' ? 'selected' : ''}>No Loop</option>
+                <option value="loop_continuous" ${loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous Loop</option>
+                <option value="loop_sustain" ${loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain Loop</option>
+                <option value="one_shot" ${loopMode === 'one_shot' ? 'selected' : ''}>One Shot</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="inp-art-filter-cutoff">CUTOFF (HZ)</label>
-              <input type="number" id="inp-art-filter-cutoff" class="drawer-input" min="20" max="20000" step="10" value="${art.filter.cutoffHz}" />
+              <label for="inp-ext-loop-start">LOOP START (FRAMES)</label>
+              <input type="number" id="inp-ext-loop-start" class="drawer-input" min="0" value="${loopStart}" />
             </div>
             <div class="form-group">
-              <label for="inp-art-filter-reso">RESO (DB)</label>
-              <input type="number" id="inp-art-filter-reso" class="drawer-input" min="0" max="40" step="0.5" value="${art.filter.resonanceDb}" />
+              <label for="inp-ext-loop-end">LOOP END (FRAMES)</label>
+              <input type="number" id="inp-ext-loop-end" class="drawer-input" min="0" value="${loopEnd}" />
             </div>
           </div>
-        </div>
 
-        <!-- Vibrato / Mod LFO -->
-        <div class="articulation-card ${art.vibLfo.enabled ? 'is-enabled' : ''}">
-          <div class="articulation-card-header">
-            <label class="articulation-toggle-label" title="Safe-mapped: Scape, Sphere & Blender LFO depths are explicitly locked to 0 so LFO never causes unwanted spectral morphing">
-              <input type="checkbox" class="articulation-checkbox" id="chk-art-lfo" ${art.vibLfo.enabled ? 'checked' : ''} />
-              <span>Export LFO (Isolated Pitch / Filter / Amp &mdash; Scape/Sphere Zeroed)</span>
-            </label>
-          </div>
           <div class="drawer-grid-3">
             <div class="form-group">
-              <label for="inp-art-lfo-freq">RATE (HZ)</label>
-              <input type="number" id="inp-art-lfo-freq" class="drawer-input" min="0.05" max="30" step="0.1" value="${art.vibLfo.freqHz}" />
+              <label for="inp-ext-loop-xfade">LOOP XFADE (MS)</label>
+              <input type="number" id="inp-ext-loop-xfade" class="drawer-input" min="0" max="5000" value="${loopXfade}" />
             </div>
             <div class="form-group">
-              <label for="inp-art-lfo-delay">DELAY (S)</label>
-              <input type="number" id="inp-art-lfo-delay" class="drawer-input" min="0" max="10" step="0.05" value="${art.vibLfo.delaySec}" />
+              <label for="inp-ext-keytrack">PITCH KEYTRACK (%)</label>
+              <input type="number" id="inp-ext-keytrack" class="drawer-input" min="0" max="100" value="${keytrack}" title="100% = Chromatic, 0% = Unpitched/Drum" />
             </div>
             <div class="form-group">
-              <label for="inp-art-lfo-pitch">PITCH (CENTS)</label>
-              <input type="number" id="inp-art-lfo-pitch" class="drawer-input" min="-1200" max="1200" step="5" value="${art.vibLfo.toPitchCents}" />
+              <label for="sel-ext-trigger">TRIGGER MODE</label>
+              <select id="sel-ext-trigger" class="drawer-select">
+                <option value="attack" ${triggerMode === 'attack' ? 'selected' : ''}>Attack</option>
+                <option value="release" ${triggerMode === 'release' ? 'selected' : ''}>Release</option>
+                <option value="first" ${triggerMode === 'first' ? 'selected' : ''}>First Note</option>
+                <option value="legato" ${triggerMode === 'legato' ? 'selected' : ''}>Legato</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="drawer-grid-3">
+            <div class="form-group">
+              <label for="inp-ext-key-fade-in">KEY XFADE IN / OUT (SEMI)</label>
+              <div class="drawer-pair-inputs">
+                <input type="number" id="inp-ext-key-fade-in" class="drawer-input" min="0" max="64" value="${keyFadeIn}" title="Key Crossfade In (semitones)" />
+                <input type="number" id="inp-ext-key-fade-out" class="drawer-input" min="0" max="64" value="${keyFadeOut}" title="Key Crossfade Out (semitones)" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="inp-ext-vel-fade-in">VEL XFADE IN / OUT</label>
+              <div class="drawer-pair-inputs">
+                <input type="number" id="inp-ext-vel-fade-in" class="drawer-input" min="0" max="127" value="${velFadeIn}" title="Velocity Crossfade In" />
+                <input type="number" id="inp-ext-vel-fade-out" class="drawer-input" min="0" max="127" value="${velFadeOut}" title="Velocity Crossfade Out" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="sel-ext-fade-curve">XFADE CURVE</label>
+              <select id="sel-ext-fade-curve" class="drawer-select">
+                <option value="equal-power" ${fadeCurve === 'equal-power' ? 'selected' : ''}>Equal Power</option>
+                <option value="linear" ${fadeCurve === 'linear' ? 'selected' : ''}>Linear</option>
+                <option value="spectral-morph" ${fadeCurve === 'spectral-morph' ? 'selected' : ''}>Spectral Morph</option>
+              </select>
             </div>
           </div>
         </div>
 
-        ${(() => {
-          const mwCfg = this.handlers.getMasterWaveConfig?.() ?? DEFAULT_MASTER_WAVE_CONFIG;
-          const fmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id) ?? null;
-          const chBadge =
-            fmtInfo?.numChannels === 4
-              ? '4.0 Quad Surround'
-              : fmtInfo?.numChannels === 2
-                ? '2.0 Stereo'
-                : fmtInfo?.numChannels === 1
-                  ? '1.0 Mono'
-                  : 'Unassigned';
-          const fmtBadge = fmtInfo
-            ? `${(fmtInfo.sampleRate / 1000).toFixed(1)} kHz / ${fmtInfo.bitsPerSample}-bit • ${chBadge} • ${fmtInfo.durationSec.toFixed(2)}s`
-            : 'No Sample Loaded';
-          return `
-        <!-- 6. Fase 8: Master Wave Standard (24-bit / 96 kHz), Loop Expansion & Surround -->
+        <!-- 2. Fase 7 Acoustic Intelligence & Auto-Classification -->
+        <div class="inspector-section section-acoustic-intel">
+          <div class="section-header-row">
+            <div class="section-title">ACOUSTIC INTELLIGENCE &amp; AUTO-CLASSIFICATION</div>
+            <button type="button" class="btn btn-xs btn-accent" id="btn-auto-detect-zone-ext" title="Run YIN/MPM + HPS Pitch Detection &amp; Acoustic Parameter Set Classifier">
+              ${ICONS.cpu} Auto-Detect Pitch &amp; Set
+            </button>
+          </div>
+          <div class="acoustic-intel-grid">
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">INSTRUMENT CATEGORY</span>
+              <span class="stat-chip-val is-accent">${detectedCat}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">RECOMMENDED SET</span>
+              <span class="stat-chip-val">Set ${cls ? cls.recommendedParameterSet : 'Auto'} ${cls ? `(${Math.round(cls.confidence * 100)}%)` : ''}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">DETECTED PITCH (F0)</span>
+              <span class="stat-chip-val">${cls ? `${cls.descriptors.detectedF0Hz.toFixed(1)} Hz (${midiNoteToString(cls.descriptors.detectedMidiNote)})` : midiNoteToString(activeReg?.rootKey ?? z.rootKey)}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">HARMONICITY / TYPE</span>
+              <span class="stat-chip-val">${cls ? `${Math.round(cls.descriptors.harmonicity * 100)}% • ${cls.descriptors.isPercussiveOrNoise ? 'Perc/Noise' : 'Harmonic'}` : 'Harmonic'}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">ATTACK / SUSTAIN</span>
+              <span class="stat-chip-val">${cls ? `${cls.descriptors.attackMs} ms • ${Math.round(cls.descriptors.sustainRatio * 100)}%` : '—'}</span>
+            </div>
+            <div class="acoustic-stat-chip">
+              <span class="stat-chip-lbl">STIFFNESS (B) / CENTROID</span>
+              <span class="stat-chip-val">${cls ? `${cls.descriptors.inharmonicityB.toFixed(4)} • ${cls.descriptors.spectralCentroidHz} Hz` : '—'}</span>
+            </div>
+          </div>
+          ${cls?.rationale ? `<div class="acoustic-rationale-banner">${cls.rationale}</div>` : ''}
+        </div>
+      </div>
+
+      <!-- SUB-PANE 2: Synth Articulation (ADSR, Filter, LFO) -->
+      <div class="drawer-subtab-pane ${subTab === 'articulation' ? 'is-active' : 'is-hidden'}" data-ext-subpane="articulation">
+        ${
+          art
+            ? `
+        <div class="inspector-section section-articulation">
+          <div class="section-title">SYNTH ARTICULATION (ADSR / FILTER / LFO &rarr; SAFE SOUND.SCRIPT)</div>
+
+          <!-- Amp Envelope -->
+          <div class="articulation-card ${art.ampEnvEnabled ? 'is-enabled' : ''}">
+            <div class="articulation-card-header">
+              <label class="articulation-toggle-label">
+                <input type="checkbox" class="articulation-checkbox" id="chk-art-amp-env" ${art.ampEnvEnabled ? 'checked' : ''} />
+                <span>Export Amp Envelope (DAHDSR &rarr; R1AmpEnvA/D/S/R)</span>
+              </label>
+              <label class="articulation-sub-toggle" title="Bake amplitude decay contour into classic wave before analysis">
+                <input type="checkbox" class="articulation-checkbox" id="chk-art-bake-env" ${art.bakeEnvelopeIntoWave ? 'checked' : ''} />
+                <span>Bake ADSR</span>
+              </label>
+            </div>
+            <div class="drawer-grid-4">
+              <div class="form-group">
+                <label for="inp-art-amp-a">ATTACK (S)</label>
+                <input type="number" id="inp-art-amp-a" class="drawer-input" min="0" max="12" step="0.01" value="${art.ampEnv.attackSec}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-amp-d">DECAY (S)</label>
+                <input type="number" id="inp-art-amp-d" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.decaySec}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-amp-s">SUSTAIN (0..1)</label>
+                <input type="number" id="inp-art-amp-s" class="drawer-input" min="0" max="1" step="0.05" value="${art.ampEnv.sustainLevel}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-amp-r">RELEASE (S)</label>
+                <input type="number" id="inp-art-amp-r" class="drawer-input" min="0" max="15" step="0.01" value="${art.ampEnv.releaseSec}" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Filter -->
+          <div class="articulation-card ${art.filter.enabled ? 'is-enabled' : ''}">
+            <div class="articulation-card-header">
+              <label class="articulation-toggle-label">
+                <input type="checkbox" class="articulation-checkbox" id="chk-art-filter" ${art.filter.enabled ? 'checked' : ''} />
+                <span>Export Filter (Silver Filter Cutoff / Reso / Env)</span>
+              </label>
+            </div>
+            <div class="drawer-grid-3">
+              <div class="form-group">
+                <label for="sel-art-filter-type">TYPE</label>
+                <select id="sel-art-filter-type" class="drawer-select">
+                  <option value="lpf" ${art.filter.type === 'lpf' ? 'selected' : ''}>LPF (Low-Pass)</option>
+                  <option value="bpf" ${art.filter.type === 'bpf' ? 'selected' : ''}>BPF (Band-Pass)</option>
+                  <option value="hpf" ${art.filter.type === 'hpf' ? 'selected' : ''}>HPF (High-Pass)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="inp-art-filter-cutoff">CUTOFF (HZ)</label>
+                <input type="number" id="inp-art-filter-cutoff" class="drawer-input" min="20" max="20000" step="10" value="${art.filter.cutoffHz}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-filter-reso">RESO (DB)</label>
+                <input type="number" id="inp-art-filter-reso" class="drawer-input" min="0" max="40" step="0.5" value="${art.filter.resonanceDb}" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Vibrato / Mod LFO -->
+          <div class="articulation-card ${art.vibLfo.enabled ? 'is-enabled' : ''}">
+            <div class="articulation-card-header">
+              <label class="articulation-toggle-label" title="Safe-mapped: Scape, Sphere & Blender LFO depths are explicitly locked to 0 so LFO never causes unwanted spectral morphing">
+                <input type="checkbox" class="articulation-checkbox" id="chk-art-lfo" ${art.vibLfo.enabled ? 'checked' : ''} />
+                <span>Export LFO (Isolated Pitch / Filter / Amp &mdash; Scape/Sphere Zeroed)</span>
+              </label>
+            </div>
+            <div class="drawer-grid-3">
+              <div class="form-group">
+                <label for="inp-art-lfo-freq">RATE (HZ)</label>
+                <input type="number" id="inp-art-lfo-freq" class="drawer-input" min="0.05" max="30" step="0.1" value="${art.vibLfo.freqHz}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-lfo-delay">DELAY (S)</label>
+                <input type="number" id="inp-art-lfo-delay" class="drawer-input" min="0" max="10" step="0.05" value="${art.vibLfo.delaySec}" />
+              </div>
+              <div class="form-group">
+                <label for="inp-art-lfo-pitch">PITCH (CENTS)</label>
+                <input type="number" id="inp-art-lfo-pitch" class="drawer-input" min="-1200" max="1200" step="5" value="${art.vibLfo.toPitchCents}" />
+              </div>
+            </div>
+          </div>
+        </div>`
+            : ''
+        }
+      </div>
+
+      <!-- SUB-PANE 3: Master Wave 24-bit / 96 kHz, Loop Expansion & Surround -->
+      <div class="drawer-subtab-pane ${subTab === 'master' ? 'is-active' : 'is-hidden'}" data-ext-subpane="master">
         <div class="inspector-section">
           <div class="section-header-row">
             <div class="section-title">MASTER WAVE (24-BIT / 96 KHZ), LOOP EXPANSION &amp; SURROUND</div>
@@ -1192,78 +1269,65 @@ export class ZoneInspector {
               </div>
             </div>
           </div>
-        </div>`;
-        })()}
+        </div>
+      </div>
 
-        ${(() => {
-          const prov = this.handlers.getModelProvenance?.() ?? null;
-          const diag = this.handlers.getAssetStoreDiagnostics?.() ?? null;
-          const primaryLabel =
-            prov?.primarySourceLayer === '02_legacy_original'
-              ? '02_legacy_original (.scape/.sphere)'
-              : '01_raw_source (Lossless WAV)';
-          const activeLabel = prov?.activeAnalysisSourceLayer ?? '01_raw_source';
-          const reprocessCnt = prov?.reprocessCount ?? 0;
-          const storeKb = diag ? Math.round(diag.totalBytes / 1024) : 0;
-          const storeBadge = diag
-            ? `${diag.backend === 'indexeddb' ? 'IndexedDB' : 'Memory'} • ${storeKb} KB (${prov?.presentLayers.length ?? 0}/5 layers)`
-            : '5-Layer Container';
-          const layerList: Array<{ id: '01_raw_source' | '02_legacy_original' | '03_enhanced_audio' | '04_classic_enhanced' | '05_extended_model'; label: string }> = [
-            { id: '01_raw_source', label: '01 Raw Source' },
-            { id: '02_legacy_original', label: '02 Legacy Orig' },
-            { id: '03_enhanced_audio', label: '03 Master 24/96' },
-            { id: '04_classic_enhanced', label: '04 Classic Enh' },
-            { id: '05_extended_model', label: '05 Extended Mod' },
-          ];
-          return `
-        <!-- 7. Fase 9: 5-Layer Time Capsule Container & Anti-Photocopy Lineage -->
+      <!-- SUB-PANE 4: 5-Layer Time Capsule Container & Anti-Photocopy Lineage -->
+      <div class="drawer-subtab-pane ${subTab === 'capsule' ? 'is-active' : 'is-hidden'}" data-ext-subpane="capsule">
         <div class="inspector-section">
           <div class="section-header-row">
             <div class="section-title">TIME CAPSULE (5-LAYER CONTAINER &amp; ANTI-PHOTOCOPY LINEAGE)</div>
             <span class="val-pill" title="NeuronAssetStore Persistence Status">${storeBadge}</span>
           </div>
-          <div class="acoustic-stats-grid">
-            <div class="acoustic-stat-chip">
+
+          <div class="acoustic-intel-grid">
+            <div class="acoustic-stat-chip is-present">
               <span class="stat-chip-lbl">PUREST ORIGIN LAYER</span>
-              <span class="stat-chip-val">${primaryLabel}</span>
+              <span class="stat-chip-val is-accent" title="${primaryLabel}">${primaryLabel}</span>
             </div>
-            <div class="acoustic-stat-chip">
+            <div class="acoustic-stat-chip is-present">
               <span class="stat-chip-lbl">ACTIVE ANALYSIS INPUT</span>
-              <span class="stat-chip-val">${activeLabel}</span>
+              <span class="stat-chip-val" title="${activeLabel}">${activeLabel}</span>
             </div>
-            <div class="acoustic-stat-chip">
+            <div class="acoustic-stat-chip is-present">
               <span class="stat-chip-lbl">REPROCESS PASSES</span>
               <span class="stat-chip-val">${reprocessCnt} (0 Gen-Loss)</span>
             </div>
+          </div>
+
+          <div class="section-title" style="margin-top: var(--space-3);">CONTAINER LAYERS (01 .. 05)</div>
+          <div class="acoustic-intel-grid">
             ${layerList
               .map((l) => {
                 const st = prov?.layerStats?.[l.id];
                 const kb = st ? (st.totalBytes / 1024).toFixed(1) : '0.0';
+                const isPresent = Boolean(st?.present);
                 return `
-            <div class="acoustic-stat-chip">
+            <div class="acoustic-stat-chip ${isPresent ? 'is-present' : 'is-empty'}">
               <span class="stat-chip-lbl">${l.label.toUpperCase()}</span>
-              <span class="stat-chip-val">${st?.present ? `Present (${st.fileCount}f • ${kb} KB)` : '—'}</span>
+              <span class="stat-chip-val">${isPresent ? `${st!.fileCount} file(s) • ${kb} KB` : 'Empty (—)'}</span>
             </div>`;
               })
               .join('')}
           </div>
-          <div class="articulation-card-header" style="margin-top:8px">
-            <span class="stat-chip-lbl" title="Guarantees re-analysis always pulls from 01_raw_source or 02_legacy_original, never re-compressing 04_classic_enhanced">Zero Generation-Loss Lineage Active</span>
-            <div class="section-header-row">
-              <button type="button" class="btn btn-xs btn-accent" id="btn-reprocess-purest" title="Re-analyze all zones strictly from purest origin layer (01_raw_source or 02_legacy_original) with zero generation loss">
-                ${ICONS.cpu} Reprocess Purest Source
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-export-time-capsule" title="Export 5-Layer Multi-Format Time Capsule (.zip) with manifest.json & provenance.json">
-                ${ICONS.database} Export Time Capsule (.zip)
-              </button>
+
+          <div class="articulation-card is-enabled" style="margin-top: var(--space-3);">
+            <div class="articulation-card-header">
+              <span class="stat-chip-lbl" title="Guarantees re-analysis always pulls from 01_raw_source or 02_legacy_original, never re-compressing 04_classic_enhanced">
+                Zero Generation-Loss Lineage Active
+              </span>
+              <div class="section-header-row">
+                <button type="button" class="btn btn-xs btn-accent" id="btn-reprocess-purest" title="Re-analyze all zones strictly from purest origin layer (01_raw_source or 02_legacy_original) with zero generation loss">
+                  ${ICONS.cpu} Reprocess Purest Source
+                </button>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-export-time-capsule" title="Export 5-Layer Multi-Format Time Capsule (.zip) with manifest.json & provenance.json">
+                  ${ICONS.database} Export Time Capsule (.zip)
+                </button>
+              </div>
             </div>
           </div>
-        </div>`;
-        })()}
+        </div>
       </div>
-      `
-          : ''
-      }
     `;
   }
 
@@ -1412,6 +1476,32 @@ export class ZoneInspector {
           ?.querySelectorAll<HTMLElement>('.drawer-tab-pane')
           .forEach((pane) => {
             const isMatch = pane.getAttribute('data-tab-pane') === target;
+            pane.classList.toggle('is-active', isMatch);
+            pane.classList.toggle('is-hidden', !isMatch);
+          });
+      });
+    });
+
+    // Sub-tab pills inside "Extended" ("Region & Loop", "Articulation", "Master 24/96", "Time Capsule")
+    const subTabBtns = this.drawerElement.querySelectorAll<HTMLButtonElement>('.drawer-subtab-pill');
+    subTabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const raw = btn.getAttribute('data-ext-subtab');
+        const target: 'region' | 'articulation' | 'master' | 'capsule' =
+          raw === 'articulation' || raw === 'master' || raw === 'capsule'
+            ? raw
+            : 'region';
+        if (target === this.activeExtendedSubTab) return;
+        this.activeExtendedSubTab = target;
+        subTabBtns.forEach((b) => {
+          const isMatch = b.getAttribute('data-ext-subtab') === target;
+          b.classList.toggle('is-active', isMatch);
+          b.setAttribute('aria-selected', String(isMatch));
+        });
+        this.drawerElement
+          ?.querySelectorAll<HTMLElement>('.drawer-subtab-pane')
+          .forEach((pane) => {
+            const isMatch = pane.getAttribute('data-ext-subpane') === target;
             pane.classList.toggle('is-active', isMatch);
             pane.classList.toggle('is-hidden', !isMatch);
           });
