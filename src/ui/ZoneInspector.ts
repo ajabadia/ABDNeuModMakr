@@ -975,7 +975,7 @@ export class ZoneInspector {
     if (detuneMount) {
       const initDetuneNorm = Math.max(0, Math.min(1, (Math.round(z.detune) + 99) / 198));
       this.detuneKnob = new Knob(detuneMount, {
-        size: 42,
+        size: 38,
         value: 0.5, // double-click resets to 0 cents
         bipolar: true,
         step: 1 / 198,
@@ -1001,7 +1001,7 @@ export class ZoneInspector {
     if (volMount) {
       const initVolNorm = Math.max(0, Math.min(1, (Math.round(z.volume) + 32) / 44));
       this.volumeKnob = new Knob(volMount, {
-        size: 42,
+        size: 38,
         value: 32 / 44, // double-click resets to 0 dB
         bipolar: false,
         step: 1 / 44,
@@ -1027,7 +1027,7 @@ export class ZoneInspector {
     if (panMount) {
       const initPanNorm = Math.max(0, Math.min(1, (Math.round(z.pan) + 50) / 100));
       this.panKnob = new Knob(panMount, {
-        size: 42,
+        size: 38,
         value: 0.5, // double-click resets to 0 (center)
         bipolar: true,
         step: 1 / 100,

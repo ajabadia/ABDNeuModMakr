@@ -919,12 +919,14 @@ input[type="range"] {
   gap: var(--space-4);
 }
 
-/* ── Canonical Unified Synth Knob Cell (Parity with ABDAxionikVS) ── */
+/* ── Canonical Unified Synth Knob Cell (Exact copy from ABDAxionikVS) ── */
 .zone-knobs-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-  padding: var(--space-2) 0 var(--space-1);
+  grid-template-columns: repeat(3, 1fr);
+  justify-items: center;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
 }
 
 .synth-knob-cell {
@@ -932,29 +934,25 @@ input[type="range"] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  background: var(--color-panel-surface-elevated);
-  border: 1px solid var(--color-panel-border-dim);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-1);
+  gap: 2px;
 }
 
 .synth-knob-cell .abd-knob__label {
   display: none;
 }
 
-.synth-knob-num {
-  font-size: var(--text-md);
+.synth-knob-cell .synth-knob-num {
+  font-size: 9px;
   font-family: var(--font-mono);
   color: var(--color-accent);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.synth-knob-title {
-  font-size: var(--text-xs);
+.synth-knob-cell .synth-knob-title {
+  font-size: 8px;
   font-weight: 700;
   color: var(--color-text-muted);
   letter-spacing: 0.05em;
