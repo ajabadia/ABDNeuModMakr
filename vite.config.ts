@@ -8,10 +8,12 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   server: {
     port: 8388,
-    strictPort: true,
     fs: {
       allow: ['..', '../..']
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 1000
   },
   resolve: {
     alias: {
