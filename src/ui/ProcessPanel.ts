@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { DspAlgorithmMode, ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
+import { DEFAULT_AI_ASSISTANCE_CONFIG } from '../core/types';
 import { ICONS } from './icons';
 
 const EXTENDED_MODE_TITLE_ON =
@@ -29,6 +30,7 @@ export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
   onAutoDetectParameterSet?: () => void;
+  onOpenAiEngineModal?: () => void;
   onSelectCoverImage?: (file: File) => void;
   onRemoveCoverImage?: () => void;
 }
@@ -225,7 +227,21 @@ export class ProcessPanel {
     });
 
     this.syncWorkingModeButtons();
+    this.syncAiButtons();
     this.syncCtaButton();
+  }
+
+  private syncAiButtons(): void {
+    const isAi = this.currentConfig.aiConfig?.enabled ?? false;
+    const badge = this.container.querySelector('#panel-ai-badge');
+    if (badge) {
+      badge.className = `ai-status-badge ${isAi ? 'badge-ai-active' : 'badge-ai-off'}`;
+      badge.textContent = isAi ? '✨ IA ACTIVA' : '⚙️ 100% DSP';
+    }
+    const btnDsp = this.container.querySelector('#btn-panel-ai-dsp');
+    const btnAi = this.container.querySelector('#btn-panel-ai-modal');
+    btnDsp?.classList.toggle('is-active', !isAi);
+    btnAi?.classList.toggle('is-active', isAi);
   }
 
   /**
@@ -553,6 +569,34 @@ export class ProcessPanel {
             </div>
           </div>
 
+          <!-- 3c. AI Assistance vs Algorithmic DSP Engine -->
+          <div class="form-group param-set-group">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <label title="Conmuta entre procesamiento 100% Algorítmico (DSP Local) y Asistencia por Modelos de IA (AudioSR, Demucs, Outpainting)">ASISTENCIA POR IA</label>
+              <span class="ai-status-badge ${this.currentConfig.aiConfig?.enabled ? 'badge-ai-active' : 'badge-ai-off'}" id="panel-ai-badge">
+                ${this.currentConfig.aiConfig?.enabled ? '✨ IA ACTIVA' : '⚙️ 100% DSP'}
+              </span>
+            </div>
+            <div class="working-mode-buttons-grid" role="radiogroup" aria-label="Asistencia por IA">
+              <button
+                type="button"
+                class="btn-working-mode btn-ai-config-mode ${!this.currentConfig.aiConfig?.enabled ? 'is-active' : ''}"
+                id="btn-panel-ai-dsp"
+                title="100% Algorítmico: Ejecuta todas las etapas con DSP matemático determinista en WebAudio"
+              >
+                ⚙️ DSP Puro
+              </button>
+              <button
+                type="button"
+                class="btn-working-mode btn-ai-config-mode ${this.currentConfig.aiConfig?.enabled ? 'is-active' : ''}"
+                id="btn-panel-ai-modal"
+                title="Abrir matriz modular de Asistencia por IA (AudioSR, Demucs, Outpainting) o perfiles rápidos"
+              >
+                ✨ Configurar IA...
+              </button>
+            </div>
+          </div>
+
           <!-- 4. Export / Save Mode (Dual, Classic, Extended) -->
           <div class="form-group param-set-group">
             <label title="Selects what format(s) are generated and saved on export: Dual (.model + .nmmodel), Classic (.model / .sound), or Extended (.nmmodel with source audio)">EXPORT / SAVE MODE</label>
@@ -807,6 +851,20 @@ export class ProcessPanel {
 
     this.container.querySelector('#btn-auto-detect-param-set')?.addEventListener('click', () => {
       this.handlers.onAutoDetectParameterSet?.();
+    });
+
+    // AI Assistance buttons
+    this.container.querySelector('#btn-panel-ai-dsp')?.addEventListener('click', () => {
+      this.currentConfig.aiConfig = {
+        ...(this.currentConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+        enabled: false,
+      };
+      this.syncAiButtons();
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    this.container.querySelector('#btn-panel-ai-modal')?.addEventListener('click', () => {
+      this.handlers.onOpenAiEngineModal?.();
     });
 
     const targetBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-target-format');

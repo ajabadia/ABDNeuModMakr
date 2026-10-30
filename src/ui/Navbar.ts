@@ -200,10 +200,10 @@ export class AppNavbar {
         <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.alert}</span>
         <span class="hud-coverage-text">${initialCoverage.length === 0 ? '128/128 MIDI KEYS OK' : `${initialCoverage.length} GAPS DETECTED`}</span>
       </div>
-      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Asistencia por IA vs. Motor Algorítmico DSP. Clic para alternar; clic derecho para matriz modular.">
+      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Asistencia por IA vs. Motor Algorítmico DSP. Haz clic para abrir el configurador de IA.">
         <span class="hud-ai-dot"></span>
-        <span class="hud-ai-text" id="hud-ai-text">IA: OFF (DSP)</span>
-        <span class="hud-ai-chevron">▾</span>
+        <span class="hud-ai-text" id="hud-ai-text">🪄 MODO IA: OFF</span>
+        <span class="hud-ai-chevron">⚙️</span>
       </div>
     `;
 
@@ -264,14 +264,9 @@ export class AppNavbar {
     this.undoBtn = rightSlot.querySelector('#nav-btn-undo');
     this.redoBtn = rightSlot.querySelector('#nav-btn-redo');
 
-    // AI HUD Pill click & contextmenu
-    this.aiPillElement?.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.classList.contains('hud-ai-chevron')) {
-        this.handlers.onOpenAiEngineModal?.();
-      } else {
-        this.handlers.onToggleAiAssistance?.();
-      }
+    // AI HUD Pill click & contextmenu -> opens the AI configuration matrix modal directly
+    this.aiPillElement?.addEventListener('click', () => {
+      this.handlers.onOpenAiEngineModal?.();
     });
 
     this.aiPillElement?.addEventListener('contextmenu', (e) => {
@@ -349,8 +344,8 @@ export class AppNavbar {
     const enabled = aiConfig?.enabled ?? false;
     if (!enabled) {
       this.aiPillElement.className = 'hud-pill hud-ai-pill is-ai-off';
-      this.aiTextElement.textContent = 'IA: OFF (DSP)';
-      this.aiPillElement.title = 'Modo 100% Algorítmico (DSP Puro). Clic para alternar; clic derecho para matriz modular.';
+      this.aiTextElement.textContent = '🪄 MODO IA: OFF';
+      this.aiPillElement.title = 'Modo 100% Algorítmico (DSP Puro). Haz clic para abrir el configurador y activar Asistencia por IA.';
       return;
     }
 
@@ -364,8 +359,8 @@ export class AppNavbar {
     const isAllAi = count === 5;
     const bridgeMark = isBridgeConnected ? ' (Bridge Conectado)' : ' (Bridge Offline - Fallback DSP)';
     this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
-    this.aiTextElement.textContent = isAllAi ? '✨ IA: 5/5 ACTIVA' : `⚡ IA: ${count}/5 HÍBRIDO`;
-    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas${bridgeMark}. Clic para alternar; clic derecho para matriz modular.`;
+    this.aiTextElement.textContent = isAllAi ? '✨ MODO IA: 5/5 ACTIVA' : `⚡ MODO IA: ${count}/5 HÍBRIDO`;
+    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas${bridgeMark}. Haz clic para abrir la matriz modular.`;
   }
 
 

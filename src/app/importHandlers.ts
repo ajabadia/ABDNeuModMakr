@@ -19,6 +19,7 @@ import {
 } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { toast } from '../ui/notify';
+import { withLoading } from '../ui/LoadingModal';
 
 export interface ImportContext {
   core: CoreService;
@@ -44,30 +45,32 @@ export class ImportHandlers {
     file: File
   ): Promise<void> {
     try {
-      const buffer = await file.arrayBuffer();
-      const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
-      const targetZone = this.ctx.session?.zones.find((z) => z.id === zoneId);
-      const effectiveSlot =
-        slot === 'high' && targetZone && !targetZone.sampleLow ? 'low' : slot;
-      const changes: Partial<Zone> =
-        effectiveSlot === 'low'
-          ? { sampleLow: file.name }
-          : { sampleHigh: file.name };
-      if (
-        effectiveSlot === 'high' &&
-        decoded.instrument &&
-        decoded.instrument.lowVelocity >= 2 &&
-        decoded.instrument.lowVelocity <= 127
-      ) {
-        const isExtended = this.ctx.session?.processConfig.workingMode === 'extended';
-        changes.velSplit = isExtended ? decoded.instrument.lowVelocity : 64;
-      }
-      await this.ctx.core.updateZone(zoneId, changes);
-      this.ctx.session = this.ctx.core.getSession()!;
-      this.ctx.log(
-        `Loaded ${file.name} into ${effectiveSlot === 'low' ? 'Low Vel' : 'High Vel'} (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
-      );
-      this.ctx.refresh();
+      await withLoading('CARGANDO MUESTRA DE AUDIO...', `Decodificando "${file.name}"...`, async () => {
+        const buffer = await file.arrayBuffer();
+        const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
+        const targetZone = this.ctx.session?.zones.find((z) => z.id === zoneId);
+        const effectiveSlot =
+          slot === 'high' && targetZone && !targetZone.sampleLow ? 'low' : slot;
+        const changes: Partial<Zone> =
+          effectiveSlot === 'low'
+            ? { sampleLow: file.name }
+            : { sampleHigh: file.name };
+        if (
+          effectiveSlot === 'high' &&
+          decoded.instrument &&
+          decoded.instrument.lowVelocity >= 2 &&
+          decoded.instrument.lowVelocity <= 127
+        ) {
+          const isExtended = this.ctx.session?.processConfig.workingMode === 'extended';
+          changes.velSplit = isExtended ? decoded.instrument.lowVelocity : 64;
+        }
+        await this.ctx.core.updateZone(zoneId, changes);
+        this.ctx.session = this.ctx.core.getSession()!;
+        this.ctx.log(
+          `Loaded ${file.name} into ${effectiveSlot === 'low' ? 'Low Vel' : 'High Vel'} (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
+        );
+        this.ctx.refresh();
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`Error loading ${file.name}: ${msg}`);
@@ -80,17 +83,19 @@ export class ImportHandlers {
     file: File
   ): Promise<void> {
     try {
-      const buffer = await file.arrayBuffer();
-      const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
-      const changes: Parameters<CoreService['updateExtendedRegion']>[1] = {
-        sampleName: file.name,
-      };
-      await this.ctx.core.updateExtendedRegion(regionId, changes);
-      this.ctx.session = this.ctx.core.getSession()!;
-      this.ctx.log(
-        `Loaded ${file.name} into Region [${regionId}] (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
-      );
-      this.ctx.refresh();
+      await withLoading('CARGANDO MUESTRA DE AUDIO...', `Decodificando "${file.name}"...`, async () => {
+        const buffer = await file.arrayBuffer();
+        const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
+        const changes: Parameters<CoreService['updateExtendedRegion']>[1] = {
+          sampleName: file.name,
+        };
+        await this.ctx.core.updateExtendedRegion(regionId, changes);
+        this.ctx.session = this.ctx.core.getSession()!;
+        this.ctx.log(
+          `Loaded ${file.name} into Region [${regionId}] (${decoded.formatTag.toUpperCase()}, ${decoded.sampleRate} Hz, ${decoded.bitsPerSample}-bit, ${decoded.numChannels}ch, ${decoded.durationSec.toFixed(2)}s)`
+        );
+        this.ctx.refresh();
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`Error loading ${file.name}: ${msg}`);
@@ -991,28 +996,40 @@ export class ImportHandlers {
       // If SoundFont 2 (.sf2) was provided, convert immediately into our native session format
       if (sf2Files.length > 0) {
         const sf2 = sf2Files[0];
-        const presets = this.ctx.core.listSf2Presets(sf2.buffer);
-        const session = await this.ctx.core.importSf2Buffer(sf2.buffer, 0);
-        this.ctx.session = session;
-        this.ctx.selectedZoneId = session.zones[0]?.id || null;
-        this.ctx.log(
-          `${sourceLabel}: imported SF2 "${sf2.name}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones, category: ${session.detectedInstrumentCategory ?? 'Auto'}, ${presets.length} preset(s) in file).`
+        await withLoading(
+          'IMPORTANDO SOUNDFONT (.SF2)...',
+          `Procesando "${sf2.name}", decodificando muestras PCM y analizando capas...`,
+          async () => {
+            const presets = this.ctx.core.listSf2Presets(sf2.buffer);
+            const session = await this.ctx.core.importSf2Buffer(sf2.buffer, 0);
+            this.ctx.session = session;
+            this.ctx.selectedZoneId = session.zones[0]?.id || null;
+            this.ctx.log(
+              `${sourceLabel}: imported SF2 "${sf2.name}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones, category: ${session.detectedInstrumentCategory ?? 'Auto'}, ${presets.length} preset(s) in file).`
+            );
+            this.ctx.refresh();
+          }
         );
-        this.ctx.refresh();
         return;
       }
 
       // If SFZ (.sfz) was provided, convert immediately into our native session format
       if (sfzFiles.length > 0) {
         const sfz = sfzFiles[0];
-        const sfzText = new TextDecoder('utf-8').decode(sfz.buffer);
-        const session = await this.ctx.core.importSfzText(sfzText, sfz.name, audioFiles);
-        this.ctx.session = session;
-        this.ctx.selectedZoneId = session.zones[0]?.id || null;
-        this.ctx.log(
-          `${sourceLabel}: imported SFZ "${sfz.name}" -> "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${audioFiles.length} companion audio file(s)).`
+        await withLoading(
+          'IMPORTANDO INSTRUMENTO SFZ...',
+          `Decodificando opcodes de "${sfz.name}" y mapeando muestras...`,
+          async () => {
+            const sfzText = new TextDecoder('utf-8').decode(sfz.buffer);
+            const session = await this.ctx.core.importSfzText(sfzText, sfz.name, audioFiles);
+            this.ctx.session = session;
+            this.ctx.selectedZoneId = session.zones[0]?.id || null;
+            this.ctx.log(
+              `${sourceLabel}: imported SFZ "${sfz.name}" -> "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${audioFiles.length} companion audio file(s)).`
+            );
+            this.ctx.refresh();
+          }
         );
-        this.ctx.refresh();
         return;
       }
 
@@ -1113,13 +1130,19 @@ export class ImportHandlers {
 
       // Otherwise, if audio files (.wav / .aif / .aiff) were provided (directly or inside a .zip)
       if (audioFiles.length > 0) {
-        const zones = await this.ctx.core.importAudioFiles(audioFiles, audioMode);
-        this.ctx.session = this.ctx.core.getSession()!;
-        this.ctx.selectedZoneId = zones[0]?.id || null;
-        this.ctx.log(
-          `${sourceLabel}: mapped ${audioFiles.length} audio file(s) into ${zones.length} contiguous zone(s).`
+        await withLoading(
+          'CARGANDO MUESTRAS DE AUDIO...',
+          `Mapeando y decodificando ${audioFiles.length} archivo(s) de audio...`,
+          async () => {
+            const zones = await this.ctx.core.importAudioFiles(audioFiles, audioMode);
+            this.ctx.session = this.ctx.core.getSession()!;
+            this.ctx.selectedZoneId = zones[0]?.id || null;
+            this.ctx.log(
+              `${sourceLabel}: mapped ${audioFiles.length} audio file(s) into ${zones.length} contiguous zone(s).`
+            );
+            this.ctx.refresh();
+          }
         );
-        this.ctx.refresh();
         return;
       }
 

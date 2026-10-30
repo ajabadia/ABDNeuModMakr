@@ -4021,3 +4021,116 @@ dialog.cover-artwork-dialog::backdrop {
   color: var(--color-accent);
   margin: var(--space-2) 0;
 }
+
+/* Loading Modal / Progress Spinner Overlay */
+.loading-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 20, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.loading-modal-backdrop.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.loading-modal-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-8);
+  min-width: 380px;
+  max-width: 90vw;
+  background: var(--color-panel-bg, #161b22);
+  border: 1px solid var(--color-panel-border, #30363d);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 210, 255, 0.2);
+  text-align: center;
+  animation: modalScaleIn 0.2s ease-out;
+}
+
+.loading-spinner-ring {
+  width: 60px;
+  height: 60px;
+  position: relative;
+}
+
+.spinner-svg {
+  width: 100%;
+  height: 100%;
+  animation: spinnerRotate 1.4s linear infinite;
+}
+
+.spinner-track {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.spinner-glow {
+  stroke: var(--color-accent, #00d2ff);
+  stroke-dasharray: 90, 150;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 8px var(--color-accent, #00d2ff));
+}
+
+.loading-text-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.loading-title {
+  margin: 0;
+  font-size: var(--text-lg, 16px);
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-accent, #00d2ff);
+}
+
+.loading-subtitle {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--color-text-muted, #8b949e);
+  max-width: 340px;
+  line-height: 1.4;
+}
+
+/* ProcessPanel AI controls styling */
+.ai-status-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.ai-status-badge.badge-ai-active {
+  background: rgba(0, 210, 255, 0.15);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+}
+
+.ai-status-badge.badge-ai-off {
+  background: var(--color-panel-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-panel-border);
+}
+
+.btn-ai-config-mode.is-active {
+  border-color: var(--color-accent) !important;
+  color: var(--color-accent) !important;
+  background: rgba(0, 210, 255, 0.12) !important;
+}

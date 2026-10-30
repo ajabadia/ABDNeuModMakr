@@ -28,6 +28,7 @@ import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
 import { BridgeModal, bridgeModal } from './ui/BridgeModal';
 import { AiEngineModal } from './ui/AiEngineModal';
+import { withLoading } from './ui/LoadingModal';
 import { bridgeClient } from './core/bridge/BridgeClient';
 import { confirmDialog, toast } from './ui/notify';
 import { pwaManager } from './app/pwa';
@@ -513,6 +514,7 @@ class App {
           this.inspector.setZone(this.getActiveZone(), this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
           this.updateSpectralView(this.getActiveZone());
         },
+        onOpenAiEngineModal: () => this.aiEngineModal.open(this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
         onStartProcess: () => this.handleStartProcess(),
         onAutoDetectParameterSet: () => {
           const active = this.getActiveZone();
@@ -609,21 +611,27 @@ class App {
           if (!proceed) return;
         }
         try {
-          this.session = await this.core.loadBankModel(slot);
-          this.selectedZoneId = this.session.zones[0]?.id ?? null;
-          const errors = this.core.validateCoverage();
-          this.processPanel.setConfig(this.session.processConfig, {
-            errors,
-            zones: this.session.zones,
-          });
-          this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
-          this.bankDrawer.setSelectedSlot(slot);
-          this.telemetryDrawer.addLog(
-            `Loaded Model #${String(slot).padStart(3, '0')} '${this.session.name}' from bank (${this.session.zones.length} zone(s)).`
+          await withLoading(
+            'CARGANDO MODELO...',
+            `Cargando modelo #${String(slot).padStart(3, '0')} desde el banco...`,
+            async () => {
+              this.session = await this.core.loadBankModel(slot);
+              this.selectedZoneId = this.session.zones[0]?.id ?? null;
+              const errors = this.core.validateCoverage();
+              this.processPanel.setConfig(this.session.processConfig, {
+                errors,
+                zones: this.session.zones,
+              });
+              this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
+              this.bankDrawer.setSelectedSlot(slot);
+              this.telemetryDrawer.addLog(
+                `Loaded Model #${String(slot).padStart(3, '0')} '${this.session.name}' from bank (${this.session.zones.length} zone(s)).`
+              );
+              toast(`Loaded Model #${slot} '${this.session.name}'`, 'success');
+              this.bankDrawer.close();
+              this.refreshUI();
+            }
           );
-          toast(`Loaded Model #${slot} '${this.session.name}'`, 'success');
-          this.bankDrawer.close();
-          this.refreshUI();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.telemetryDrawer.addLog(`Load model #${slot} failed: ${msg}`);
