@@ -573,6 +573,10 @@ export class BankService {
       zonesAnalysis,
       neuronikModelJson,
       provenance,
+      coverWebpDataUrl:
+        config.workingMode === 'extended'
+          ? config.coverArtwork?.webpDataUrl
+          : undefined,
     };
 
     this.upsertModel(model);
@@ -768,6 +772,19 @@ export function buildBankLoadPlan(
       parameterSet: model.parameterSet,
       complexity: model.complexity,
       targetFormat: model.targetFormat ?? 'dual',
+      ...(model.coverWebpDataUrl
+        ? {
+            workingMode: 'extended' as const,
+            coverArtwork: {
+              webpDataUrl: model.coverWebpDataUrl,
+              byteLength: Math.round((model.coverWebpDataUrl.length * 3) / 4),
+              width: 512,
+              height: 512,
+              originalName: `${model.name}.webp`,
+              updatedAt: model.createdAt,
+            },
+          }
+        : {}),
     },
     sampleOrder,
   };

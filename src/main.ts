@@ -57,6 +57,7 @@ class App {
       refresh: () => self.refreshUI(),
       get bank() { return self.bankDrawer; },
       get neuronDb() { return self.neuronDbModal; },
+      onDropCoverImage: (file: File) => self.handleCoverImageUpload(file),
     });
     this.menus = new MenuActions({
       core: self.core,
@@ -231,11 +232,12 @@ class App {
         this.session = this.core.getSession()!;
         this.refreshUI();
       },
-      onAddExtendedRegion: async (partial) => {
-        const reg = await this.core.addExtendedRegion(partial);
+      onAddExtendedRegion: async (partial, anchorRegionId) => {
+        const reg = await this.core.addExtendedRegion(partial, anchorRegionId);
         this.session = this.core.getSession()!;
+        this.inspector.setSelectedRegionId(reg.id);
         this.telemetryDrawer.addLog(
-          `Added Extended Region [${reg.id}]: Keys ${reg.lowKey}..${reg.highKey} (Root ${reg.rootKey}), Vel ${reg.lowVel}..${reg.highVel}${reg.sampleName ? `, Sample: ${reg.sampleName}` : ''}`
+          `Added Extended Region [${reg.id}]: Keys ${reg.lowKey}..${reg.highKey} (Root ${reg.rootKey}), Vel ${reg.lowVel}..${reg.highVel}${reg.sampleName ? `, Sample: ${reg.sampleName}` : ' (Empty Sample)'}`
         );
         this.refreshUI();
       },
@@ -247,6 +249,32 @@ class App {
       },
       onLoadSampleFileIntoRegion: (regionId, file) => {
         void this.imports.loadSampleFileIntoRegion(regionId, file);
+      },
+      getCommonPlayback: () =>
+        this.session?.processConfig.commonPlayback ?? {
+          loopMode: 'no_loop',
+          pitchKeytrack: 100,
+          trigger: 'attack',
+          fadeCurve: 'equal-power',
+        },
+      onUpdateCommonPlayback: async (changes, resetAllOverrides) => {
+        if (!this.session) return;
+        const currCommon = this.session.processConfig.commonPlayback ?? {
+          loopMode: 'no_loop',
+          pitchKeytrack: 100,
+          trigger: 'attack',
+          fadeCurve: 'equal-power',
+        };
+        const nextCommon = { ...currCommon, ...changes };
+        if (resetAllOverrides && this.session.extendedRegions) {
+          for (const r of this.session.extendedRegions) {
+            r.hasPlaybackOverride = false;
+          }
+        }
+        this.session = this.core.updateProcessConfig({
+          commonPlayback: nextCommon,
+        });
+        this.refreshUI();
       },
       getArticulation: () => this.core.getArticulation(),
       onUpdateArticulation: (changes) => {
@@ -337,9 +365,38 @@ class App {
         toast(`Exported Time Capsule #${String(slot).padStart(3, '0')} (.zip)`, 'success');
         this.refreshUI();
       },
+      onOpenLoopEditor: () => {
+        this.inspector.openLoopEditorDrawer();
+      },
+      getLoopEditorData: (zoneId, regionId) => {
+        const isExtended = this.session?.processConfig.workingMode === 'extended';
+        const zId = zoneId ?? this.getActiveZone()?.id;
+        const rId = isExtended ? (regionId ?? this.inspector.getSelectedRegionId() ?? undefined) : undefined;
+        return this.core.getZoneLoopEditorData(zId, rId);
+      },
+      onAuditionLoop: (opts) => {
+        const isExtended = this.session?.processConfig.workingMode === 'extended';
+        const zId = opts.zoneId ?? this.getActiveZone()?.id;
+        if (!zId) return;
+        const rId = isExtended ? (opts.regionId ?? this.inspector.getSelectedRegionId() ?? undefined) : undefined;
+        void this.core.auditionLoop(zId, {
+          regionId: rId,
+          loopStartFrame: opts.loopStartFrame,
+          loopEndFrame: opts.loopEndFrame,
+          loopEnabled: opts.loopEnabled,
+        });
+        this.spectralView?.notifyPlaybackStarted();
+      },
+      onStopAudition: () => {
+        this.core.stopAudition();
+      },
+      onUpdateLiveLoopPoints: (startFrame, endFrame, sampleRate, loopEnabled) => {
+        this.core.updateLiveLoopPoints(startFrame, endFrame, sampleRate, loopEnabled);
+      },
+      isAuditionPlaying: () => this.core.getRealtimeSpectrum().isPlaying,
     });
 
-    // 3b. Spectral & A/B/C Resynthesis Monitor (Phase 4 & Phase 7)
+    // 3b. Spectral & A/B/C Resynthesis Monitor + Fase 13 Loop Editor
     this.spectralView = new SpectralView(spectralMount, {
       onAuditionZone: (zoneId, mode) => {
         const modeLabel =
@@ -363,7 +420,42 @@ class App {
               : 'B: Legacy DSP Resynthesis';
         this.telemetryDrawer.addLog(`Keyboard audition mode switched to ${modeLabel}`);
       },
-      getRealtimeSpectrum: () => this.core.getRealtimeSpectrum()
+      getRealtimeSpectrum: () => this.core.getRealtimeSpectrum(),
+      getLoopEditorData: () => {
+        const activeZone = this.getActiveZone();
+        const activeRegId = this.inspector.getSelectedRegionId() ?? undefined;
+        return this.core.getZoneLoopEditorData(activeZone?.id, activeRegId);
+      },
+      onUpdateLoopParams: async (changes) => {
+        const regions = this.core.getExtendedRegions();
+        const targetRegId =
+          this.inspector.getSelectedRegionId() ?? regions[0]?.id;
+        if (targetRegId) {
+          await this.core.updateExtendedRegion(targetRegId, {
+            ...(changes.loopMode !== undefined ? { loopMode: changes.loopMode, hasPlaybackOverride: true } : {}),
+            ...(changes.loopStart !== undefined ? { loopStart: changes.loopStart } : {}),
+            ...(changes.loopEnd !== undefined ? { loopEnd: changes.loopEnd } : {}),
+            ...(changes.loopCrossfadeMs !== undefined ? { loopCrossfadeMs: changes.loopCrossfadeMs } : {}),
+          });
+          this.session = this.core.getSession()!;
+          const errors = this.core.validateCoverage();
+          this.navbar.updateSession(this.session, errors);
+        }
+      },
+      onAuditionLoop: (opts) => {
+        const activeZone = this.getActiveZone();
+        if (!activeZone) return;
+        const activeRegId = this.inspector.getSelectedRegionId() ?? undefined;
+        void this.core.auditionLoop(activeZone.id, {
+          regionId: activeRegId,
+          loopStartFrame: opts.loopStartFrame,
+          loopEndFrame: opts.loopEndFrame,
+          loopEnabled: opts.loopEnabled,
+        });
+      },
+      onUpdateLiveLoopPoints: (startFrame, endFrame, sampleRate, loopEnabled) => {
+        this.core.updateLiveLoopPoints(startFrame, endFrame, sampleRate, loopEnabled);
+      },
     });
 
     // 4. Process Panel
@@ -401,6 +493,15 @@ class App {
           } else {
             toast('Load at least one audio sample to auto-detect Parameter Set.', 'warning');
           }
+        },
+        onSelectCoverImage: (file) => {
+          void this.handleCoverImageUpload(file);
+        },
+        onRemoveCoverImage: () => {
+          this.session = this.core.setModelCoverArtwork(null);
+          this.telemetryDrawer.addLog('Removed Extended Model Cover Artwork (.webp).');
+          toast('Removed model cover artwork.', 'info');
+          this.refreshUI();
         },
       },
       {
@@ -505,6 +606,36 @@ class App {
     this.menus.bindUnsavedChangesGuard();
   }
 
+  private async handleCoverImageUpload(file: File): Promise<void> {
+    try {
+      if (this.session && this.session.processConfig.workingMode !== 'extended') {
+        this.session = this.core.updateProcessConfig({ workingMode: 'extended' });
+      }
+      this.processPanel?.setCoverConverting(true, file.name);
+      // Yield one frame so the converting spinner and message render visibly
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+
+      const art = await this.core.convertAndSetModelCoverArtwork(file, file.name);
+      this.session = this.core.getSession()!;
+      this.processPanel?.setCoverConverting(false);
+      const kb = (art.byteLength / 1024).toFixed(1);
+      this.telemetryDrawer.addLog(
+        `Cover Artwork converted to WebP: ${art.width}×${art.height} (${kb} KB) from "${file.name}" -> 05_extended_model/cover.webp`
+      );
+      toast(
+        `Cover converted to .webp (${art.width}×${art.height}, ${kb} KB)`,
+        'success'
+      );
+      this.refreshUI();
+    } catch (err) {
+      this.processPanel?.setCoverConverting(false);
+      toast(
+        `Failed to convert cover image: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
+  }
+
 
   private getActiveZone(): Zone | null {
     if (!this.session) return null;
@@ -568,16 +699,18 @@ class App {
     if (!this.session) return;
     const errors = this.core.validateCoverage();
     const activeZone = this.getActiveZone();
+    const extRegions = this.session.extendedRegions ?? [];
+    const workingMode = this.session.processConfig.workingMode ?? 'classic';
 
     this.navbar.updateSession(this.session, errors);
     this.navbar.updateHistory(this.core.getHistoryState());
-    this.ribbon.setZones(this.session.zones, this.selectedZoneId);
-    this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
+    this.ribbon.setZones(this.session.zones, this.selectedZoneId, extRegions, workingMode);
+    this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, workingMode);
     this.processPanel.setConfig(this.session.processConfig, {
       errors,
       zones: this.session.zones,
     });
-    this.keyboard.setZones(this.session.zones, this.selectedZoneId);
+    this.keyboard.setZones(this.session.zones, this.selectedZoneId, extRegions, workingMode);
     this.keyboard.setActiveZone(activeZone);
     this.telemetryDrawer.updateAudit(this.session, errors);
     this.updateSpectralView(activeZone);
@@ -586,9 +719,14 @@ class App {
   private toggleSpectralPanel(): void {
     this.isSpectralVisible = !this.isSpectralVisible;
     const spectralMount = document.querySelector<HTMLElement>('#spectral-mount');
+    const leftStack = document.querySelector<HTMLElement>('.column-left-stack');
     if (spectralMount) {
       spectralMount.classList.toggle('is-collapsed', !this.isSpectralVisible);
     }
+    if (leftStack) {
+      leftStack.classList.toggle('has-spectral-open', this.isSpectralVisible);
+    }
+    this.inspector.setSpectralVisible(this.isSpectralVisible);
     this.navbar.setSpectralVisible(this.isSpectralVisible);
     if (this.isSpectralVisible) {
       this.updateSpectralView(this.getActiveZone());

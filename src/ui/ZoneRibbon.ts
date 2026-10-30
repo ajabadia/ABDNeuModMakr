@@ -3,7 +3,12 @@
 // Visualizes continuous zones across notes 0..127
 // ─────────────────────────────────────────────────────────
 
-import type { Zone } from '../core/types';
+import type { ExtendedRegion, WorkingMode, Zone } from '../core/types';
+import {
+  analyzeClassicZoneOverlaps,
+  analyzeExtendedIntersections,
+} from '../core/extendedAdapter';
+import { ICONS } from './icons';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -111,6 +116,8 @@ export class ZoneRibbon {
   private handlers: ZoneRibbonHandlers;
   private activeZoneId: string | null = null;
   private currentZones: Zone[] = [];
+  private extendedRegions: ExtendedRegion[] = [];
+  private workingMode: WorkingMode = 'classic';
   private waveMode: 'original' | 'resynthesis' = 'original';
 
   constructor(container: HTMLElement, handlers: ZoneRibbonHandlers) {
@@ -118,9 +125,20 @@ export class ZoneRibbon {
     this.handlers = handlers;
   }
 
-  public setZones(zones: Zone[], activeId: string | null): void {
+  public setZones(
+    zones: Zone[],
+    activeId: string | null,
+    extendedRegions?: ExtendedRegion[],
+    workingMode?: WorkingMode
+  ): void {
     this.currentZones = zones;
     this.activeZoneId = activeId ?? (zones[0]?.id || null);
+    if (extendedRegions !== undefined) {
+      this.extendedRegions = extendedRegions;
+    }
+    if (workingMode !== undefined) {
+      this.workingMode = workingMode;
+    }
     this.render();
   }
 
@@ -141,11 +159,87 @@ export class ZoneRibbon {
       this.waveMode = 'original';
     }
 
+    const extReport =
+      this.workingMode === 'extended' && this.extendedRegions.length > 0
+        ? analyzeExtendedIntersections(this.extendedRegions)
+        : null;
+    const classicOverlaps = analyzeClassicZoneOverlaps(this.currentZones);
+    const classicOverlapBoxes: Array<{
+      lowKey: number;
+      highKey: number;
+      lowVel: number;
+      highVel: number;
+      label: string;
+    }> = [];
+    for (let i = 0; i < this.currentZones.length; i++) {
+      for (let j = i + 1; j < this.currentZones.length; j++) {
+        const a = this.currentZones[i];
+        const b = this.currentZones[j];
+        const ovLow = Math.max(a.lowKey, b.lowKey);
+        const ovHigh = Math.min(a.highKey, b.highKey);
+        if (ovLow <= ovHigh) {
+          classicOverlapBoxes.push({
+            lowKey: ovLow,
+            highKey: ovHigh,
+            lowVel: 1,
+            highVel: 127,
+            label: `#${i + 1}+#${j + 1}`,
+          });
+        }
+      }
+    }
+
+    const intersectionOverlaysHtml = extReport
+      ? extReport.intersectionBoxes
+          .map((box) => {
+            const leftPct = (box.lowKey / 128) * 100;
+            const widthPct = (Math.max(1, box.highKey - box.lowKey + 1) / 128) * 100;
+            const bottomPct = ((box.lowVel - 1) / 127) * 100;
+            const heightPct = (Math.max(1, box.highVel - box.lowVel + 1) / 127) * 100;
+            const regListStr = box.regionIndices.map((n) => `#${n}`).join(' & ');
+            const keyRangeStr = `${midiToNoteName(box.lowKey)} (${box.lowKey})..${midiToNoteName(box.highKey)} (${box.highKey})`;
+            return `
+              <div
+                class="ribbon-intersection-overlay"
+                style="left: ${leftPct.toFixed(3)}%; width: ${widthPct.toFixed(3)}%; bottom: ${bottomPct.toFixed(1)}%; height: ${heightPct.toFixed(1)}%;"
+                title="Range/Velocity Intersection: Regions ${regListStr} overlap on Keys ${keyRangeStr}, Vel ${box.lowVel}..${box.highVel}"
+              >
+                <span class="ribbon-intersection-tag">${ICONS.alert} #${box.regionIndices.join('+')}</span>
+              </div>
+            `;
+          })
+          .join('')
+      : classicOverlapBoxes
+          .map((box) => {
+            const leftPct = (box.lowKey / 128) * 100;
+            const widthPct = (Math.max(1, box.highKey - box.lowKey + 1) / 128) * 100;
+            return `
+              <div
+                class="ribbon-intersection-overlay"
+                style="left: ${leftPct.toFixed(3)}%; width: ${widthPct.toFixed(3)}%; bottom: 0%; height: 100%;"
+                title="Zone Key Overlap (${box.label}) on Keys ${midiToNoteName(box.lowKey)}..${midiToNoteName(box.highKey)}"
+              >
+                <span class="ribbon-intersection-tag">${ICONS.alert} ${box.label}</span>
+              </div>
+            `;
+          })
+          .join('');
+
+    const totalIntersections = extReport
+      ? extReport.totalIntersectingPairs
+      : classicOverlapBoxes.length;
+
+    const overlapHeaderPill =
+      totalIntersections > 0
+        ? `<span class="ribbon-overlap-pill" title="${totalIntersections} range/velocity intersection(s) detected. Highlighted in the zone map below so you can verify whether layering is intentional.">${ICONS.alert} ${totalIntersections} INTERSECTION${totalIntersections > 1 ? 'S' : ''}</span>`
+        : '';
+
     this.container.innerHTML = `
       <div class="zone-ribbon-card">
         <div class="ribbon-header">
           <div class="ribbon-title">
             <span class="ribbon-caption">KEY (0 C-2 .. 127 G8) &times; VELOCITY (1..127) ZONE MAP</span>
+            ${overlapHeaderPill}
           </div>
           <div class="ribbon-header-right">
             <span class="ribbon-hint">Drag vertical border = Key Split (no overlap) &bull; Double-Click = Split Zone</span>
@@ -168,7 +262,12 @@ export class ZoneRibbon {
             <span>1</span>
           </div>
           <div class="ribbon-strip-track" id="ribbon-track">
-            ${this.currentZones.map((zone, idx) => this.renderZoneBlock(zone, idx)).join('')}
+            ${this.currentZones
+              .map((zone, idx) =>
+                this.renderZoneBlock(zone, idx, extReport, classicOverlaps[zone.id]?.overlappingZones ?? [])
+              )
+              .join('')}
+            ${intersectionOverlaysHtml}
           </div>
         </div>
 
@@ -312,7 +411,12 @@ export class ZoneRibbon {
     this.handlers.onSplitZone(zoneId, splitKey);
   }
 
-  private renderZoneBlock(zone: Zone, index: number): string {
+  private renderZoneBlock(
+    zone: Zone,
+    index: number,
+    extReport?: ReturnType<typeof analyzeExtendedIntersections> | null,
+    classicOverlaps: Array<{ id: string; index: number; overlapLowKey: number; overlapHighKey: number }> = []
+  ): string {
     const span = Math.max(1, zone.highKey - zone.lowKey + 1);
     const widthPct = (span / 128) * 100;
     const isSelected = zone.id === this.activeZoneId;
@@ -333,6 +437,18 @@ export class ZoneRibbon {
     const highPeaks = useProcessed ? wf!.processed! : (wf?.highOriginal ?? lowPeaks);
     const lowSvg = buildWatermarkSvg(lowPeaks, Boolean(useProcessed));
     const highSvg = buildWatermarkSvg(highPeaks, Boolean(useProcessed));
+
+    const extSpanIntersections = extReport
+      ? extReport.intersectingKeySpans.filter(
+          (sp) => sp.lowKey <= zone.highKey && sp.highKey >= zone.lowKey
+        )
+      : [];
+    const isIntersecting = extSpanIntersections.length > 0 || classicOverlaps.length > 0;
+    const intersectPeerText = extSpanIntersections.length > 0
+      ? `Regions ${Array.from(new Set(extSpanIntersections.flatMap((s) => s.regionIndices))).map((n) => `#${n}`).join(', ')}`
+      : classicOverlaps.length > 0
+        ? `Zones ${classicOverlaps.map((o) => `#${o.index}`).join(', ')}`
+        : '';
 
     const split = Math.max(2, Math.min(127, zone.velSplit ?? 64));
     const highPct = ((128 - split) / 127) * 100;
@@ -366,11 +482,11 @@ export class ZoneRibbon {
         </div>
       `;
 
-    const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}`;
+    const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}${isIntersecting ? ` | INTERSECTION (${intersectPeerText})` : ''}`;
 
     return `
       <div 
-        class="ribbon-zone-block ${isSelected ? 'is-selected' : ''} ${!zone.sampleLow ? 'has-no-sample' : ''} ${hasHighVel ? 'has-two-vel-layers' : ''}" 
+        class="ribbon-zone-block ${isSelected ? 'is-selected' : ''} ${!zone.sampleLow ? 'has-no-sample' : ''} ${hasHighVel ? 'has-two-vel-layers' : ''} ${isIntersecting ? 'is-intersecting' : ''}" 
         data-zone-id="${zone.id}"
         tabindex="0"
         role="button"
@@ -379,7 +495,7 @@ export class ZoneRibbon {
         title="${zoneTitle}"
       >
         <div class="zone-block-header">
-          <span class="zone-num">#${index + 1}</span>
+          <span class="zone-num">${isIntersecting ? `${ICONS.alert} ` : ''}#${index + 1}</span>
           <span class="zone-range">${lowStr}–${highStr}</span>
           <span class="zone-root-marker">R:${rootStr}</span>
         </div>

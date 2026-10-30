@@ -303,25 +303,38 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 
 ---
 
-## Fase 13 — Editor Visual Interactivo de Loops (`Waveform Loop Editor`) *(Fase Final)*
+## Fase 13 — Editor Visual Interactivo de Loops (`Waveform Loop Editor`) ✅ COMPLETADA
 
-> *Nota: Se abordará en la recta final del proyecto tras investigar las mejores prácticas de editores de samplers profesionales (HALion, Kontakt, Falcon, Polyphone).*
+> *Nota: Implementado en `SpectralView.ts` (pestaña `LOOP EDITOR`), `ZoneInspector.ts` (cajón integrado `Waveform Loop Editor`) y `src/core/dsp/LoopEditorTools.ts`.*
 
-- [ ] **Visor de Onda Interactivo con Marcas de Loop (`Loop Start` / `Loop End` / `Crossfade`)**:
-  - Visualización de la forma de onda completa (mono/estéreo) con zoom horizontal/vertical y cursores arrastrables a mano para `Loop Start`, `Loop End` y zona de `Loop Crossfade`.
-  - **Vista de Empalme / Cruce por Cero (`Loop Seam / Zero-Crossing Magnifier`)**: Ventana de zoom de alta precisión donde se superponen el final (`loopEnd`) y el principio (`loopStart`) del bucle para verificar visualmente la continuidad de fase y pendiente sin clics.
-  - **Controles y Lectura en Vivo**: Valores numéricos en muestras (`frames`) y tiempo (`ms`/`s`), selector de tipo de loop (`no_loop`, `loop_continuous`, `loop_sustain`, `ping_pong`/`alternating`, `one_shot`), *Snap to Zero-Crossing* automático y botón de audición en bucle en tiempo real mientras se mueven los marcadores.
+- [x] **Visor de Onda Interactivo con Marcas de Loop (`Loop Start` / `Loop End` / `Crossfade`)**:
+  - Visualización de la forma de onda completa con zoom horizontal (`1x .. 32x`, rueda de ratón y botones) y cursores arrastrables a mano para `Loop Start` (`L-START`), `Loop End` (`L-END`) y rampa visual de `Loop Crossfade`.
+  - **Vista de Empalme / Cruce por Cero (`Loop Seam / Zero-Crossing Magnifier`)**: Ventana de zoom de alta precisión (panel derecho 30%) donde se superponen el final (`loopEnd`) y el principio (`loopStart`) del bucle junto con las curvas fantasma de continuación y métricas en vivo (`Seam Quality %`, `ΔStep`, `NCC`).
+  - **Controles y Lectura en Vivo**: Valores numéricos en muestras (`frames`) y tiempo (`s`), selector de tipo de loop (`no_loop`, `loop_continuous`, `loop_sustain`, `ping_pong`, `loop_backward`, `one_shot`), *Snap to Zero-Crossing* automático (`snapFrameToRisingZeroCrossing`) y audición en bucle en tiempo real (`auditionLoopSample` + `updateLiveLoopPoints`) mientras se arrastran los marcadores.
+- [x] **Motor Auto-Loop Multi-Algoritmo (`findSmartAutoLoop`)**:
+  - `pitch_periodic`: sincronización exacta con el período fundamental $T_0 = f_s / f_0$ de la nota para preservar afinación perfecta y fase armónica continua sin saltos.
+  - `ncc_zc`: correlación cruzada normalizada entre ventanas de empalme con restricción de cruce por cero de pendiente positiva.
+  - `min_seam_energy`: minimización de energía del paso de discontinuidad $\Delta \text{Step}$ entre el final y el comienzo del bucle.
+  - `equal_power_xfade`: optimización de longitud de empalme para crossfade circular de igual potencia.
+- [x] **Modos de Bucle Avanzados y Badges Visuales**:
+  - Soporte para **Ping-Pong (`ping_pong`)**: síntesis en vivo del búfer reflejado espejo adelante-atrás con insignia `⇄ PING-PONG` en el canvas.
+  - Soporte para **Bucle en Reversa (`loop_backward`)** con insignia `← REVERSE`.
+- [x] **Audición Instantánea en Lista de Zonas / Regiones (`.btn-row-play`)**:
+  - Botón de reproducción interactivo `Play` / `Stop` en cada fila junto al botón de engranaje de configuración.
+  - Mapeo unívoco: cada zona (en Modo Clásico) o región (en Modo Extendido) reproduce con exactitud su propia muestra asignada.
+  - Procesamiento Web Audio completo en vivo: Envolvente de amplitud DAHDSR de 6 etapas (*Delay*, *Attack*, *Hold*, *Decay*, *Sustain*, *Release*), balance de panorama estéreo (`StereoPannerNode`), volumen de región en dB y desafinación (*Detune*) en cents, con parada suave anti-clic.
 
 ---
 
-## Fase 14 — Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended) *(Fase Final)*
+## Fase 14 — Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended) ✅ COMPLETADA
 
-> *Nota: Exclusivo del Modo Extendido (`.nmmodel` y capa `05_extended_model/`). El formato hardware clásico `.model` de 2001 se mantiene intacto sin imagen para preservar compatibilidad binaria estricta.*
+> *Nota: Exclusivo del Modo Extendido (`.nmmodel` y capa `05_extended_model/cover.webp`). El formato hardware clásico `.model` de 2001 se mantiene intacto sin imagen para preservar compatibilidad binaria estricta.*
 
-- [ ] **Selector y Zona Drag & Drop de Portada (`Model Cover Artwork`)**:
-  - Permitir asignar una imagen de portada al modelo en modo `Extended` (mediante carga de archivos `PNG`, `JPG`, `WEBP`, `AVIF`, `SVG` o arrastrar/pegar desde el portapapeles).
-  - **Conversión y Optimización Automática a `.webp` en Cliente**: Redimensionado inteligente (ej. cuadrada `512×512` o `1024×1024` con recorte centrado `cover`) y codificación automática a **`cover.webp`** mediante `OffscreenCanvas` / `HTMLCanvasElement.toBlob('image/webp', 0.88)` para minimizar el peso dentro del paquete `.nmmodel` y en `IndexedDB`.
-  - **Visualización en `ABDNeuModMakr` y `ABDAxionikVS`**: Previsualización en la cabecera / pestaña `Extended` del modelo, miniaturas en el navegador de bancos (`NeuronDB` / `BankDrawer`) y empaquetado dentro del contenedor `.nmmodel` (`05_extended_model/cover.webp` + referencia en `manifest.json`).
+- [x] **Selector y Zona Drag & Drop de Portada (`Model Cover Artwork`)**:
+  - Asignación de imagen de portada al modelo en modo `Extended` en `ProcessPanel.ts` (mediante carga de archivos `PNG`, `JPG`, `WEBP`, `AVIF`, `SVG` o Drag & Drop).
+  - **Conversión y Optimización Automática a `.webp` en Cliente (`src/core/coverArtwork.ts`)**: Redimensionado cuadrado `512×512` con recorte centrado (`cover`) y codificación automática a **`cover.webp`** (`data:image/webp;base64,...` + binario RIFF WEBP).
+  - **Modal de Inspección en Alta Definición (`dlg-cover-preview`)**: Botón "Ver en grande" y click sobre la miniatura para abrir un diálogo modal accesible (`<dialog>`) con visualización 512×512, cuadrícula de metadatos técnicos (dimensiones, formato, tamaño en KB, timestamp) y opciones de reemplazo o eliminación.
+  - **Persistencia Robusta en Esquema de Sesión y Banco**: Validación y preservación de `coverArtwork` y `commonPlayback` en `sessionSchema.ts`, persistencia en `localStorage`, `BankDrawer.ts` y empaquetado en la capa `05_extended_model/cover.webp` de la `Time Capsule` (.zip).
 
 ---
 

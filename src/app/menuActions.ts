@@ -107,6 +107,17 @@ export class MenuActions {
       onUndo: () => this.performUndo(),
       onRedo: () => this.performRedo(),
       onAddZone: async () => {
+        if (this.ctx.session?.processConfig.workingMode === 'extended') {
+          const anchorId = this.ctx.shell.getInspector()?.getSelectedRegionId?.() ?? undefined;
+          const newReg = await this.ctx.core.addExtendedRegion(undefined, anchorId);
+          this.ctx.session = this.ctx.core.getSession()!;
+          this.ctx.shell.getInspector()?.setSelectedRegionId?.(newReg.id);
+          this.ctx.shell.getTelemetry().addLog(
+            `Added empty Extended Region [${newReg.id}]: Keys ${newReg.lowKey}..${newReg.highKey} (Root ${newReg.rootKey}), Vel ${newReg.lowVel}..${newReg.highVel}`
+          );
+          this.ctx.refresh();
+          return;
+        }
         const active = this.ctx.getActiveZone();
         const root = active ? active.rootKey : 60;
         const newZ = await this.ctx.core.addZone(root);
@@ -116,6 +127,18 @@ export class MenuActions {
         this.ctx.refresh();
       },
       onRemoveZone: async () => {
+        if (this.ctx.session?.processConfig.workingMode === 'extended') {
+          const regId = this.ctx.shell.getInspector()?.getSelectedRegionId?.();
+          const regs = this.ctx.core.getExtendedRegions();
+          if (regId && regs.length > 1) {
+            await this.ctx.core.removeExtendedRegion(regId);
+            this.ctx.session = this.ctx.core.getSession()!;
+            this.ctx.shell.getInspector()?.setSelectedRegionId?.(null);
+            this.ctx.shell.getTelemetry().addLog(`Removed Extended Region [${regId}].`);
+            this.ctx.refresh();
+          }
+          return;
+        }
         if (this.ctx.selectedZoneId && this.ctx.session && this.ctx.session.zones.length > 1) {
           await this.ctx.core.removeZone(this.ctx.selectedZoneId);
           this.ctx.session = this.ctx.core.getSession()!;
@@ -332,6 +355,18 @@ export class MenuActions {
 
       if (e.key === 'Insert') {
         e.preventDefault();
+        if (this.ctx.session?.processConfig.workingMode === 'extended') {
+          const anchorId = this.ctx.shell.getInspector()?.getSelectedRegionId?.() ?? undefined;
+          void this.ctx.core.addExtendedRegion(undefined, anchorId).then((newReg) => {
+            this.ctx.session = this.ctx.core.getSession()!;
+            this.ctx.shell.getInspector()?.setSelectedRegionId?.(newReg.id);
+            this.ctx.shell.getTelemetry().addLog(
+              `Added empty Extended Region [${newReg.id}]: Keys ${newReg.lowKey}..${newReg.highKey}, Vel ${newReg.lowVel}..${newReg.highVel}`
+            );
+            this.ctx.refresh();
+          });
+          return;
+        }
         const active = this.ctx.getActiveZone();
         if (active) {
           void this.ctx.core.addZone(active.rootKey).then((newZ) => {
@@ -342,6 +377,20 @@ export class MenuActions {
           });
         }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (this.ctx.session?.processConfig.workingMode === 'extended') {
+          const regId = this.ctx.shell.getInspector()?.getSelectedRegionId?.();
+          const regs = this.ctx.core.getExtendedRegions();
+          if (regId && regs.length > 1) {
+            e.preventDefault();
+            void this.ctx.core.removeExtendedRegion(regId).then(() => {
+              this.ctx.session = this.ctx.core.getSession()!;
+              this.ctx.shell.getInspector()?.setSelectedRegionId?.(null);
+              this.ctx.shell.getTelemetry().addLog(`Removed selected Extended Region via keyboard shortcut.`);
+              this.ctx.refresh();
+            });
+          }
+          return;
+        }
         if (this.ctx.selectedZoneId && this.ctx.session && this.ctx.session.zones.length > 1) {
           e.preventDefault();
           void this.ctx.core.removeZone(this.ctx.selectedZoneId).then(() => {

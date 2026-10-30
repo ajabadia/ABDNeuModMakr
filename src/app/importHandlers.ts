@@ -28,6 +28,7 @@ export interface ImportContext {
   refresh(): void;
   readonly bank: BankDrawer;
   readonly neuronDb: NeuronDbModal;
+  onDropCoverImage?: (file: File) => Promise<void> | void;
 }
 
 export class ImportHandlers {
@@ -99,6 +100,16 @@ export class ImportHandlers {
 
   async handleDroppedFiles(fileList: FileList): Promise<void> {
     if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const imgFile = files.find(
+      (f) =>
+        f.type.startsWith('image/') ||
+        /\.(jpe?g|png|webp|avif|svg|bmp|gif)$/i.test(f.name)
+    );
+    if (imgFile && this.ctx.onDropCoverImage) {
+      await this.ctx.onDropCoverImage(imgFile);
+      if (files.length === 1) return;
+    }
     await this.importMixedFilesOrZip(fileList, 'model', 'samples', 'Drag & Drop');
   }
 

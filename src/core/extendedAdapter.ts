@@ -9,11 +9,31 @@
 import type {
   Zone,
   ExtendedRegion,
+  CommonPlaybackDefaults,
   SynthArticulationConfig,
   DahdsrEnvelope,
   RegionFilterConfig,
   RegionLfoConfig,
 } from './types';
+
+export function createDefaultCommonPlayback(): CommonPlaybackDefaults {
+  return {
+    loopMode: 'no_loop',
+    pitchKeytrack: 100,
+    trigger: 'attack',
+    fadeCurve: 'equal-power',
+  };
+}
+
+export function cloneCommonPlayback(cfg?: CommonPlaybackDefaults): CommonPlaybackDefaults {
+  if (!cfg) return createDefaultCommonPlayback();
+  return {
+    loopMode: cfg.loopMode ?? 'no_loop',
+    pitchKeytrack: typeof cfg.pitchKeytrack === 'number' ? Math.max(0, Math.min(100, Math.round(cfg.pitchKeytrack))) : 100,
+    trigger: cfg.trigger ?? 'attack',
+    fadeCurve: cfg.fadeCurve ?? 'equal-power',
+  };
+}
 
 export interface ClassicProjectionResult {
   zones: Zone[];
@@ -156,6 +176,8 @@ export function syncExtendedRegionsFromClassicZones(
         loopCrossfadeMs: match?.loopCrossfadeMs ?? 0,
         sampleRate: match?.sampleRate,
         numChannels: match?.numChannels,
+        hasPlaybackOverride: match?.hasPlaybackOverride,
+        hasArticulationOverride: match?.hasArticulationOverride,
         ampEnvOverride: match?.ampEnvOverride ? { ...match.ampEnvOverride } : undefined,
         filterOverride: match?.filterOverride ? { ...match.filterOverride } : undefined,
       });
@@ -192,6 +214,8 @@ export function syncExtendedRegionsFromClassicZones(
         loopCrossfadeMs: match?.loopCrossfadeMs ?? 0,
         sampleRate: match?.sampleRate,
         numChannels: match?.numChannels,
+        hasPlaybackOverride: match?.hasPlaybackOverride,
+        hasArticulationOverride: match?.hasArticulationOverride,
         ampEnvOverride: match?.ampEnvOverride ? { ...match.ampEnvOverride } : undefined,
         filterOverride: match?.filterOverride ? { ...match.filterOverride } : undefined,
       });
@@ -569,4 +593,369 @@ export function mapArticulationToSoundOverrides(
   }
 
   return overrides;
+}
+
+// ─────────────────────────────────────────────────────────
+// Smart Next-Range Calculation & 2D Overlap / Intersection Detection
+// ─────────────────────────────────────────────────────────
+
+export interface NextExtendedRangeSuggestion {
+  lowKey: number;
+  highKey: number;
+  rootKey: number;
+  lowVel: number;
+  highVel: number;
+  /** When splitting an existing multi-key region to make room, the donor region ID and its new highKey */
+  splitDonorId?: string;
+  splitDonorNewHighKey?: number;
+}
+
+/**
+ * Computes the next logical available Key/Velocity range for a new ExtendedRegion
+ * so creating a new region never silently duplicates the selected region on top of itself:
+ * 1. If any MIDI keys in `0..127` are uncovered (gap), picks the first gap after `anchorRegion` (or from `0`).
+ * 2. Else if `anchorRegion` covers only a partial velocity range (`1..63` etc.) and the complementary
+ *    velocity range on `[anchorRegion.lowKey..anchorRegion.highKey]` is free, assigns that complementary velocity band.
+ * 3. Else if `anchorRegion` spans multiple keys (`highKey > lowKey`), splits `anchorRegion` at its root/midpoint.
+ * 4. Else finds the nearest multi-key region to split, or advances to the next key in `0..127`.
+ */
+export function computeNextAvailableExtendedRange(
+  regions: ExtendedRegion[],
+  anchorRegion?: ExtendedRegion | null,
+): NextExtendedRangeSuggestion {
+  if (regions.length === 0) {
+    return { lowKey: 0, highKey: 127, rootKey: 60, lowVel: 1, highVel: 127 };
+  }
+
+  const anchor = anchorRegion ?? regions[regions.length - 1];
+
+  // 1. Check for uncovered MIDI key gaps in 0..127
+  const keyCovered = new Uint8Array(128);
+  for (const r of regions) {
+    const lk = clampInt(r.lowKey, 0, 127);
+    const hk = clampInt(r.highKey, 0, 127);
+    for (let k = lk; k <= hk; k++) {
+      keyCovered[k] = 1;
+    }
+  }
+
+  const gaps: Array<{ lowKey: number; highKey: number }> = [];
+  let gStart = -1;
+  for (let k = 0; k < 128; k++) {
+    if (!keyCovered[k]) {
+      if (gStart < 0) gStart = k;
+    } else if (gStart >= 0) {
+      gaps.push({ lowKey: gStart, highKey: k - 1 });
+      gStart = -1;
+    }
+  }
+  if (gStart >= 0) {
+    gaps.push({ lowKey: gStart, highKey: 127 });
+  }
+
+  if (gaps.length > 0) {
+    const afterAnchor = gaps.find((g) => g.lowKey > anchor.highKey) ?? gaps[0];
+    const rootKey = Math.round((afterAnchor.lowKey + afterAnchor.highKey) * 0.5);
+    return {
+      lowKey: afterAnchor.lowKey,
+      highKey: afterAnchor.highKey,
+      rootKey,
+      lowVel: 1,
+      highVel: 127,
+    };
+  }
+
+  // 2. Check if anchor has an uncovered velocity range on its key span [anchor.lowKey..anchor.highKey]
+  if (anchor.lowVel > 1 || anchor.highVel < 127) {
+    const velCovered = new Uint8Array(128); // 1..127
+    for (const r of regions) {
+      if (r.lowKey <= anchor.highKey && r.highKey >= anchor.lowKey) {
+        const lv = clampInt(r.lowVel, 1, 127);
+        const hv = clampInt(r.highVel, 1, 127);
+        for (let v = lv; v <= hv; v++) {
+          velCovered[v] = 1;
+        }
+      }
+    }
+    let bestVStart = -1;
+    let bestVEnd = -1;
+    let curStart = -1;
+    for (let v = 1; v <= 127; v++) {
+      if (!velCovered[v]) {
+        if (curStart < 0) curStart = v;
+      } else if (curStart >= 0) {
+        if (v - 1 - curStart > bestVEnd - bestVStart) {
+          bestVStart = curStart;
+          bestVEnd = v - 1;
+        }
+        curStart = -1;
+      }
+    }
+    if (curStart >= 0 && 127 - curStart > bestVEnd - bestVStart) {
+      bestVStart = curStart;
+      bestVEnd = 127;
+    }
+    if (bestVStart >= 1 && bestVEnd >= bestVStart) {
+      return {
+        lowKey: anchor.lowKey,
+        highKey: anchor.highKey,
+        rootKey: anchor.rootKey,
+        lowVel: bestVStart,
+        highVel: bestVEnd,
+      };
+    }
+  }
+
+  // 3. If anchor spans multiple keys (highKey > lowKey), split anchor
+  if (anchor.highKey > anchor.lowKey) {
+    const splitPoint =
+      anchor.rootKey > anchor.lowKey && anchor.rootKey <= anchor.highKey
+        ? anchor.rootKey
+        : Math.ceil((anchor.lowKey + anchor.highKey) * 0.5);
+    const rootKey = Math.round((splitPoint + anchor.highKey) * 0.5);
+    return {
+      lowKey: splitPoint,
+      highKey: anchor.highKey,
+      rootKey,
+      lowVel: anchor.lowVel,
+      highVel: anchor.highVel,
+      splitDonorId: anchor.id,
+      splitDonorNewHighKey: splitPoint - 1,
+    };
+  }
+
+  // 4. Anchor is a single key: find the nearest multi-key region (preferring after anchor) to split
+  const multiKeyAfter = regions.find((r) => r.lowKey > anchor.highKey && r.highKey > r.lowKey);
+  const multiKeyAny = multiKeyAfter ?? regions.find((r) => r.highKey > r.lowKey);
+  if (multiKeyAny) {
+    // Carve out the first key of multiKeyAfter (right after anchor), or split multiKeyAny
+    if (multiKeyAfter && multiKeyAfter.lowKey === anchor.highKey + 1) {
+      const carvedKey = multiKeyAfter.lowKey;
+      return {
+        lowKey: carvedKey,
+        highKey: carvedKey,
+        rootKey: carvedKey,
+        lowVel: 1,
+        highVel: 127,
+        splitDonorId: multiKeyAfter.id,
+        splitDonorNewHighKey: -1, // signals advancing donor's lowKey to carvedKey + 1
+      };
+    }
+    const splitPoint = Math.ceil((multiKeyAny.lowKey + multiKeyAny.highKey) * 0.5);
+    return {
+      lowKey: splitPoint,
+      highKey: multiKeyAny.highKey,
+      rootKey: Math.round((splitPoint + multiKeyAny.highKey) * 0.5),
+      lowVel: multiKeyAny.lowVel,
+      highVel: multiKeyAny.highVel,
+      splitDonorId: multiKeyAny.id,
+      splitDonorNewHighKey: splitPoint - 1,
+    };
+  }
+
+  // Fallback if all 128 keys are already single-key regions: advance key (or Complementary Vel)
+  const nextKey = anchor.highKey < 127 ? anchor.highKey + 1 : 0;
+  return {
+    lowKey: nextKey,
+    highKey: nextKey,
+    rootKey: nextKey,
+    lowVel: 1,
+    highVel: 127,
+  };
+}
+
+export interface RegionOverlapPeer {
+  id: string;
+  index: number; // 1-based region number (#1, #2...)
+  sampleName: string;
+  lowKey: number;
+  highKey: number;
+  lowVel: number;
+  highVel: number;
+  overlapLowKey: number;
+  overlapHighKey: number;
+  overlapLowVel: number;
+  overlapHighVel: number;
+}
+
+export interface RegionOverlapInfo {
+  regionId: string;
+  regionIndex: number; // 1-based
+  /** Peers that overlap in BOTH Key range AND Velocity range (true 2D intersection) */
+  fullIntersections: RegionOverlapPeer[];
+  /** Peers that overlap in Key range ONLY (clean velocity split / layering) */
+  keyOnlyOverlaps: RegionOverlapPeer[];
+}
+
+export interface KeyVelocityIntersectionBox {
+  lowKey: number;
+  highKey: number;
+  lowVel: number;
+  highVel: number;
+  regionIds: string[];
+  regionIndices: number[]; // 1-based
+}
+
+export interface ExtendedIntersectionReport {
+  byRegionId: Record<string, RegionOverlapInfo>;
+  intersectionBoxes: KeyVelocityIntersectionBox[];
+  /** 1D MIDI key intervals [lowKey..highKey] where >= 2 regions intersect in 2D (Key & Vel) */
+  intersectingKeySpans: Array<{ lowKey: number; highKey: number; regionIndices: number[] }>;
+  totalIntersectingPairs: number;
+}
+
+/**
+ * Analyzes all pairs of ExtendedRegions to detect:
+ * - True 2D intersections (both Key and Velocity ranges overlap)
+ * - Key-only overlaps (shared Key range with separate Velocity ranges)
+ * - Exact 2D boxes and 1D key spans for coloring intersections in ZoneRibbon above the keyboard
+ */
+export function analyzeExtendedIntersections(
+  regions: ExtendedRegion[],
+): ExtendedIntersectionReport {
+  const byRegionId: Record<string, RegionOverlapInfo> = {};
+  regions.forEach((r, i) => {
+    byRegionId[r.id] = {
+      regionId: r.id,
+      regionIndex: i + 1,
+      fullIntersections: [],
+      keyOnlyOverlaps: [],
+    };
+  });
+
+  const intersectionBoxes: KeyVelocityIntersectionBox[] = [];
+  let totalIntersectingPairs = 0;
+
+  for (let i = 0; i < regions.length; i++) {
+    const a = regions[i];
+    for (let j = i + 1; j < regions.length; j++) {
+      const b = regions[j];
+      const ovLowKey = Math.max(a.lowKey, b.lowKey);
+      const ovHighKey = Math.min(a.highKey, b.highKey);
+      if (ovLowKey > ovHighKey) continue; // No key overlap
+
+      const ovLowVel = Math.max(a.lowVel, b.lowVel);
+      const ovHighVel = Math.min(a.highVel, b.highVel);
+      const hasVelOverlap = ovLowVel <= ovHighVel;
+
+      const peerBForA: RegionOverlapPeer = {
+        id: b.id,
+        index: j + 1,
+        sampleName: b.sampleName,
+        lowKey: b.lowKey,
+        highKey: b.highKey,
+        lowVel: b.lowVel,
+        highVel: b.highVel,
+        overlapLowKey: ovLowKey,
+        overlapHighKey: ovHighKey,
+        overlapLowVel: hasVelOverlap ? ovLowVel : 0,
+        overlapHighVel: hasVelOverlap ? ovHighVel : 0,
+      };
+      const peerAForB: RegionOverlapPeer = {
+        id: a.id,
+        index: i + 1,
+        sampleName: a.sampleName,
+        lowKey: a.lowKey,
+        highKey: a.highKey,
+        lowVel: a.lowVel,
+        highVel: a.highVel,
+        overlapLowKey: ovLowKey,
+        overlapHighKey: ovHighKey,
+        overlapLowVel: hasVelOverlap ? ovLowVel : 0,
+        overlapHighVel: hasVelOverlap ? ovHighVel : 0,
+      };
+
+      if (hasVelOverlap) {
+        totalIntersectingPairs++;
+        byRegionId[a.id].fullIntersections.push(peerBForA);
+        byRegionId[b.id].fullIntersections.push(peerAForB);
+        intersectionBoxes.push({
+          lowKey: ovLowKey,
+          highKey: ovHighKey,
+          lowVel: ovLowVel,
+          highVel: ovHighVel,
+          regionIds: [a.id, b.id],
+          regionIndices: [i + 1, j + 1],
+        });
+      } else {
+        byRegionId[a.id].keyOnlyOverlaps.push(peerBForA);
+        byRegionId[b.id].keyOnlyOverlaps.push(peerAForB);
+      }
+    }
+  }
+
+  // Build merged 1D key spans where >= 2 regions have a 2D intersection
+  const keyMap: Array<Set<number>> = Array.from({ length: 128 }, () => new Set<number>());
+  for (const box of intersectionBoxes) {
+    for (let k = clampInt(box.lowKey, 0, 127); k <= clampInt(box.highKey, 0, 127); k++) {
+      for (const idx of box.regionIndices) {
+        keyMap[k].add(idx);
+      }
+    }
+  }
+
+  const intersectingKeySpans: Array<{ lowKey: number; highKey: number; regionIndices: number[] }> = [];
+  let curLow = -1;
+  let curSig = '';
+  let curIndices: number[] = [];
+
+  for (let k = 0; k < 128; k++) {
+    const indices = Array.from(keyMap[k]).sort((x, y) => x - y);
+    const sig = indices.join(',');
+    if (indices.length > 0) {
+      if (curLow < 0) {
+        curLow = k;
+        curSig = sig;
+        curIndices = indices;
+      } else if (sig !== curSig) {
+        intersectingKeySpans.push({ lowKey: curLow, highKey: k - 1, regionIndices: curIndices });
+        curLow = k;
+        curSig = sig;
+        curIndices = indices;
+      }
+    } else if (curLow >= 0) {
+      intersectingKeySpans.push({ lowKey: curLow, highKey: k - 1, regionIndices: curIndices });
+      curLow = -1;
+      curSig = '';
+      curIndices = [];
+    }
+  }
+  if (curLow >= 0) {
+    intersectingKeySpans.push({ lowKey: curLow, highKey: 127, regionIndices: curIndices });
+  }
+
+  return {
+    byRegionId,
+    intersectionBoxes,
+    intersectingKeySpans,
+    totalIntersectingPairs,
+  };
+}
+
+export interface ClassicZoneOverlapInfo {
+  zoneId: string;
+  zoneIndex: number; // 1-based
+  overlappingZones: Array<{ id: string; index: number; overlapLowKey: number; overlapHighKey: number }>;
+}
+
+export function analyzeClassicZoneOverlaps(
+  zones: Zone[],
+): Record<string, ClassicZoneOverlapInfo> {
+  const result: Record<string, ClassicZoneOverlapInfo> = {};
+  zones.forEach((z, idx) => {
+    result[z.id] = { zoneId: z.id, zoneIndex: idx + 1, overlappingZones: [] };
+  });
+  for (let i = 0; i < zones.length; i++) {
+    const a = zones[i];
+    for (let j = i + 1; j < zones.length; j++) {
+      const b = zones[j];
+      const ovLow = Math.max(a.lowKey, b.lowKey);
+      const ovHigh = Math.min(a.highKey, b.highKey);
+      if (ovLow <= ovHigh) {
+        result[a.id].overlappingZones.push({ id: b.id, index: j + 1, overlapLowKey: ovLow, overlapHighKey: ovHigh });
+        result[b.id].overlappingZones.push({ id: a.id, index: i + 1, overlapLowKey: ovLow, overlapHighKey: ovHigh });
+      }
+    }
+  }
+  return result;
 }

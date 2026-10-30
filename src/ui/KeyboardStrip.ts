@@ -5,7 +5,11 @@
 // ─────────────────────────────────────────────────────────
 
 import { createKeyboard, type KeyboardInstance } from '@abdsynths/midi-keyb';
-import type { Zone } from '../core/types';
+import type { ExtendedRegion, WorkingMode, Zone } from '../core/types';
+import {
+  analyzeClassicZoneOverlaps,
+  analyzeExtendedIntersections,
+} from '../core/extendedAdapter';
 import { midiToNoteName } from './ZoneRibbon';
 
 export interface KeyboardStripHandlers {
@@ -19,6 +23,8 @@ export class KeyboardStrip {
   private baseOctave: number = 2; // C2 (36) by default
   private activeZone: Zone | null = null;
   private allZones: Zone[] = [];
+  private extendedRegions: ExtendedRegion[] = [];
+  private workingMode: WorkingMode = 'classic';
   private kbdInstance: KeyboardInstance | null = null;
 
   constructor(container: HTMLElement, handlers: KeyboardStripHandlers) {
@@ -27,10 +33,21 @@ export class KeyboardStrip {
     this.render();
   }
 
-  public setZones(zones: Zone[], activeZoneId?: string | null): void {
+  public setZones(
+    zones: Zone[],
+    activeZoneId?: string | null,
+    extendedRegions?: ExtendedRegion[],
+    workingMode?: WorkingMode
+  ): void {
     this.allZones = zones || [];
     if (activeZoneId !== undefined) {
       this.activeZone = this.allZones.find((z) => z.id === activeZoneId) || null;
+    }
+    if (extendedRegions !== undefined) {
+      this.extendedRegions = extendedRegions;
+    }
+    if (workingMode !== undefined) {
+      this.workingMode = workingMode;
     }
     this.syncZonesToKeyboard();
   }
@@ -131,14 +148,29 @@ export class KeyboardStrip {
   private syncZonesToKeyboard(): void {
     if (!this.kbdInstance?.setZones) return;
 
-    // Convert zones to format expected by MidiKeyboard
-    const mapped = this.allZones.map((z) => ({
-      id: z.id,
-      lowKey: z.lowKey,
-      highKey: z.highKey,
-      rootKey: z.rootKey,
-      color: 'var(--color-accent, #00c8ff)'
-    }));
+    const extReport =
+      this.workingMode === 'extended' && this.extendedRegions.length > 0
+        ? analyzeExtendedIntersections(this.extendedRegions)
+        : null;
+    const classicOverlaps = analyzeClassicZoneOverlaps(this.allZones);
+
+    // Convert zones to format expected by MidiKeyboard, coloring intersecting zones with --color-warning
+    const mapped = this.allZones.map((z) => {
+      const hasExtIntersect = extReport
+        ? extReport.intersectingKeySpans.some(
+            (sp) => sp.lowKey <= z.highKey && sp.highKey >= z.lowKey
+          )
+        : false;
+      const hasClassicIntersect = (classicOverlaps[z.id]?.overlappingZones.length ?? 0) > 0;
+      const isIntersecting = hasExtIntersect || hasClassicIntersect;
+      return {
+        id: z.id,
+        lowKey: z.lowKey,
+        highKey: z.highKey,
+        rootKey: z.rootKey,
+        color: isIntersecting ? 'var(--color-warning)' : 'var(--color-accent)',
+      };
+    });
 
     const activeId = this.activeZone?.id;
     this.kbdInstance.setZones(mapped, activeId);

@@ -157,7 +157,58 @@ export interface MasterWaveResult {
   aiProviderUsed?: string;
 }
 
-export type LoopMode = 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
+export type LoopMode =
+  | 'no_loop'
+  | 'loop_continuous'
+  | 'loop_sustain'
+  | 'ping_pong'
+  | 'loop_backward'
+  | 'one_shot';
+
+/**
+ * Fase 13 — Auto-Loop Search & Seam Smoothing Algorithms:
+ *   - 'pitch_periodic': Snaps loop duration (loopEnd - loopStart) to exact integer multiples of
+ *                       the fundamental pitch period (k * T0), locking to rising zero-crossings.
+ *                       Eliminates pitch detuning, flutter, and phase cancellation.
+ *   - 'ncc_zc': Normalized Cross-Correlation search across rising zero-crossings, maximizing
+ *               waveform similarity across the seam with minimum step/slope discontinuity.
+ *   - 'min_seam_energy': Least-squares minimization of step discontinuity and derivative mismatch.
+ *                        Optimal for non-harmonic pads, textures, and percussion.
+ *   - 'equal_power_xfade': Circular equal-power crossfade (cos/sin) synthesis across the loop seam.
+ */
+export type AutoLoopAlgorithm =
+  | 'pitch_periodic'
+  | 'ncc_zc'
+  | 'min_seam_energy'
+  | 'equal_power_xfade';
+
+export interface AutoLoopOptions {
+  algorithm?: AutoLoopAlgorithm;
+  /** Relative start search range (default 0.15 .. 0.45 of total length) */
+  searchStartRatio?: number;
+  /** Relative end search range (default 0.60 .. 0.92 of total length) */
+  searchEndRatio?: number;
+  candidateStartFrame?: number;
+  candidateEndFrame?: number;
+  knownF0Hz?: number;
+  targetCrossfadeMs?: number;
+  crossfadeCurve?: CrossfadeCurve;
+}
+
+export interface AutoLoopResult {
+  loopStart: number;
+  loopEnd: number;
+  loopCrossfadeMs: number;
+  algorithm: AutoLoopAlgorithm;
+  qualityPercent: number; // 0..100%
+  stepDiscontinuity: number;
+  slopeDiscontinuity: number;
+  nccScore: number;
+  detectedPitchHz?: number;
+  periodFrames?: number;
+  cyclesCount?: number;
+  rationale: string;
+}
 export type TriggerMode = 'attack' | 'release' | 'first' | 'legato';
 export type CrossfadeCurve = 'linear' | 'equal-power' | 'spectral-morph';
 
@@ -212,6 +263,18 @@ export interface SynthArticulationConfig {
 }
 
 /**
+ * Model-wide Common Playback Defaults ("Zona Común").
+ * Replicated across all ExtendedRegions unless a region explicitly sets
+ * `hasPlaybackOverride = true` ("Salvo Excepciones").
+ */
+export interface CommonPlaybackDefaults {
+  loopMode: LoopMode;
+  pitchKeytrack: number;     // 0..100 % (100 = chromatic, 0 = unpitched/drum)
+  trigger: TriggerMode;      // 'attack' | 'release' | 'first' | 'legato'
+  fadeCurve: CrossfadeCurve; // 'linear' | 'equal-power' | 'spectral-morph'
+}
+
+/**
  * A free 2D Key x Velocity region in Extended Creation Mode ("Lego" layout).
  * Stores native sampler parameters (N velocity layers, asymmetric key ranges,
  * crossfades, loop points, pitch keytracking, trigger mode, and local overrides).
@@ -242,6 +305,10 @@ export interface ExtendedRegion {
   loopCrossfadeMs: number;   // Crossfade duration in ms for seamless looping
   sampleRate?: number;
   numChannels?: number;      // 1 = mono, 2 = stereo (merged L/R), 4 = quad
+  /** When true, this region overrides the Model Common playback rules (loopMode, pitchKeytrack, trigger, fadeCurve) */
+  hasPlaybackOverride?: boolean;
+  /** When true, this region overrides the Model Common synth articulation (ampEnvOverride / filterOverride) */
+  hasArticulationOverride?: boolean;
   ampEnvOverride?: Partial<DahdsrEnvelope>;
   filterOverride?: Partial<RegionFilterConfig>;
 }
@@ -280,6 +347,53 @@ export interface ProcessConfig {
    * Fase 8 — Master Wave (24-bit / 96 kHz) & Short-Loop Expansion configuration.
    */
   masterWaveConfig?: MasterWaveConfig;
+  /**
+   * Model-wide Common Playback Defaults ("Zona Común") replicated to all regions without `hasPlaybackOverride`.
+   */
+  commonPlayback?: CommonPlaybackDefaults;
+  /**
+   * Fase 14 — Model Cover Artwork in `.webp` format (Exclusive to Extended Mode / Layer 05).
+   * Never written into classic `.model` binaries so 2001 hardware compatibility stays 100% intact.
+   */
+  coverArtwork?: ModelCoverArtwork | null;
+}
+
+/**
+ * Fase 14 — Optimized `.webp` cover artwork metadata & data URL for Extended Mode models.
+ */
+export interface ModelCoverArtwork {
+  /** Data URL (`data:image/webp;base64,...`) of the optimized `.webp` cover image */
+  webpDataUrl: string;
+  /** Width in pixels (e.g. 512) */
+  width: number;
+  /** Height in pixels (e.g. 512) */
+  height: number;
+  /** Encoded `.webp` binary size in bytes */
+  byteLength: number;
+  /** Original source filename before conversion */
+  originalName?: string;
+  /** ISO timestamp when cover was set */
+  updatedAt: string;
+}
+
+/**
+ * Fase 13 — Waveform Loop Editor inspection & live editing payload for a zone/region sample.
+ */
+export interface ZoneLoopEditorData {
+  zoneId: string;
+  regionId?: string;
+  sampleName: string;
+  sampleRate: number;
+  numChannels: number;
+  totalFrames: number;
+  durationSec: number;
+  /** Mono PCM samples (-1..+1) for high-precision zero-crossing & seam inspection */
+  monoPcm: Float32Array;
+  loopMode: LoopMode;
+  loopStart: number;
+  loopEnd: number;
+  loopCrossfadeMs: number;
+  rootKey: MidiNote;
 }
 
 /** Process execution state */
@@ -328,6 +442,8 @@ export interface GeneratedModel {
   zonesAnalysis?: ZoneAnalysisSummary[];
   neuronikModelJson?: string;
   provenance?: ModelProvenance;
+  /** Fase 14: Optional `.webp` cover data URL for Extended models */
+  coverWebpDataUrl?: string;
 }
 
 /**
@@ -396,15 +512,37 @@ export interface ZoneSpectralInspection {
   qualityScore?: DspQualityScore;
   /** Automatic acoustic classification for this zone */
   classification?: AcousticClassificationResult;
-  /** 2D time-frequency spectrogram grid (normalized 0..1 dB magnitude) */
+  /** 2D time-frequency spectrogram grid (normalized 0..1 dB magnitude) for Original (A) */
   spectrogram: {
     frameCount: number;
     binCount: number;
     maxFreqHz: number;
     magnitudes: number[][];    // [frameIndex][binIndex] in 0..1
   };
-  /** Tracked harmonic partials with layer clustering assignments */
+  /** 2D time-frequency spectrogram grid for Legacy Scape/Sphere Resynthesis (B) */
+  legacySpectrogram?: {
+    frameCount: number;
+    binCount: number;
+    maxFreqHz: number;
+    magnitudes: number[][];
+  };
+  /** 2D time-frequency spectrogram grid for Enhanced DSP Resynthesis (C) */
+  enhancedSpectrogram?: {
+    frameCount: number;
+    binCount: number;
+    maxFreqHz: number;
+    magnitudes: number[][];
+  };
+  /** Tracked harmonic partials with layer clustering assignments (active DSP algorithm) */
   partialTracks: SpectralPartialTrack[];
+  /** Tracked harmonic partials for Legacy DSP (B) */
+  legacyPartialTracks?: SpectralPartialTrack[];
+  /** Tracked harmonic partials for Enhanced DSP (C) */
+  enhancedPartialTracks?: SpectralPartialTrack[];
+  /** 64-partial mean/peak amplitudes (0..1) for Legacy DSP resynthesis (B) */
+  legacyPartials?: number[];
+  /** 64-partial mean/peak amplitudes (0..1) for Enhanced DSP resynthesis (C) */
+  enhancedPartials?: number[];
 }
 
 /**
@@ -548,6 +686,9 @@ export interface TimeCapsuleManifest {
   articulation: SynthArticulationConfig;
   detectedInstrumentCategory?: string;
   presentLayers: CapsuleLayerId[];
+  /** Fase 14: True when `05_extended_model/cover.webp` is packaged inside the container */
+  hasCoverArtwork?: boolean;
+  coverArtworkMeta?: Omit<ModelCoverArtwork, 'webpDataUrl'>;
 }
 
 /** Options for re-processing a model strictly from its purest origin layer (`01_raw_source` or `02_legacy_original`) */

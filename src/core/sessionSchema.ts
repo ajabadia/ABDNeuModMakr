@@ -12,16 +12,21 @@
 // ─────────────────────────────────────────────────────────
 
 import type {
+  CommonPlaybackDefaults,
+  CrossfadeCurve,
   DspAlgorithmMode,
   ExtendedRegion,
+  LoopMode,
   MasterChannelLayout,
   MasterPromotionMethod,
   MasterWaveConfig,
   MidiNote,
+  ModelCoverArtwork,
   ProcessConfig,
   Session,
   SynthArticulationConfig,
   TargetFormat,
+  TriggerMode,
   WorkingMode,
   Zone,
 } from './types.ts';
@@ -206,6 +211,49 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     throw fieldError('processConfig.parameterSet', 'must be an integer 0..9');
   }
 
+  let commonPlayback: CommonPlaybackDefaults | undefined;
+  if (isRecord(cfg['commonPlayback'])) {
+    const cp = cfg['commonPlayback'];
+    const rawMode = cp['loopMode'];
+    const loopMode: LoopMode =
+      rawMode === 'loop_continuous' ||
+      rawMode === 'loop_sustain' ||
+      rawMode === 'ping_pong' ||
+      rawMode === 'loop_backward' ||
+      rawMode === 'one_shot'
+        ? rawMode
+        : 'no_loop';
+    const trigRaw = cp['trigger'];
+    const trigger: TriggerMode =
+      trigRaw === 'release' || trigRaw === 'first' || trigRaw === 'legato' ? trigRaw : 'attack';
+    const fcRaw = cp['fadeCurve'];
+    const fadeCurve: CrossfadeCurve =
+      fcRaw === 'linear' || fcRaw === 'spectral-morph' ? fcRaw : 'equal-power';
+    commonPlayback = {
+      loopMode,
+      pitchKeytrack: clampInt(asFiniteNumber(cp['pitchKeytrack']) ?? 100, 0, 100),
+      trigger,
+      fadeCurve,
+    };
+  }
+
+  let coverArtwork: ModelCoverArtwork | null | undefined;
+  if (cfg['coverArtwork'] === null) {
+    coverArtwork = null;
+  } else if (isRecord(cfg['coverArtwork'])) {
+    const c = cfg['coverArtwork'];
+    if (typeof c['webpDataUrl'] === 'string' && c['webpDataUrl'].startsWith('data:image/webp;base64,')) {
+      coverArtwork = {
+        webpDataUrl: c['webpDataUrl'],
+        byteLength: Math.max(0, Math.round(asFiniteNumber(c['byteLength']) ?? (c['webpDataUrl'].length * 3) / 4)),
+        width: Math.max(1, Math.round(asFiniteNumber(c['width']) ?? 512)),
+        height: Math.max(1, Math.round(asFiniteNumber(c['height']) ?? 512)),
+        originalName: typeof c['originalName'] === 'string' ? c['originalName'] : 'cover.webp',
+        updatedAt: typeof c['updatedAt'] === 'string' ? c['updatedAt'] : new Date().toISOString(),
+      };
+    }
+  }
+
   return {
     modelNumber: slotNum,
     modelName,
@@ -215,6 +263,8 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     ...(workingMode !== undefined ? { workingMode } : {}),
     ...(dspAlgorithm !== undefined ? { dspAlgorithm } : {}),
     ...(masterWaveConfig !== undefined ? { masterWaveConfig } : {}),
+    ...(commonPlayback !== undefined ? { commonPlayback } : {}),
+    ...(coverArtwork !== undefined ? { coverArtwork } : {}),
   };
 }
 
@@ -288,6 +338,8 @@ export function validateSessionPayload(payload: unknown): Session {
             loopMode:
               r.loopMode === 'loop_continuous' ||
               r.loopMode === 'loop_sustain' ||
+              r.loopMode === 'ping_pong' ||
+              r.loopMode === 'loop_backward' ||
               r.loopMode === 'one_shot'
                 ? r.loopMode
                 : 'no_loop',

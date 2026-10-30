@@ -43,6 +43,11 @@ import {
   createDefaultArticulation,
   syncExtendedRegionsFromClassicZones,
 } from './extendedAdapter.ts';
+import {
+  dataUrlToWebpBytes,
+  parseWebpDimensions,
+  webpBytesToDataUrl,
+} from './coverArtwork.ts';
 
 export const ALL_CAPSULE_LAYERS: readonly CapsuleLayerId[] = [
   '01_raw_source',
@@ -213,6 +218,19 @@ export function buildTimeCapsuleEntries(
   }
 
   // ── Layer 05: 05_extended_model/ ────────────────────────
+  const coverArtwork =
+    input.processConfig.workingMode === 'extended'
+      ? (input.processConfig.coverArtwork ?? null)
+      : null;
+  let coverWebpBytes: Uint8Array | null = null;
+  if (coverArtwork && coverArtwork.webpDataUrl) {
+    try {
+      coverWebpBytes = dataUrlToWebpBytes(coverArtwork.webpDataUrl);
+    } catch {
+      coverWebpBytes = null;
+    }
+  }
+
   const nmModelJson =
     input.neuronikModelJson ??
     JSON.stringify(
@@ -226,6 +244,7 @@ export function buildTimeCapsuleEntries(
         parameterSet: input.processConfig.parameterSet,
         complexity: input.processConfig.complexity,
         dspAlgorithm: input.processConfig.dspAlgorithm ?? 'legacy',
+        hasCoverArtwork: coverWebpBytes !== null,
       },
       null,
       2
@@ -246,6 +265,8 @@ export function buildTimeCapsuleEntries(
         dspAlgorithm: input.processConfig.dspAlgorithm ?? 'legacy',
         masterWaveConfig: input.processConfig.masterWaveConfig,
         detectedInstrumentCategory: input.detectedInstrumentCategory,
+        hasCoverArtwork: coverWebpBytes !== null,
+        coverPath: coverWebpBytes ? '05_extended_model/cover.webp' : undefined,
         extendedRegions: extRegions,
         articulation,
       },
@@ -253,6 +274,12 @@ export function buildTimeCapsuleEntries(
       2
     ),
   });
+  if (coverWebpBytes && coverWebpBytes.byteLength > 0) {
+    layerEntries['05_extended_model'].push({
+      path: '05_extended_model/cover.webp',
+      data: coverWebpBytes,
+    });
+  }
 
   // Compute per-layer stats & presentLayers
   const presentLayers: CapsuleLayerId[] = [];
@@ -336,6 +363,17 @@ export function buildTimeCapsuleEntries(
     articulation: structuredClone(articulation),
     detectedInstrumentCategory: input.detectedInstrumentCategory,
     presentLayers,
+    hasCoverArtwork: coverWebpBytes !== null,
+    coverArtworkMeta:
+      coverArtwork && coverWebpBytes
+        ? {
+            width: coverArtwork.width,
+            height: coverArtwork.height,
+            byteLength: coverWebpBytes.byteLength,
+            originalName: coverArtwork.originalName,
+            updatedAt: coverArtwork.updatedAt,
+          }
+        : undefined,
   };
 
   const entries: ZipEntryInput[] = [
@@ -462,6 +500,8 @@ export interface ExtractedTimeCapsule {
   enhancedAudioSamples: Map<string, ArrayBuffer>;
   classicEnhancedFiles: { name: string; data: Uint8Array }[];
   extendedModelJson: string | null;
+  /** Fase 14: Extracted `05_extended_model/cover.webp` binary if present */
+  coverWebpBytes: Uint8Array | null;
   /** Top-level compatibility files (or synthesizable fallback files from 04_classic_enhanced / 02_legacy_original) for `parseModelFileSet` */
   modelParseFiles: { name: string; data: Uint8Array }[];
 }
@@ -499,6 +539,7 @@ export function extractTimeCapsuleFromFiles(
   const enhancedAudioSamples = new Map<string, ArrayBuffer>();
   const classicEnhancedFiles: { name: string; data: Uint8Array }[] = [];
   let extendedModelJson: string | null = null;
+  let coverWebpBytes: Uint8Array | null = null;
   const topLevelModelFiles: { name: string; data: Uint8Array }[] = [];
 
   for (const f of expanded) {
@@ -574,6 +615,8 @@ export function extractTimeCapsuleFromFiles(
         lowerBase.endsWith('.neuronikmodel')
       ) {
         extendedModelJson = new TextDecoder().decode(f.data);
+      } else if (lowerBase === 'cover.webp') {
+        coverWebpBytes = new Uint8Array(f.data);
       }
       continue;
     }
@@ -612,6 +655,18 @@ export function extractTimeCapsuleFromFiles(
     }
   }
 
+  if (manifest && coverWebpBytes && !manifest.processConfig.coverArtwork) {
+    const dims = parseWebpDimensions(coverWebpBytes);
+    manifest.processConfig.coverArtwork = {
+      webpDataUrl: webpBytesToDataUrl(coverWebpBytes),
+      width: manifest.coverArtworkMeta?.width ?? dims.width,
+      height: manifest.coverArtworkMeta?.height ?? dims.height,
+      byteLength: coverWebpBytes.byteLength,
+      originalName: manifest.coverArtworkMeta?.originalName ?? 'cover.webp',
+      updatedAt: manifest.coverArtworkMeta?.updatedAt ?? manifest.createdAt,
+    };
+  }
+
   return {
     isTimeCapsule,
     manifest,
@@ -621,6 +676,7 @@ export function extractTimeCapsuleFromFiles(
     enhancedAudioSamples,
     classicEnhancedFiles,
     extendedModelJson,
+    coverWebpBytes,
     modelParseFiles,
   };
 }

@@ -16,6 +16,7 @@ import type { CoreService, CoreEventListener } from './CoreService.ts';
 import type {
   Session,
   Zone,
+  DahdsrEnvelope,
   ProcessConfig,
   ProcessProgress,
   GeneratedModel,
@@ -71,7 +72,10 @@ import type {
   SynthArticulationConfig,
   Sf2PresetOption,
   AudioFilePayload,
+  ModelCoverArtwork,
+  ZoneLoopEditorData,
 } from './types.ts';
+import { convertImageToCoverWebp } from './coverArtwork.ts';
 import {
   applyEnhancedSpectralModel,
   classifyAcousticSample,
@@ -91,9 +95,12 @@ import {
 import {
   createDefaultArticulation,
   cloneArticulation,
+  createDefaultCommonPlayback,
+  cloneCommonPlayback,
   cloneExtendedRegion,
   syncExtendedRegionsFromClassicZones,
   projectExtendedRegionsToClassicZones,
+  computeNextAvailableExtendedRange,
 } from './extendedAdapter.ts';
 import {
   listSf2Presets as parseSf2PresetsList,
@@ -480,6 +487,26 @@ export class WebAudioPipeline implements CoreService {
         ...changes.masterWaveConfig,
       };
     }
+    if (changes.commonPlayback !== undefined) {
+      const nextCommon = cloneCommonPlayback({
+        ...(cfg.commonPlayback ?? createDefaultCommonPlayback()),
+        ...changes.commonPlayback,
+      });
+      cfg.commonPlayback = nextCommon;
+      if (this.session.extendedRegions) {
+        for (const reg of this.session.extendedRegions) {
+          if (!reg.hasPlaybackOverride) {
+            reg.loopMode = nextCommon.loopMode;
+            reg.pitchKeytrack = nextCommon.pitchKeytrack;
+            reg.trigger = nextCommon.trigger;
+            reg.fadeCurve = nextCommon.fadeCurve;
+          }
+        }
+      }
+    }
+    if (changes.coverArtwork !== undefined) {
+      cfg.coverArtwork = changes.coverArtwork ? { ...changes.coverArtwork } : null;
+    }
 
     this.markDirty();
     return this.session;
@@ -575,26 +602,32 @@ export class WebAudioPipeline implements CoreService {
 
     const host = zones[hostIdx];
 
-    // If host only spans 1 key or splitPoint === host.lowKey, adjust split safely
+    // If host spans multiple keys and rootKey is at lowKey, split at midpoint
     const splitPoint =
       rootKey > host.lowKey
         ? rootKey
-        : Math.min(host.highKey, host.lowKey + 1);
+        : host.highKey > host.lowKey
+          ? Math.ceil((host.lowKey + host.highKey) * 0.5)
+          : host.lowKey;
 
     const effectiveSampleLow =
-      samplePath !== undefined ? samplePath : host.sampleLow;
+      samplePath !== undefined ? samplePath : null;
+    const newRootKey = Math.max(
+      splitPoint,
+      Math.min(host.highKey, rootKey > host.lowKey ? rootKey : Math.round((splitPoint + host.highKey) * 0.5))
+    );
     const newZone = createZone(
       splitPoint,
-      Math.max(splitPoint, Math.min(host.highKey, rootKey)),
+      newRootKey,
       host.highKey,
       effectiveSampleLow
     );
     if (samplePath === undefined) {
-      newZone.sampleHigh = host.sampleHigh;
+      newZone.sampleHigh = null;
       newZone.velSplit = 64;
-      newZone.detune = host.detune;
-      newZone.volume = host.volume;
-      newZone.pan = host.pan;
+      newZone.detune = 0;
+      newZone.volume = 0;
+      newZone.pan = 0;
     }
     host.highKey = Math.max(host.lowKey, splitPoint - 1);
     if (host.rootKey > host.highKey) {
@@ -828,12 +861,26 @@ export class WebAudioPipeline implements CoreService {
       cache: this.ribbonEnvelopeCache,
     };
     const slot = this.session?.processConfig.modelNumber ?? 0;
+    let cachedSpec = this.spectralCache.get(zone.id);
+    if (!cachedSpec && zone.sampleLow) {
+      try {
+        this.inspectZoneSpectrum(zone.id);
+        cachedSpec = this.spectralCache.get(zone.id);
+      } catch {
+        // ignore
+      }
+    }
+    const isEnhancedAlgo =
+      (this.session?.processConfig.dspAlgorithm ?? 'legacy') === 'enhanced';
+    const activeResynthMono = isEnhancedAlgo
+      ? (cachedSpec?.enhancedMono ?? cachedSpec?.resynthMono ?? null)
+      : (cachedSpec?.resynthMono ?? null);
     return buildZoneRibbonWaveforms({
       lowOriginal: getSampleEnvelope(store, zone.sampleLow, zone.rootKey),
       highOriginal: zone.sampleHigh
         ? getSampleEnvelope(store, zone.sampleHigh, zone.rootKey)
         : null,
-      resynthMono: this.spectralCache.get(zone.id)?.resynthMono ?? null,
+      resynthMono: activeResynthMono,
       hasModelBinaries: this.bank.hasBinaries(slot),
     });
   }
@@ -875,9 +922,9 @@ export class WebAudioPipeline implements CoreService {
 
   /**
    * Computes or returns cached Phase 4 spectral inspection data for `zoneId`:
-   *   - 2D STFT spectrogram grid (normalized 0..1 dB magnitudes)
+   *   - 2D STFT spectrogram grid (normalized 0..1 dB magnitudes) for Original (A), Legacy (B) & Enhanced (C)
    *   - Temporal partial tracks (1..64) tagged with clustered layer index (0..3)
-   *   - Downsampled waveform envelopes [min, max] for both Original (A) and Resynthesis (B)
+   *   - Downsampled waveform envelopes [min, max] for Original (A), Legacy Resynthesis (B) & Enhanced Resynthesis (C)
    */
   public inspectZoneSpectrum(zoneId: string): ZoneSpectralInspection {
     if (!this.session) throw new Error('No active session');
@@ -911,33 +958,27 @@ export class WebAudioPipeline implements CoreService {
       false,
       'descriptors'
     );
+    const octaveFold = this.analyzer.lastOctaveFold();
     const enhancedModel = applyEnhancedSpectralModel(
       spectralModel,
       summary.acousticDescriptors
     );
-    const activeModel = (cfg.dspAlgorithm ?? 'legacy') === 'enhanced' ? enhancedModel : spectralModel;
-    const layerView = buildLayerView(activeModel, this.analyzer.lastOctaveFold());
+    const legacyLayerView = buildLayerView(spectralModel, octaveFold);
+    const enhancedLayerView = buildLayerView(enhancedModel, octaveFold);
 
-    const isImportedModelSource = Boolean(
-      zone.sampleLow && this.importedSourceBinaries.has(zone.sampleLow)
-    );
     const resynthDuration = Math.min(2.5, Math.max(0.6, decoded.durationSec));
-    const resynthMono = isImportedModelSource
-      ? decoded.mono
-      : resynthesizeModelToPcm(
-          spectralModel,
-          resynthDuration,
-          44100,
-          summary.detectedF0Hz
-        );
-    const enhancedMono = isImportedModelSource
-      ? decoded.mono
-      : resynthesizeModelToPcm(
-          enhancedModel,
-          resynthDuration,
-          44100,
-          summary.detectedF0Hz
-        );
+    const resynthMono = resynthesizeModelToPcm(
+      spectralModel,
+      resynthDuration,
+      44100,
+      summary.detectedF0Hz
+    );
+    const enhancedMono = resynthesizeModelToPcm(
+      enhancedModel,
+      resynthDuration,
+      44100,
+      summary.detectedF0Hz
+    );
 
     const computeEnvelopePeaks = (
       samples: Float32Array,
@@ -977,103 +1018,131 @@ export class WebAudioPipeline implements CoreService {
     const resynthPeaks = computeEnvelopePeaks(resynthMono, 180);
     const enhancedResynthPeaks = computeEnvelopePeaks(enhancedMono, 180);
 
-    // Compute 2D STFT spectrogram (up to 40 time columns x 96 frequency bins)
-    const maxAnalysisSamples = Math.min(
-      decoded.mono.length,
-      Math.floor(decoded.sampleRate * 3.0)
-    );
-    const stftSlice = decoded.mono.subarray(0, maxAnalysisSamples);
-    const frameSize = 2048;
-    const hopSize = Math.max(
-      256,
-      Math.floor(Math.max(1, stftSlice.length - frameSize) / 36)
-    );
-    const stft = computeStft(stftSlice, {
-      frameSize,
-      hopSize,
-      windowType: 'blackman-harris',
-      sampleRate: decoded.sampleRate,
-    });
-
     const maxFreqHz = Math.min(
       decoded.sampleRate * 0.45,
       Math.max(4500, summary.detectedF0Hz * 36)
     );
-    const maxBin = Math.max(
-      16,
-      Math.min(stft.numBins - 1, Math.round(maxFreqHz / stft.binWidthHz))
-    );
     const displayBins = 96;
 
-    let peakMag = 1e-9;
-    for (const fr of stft.frames) {
-      for (let b = 1; b <= maxBin; b++) {
-        if (fr.magnitudes[b] > peakMag) peakMag = fr.magnitudes[b];
-      }
-    }
+    const buildSpectrogramGrid = (
+      pcm: Float32Array,
+      sr: number
+    ): {
+      frameCount: number;
+      binCount: number;
+      maxFreqHz: number;
+      magnitudes: number[][];
+    } => {
+      const maxAnalysisSamples = Math.min(pcm.length, Math.floor(sr * 3.0));
+      const stftSlice = pcm.subarray(0, maxAnalysisSamples);
+      const frameSize = 2048;
+      const hopSize = Math.max(
+        256,
+        Math.floor(Math.max(1, stftSlice.length - frameSize) / 36)
+      );
+      const stft = computeStft(stftSlice, {
+        frameSize,
+        hopSize,
+        windowType: 'blackman-harris',
+        sampleRate: sr,
+      });
+      const maxBin = Math.max(
+        16,
+        Math.min(stft.numBins - 1, Math.round(maxFreqHz / stft.binWidthHz))
+      );
 
-    const magnitudes: number[][] = [];
-    for (const fr of stft.frames) {
-      const col = new Array<number>(displayBins).fill(0);
-      for (let dbIdx = 0; dbIdx < displayBins; dbIdx++) {
-        const b0 = Math.max(1, Math.floor((dbIdx * maxBin) / displayBins));
-        const b1 = Math.max(
-          b0 + 1,
-          Math.floor(((dbIdx + 1) * maxBin) / displayBins)
-        );
-        let binMax = 0;
-        for (let b = b0; b < b1 && b <= maxBin; b++) {
-          if (fr.magnitudes[b] > binMax) binMax = fr.magnitudes[b];
+      let peakMag = 1e-9;
+      for (const fr of stft.frames) {
+        for (let b = 1; b <= maxBin; b++) {
+          if (fr.magnitudes[b] > peakMag) peakMag = fr.magnitudes[b];
         }
-        const relDb = linearToDb(binMax / peakMag, -120);
-        // Normalize [-72 dB .. 0 dB] -> [0 .. 1]
-        col[dbIdx] = Number(
-          clamp((relDb + 72) / 72, 0, 1).toFixed(3)
-        );
       }
-      magnitudes.push(col);
-    }
 
-    // Build temporal partial trajectories (1..64) with layer assignment
-    const partialTracks: SpectralPartialTrack[] = [];
-    for (let k = 0; k < 64; k++) {
-      const assignedLayer = Math.max(0, layerView.layerOfPartial[k]);
-      const peakAmp = layerView.peakOfPartial[k];
-      if (peakAmp < 1e-4 && (summary.amplitudes[k] ?? 0) < 1e-4) continue;
+      const magnitudes: number[][] = [];
+      for (const fr of stft.frames) {
+        const col = new Array<number>(displayBins).fill(0);
+        for (let dbIdx = 0; dbIdx < displayBins; dbIdx++) {
+          const b0 = Math.max(1, Math.floor((dbIdx * maxBin) / displayBins));
+          const b1 = Math.max(
+            b0 + 1,
+            Math.floor(((dbIdx + 1) * maxBin) / displayBins)
+          );
+          let binMax = 0;
+          for (let b = b0; b < b1 && b <= maxBin; b++) {
+            if (fr.magnitudes[b] > binMax) binMax = fr.magnitudes[b];
+          }
+          const relDb = linearToDb(binMax / peakMag, -120);
+          col[dbIdx] = Number(clamp((relDb + 72) / 72, 0, 1).toFixed(3));
+        }
+        magnitudes.push(col);
+      }
 
-      const nFrames = Math.max(1, activeModel.numFramesOf(assignedLayer));
-      const frames: { timeNorm: number; freqHz: number; amplitude: number }[] = [];
-      let ampSum = 0;
+      return {
+        frameCount: magnitudes.length,
+        binCount: displayBins,
+        maxFreqHz: Math.round(maxFreqHz),
+        magnitudes,
+      };
+    };
 
-      for (let f = 0; f < nFrames; f++) {
-        const timeNorm = nFrames > 1 ? f / (nFrames - 1) : 0;
-        const amp = Math.abs(activeModel.ampAt(assignedLayer, f, k));
-        const offHz = activeModel.offsetAt(assignedLayer, f, k);
-        const f0Frame =
-          activeModel.f0AtLayer(assignedLayer, f) > 0
-            ? activeModel.f0AtLayer(assignedLayer, f)
-            : summary.detectedF0Hz;
-        const freqHz = Math.max(20, (k + 1) * f0Frame + offHz);
-        ampSum += amp;
-        frames.push({
-          timeNorm: Number(timeNorm.toFixed(3)),
-          freqHz: Number(freqHz.toFixed(2)),
-          amplitude: Number(amp.toFixed(4)),
+    const spectrogram = buildSpectrogramGrid(decoded.mono, decoded.sampleRate);
+    const legacySpectrogram = buildSpectrogramGrid(resynthMono, 44100);
+    const enhancedSpectrogram = buildSpectrogramGrid(enhancedMono, 44100);
+
+    const buildTracksAndPartials = (
+      model: typeof spectralModel,
+      lv: typeof legacyLayerView
+    ): { tracks: SpectralPartialTrack[]; partials: number[] } => {
+      const tracks: SpectralPartialTrack[] = [];
+      const partials = new Array<number>(64).fill(0);
+      for (let k = 0; k < 64; k++) {
+        const assignedLayer = Math.max(0, lv.layerOfPartial[k]);
+        const peakAmp = lv.peakOfPartial[k];
+        const nFrames = Math.max(1, model.numFramesOf(assignedLayer));
+        const frames: { timeNorm: number; freqHz: number; amplitude: number }[] = [];
+        let ampSum = 0;
+        let maxFrameAmp = 0;
+
+        for (let f = 0; f < nFrames; f++) {
+          const timeNorm = nFrames > 1 ? f / (nFrames - 1) : 0;
+          const amp = Math.abs(model.ampAt(assignedLayer, f, k));
+          const offHz = model.offsetAt(assignedLayer, f, k);
+          const f0Frame =
+            model.f0AtLayer(assignedLayer, f) > 0
+              ? model.f0AtLayer(assignedLayer, f)
+              : summary.detectedF0Hz;
+          const freqHz = Math.max(20, (k + 1) * f0Frame + offHz);
+          ampSum += amp;
+          if (amp > maxFrameAmp) maxFrameAmp = amp;
+          frames.push({
+            timeNorm: Number(timeNorm.toFixed(3)),
+            freqHz: Number(freqHz.toFixed(2)),
+            amplitude: Number(amp.toFixed(4)),
+          });
+        }
+
+        const meanAmp = ampSum / Math.max(1, nFrames);
+        partials[k] = Number(clamp(Math.max(meanAmp * 1.15, maxFrameAmp * 0.85), 0, 1).toFixed(4));
+
+        if (peakAmp < 1e-4 && (summary.amplitudes[k] ?? 0) < 1e-4) continue;
+        if (frames.length === 1) {
+          frames.push({ ...frames[0], timeNorm: 1.0 });
+        }
+
+        tracks.push({
+          partialIndex: k + 1,
+          harmonicMultiple: k + 1,
+          layerIndex: assignedLayer,
+          meanAmplitude: Number(meanAmp.toFixed(4)),
+          frames,
         });
       }
+      return { tracks, partials };
+    };
 
-      if (frames.length === 1) {
-        frames.push({ ...frames[0], timeNorm: 1.0 });
-      }
-
-      partialTracks.push({
-        partialIndex: k + 1,
-        harmonicMultiple: k + 1,
-        layerIndex: assignedLayer,
-        meanAmplitude: Number((ampSum / Math.max(1, nFrames)).toFixed(4)),
-        frames,
-      });
-    }
+    const legacyBuilt = buildTracksAndPartials(spectralModel, legacyLayerView);
+    const enhancedBuilt = buildTracksAndPartials(enhancedModel, enhancedLayerView);
+    const isEnhancedActive = (cfg.dspAlgorithm ?? 'legacy') === 'enhanced';
 
     const inspection: ZoneSpectralInspection = {
       zoneId: zone.id,
@@ -1086,13 +1155,14 @@ export class WebAudioPipeline implements CoreService {
       enhancedResynthPeaks,
       qualityScore: summary.qualityScore,
       classification: summary.classification,
-      spectrogram: {
-        frameCount: magnitudes.length,
-        binCount: displayBins,
-        maxFreqHz: Math.round(maxFreqHz),
-        magnitudes,
-      },
-      partialTracks,
+      spectrogram,
+      legacySpectrogram,
+      enhancedSpectrogram,
+      partialTracks: isEnhancedActive ? enhancedBuilt.tracks : legacyBuilt.tracks,
+      legacyPartialTracks: legacyBuilt.tracks,
+      enhancedPartialTracks: enhancedBuilt.tracks,
+      legacyPartials: legacyBuilt.partials,
+      enhancedPartials: enhancedBuilt.partials,
     };
 
     this.spectralCache.set(zone.id, {
@@ -1796,6 +1866,8 @@ export class WebAudioPipeline implements CoreService {
       workingMode: extracted.manifest?.processConfig.workingMode,
       dspAlgorithm: extracted.manifest?.processConfig.dspAlgorithm,
       masterWaveConfig: extracted.manifest?.processConfig.masterWaveConfig,
+      commonPlayback: extracted.manifest?.processConfig.commonPlayback,
+      coverArtwork: extracted.manifest?.processConfig.coverArtwork ?? null,
     };
 
     const { manifest: builtManifest, provenance: builtProvenance } =
@@ -1848,6 +1920,7 @@ export class WebAudioPipeline implements CoreService {
       zonesAnalysis,
       neuronikModelJson,
       provenance: builtProvenance,
+      coverWebpDataUrl: this.session!.processConfig.coverArtwork?.webpDataUrl,
     };
 
     this.bank.registerImportedBundle(bundle.slot, zoneBinaries, {
@@ -1966,6 +2039,17 @@ export class WebAudioPipeline implements CoreService {
     this.session!.name = record.name;
     this.session!.zones = newZones;
     this.session!.processConfig = { ...plan.processConfig };
+    if (record.coverWebpDataUrl && !this.session!.processConfig.coverArtwork) {
+      this.session!.processConfig.coverArtwork = {
+        webpDataUrl: record.coverWebpDataUrl,
+        byteLength: Math.round((record.coverWebpDataUrl.length * 3) / 4),
+        width: 512,
+        height: 512,
+        originalName: `${record.name}.webp`,
+        updatedAt: record.createdAt,
+      };
+      this.session!.processConfig.workingMode = 'extended';
+    }
     this.session!.dirty = true;
     this.session!.modifiedAt = new Date().toISOString();
     this.ensureZoneDemoBuffers(this.session!.zones);
@@ -2391,49 +2475,94 @@ export class WebAudioPipeline implements CoreService {
     return cloneExtendedRegion(updated);
   }
 
-  public async addExtendedRegion(partial?: Partial<ExtendedRegion>): Promise<ExtendedRegion> {
+  public async addExtendedRegion(
+    partial?: Partial<ExtendedRegion>,
+    anchorRegionId?: string
+  ): Promise<ExtendedRegion> {
     if (!this.session) throw new Error('No active session');
     if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
       this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
     }
     this.pushHistory('Add Extended Region');
 
-    const nextNum = this.session.extendedRegions.length + 1;
-    const defaultSample =
-      partial?.sampleName ??
-      this.session.extendedRegions[0]?.sampleName ??
-      this.session.zones[0]?.sampleLow ??
-      'Strings_60_C4.wav';
+    const regs = this.session.extendedRegions;
+    const anchorIdx = anchorRegionId ? regs.findIndex((r) => r.id === anchorRegionId) : -1;
+    const anchorReg = anchorIdx >= 0 ? regs[anchorIdx] : regs[regs.length - 1] ?? null;
+
+    const hasExplicitRange =
+      partial?.lowKey !== undefined ||
+      partial?.highKey !== undefined ||
+      partial?.lowVel !== undefined ||
+      partial?.highVel !== undefined;
+    const suggestion = hasExplicitRange
+      ? null
+      : computeNextAvailableExtendedRange(regs, anchorReg);
+
+    if (suggestion?.splitDonorId) {
+      const donor = regs.find((r) => r.id === suggestion.splitDonorId);
+      if (donor) {
+        if (suggestion.splitDonorNewHighKey === -1) {
+          donor.lowKey = Math.min(donor.highKey, suggestion.highKey + 1);
+          if (donor.rootKey < donor.lowKey) donor.rootKey = donor.lowKey;
+        } else if (typeof suggestion.splitDonorNewHighKey === 'number') {
+          donor.highKey = Math.max(donor.lowKey, suggestion.splitDonorNewHighKey);
+          if (donor.rootKey > donor.highKey) donor.rootKey = donor.highKey;
+        }
+      }
+    }
+
+    const common =
+      this.session.processConfig.commonPlayback ?? createDefaultCommonPlayback();
+    const nextNum = regs.length + 1;
+    // Empty sample by default when creating a new region so the user never confuses it with a duplicate
+    const defaultSample = partial?.sampleName ?? '';
+    const lowKey = clamp(Math.round(partial?.lowKey ?? suggestion?.lowKey ?? 0), 0, 127);
+    const highKey = clamp(Math.round(partial?.highKey ?? suggestion?.highKey ?? 127), lowKey, 127);
+    const rootKey = clamp(
+      Math.round(partial?.rootKey ?? suggestion?.rootKey ?? Math.round((lowKey + highKey) * 0.5)),
+      0,
+      127
+    );
+    const lowVel = clamp(Math.round(partial?.lowVel ?? suggestion?.lowVel ?? 1), 1, 127);
+    const highVel = clamp(Math.round(partial?.highVel ?? suggestion?.highVel ?? 127), lowVel, 127);
 
     const newReg: ExtendedRegion = {
       id: partial?.id ?? `ext-reg-${Date.now().toString(36)}-${nextNum}`,
       sampleName: defaultSample,
-      lowKey: clamp(Math.round(partial?.lowKey ?? 0), 0, 127),
-      highKey: clamp(Math.round(partial?.highKey ?? 127), 0, 127),
-      rootKey: clamp(Math.round(partial?.rootKey ?? 60), 0, 127),
-      lowVel: clamp(Math.round(partial?.lowVel ?? 1), 1, 127),
-      highVel: clamp(Math.round(partial?.highVel ?? 127), 1, 127),
+      lowKey,
+      highKey,
+      rootKey,
+      lowVel,
+      highVel,
       detune: clamp(Math.round(partial?.detune ?? 0), -99, 99),
       volume: clamp(Math.round(partial?.volume ?? 0), -32, 12),
       pan: clamp(Math.round(partial?.pan ?? 0), -50, 50),
-      pitchKeytrack: clamp(Math.round(partial?.pitchKeytrack ?? 100), 0, 100),
-      trigger: partial?.trigger ?? 'attack',
+      pitchKeytrack: clamp(Math.round(partial?.pitchKeytrack ?? common.pitchKeytrack), 0, 100),
+      trigger: partial?.trigger ?? common.trigger,
       seqPosition: partial?.seqPosition,
       seqLength: partial?.seqLength,
       keyFadeIn: Math.max(0, Math.round(partial?.keyFadeIn ?? 0)),
       keyFadeOut: Math.max(0, Math.round(partial?.keyFadeOut ?? 0)),
       velFadeIn: Math.max(0, Math.round(partial?.velFadeIn ?? 0)),
       velFadeOut: Math.max(0, Math.round(partial?.velFadeOut ?? 0)),
-      fadeCurve: partial?.fadeCurve ?? 'equal-power',
-      loopMode: partial?.loopMode ?? 'no_loop',
+      fadeCurve: partial?.fadeCurve ?? common.fadeCurve,
+      loopMode: partial?.loopMode ?? common.loopMode,
       loopStart: Math.max(0, Math.round(partial?.loopStart ?? 0)),
       loopEnd: Math.max(0, Math.round(partial?.loopEnd ?? 0)),
       loopCrossfadeMs: Math.max(0, Math.round(partial?.loopCrossfadeMs ?? 0)),
       sampleRate: partial?.sampleRate,
       numChannels: partial?.numChannels,
+      hasPlaybackOverride: partial?.hasPlaybackOverride ?? false,
+      hasArticulationOverride: partial?.hasArticulationOverride ?? false,
+      ampEnvOverride: partial?.ampEnvOverride ? { ...partial.ampEnvOverride } : undefined,
+      filterOverride: partial?.filterOverride ? { ...partial.filterOverride } : undefined,
     };
 
-    this.session.extendedRegions.push(newReg);
+    if (anchorIdx >= 0) {
+      regs.splice(anchorIdx + 1, 0, newReg);
+    } else {
+      regs.push(newReg);
+    }
     const projected = projectExtendedRegionsToClassicZones(
       this.session.extendedRegions,
       this.session.zones,
@@ -2662,7 +2791,10 @@ export class WebAudioPipeline implements CoreService {
           detuneCents: zone.detune,
           loopStart: matchReg?.loopStart,
           loopEnd: matchReg?.loopEnd,
-          loopMode: matchReg?.loopMode,
+          loopMode:
+            matchReg?.loopMode === 'ping_pong' || matchReg?.loopMode === 'loop_backward'
+              ? 'loop_continuous'
+              : matchReg?.loopMode,
         }
       );
     }
@@ -2932,6 +3064,218 @@ export class WebAudioPipeline implements CoreService {
     slot: number
   ): Promise<GeneratedModel> {
     return this.bank.importModel(_sourcePath, slot);
+  }
+
+  // ── Phase 13: Interactive Waveform Loop Editor ──────────
+
+  public getZoneLoopEditorData(
+    zoneId?: string,
+    regionId?: string
+  ): ZoneLoopEditorData | null {
+    if (!this.session) return null;
+    const isClassic = (this.session.processConfig.workingMode ?? 'classic') === 'classic';
+    const extRegions = this.getExtendedRegions();
+    const zone =
+      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : undefined) ??
+      this.session.zones[0];
+
+    const activeReg =
+      !isClassic && extRegions.length > 0
+        ? (regionId
+            ? extRegions.find((r) => r.id === regionId)
+            : zone
+              ? extRegions.find(
+                  (r) =>
+                    r.id === `ext-${zone.id}-low` ||
+                    (zone.sampleLow && r.sampleName === zone.sampleLow) ||
+                    (r.lowKey === zone.lowKey && r.highKey === zone.highKey)
+                )
+              : undefined) ?? extRegions[0]
+        : (regionId ? extRegions.find((r) => r.id === regionId) ?? null : null);
+
+    if (!zone && !activeReg) return null;
+
+    const sampleName =
+      (isClassic
+        ? (zone?.sampleLow ?? zone?.sampleHigh ?? activeReg?.sampleName)
+        : (activeReg && activeReg.sampleName ? activeReg.sampleName : (zone?.sampleLow ?? zone?.sampleHigh))) ??
+      'Demo_Sample.wav';
+    const rootKey =
+      (isClassic ? zone?.rootKey : (activeReg?.rootKey ?? zone?.rootKey)) ?? 60;
+
+    let raw = this.sampleBuffers.get(sampleName);
+    if (!raw) {
+      raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
+      this.sampleBuffers.set(sampleName, raw);
+    }
+
+    let decoded: DecodedWav;
+    try {
+      decoded = decodeWav(raw);
+    } catch {
+      raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
+      decoded = decodeWav(raw);
+    }
+
+    const totalFrames = Math.max(1, decoded.numSamples);
+    const defaultLoopStart =
+      decoded.instrument?.loopStart ?? Math.floor(totalFrames * 0.2);
+    const defaultLoopEnd =
+      decoded.instrument?.loopEnd && decoded.instrument.loopEnd > defaultLoopStart
+        ? decoded.instrument.loopEnd
+        : Math.floor(totalFrames * 0.85);
+
+    const commonMode = this.session.processConfig.commonPlayback?.loopMode;
+    const loopMode = activeReg?.hasPlaybackOverride
+      ? (activeReg.loopMode ?? 'loop_continuous')
+      : (commonMode && commonMode !== 'no_loop' ? commonMode : (activeReg?.loopMode ?? 'loop_continuous'));
+    const loopStart =
+      activeReg && activeReg.loopEnd > activeReg.loopStart
+        ? clamp(activeReg.loopStart, 0, Math.max(0, totalFrames - 2))
+        : clamp(defaultLoopStart, 0, Math.max(0, totalFrames - 2));
+    const loopEnd =
+      activeReg && activeReg.loopEnd > activeReg.loopStart
+        ? clamp(activeReg.loopEnd, loopStart + 1, totalFrames)
+        : clamp(defaultLoopEnd, loopStart + 1, totalFrames);
+    const loopCrossfadeMs = activeReg?.loopCrossfadeMs ?? 15;
+
+    return {
+      zoneId: zone?.id ?? 'zone-1',
+      regionId: activeReg?.id,
+      sampleName,
+      sampleRate: decoded.sampleRate,
+      numChannels: decoded.numChannels,
+      totalFrames,
+      durationSec: decoded.durationSec,
+      monoPcm: decoded.mono,
+      loopMode,
+      loopStart,
+      loopEnd,
+      loopCrossfadeMs,
+      rootKey,
+    };
+  }
+
+  public async auditionLoop(
+    zoneId: string,
+    opts?: {
+      regionId?: string;
+      loopStartFrame?: number;
+      loopEndFrame?: number;
+      loopEnabled?: boolean;
+      volumeDb?: number;
+      pan?: number;
+      detuneCents?: number;
+      ampEnv?: DahdsrEnvelope;
+    }
+  ): Promise<void> {
+    const data = this.getZoneLoopEditorData(zoneId, opts?.regionId);
+    if (!data) return;
+
+    let volumeDb = opts?.volumeDb;
+    let pan = opts?.pan;
+    let detuneCents = opts?.detuneCents;
+    let ampEnv = opts?.ampEnv;
+
+    if (opts?.regionId && this.session?.extendedRegions) {
+      const reg = this.session.extendedRegions.find((r) => r.id === opts.regionId);
+      if (reg) {
+        if (volumeDb === undefined) volumeDb = reg.volume;
+        if (pan === undefined) pan = reg.pan;
+        if (detuneCents === undefined) detuneCents = reg.detune;
+        if (ampEnv === undefined) {
+          const globalEnv = this.session.articulation?.ampEnv;
+          if (reg.hasArticulationOverride && reg.ampEnvOverride && globalEnv) {
+            ampEnv = { ...globalEnv, ...reg.ampEnvOverride };
+          } else if (globalEnv && this.session.articulation?.ampEnvEnabled !== false) {
+            ampEnv = globalEnv;
+          }
+        }
+      }
+    } else {
+      const zone = this.session?.zones.find((z) => z.id === zoneId);
+      if (zone) {
+        if (volumeDb === undefined) volumeDb = zone.volume;
+        if (pan === undefined) pan = zone.pan;
+        if (detuneCents === undefined) detuneCents = zone.detune;
+        if (ampEnv === undefined && this.session?.articulation?.ampEnv && this.session.articulation.ampEnvEnabled) {
+          ampEnv = this.session.articulation.ampEnv;
+        }
+      }
+    }
+
+    const startFrame =
+      opts?.loopStartFrame !== undefined && opts.loopStartFrame >= 0
+        ? opts.loopStartFrame
+        : data.loopStart;
+    const endFrame =
+      opts?.loopEndFrame !== undefined && opts.loopEndFrame > startFrame
+        ? opts.loopEndFrame
+        : data.loopEnd;
+    const loopEnabled =
+      opts?.loopEnabled !== undefined
+        ? opts.loopEnabled
+        : data.loopMode !== 'no_loop' && data.loopMode !== 'one_shot';
+
+    await this.preview.auditionLoopSample({
+      sampleName: data.sampleName,
+      rootKey: data.rootKey,
+      loopStartFrame: startFrame,
+      loopEndFrame: endFrame,
+      loopEnabled,
+      loopMode: data.loopMode,
+      loopCrossfadeMs: data.loopCrossfadeMs,
+      volumeDb,
+      pan,
+      detuneCents,
+      ampEnv,
+    });
+  }
+
+  public updateLiveLoopPoints(
+    loopStartFrame: number,
+    loopEndFrame: number,
+    sampleRate: number,
+    loopEnabled: boolean = true
+  ): void {
+    this.preview.updateLiveLoopPoints(
+      loopStartFrame,
+      loopEndFrame,
+      sampleRate,
+      loopEnabled
+    );
+  }
+
+  // ── Phase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode ──
+
+  public setModelCoverArtwork(artwork: ModelCoverArtwork | null): Session {
+    if (!this.session) throw new Error('No active session');
+    this.pushHistory(
+      artwork ? 'Set Model Cover Artwork (.webp)' : 'Remove Model Cover Artwork',
+      'config:coverArtwork'
+    );
+    this.session.processConfig.coverArtwork = artwork ? { ...artwork } : null;
+    const slot = this.session.processConfig.modelNumber;
+    const existingModel = this.bank.getModelRecord(slot);
+    if (existingModel) {
+      existingModel.coverWebpDataUrl = artwork?.webpDataUrl;
+      this.bank.upsertModel(existingModel);
+      this.bank.persistBank();
+    }
+    this.markDirty();
+    return this.session;
+  }
+
+  public async convertAndSetModelCoverArtwork(
+    input: File | Blob | ArrayBuffer | Uint8Array,
+    originalName?: string
+  ): Promise<ModelCoverArtwork> {
+    if (!this.session) throw new Error('No active session');
+    const converted = await convertImageToCoverWebp(input, {
+      originalName,
+    });
+    this.setModelCoverArtwork(converted.artwork);
+    return converted.artwork;
   }
 
   // ── Private Helpers ─────────────────────────────────────

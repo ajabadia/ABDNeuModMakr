@@ -14,6 +14,7 @@ import type {
   Session,
   Zone,
   ExtendedRegion,
+  DahdsrEnvelope,
   SynthArticulationConfig,
   Sf2PresetOption,
   AcousticClassificationResult,
@@ -35,6 +36,8 @@ import type {
   ModelProvenance,
   ReprocessPurestOptions,
   AssetStoreDiagnostics,
+  ModelCoverArtwork,
+  ZoneLoopEditorData,
 } from './types.ts';
 
 export type CoreEventListener = (event: CoreEvent) => void;
@@ -216,7 +219,7 @@ export interface CoreService {
   ): Promise<ExtendedRegion>;
 
   /** Add a new 2D Extended Region in Extended Creation Mode */
-  addExtendedRegion(partial?: Partial<ExtendedRegion>): Promise<ExtendedRegion>;
+  addExtendedRegion(partial?: Partial<ExtendedRegion>, anchorRegionId?: string): Promise<ExtendedRegion>;
 
   /** Remove a 2D Extended Region in Extended Creation Mode */
   removeExtendedRegion(regionId: string): Promise<void>;
@@ -296,5 +299,55 @@ export interface CoreService {
    * Builds the multi-format 5-Layer Time Capsule `.zip` bytes for `slot`.
    */
   buildModelZipBytes(slot: number): Uint8Array;
+
+  // ── Phase 13: Interactive Waveform Loop Editor ──────────
+  /**
+   * Retrieves decoded mono PCM samples, total frames, sampleRate, and current loop parameters
+   * for the active zone/region so the Waveform Loop Editor and Zero-Crossing Seam Magnifier can render.
+   */
+  getZoneLoopEditorData(zoneId?: string, regionId?: string): ZoneLoopEditorData | null;
+
+  /**
+   * Starts real-time looped auditioning for the specified zone/region in the Waveform Loop Editor.
+   */
+  auditionLoop(
+    zoneId: string,
+    opts?: {
+      regionId?: string;
+      loopStartFrame?: number;
+      loopEndFrame?: number;
+      loopEnabled?: boolean;
+      volumeDb?: number;
+      pan?: number;
+      detuneCents?: number;
+      ampEnv?: DahdsrEnvelope;
+    }
+  ): Promise<void>;
+
+  /**
+   * Updates `loopStart` and `loopEnd` in real time on the active `AudioBufferSourceNode`
+   * while dragging loop markers.
+   */
+  updateLiveLoopPoints(
+    loopStartFrame: number,
+    loopEndFrame: number,
+    sampleRate: number,
+    loopEnabled?: boolean
+  ): void;
+
+  // ── Phase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode ──
+  /**
+   * Sets or clears the `.webp` cover artwork for the active model (Extended Mode).
+   */
+  setModelCoverArtwork(artwork: ModelCoverArtwork | null): Session;
+
+  /**
+   * Converts any image (`File`, `Blob`, `ArrayBuffer`, `Uint8Array`) into a square `.webp`
+   * cover artwork and assigns it to the active session's `processConfig.coverArtwork`.
+   */
+  convertAndSetModelCoverArtwork(
+    input: File | Blob | ArrayBuffer | Uint8Array,
+    originalName?: string
+  ): Promise<ModelCoverArtwork>;
 }
 

@@ -167,7 +167,8 @@ export class BankDrawer {
     if (!this.shell) return;
     this.shell.setFooterStatus('Refreshing library…');
     this.shell.flashStatus('Refreshing library…', 'working');
-    this.shell.setBusy('refresh', true);
+    const shellAny = this.shell as any;
+    shellAny?.setBusy?.('refresh', true);
     void (async () => {
       try {
         const res = await this.handlers.onRefreshLibrary?.();
@@ -189,7 +190,7 @@ export class BankDrawer {
         this.shell?.setFooterStatus(message);
         this.shell?.flashStatus(message, 'error');
       } finally {
-        this.shell?.setBusy('refresh', false);
+        shellAny?.setBusy?.('refresh', false);
       }
     })();
   }
@@ -199,9 +200,18 @@ export class BankDrawer {
     const mCount = this.currentBank?.models.length ?? 0;
     const pCount = this.currentBank?.presets.length ?? 0;
     const lCount = this.handlers.onRequestLibrary?.().length ?? 0;
-    this.shell.setTabCount('models', mCount);
-    this.shell.setTabCount('presets', pCount);
-    this.shell.setTabCount('library', lCount);
+    const s = this.shell as any;
+    if (typeof s.setTabCount === 'function') {
+      s.setTabCount('models', mCount);
+      s.setTabCount('presets', pCount);
+      s.setTabCount('library', lCount);
+    } else if (typeof s.setTabLabels === 'function') {
+      s.setTabLabels({
+        models: `MODELS (${mCount})`,
+        presets: `PRESETS (${pCount})`,
+        library: `LIBRARY (${lCount})`,
+      });
+    }
     this.updateFooterSelection();
   }
 
@@ -474,17 +484,24 @@ export class BankDrawer {
               usedCount > 0
                 ? `${usedCount} Sound${usedCount === 1 ? '' : 's'}`
                 : 'Unused';
+            const cardIconHtml = m.coverWebpDataUrl
+              ? `<img src="${m.coverWebpDataUrl}" alt="${m.name}" class="ndb-card-cover-img" />`
+              : ICONS[iconKey] || ICONS.database;
+            const badges = [
+              `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
+              `Lvl ${m.complexity}`,
+              usageBadge,
+            ];
+            if (m.coverWebpDataUrl) {
+              badges.push('WEBP');
+            }
             return bankCardHtml({
               slot: m.slot,
               catClass,
               catLabel: catName,
               name: m.name,
-              iconHtml: ICONS[iconKey] || ICONS.database,
-              badges: [
-                `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
-                `Lvl ${m.complexity}`,
-                usageBadge,
-              ],
+              iconHtml: cardIconHtml,
+              badges,
               actions: [
                 { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },
                 { id: 'export', label: 'Export .zip', kind: 'export', title: 'Export .zip package', iconHtml: ICONS.folder },
@@ -724,7 +741,12 @@ export class BankDrawer {
     this.isOpen = true;
     this.shell?.element.classList.remove('is-closed');
     this.shell?.element.classList.add('is-open');
-    this.shell?.focusSearch();
+    const s = this.shell as any;
+    if (typeof s?.focusSearch === 'function') {
+      s.focusSearch();
+    } else {
+      (this.shell?.toolbarEl.querySelector('input') as HTMLInputElement | null)?.focus();
+    }
   }
 
   public close(): void {

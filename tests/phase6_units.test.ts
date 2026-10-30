@@ -1139,7 +1139,372 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 15. Fase 9 5-Layer Time Capsule Container, Provenance, Anti-Photocopy Reprocess & IndexedDB Store');
 
-  console.log('=== ALL PHASE 6, 7, 8 & 9 TESTS PASSED ===');
+  // ── 16. Common/Particular Architecture, Smart Empty Region Creation, 2D Overlap Detection & A/B/C Spectral Graphs ──
+  {
+    const {
+      computeNextAvailableExtendedRange,
+      analyzeExtendedIntersections,
+      analyzeClassicZoneOverlaps,
+      createDefaultCommonPlayback,
+    } = await import('../src/core/extendedAdapter.ts');
+    const { encodeWavPcm16 } = await import('../src/core/dsp/WavDecoder.ts');
+
+    // 16a. computeNextAvailableExtendedRange finds gaps or splits largest span
+    const next1 = computeNextAvailableExtendedRange([
+      {
+        id: 'r1',
+        sampleName: 's1.wav',
+        lowKey: 0,
+        highKey: 59,
+        rootKey: 36,
+        lowVel: 1,
+        highVel: 127,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'no_loop',
+        loopStart: 0,
+        loopEnd: 0,
+        loopCrossfadeMs: 0,
+      },
+    ]);
+    assert.equal(next1.lowKey, 60);
+    assert.equal(next1.highKey, 127);
+
+    // 16b. analyzeExtendedIntersections detects 2D (Key x Vel) vs Key-only overlaps
+    const ovReport = analyzeExtendedIntersections([
+      {
+        id: 'r1',
+        sampleName: 'a.wav',
+        lowKey: 36,
+        highKey: 72,
+        rootKey: 60,
+        lowVel: 1,
+        highVel: 80,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'no_loop',
+        loopStart: 0,
+        loopEnd: 0,
+        loopCrossfadeMs: 0,
+      },
+      {
+        id: 'r2',
+        sampleName: 'b.wav',
+        lowKey: 48,
+        highKey: 84,
+        rootKey: 60,
+        lowVel: 60,
+        highVel: 127,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'no_loop',
+        loopStart: 0,
+        loopEnd: 0,
+        loopCrossfadeMs: 0,
+      },
+      {
+        id: 'r3',
+        sampleName: 'c.wav',
+        lowKey: 36,
+        highKey: 72,
+        rootKey: 60,
+        lowVel: 81,
+        highVel: 127,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'no_loop',
+        loopStart: 0,
+        loopEnd: 0,
+        loopCrossfadeMs: 0,
+      },
+    ]);
+    // r1 & r2 intersect in 2D: keys 48..72, vel 60..80
+    // r2 & r3 intersect in 2D: keys 48..72, vel 81..127
+    // r1 & r3 share keys 36..72 but velocities 1..80 vs 81..127 are disjoint -> keyOnlyOverlaps
+    assert.equal(ovReport.byRegionId['r1'].fullIntersections.length, 1);
+    assert.equal(ovReport.byRegionId['r1'].fullIntersections[0].id, 'r2');
+    assert.equal(ovReport.byRegionId['r1'].keyOnlyOverlaps.length, 1);
+    assert.equal(ovReport.byRegionId['r1'].keyOnlyOverlaps[0].id, 'r3');
+    assert.ok(ovReport.intersectingKeySpans.length >= 1);
+    assert.equal(ovReport.intersectingKeySpans[0].lowKey, 48);
+    assert.equal(ovReport.intersectingKeySpans[0].highKey, 72);
+
+    // Classic zone overlaps
+    const classicOv = analyzeClassicZoneOverlaps([
+      createZone(0, 48, 64, 'a.wav'),
+      createZone(60, 72, 127, 'b.wav'),
+    ]);
+    const zIds = Object.keys(classicOv);
+    assert.equal(classicOv[zIds[0]].overlappingZones.length, 1);
+    assert.equal(classicOv[zIds[0]].overlappingZones[0].overlapLowKey, 60);
+    assert.equal(classicOv[zIds[0]].overlappingZones[0].overlapHighKey, 64);
+
+    // 16c. WebAudioPipeline smart addExtendedRegion (empty sample + next range) & Common Playback inheritance vs Custom Exception
+    const cs = new WebAudioPipeline();
+    await cs.init();
+    await cs.newSession('TestExt');
+    await cs.updateProcessConfig({ workingMode: 'extended' });
+    const firstRegId = cs.getExtendedRegions()[0].id;
+    await cs.updateExtendedRegion(firstRegId, {
+      sampleName: 'lead_c3.wav',
+      lowKey: 0,
+      highKey: 59,
+      rootKey: 48,
+    });
+
+    const createdReg = await cs.addExtendedRegion();
+    const regionsAfter = cs.getExtendedRegions();
+    assert.equal(regionsAfter.length, 2);
+    assert.equal(createdReg.sampleName, '', 'New region must have an empty sampleName rather than cloning lead_c3.wav');
+    assert.equal(createdReg.lowKey, 60, 'New region must automatically take the next available key range 60..127');
+    assert.equal(createdReg.highKey, 127);
+
+    // Common Playback propagation to non-overridden regions & preservation of overridden regions
+    await cs.updateExtendedRegion(firstRegId, {
+      hasPlaybackOverride: true,
+      loopMode: 'loop_sustain',
+      fadeCurve: 'linear',
+    });
+    const nextCommon = {
+      ...createDefaultCommonPlayback(),
+      loopMode: 'loop_continuous' as const,
+      pitchKeytrack: 50,
+      fadeCurve: 'spectral-morph' as const,
+    };
+    await cs.updateProcessConfig({ commonPlayback: nextCommon });
+    const regionsCommon = cs.getExtendedRegions();
+    const rOverridden = regionsCommon.find((r) => r.id === firstRegId)!;
+    const rInherited = regionsCommon.find((r) => r.id === createdReg.id)!;
+    assert.equal(rOverridden.loopMode, 'loop_sustain', 'Overridden region must keep its custom loopMode');
+    assert.equal(rOverridden.fadeCurve, 'linear', 'Overridden region must keep its custom fadeCurve');
+    assert.equal(rInherited.loopMode, 'loop_continuous', 'Inheriting region must receive commonPlayback.loopMode');
+    assert.equal(rInherited.pitchKeytrack, 50, 'Inheriting region must receive commonPlayback.pitchKeytrack');
+    assert.equal(rInherited.fadeCurve, 'spectral-morph', 'Inheriting region must receive commonPlayback.fadeCurve');
+
+    // 16d. WebAudioPipeline.inspectZoneSpectrum produces distinct A (Original), B (Legacy DSP), and C (Enhanced DSP) spectrograms & partials
+    const sr = 44100;
+    const pcm = new Float32Array(Math.floor(sr * 0.4));
+    for (let i = 0; i < pcm.length; i++) {
+      const t = i / sr;
+      pcm[i] =
+        0.5 * Math.sin(2 * Math.PI * 220 * t) +
+        0.25 * Math.sin(2 * Math.PI * 440 * t) +
+        0.12 * Math.sin(2 * Math.PI * 660 * t);
+    }
+    const wavAb = encodeWavPcm16([pcm], sr);
+    cs.registerSampleBuffer('test_abc.wav', wavAb);
+    const z0 = cs.getSession()!.zones[0];
+    await cs.updateZone(z0.id, { sampleLow: 'test_abc.wav', lowKey: 0, rootKey: 57, highKey: 127 });
+    const insp = cs.inspectZoneSpectrum(z0.id);
+    assert.ok(insp !== null, 'Expected non-null ZoneSpectralInspection');
+    assert.ok(insp!.spectrogram.magnitudes.length > 0, 'Expected A Original spectrogram');
+    assert.ok(insp!.legacySpectrogram && insp!.legacySpectrogram.magnitudes.length > 0, 'Expected B Legacy DSP spectrogram');
+    assert.ok(insp!.enhancedSpectrogram && insp!.enhancedSpectrogram.magnitudes.length > 0, 'Expected C Enhanced DSP spectrogram');
+    assert.ok(insp!.legacyPartials && insp!.legacyPartials.length === 64, 'Expected B Legacy 64 partials');
+    assert.ok(insp!.enhancedPartials && insp!.enhancedPartials.length === 64, 'Expected C Enhanced 64 partials');
+    assert.ok(insp!.enhancedResynthPeaks && insp!.enhancedResynthPeaks.max.length > 0, 'Expected C Enhanced waveform envelope');
+
+    cs.dispose();
+  }
+  console.log('[PASS] 16. Common/Particular Architecture, Smart Empty Region Creation, 2D Overlap Detection & A/B/C Spectral Graphs');
+
+  // ── 17. Fase 13 (Waveform Loop Editor & Seam Magnifier) & Fase 14 (Model Cover Artwork .webp in Layer 05) ──
+  {
+    const {
+      snapFrameToRisingZeroCrossing,
+      computeLoopSeamAnalysis,
+      computeZoomedWaveformEnvelope,
+    } = await import('../src/core/dsp/LoopEditorTools.ts');
+    const {
+      convertImageToCoverWebp,
+      isWebpBytes,
+      parseWebpDimensions,
+    } = await import('../src/core/coverArtwork.ts');
+    const { extractTimeCapsuleFromFiles } = await import('../src/core/timeCapsule.ts');
+    const { parseZipArchive } = await import('@abdsynths/shared/formats/neuron');
+    const { encodeWavPcm16 } = await import('../src/core/dsp/WavDecoder.ts');
+
+    // 17a. Fase 13: snapFrameToRisingZeroCrossing & computeLoopSeamAnalysis
+    const sr = 44100;
+    const freq = 220; // period = 200.4545 samples
+    const pcm = new Float32Array(20000);
+    for (let i = 0; i < pcm.length; i++) {
+      pcm[i] = 0.8 * Math.sin((2 * Math.PI * freq * i) / sr);
+    }
+
+    const snappedStart = snapFrameToRisingZeroCrossing(pcm, 2005, 120);
+    assert.ok(pcm[snappedStart - 1] <= 0 && pcm[snappedStart] >= 0, 'Snapped start must be a rising zero-crossing');
+    const snappedEnd = snapFrameToRisingZeroCrossing(pcm, 12027, 120);
+    assert.ok(pcm[snappedEnd - 1] <= 0 && pcm[snappedEnd] >= 0, 'Snapped end must be a rising zero-crossing');
+
+    const goodSeam = computeLoopSeamAnalysis(pcm, snappedStart, snappedEnd, 64);
+    assert.ok(goodSeam.stepDiscontinuity < 0.05, `Expected small step discontinuity, got ${goodSeam.stepDiscontinuity}`);
+    assert.ok(goodSeam.seamQualityPercent >= 85, `Expected high seam quality >= 85%, got ${goodSeam.seamQualityPercent}%`);
+
+    // Deliberately bad splice (quarter period offset -> peak-to-zero jump)
+    const badEnd = snappedEnd + Math.round(sr / freq / 4);
+    const badSeam = computeLoopSeamAnalysis(pcm, snappedStart, badEnd, 64);
+    assert.ok(
+      goodSeam.seamQualityPercent > badSeam.seamQualityPercent,
+      `Phase-aligned zero-crossing seam (${goodSeam.seamQualityPercent}%) must score higher than misaligned seam (${badSeam.seamQualityPercent}%)`
+    );
+
+    const zoomed = computeZoomedWaveformEnvelope(pcm, 1000, 5000, 100);
+    assert.equal(zoomed.min.length, 100);
+    assert.equal(zoomed.max.length, 100);
+    assert.equal(zoomed.viewStartFrame, 1000);
+    assert.equal(zoomed.viewEndFrame, 5000);
+
+    // 17b. Fase 14: convertImageToCoverWebp + Extended Mode Time Capsule packaging (`05_extended_model/cover.webp`)
+    const fakePngInput = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4, 5, 6, 7, 8]);
+    const converted = await convertImageToCoverWebp(fakePngInput, {
+      targetSize: 512,
+      originalName: 'SynthCover.png',
+    });
+    assert.equal(isWebpBytes(converted.webpBytes), true, 'Converted cover must be a valid RIFF WEBP binary');
+    const dims = parseWebpDimensions(converted.webpBytes);
+    assert.equal(dims.width, 512);
+    assert.equal(dims.height, 512);
+    assert.ok(converted.artwork.webpDataUrl.startsWith('data:image/webp;base64,'));
+    assert.equal(converted.artwork.originalName, 'SynthCover.png');
+
+    const cs = new WebAudioPipeline();
+    await cs.init();
+    await cs.newSession('CoverLoopTest');
+    await cs.updateProcessConfig({
+      modelNumber: 142,
+      modelName: 'CoverTest',
+      workingMode: 'extended',
+      targetFormat: 'dual',
+    });
+    const wavAb = encodeWavPcm16([pcm], sr);
+    cs.registerSampleBuffer('loop_test.wav', wavAb);
+    const reg0 = cs.getExtendedRegions()[0];
+    await cs.updateExtendedRegion(reg0.id, {
+      sampleName: 'loop_test.wav',
+      loopMode: 'loop_sustain',
+      loopStart: snappedStart,
+      loopEnd: snappedEnd,
+      loopCrossfadeMs: 25,
+    });
+
+    const loopEdData = cs.getZoneLoopEditorData(undefined, reg0.id);
+    assert.ok(loopEdData !== null);
+    assert.equal(loopEdData!.loopStart, snappedStart);
+    assert.equal(loopEdData!.loopEnd, snappedEnd);
+    assert.equal(loopEdData!.loopCrossfadeMs, 25);
+    assert.equal(loopEdData!.loopMode, 'loop_sustain');
+
+    // Set cover artwork and build Time Capsule ZIP
+    const art = await cs.convertAndSetModelCoverArtwork(fakePngInput, 'Artwork.png');
+    assert.equal(art.width, 512);
+    const zipBytes = cs.buildModelZipBytes(142);
+    const entries = parseZipArchive(zipBytes);
+    const paths = entries.map((e) => e.path);
+
+    assert.ok(
+      paths.includes('05_extended_model/cover.webp'),
+      'Extended Time Capsule must include 05_extended_model/cover.webp'
+    );
+    assert.ok(
+      !paths.some((p) => p.startsWith('04_classic_enhanced/') && p.endsWith('.webp')),
+      'Classic enhanced layer must NEVER include .webp files'
+    );
+    assert.ok(
+      !paths.some((p) => p.startsWith('Models/') && p.endsWith('.webp')),
+      'Classic hardware Models/<NNN>.model directory must NEVER include .webp files'
+    );
+
+    const extracted = extractTimeCapsuleFromFiles([{ name: 'Model142.zip', data: zipBytes }]);
+    assert.equal(extracted.manifest?.hasCoverArtwork, true);
+    assert.ok(extracted.coverWebpBytes !== null && isWebpBytes(extracted.coverWebpBytes!));
+    assert.ok(extracted.manifest?.processConfig.coverArtwork?.webpDataUrl.startsWith('data:image/webp;base64,'));
+
+    // 17c. Persistence of coverArtwork & commonPlayback across JSON serialization
+    const { parseSessionJson } = await import('../src/core/sessionSchema.ts');
+    const exportedJson = cs.exportSessionJson();
+    const restoredSession = parseSessionJson(exportedJson);
+    assert.ok(restoredSession.processConfig.coverArtwork !== null, 'Restored session must preserve coverArtwork');
+    assert.equal(restoredSession.processConfig.coverArtwork?.width, 512);
+    assert.equal(restoredSession.processConfig.coverArtwork?.height, 512);
+    assert.ok(
+      restoredSession.processConfig.coverArtwork?.webpDataUrl.startsWith('data:image/webp;base64,'),
+      'Restored session must preserve valid webpDataUrl'
+    );
+
+    // 17d. findSmartAutoLoop multi-algorithm test
+    const { findSmartAutoLoop, generatePingPongLoopBuffer, applyLoopCrossfade } =
+      await import('../src/core/dsp/LoopEditorTools.ts');
+
+    const resPitch = findSmartAutoLoop(pcm, sr, { algorithm: 'pitch_periodic', knownF0Hz: 220 });
+    assert.equal(resPitch.algorithm, 'pitch_periodic');
+    assert.ok(resPitch.loopStart < resPitch.loopEnd);
+    assert.ok(resPitch.cyclesCount !== undefined && resPitch.cyclesCount >= 2);
+    assert.ok(resPitch.qualityPercent >= 80, 'Periodic pitch-lock loop should achieve high seam quality');
+
+    const resNcc = findSmartAutoLoop(pcm, sr, { algorithm: 'ncc_zc' });
+    assert.equal(resNcc.algorithm, 'ncc_zc');
+    assert.ok(resNcc.nccScore > 0.8, 'NCC algorithm should find highly correlated zero-crossings');
+
+    const resSeam = findSmartAutoLoop(pcm, sr, { algorithm: 'min_seam_energy' });
+    assert.equal(resSeam.algorithm, 'min_seam_energy');
+    assert.ok(resSeam.stepDiscontinuity < 0.1, 'Min seam energy algorithm should have minimal step jump');
+
+    const resXfade = findSmartAutoLoop(pcm, sr, { algorithm: 'equal_power_xfade' });
+    assert.equal(resXfade.algorithm, 'equal_power_xfade');
+    assert.ok(resXfade.loopCrossfadeMs >= 15 && resXfade.loopCrossfadeMs <= 80);
+    assert.ok(resXfade.qualityPercent >= 95);
+
+    // 17e. Ping-Pong buffer generation & crossfade application
+    const pp = generatePingPongLoopBuffer(pcm, 1000, 5000);
+    assert.equal(pp.pcm.length, pcm.length + 4000);
+    assert.equal(pp.loopStart, 1000);
+    assert.equal(pp.loopEnd, 1000 + 2 * 4000); // 9000
+    // Check that reversed slice is mirror of forward slice
+    assert.equal(pp.pcm[5000], pcm[4999]);
+    assert.equal(pp.pcm[5000 + 3999], pcm[1000]);
+
+    const xfPcm = applyLoopCrossfade(pcm, 1000, 5000, 100, 'equal-power');
+    assert.equal(xfPcm.length, pcm.length);
+    assert.ok(Number.isFinite(xfPcm[4999]));
+
+    cs.dispose();
+  }
+  console.log('[PASS] 17. Fase 13 (Waveform Loop Editor & Seam Magnifier) & Fase 14 (Model Cover Artwork .webp in Layer 05)');
+
+  console.log('=== ALL PHASE 6, 7, 8, 9, 13 & 14 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {

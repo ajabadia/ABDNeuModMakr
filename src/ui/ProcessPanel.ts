@@ -29,6 +29,8 @@ export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
   onAutoDetectParameterSet?: () => void;
+  onSelectCoverImage?: (file: File) => void;
+  onRemoveCoverImage?: () => void;
 }
 
 export interface ProcessValidationState {
@@ -43,6 +45,8 @@ export class ProcessPanel {
   private currentConfig: ProcessConfig;
   private coverageErrors: string[] = [];
   private zones: Zone[] = [];
+  private isConvertingCover: boolean = false;
+  private convertingCoverFileName: string = '';
 
   constructor(
     container: HTMLElement,
@@ -62,17 +66,36 @@ export class ProcessPanel {
     this.render();
   }
 
+  public setCoverConverting(converting: boolean, fileName?: string): void {
+    this.isConvertingCover = converting;
+    this.convertingCoverFileName = fileName ?? '';
+    this.render();
+  }
+
   public setConfig(
     config: ProcessConfig,
     validation?: ProcessValidationState
   ): void {
+    const prevCoverUrl = this.currentConfig.coverArtwork?.webpDataUrl ?? null;
+    const nextCoverUrl = config.coverArtwork?.webpDataUrl ?? null;
+    const prevMode = this.currentConfig.workingMode ?? 'classic';
+    const nextMode = config.workingMode ?? 'classic';
     this.currentConfig = { ...config };
     if (validation) {
       this.coverageErrors = validation.errors;
       this.zones = validation.zones;
     }
     const activeEl = document.activeElement;
-    if (activeEl && this.container.contains(activeEl)) {
+    const isTypingInput =
+      activeEl instanceof HTMLInputElement &&
+      (activeEl.id === 'inp-model-name' || activeEl.id === 'inp-model-slot');
+    if (
+      isTypingInput &&
+      this.container.contains(activeEl) &&
+      prevCoverUrl === nextCoverUrl &&
+      prevMode === nextMode &&
+      !this.isConvertingCover
+    ) {
       this.syncDomValues();
       return;
     }
@@ -324,6 +347,118 @@ export class ProcessPanel {
             </div>
           </div>
 
+          ${
+            (this.currentConfig.workingMode ?? 'classic') === 'extended'
+              ? (() => {
+                  const cov = this.currentConfig.coverArtwork;
+                  const kb = cov ? (cov.byteLength / 1024).toFixed(1) : '0';
+                  const isConv = this.isConvertingCover;
+                  return `
+          <!-- 1b. Fase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode -->
+          <div class="form-group cover-artwork-group" id="cover-artwork-dropzone" title="Drag &amp; drop an image (PNG, JPG, WEBP, AVIF, SVG) or click to set the Extended Model Cover Artwork (auto-converted to 512x512 .webp in Layer 05)">
+            <div class="label-with-val">
+              <label>MODEL COVER ARTWORK (.WEBP)</label>
+              <span class="val-pill ${cov ? 'is-ready-pill' : ''}">${isConv ? 'CONVERTING TO .WEBP...' : cov ? `✓ WEBP • ${cov.width}×${cov.height} • ${kb} KB` : 'EXTENDED ONLY'}</span>
+            </div>
+            <div class="cover-artwork-card ${cov ? 'has-cover' : ''} ${isConv ? 'is-converting' : ''}">
+              <div class="cover-artwork-thumb ${cov ? 'has-cover' : ''}" id="btn-pick-cover-thumb" title="${isConv ? 'Converting image...' : cov ? 'Click to view large preview (512×512)' : 'Click to upload image'}">
+                ${
+                  isConv
+                    ? `<span class="cover-artwork-spinner" aria-label="Converting to WebP"></span>`
+                    : cov
+                      ? `<img src="${cov.webpDataUrl}" alt="${this.currentConfig.modelName} cover" class="cover-artwork-img" />
+                         <span class="cover-thumb-hover-hint" aria-hidden="true">${ICONS.expand}</span>`
+                      : `<span class="cover-artwork-placeholder">${ICONS.layers}</span>`
+                }
+              </div>
+              <div class="cover-artwork-meta">
+                <span class="cover-artwork-title">${isConv ? `Converting "${this.convertingCoverFileName || 'image'}" to .webp...` : cov ? `${cov.originalName || 'cover.webp'} → cover.webp` : 'Drop or Pick Cover Image'}</span>
+                <span class="cover-artwork-sub">${isConv ? 'Center-cropping & encoding 512×512 RIFF WEBP...' : cov ? `✓ Converted 512×512 WebP (${kb} KB) • 05_extended_model/cover.webp` : 'Converts JPG / PNG / SVG / WEBP to 512×512 .webp'}</span>
+                <div class="cover-artwork-actions">
+                  ${
+                    cov && !isConv
+                      ? `<button type="button" class="btn btn-xs btn-outline" id="btn-view-large-cover" title="Ver portada en grande (512×512 WebP)">${ICONS.expand} Ver en grande</button>`
+                      : ''
+                  }
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-pick-cover-image" ${isConv ? 'disabled' : ''}>
+                    ${ICONS.folder} ${isConv ? 'Converting...' : cov ? 'Replace Cover...' : 'Upload Cover...'}
+                  </button>
+                  ${
+                    cov && !isConv
+                      ? `<button type="button" class="btn btn-xs btn-outline btn-danger-hover" id="btn-remove-cover-image" title="Remove cover artwork">${ICONS.trash}</button>`
+                      : ''
+                  }
+                </div>
+              </div>
+              <input type="file" id="inp-cover-image-file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.svg,.bmp" hidden />
+            </div>
+
+            <!-- Cover Artwork Modal Dialog (Modern <dialog> standard) -->
+            ${
+              cov
+                ? `
+            <dialog id="dlg-cover-preview" class="cover-artwork-dialog" aria-labelledby="dlg-cover-title">
+              <div class="cover-dialog-shell">
+                <div class="modal-header">
+                  <div class="modal-title" id="dlg-cover-title">
+                    <span>${ICONS.layers}</span>
+                    <span>COVER ARTWORK PREVIEW</span>
+                    <span class="val-pill is-ready-pill">512 × 512 WEBP</span>
+                  </div>
+                  <button type="button" class="btn-close-modal" id="btn-close-cover-modal" title="Cerrar modal (Esc)">
+                    ${ICONS.close}
+                  </button>
+                </div>
+                <div class="modal-body cover-dialog-body">
+                  <div class="cover-dialog-preview-wrapper">
+                    <img id="img-cover-dialog-preview" src="${cov.webpDataUrl}" alt="${this.currentConfig.modelName} cover preview" class="cover-dialog-preview-img" />
+                  </div>
+                  <div class="cover-dialog-meta-grid">
+                    <div class="cover-meta-item">
+                      <span class="cover-meta-label">FORMAT</span>
+                      <span class="cover-meta-value">RIFF WEBP (512×512)</span>
+                    </div>
+                    <div class="cover-meta-item">
+                      <span class="cover-meta-label">FILE SIZE</span>
+                      <span class="cover-meta-value">${kb} KB</span>
+                    </div>
+                    <div class="cover-meta-item">
+                      <span class="cover-meta-label">TARGET LAYER</span>
+                      <span class="cover-meta-value">05_extended_model/cover.webp</span>
+                    </div>
+                    <div class="cover-meta-item">
+                      <span class="cover-meta-label">ASPECT RATIO</span>
+                      <span class="cover-meta-value">1:1 Square (Center-Cropped)</span>
+                    </div>
+                    <div class="cover-meta-item cover-meta-item-full">
+                      <span class="cover-meta-label">ORIGINAL SOURCE</span>
+                      <span class="cover-meta-value" title="${cov.originalName || 'cover.webp'}">${cov.originalName || 'cover.webp'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer cover-dialog-footer">
+                  <div class="cover-dialog-footer-left">
+                    <button type="button" class="btn btn-sm btn-outline" id="btn-dialog-replace-cover">
+                      ${ICONS.folder} Replace Cover...
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline btn-danger-hover" id="btn-dialog-remove-cover">
+                      ${ICONS.trash} Remove
+                    </button>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-primary" id="btn-dialog-close-cover">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </dialog>`
+                : ''
+            }
+          </div>
+                  `;
+                })()
+              : ''
+          }
+
           <div class="validation-inline-bar is-ok is-compact-hidden" id="val-config-status">
             <span class="val-status-icon">${ICONS.alert}</span>
             <span class="val-status-text" id="val-config-text"></span>
@@ -568,11 +703,96 @@ export class ProcessPanel {
         const m = (btn.getAttribute('data-working-mode') === 'extended' ? 'extended' : 'classic') as WorkingMode;
         if ((this.currentConfig.workingMode ?? 'classic') === m) return;
         this.currentConfig.workingMode = m;
-        this.syncWorkingModeButtons();
+        this.render();
         this.handlers.onConfigChange({ ...this.currentConfig });
       });
     });
     this.syncWorkingModeButtons();
+
+    // Fase 14: Model Cover Artwork (.webp) file picker & drag-and-drop & Modal Preview
+    const fileCoverInp = this.container.querySelector('#inp-cover-image-file') as HTMLInputElement | null;
+    const triggerCoverPick = () => fileCoverInp?.click();
+    this.container.querySelector('#btn-pick-cover-image')?.addEventListener('click', triggerCoverPick);
+
+    const coverDialog = this.container.querySelector('#dlg-cover-preview') as HTMLDialogElement | null;
+    const openCoverModal = () => {
+      if (this.currentConfig.coverArtwork?.webpDataUrl && coverDialog) {
+        if (typeof coverDialog.showModal === 'function') {
+          coverDialog.showModal();
+        } else {
+          coverDialog.setAttribute('open', '');
+        }
+      }
+    };
+    const closeCoverModal = () => {
+      if (coverDialog) {
+        if (typeof coverDialog.close === 'function') {
+          coverDialog.close();
+        } else {
+          coverDialog.removeAttribute('open');
+        }
+      }
+    };
+
+    if (this.currentConfig.coverArtwork) {
+      this.container.querySelector('#btn-pick-cover-thumb')?.addEventListener('click', openCoverModal);
+    } else {
+      this.container.querySelector('#btn-pick-cover-thumb')?.addEventListener('click', triggerCoverPick);
+    }
+
+    this.container.querySelector('#btn-view-large-cover')?.addEventListener('click', openCoverModal);
+    this.container.querySelector('#btn-close-cover-modal')?.addEventListener('click', closeCoverModal);
+    this.container.querySelector('#btn-dialog-close-cover')?.addEventListener('click', closeCoverModal);
+    this.container.querySelector('#btn-dialog-replace-cover')?.addEventListener('click', () => {
+      closeCoverModal();
+      triggerCoverPick();
+    });
+    this.container.querySelector('#btn-dialog-remove-cover')?.addEventListener('click', () => {
+      closeCoverModal();
+      this.handlers.onRemoveCoverImage?.();
+    });
+
+    // Close on backdrop click
+    coverDialog?.addEventListener('click', (e) => {
+      if (e.target === coverDialog) {
+        closeCoverModal();
+      }
+    });
+
+    fileCoverInp?.addEventListener('change', () => {
+      const f = fileCoverInp.files?.[0];
+      if (f) {
+        this.handlers.onSelectCoverImage?.(f);
+        fileCoverInp.value = '';
+      }
+    });
+    this.container.querySelector('#btn-remove-cover-image')?.addEventListener('click', () => {
+      this.handlers.onRemoveCoverImage?.();
+    });
+    const coverDropzone = this.container.querySelector('#cover-artwork-dropzone') as HTMLElement | null;
+    if (coverDropzone) {
+      coverDropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        coverDropzone.classList.add('is-dragover');
+      });
+      coverDropzone.addEventListener('dragleave', () => {
+        coverDropzone.classList.remove('is-dragover');
+      });
+      coverDropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        coverDropzone.classList.remove('is-dragover');
+        const f = e.dataTransfer?.files?.[0];
+        if (
+          f &&
+          (f.type.startsWith('image/') ||
+            /\.(jpe?g|png|webp|avif|svg|bmp|gif)$/i.test(f.name))
+        ) {
+          this.handlers.onSelectCoverImage?.(f);
+        }
+      });
+    }
 
     const dspBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-dsp-algorithm');
     dspBtns.forEach((btn) => {

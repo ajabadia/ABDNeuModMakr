@@ -204,10 +204,12 @@ export function importSfzToNative(
     const xfoutHivel = ops.xfout_hivel !== undefined ? parseInt(ops.xfout_hivel, 10) || highVel : highVel;
 
     const rawLoop = (ops.loop_mode ?? ops.loopmode ?? 'no_loop').toLowerCase();
-    const loopMode: LoopMode =
-      rawLoop === 'loop_continuous' || rawLoop === 'loop_sustain' || rawLoop === 'one_shot'
-        ? rawLoop
-        : 'no_loop';
+    let loopMode: LoopMode = 'no_loop';
+    if (rawLoop === 'loop_continuous') loopMode = 'loop_continuous';
+    else if (rawLoop === 'loop_sustain') loopMode = 'loop_sustain';
+    else if (rawLoop === 'loop_bidirectional' || rawLoop === 'ping_pong' || rawLoop === 'alternating') loopMode = 'ping_pong';
+    else if (rawLoop === 'loop_backward' || rawLoop === 'reverse') loopMode = 'loop_backward';
+    else if (rawLoop === 'one_shot') loopMode = 'one_shot';
     const loopStart = Math.max(0, parseInt(ops.loop_start ?? ops.loopstart ?? '0', 10) || 0);
     const loopEnd = Math.max(loopStart, parseInt(ops.loop_end ?? ops.loopend ?? '0', 10) || 0);
     const loopCrossfadeMs = Math.max(0, Math.round((parseFloat(ops.loop_crossfade ?? '0') || 0) * 1000));

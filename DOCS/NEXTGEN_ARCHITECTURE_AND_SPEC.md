@@ -221,16 +221,19 @@ Cuando abordemos la expansión de los *Resynators* en el sintetizador C++ / JUCE
 
 ---
 
-## 9. Editor Visual Interactivo de Loops (`Waveform Loop Editor` — Fase Final)
+## 9. Editor Visual Interactivo de Loops (`Waveform Loop Editor` — Fase 13) ✅ COMPLETADO
 
-- **Canvas de Forma de Onda con Handles Arrastrables**: Visualización completa de la onda con marcadores interactivos de `Loop Start`, `Loop End` y rampa de `Loop Crossfade (ms)`.
-- **Lupa de Empalme de Fase (`Seam / Zero-Crossing Magnifier`)**: Vista ampliada del punto de unión (`loopEnd` $\rightarrow$ `loopStart`) con ajuste automático a cruces por cero de igual pendiente (*Snap to Zero-Crossing*) y pre-escucha continua en tiempo real mientras se arrastran los puntos.
-- **Controles de Loop**: Selección visual de modo (`no_loop`, `loop_continuous`, `loop_sustain`, `one_shot`, y futuro `ping_pong`), edición numérica en `frames` y `ms`, e integración directa con el `Auto-Loop Finder` de la Fase 8.
+- **Canvas de Forma de Onda con Handles Arrastrables**: Visualización completa de la onda con zoom horizontal continuo (`1x .. 32x`), rueda de ratón y marcadores interactivos arrastrables para `Loop Start` (`L-START`), `Loop End` (`L-END`) y rampa de `Loop Crossfade (ms)`.
+- **Lupa de Empalme de Fase (`Seam / Zero-Crossing Magnifier`)**: Vista ampliada del punto de unión (`loopEnd` $\rightarrow$ `loopStart`) con curvas fantasma de continuación, ajuste automático a cruces por cero de igual pendiente (*Snap to Zero-Crossing*) y pre-escucha continua en tiempo real mientras se arrastran los puntos.
+- **Motor Auto-Loop Multi-Algoritmo**: Cuatro algoritmos especializados seleccionables (`pitch_periodic` para armónicos y periodicidad F0/T0, `ncc_zc` para cruces por cero correlacionados, `min_seam_energy` para minimización de discontinuidad $\Delta \text{Step}$, y `equal_power_xfade` para crossfade circular).
+- **Modos Avanzados de Bucle**: Soporte para `ping_pong` (búfer espejo generado en tiempo real) y `loop_backward` (bucle en reversa), con insignias gráficas en canvas.
+- **Audición Instantánea por Fila (`.btn-row-play`)**: Cada zona o región dispone de un botón de reproducción `Play`/`Stop` que audiciona unívocamente su propia muestra con envolvente de amplitud DAHDSR de 6 fases, volumen en dB, paneo estéreo, afinación fina en cents y parada suave anti-clic.
 
 ---
 
-## 10. Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended — Fase Final)
+## 10. Portada / Artwork del Modelo en Formato `.webp` (Exclusivo Modo Extended — Fase 14) ✅ COMPLETADO
 
-- **Asignación de Imagen de Portada**: Carga por archivo (`PNG`, `JPG`, `WEBP`, `AVIF`, `SVG`), Drag & Drop o pegado desde portapapeles, visible únicamente en **Modo Extended**.
-- **Conversión Automática a `.webp`**: Procesado en cliente mediante `Canvas` / `OffscreenCanvas` (`image/webp`, calidad `0.88`, resolución normalizada p. ej. `512×512`) para garantizar peso mínimo y carga instantánea.
-- **Almacenamiento en el Contenedor**: Se guarda como `05_extended_model/cover.webp` (y en `IndexedDB`) referenciado en `manifest.json`, mostrándose como carátula del modelo tanto en `ABDNeuModMakr` como en el navegador visual de modelos de `ABDAxionikVS`.
+- **Asignación de Imagen de Portada**: Carga por archivo (`PNG`, `JPG`, `WEBP`, `AVIF`, `SVG`) o Drag & Drop, visible en **Modo Extended** en `ProcessPanel.ts` y en las tarjetas de `BankDrawer.ts`.
+- **Conversión Automática a `.webp`**: Procesado en cliente mediante `Canvas` (`image/webp`, calidad `0.88`, resolución normalizada `512×512` con recorte centrado `cover`) para garantizar peso mínimo y carga instantánea.
+- **Modal de Inspección en Alta Definición**: Diálogo nativo `<dialog id="dlg-cover-preview">` con vista ampliada, visualización de metadatos (dimensiones, formato, tamaño en KB, timestamp de captura) y botones de acción (sustituir / eliminar).
+- **Persistencia y Empaquetado**: Conservación íntegra en el esquema de sesión (`sessionSchema.ts`), persistencia local en `localStorage` y empaquetado en la capa `05_extended_model/cover.webp` de la `Time Capsule` (.zip) referenciado en `manifest.json`.
