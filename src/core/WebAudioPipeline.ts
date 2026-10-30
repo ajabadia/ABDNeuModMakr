@@ -65,6 +65,7 @@ import type {
   AcousticClassificationResult,
   AssetStoreDiagnostics,
   ExtendedRegion,
+  LoopMode,
   MasterWaveConfig,
   MasterWaveResult,
   ModelProvenance,
@@ -172,9 +173,20 @@ export class WebAudioPipeline implements CoreService {
   private readonly preview: AudioPreviewService = new AudioPreviewService({
     getZone: (zoneId: string) => this.session?.zones.find((z) => z.id === zoneId),
     getFirstZone: () => this.session?.zones[0],
-    getSampleBuffer: (name: string) => this.sampleBuffers.get(name),
+    getSampleBuffer: (name: string) => {
+      let b = this.sampleBuffers.get(name);
+      if (!b && name) {
+        const base = name.split(/[\\/]/).pop();
+        if (base && base !== name) b = this.sampleBuffers.get(base);
+      }
+      return b;
+    },
     setSampleBuffer: (name: string, buffer: ArrayBuffer) => {
       this.sampleBuffers.set(name, buffer);
+      if (name) {
+        const base = name.split(/[\\/]/).pop();
+        if (base && base !== name) this.sampleBuffers.set(base, buffer);
+      }
     },
     getResynthMono: (zoneId: string) => this.spectralCache.get(zoneId)?.resynthMono,
     getEnhancedMono: (zoneId: string) => this.spectralCache.get(zoneId)?.enhancedMono,
@@ -3075,38 +3087,67 @@ export class WebAudioPipeline implements CoreService {
     if (!this.session) return null;
     const isClassic = (this.session.processConfig.workingMode ?? 'classic') === 'classic';
     const extRegions = this.getExtendedRegions();
-    const zone =
-      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : undefined) ??
-      this.session.zones[0];
 
-    const activeReg =
+    let targetZone = zoneId ? this.session.zones.find((z) => z.id === zoneId) : undefined;
+    let activeReg =
       !isClassic && extRegions.length > 0
         ? (regionId
             ? extRegions.find((r) => r.id === regionId)
-            : zone
+            : targetZone
               ? extRegions.find(
                   (r) =>
-                    r.id === `ext-${zone.id}-low` ||
-                    (zone.sampleLow && r.sampleName === zone.sampleLow) ||
-                    (r.lowKey === zone.lowKey && r.highKey === zone.highKey)
+                    r.id.includes(targetZone!.id) ||
+                    (targetZone!.sampleLow && r.sampleName === targetZone!.sampleLow) ||
+                    (r.lowKey === targetZone!.lowKey && r.highKey === targetZone!.highKey)
                 )
-              : undefined) ?? extRegions[0]
+              : undefined)
         : (regionId ? extRegions.find((r) => r.id === regionId) ?? null : null);
 
-    if (!zone && !activeReg) return null;
+    if (!activeReg && !isClassic && extRegions.length > 0) {
+      activeReg = extRegions[0];
+    }
+    if (!targetZone) {
+      if (activeReg) {
+        targetZone = this.session.zones.find(
+          (z) =>
+            activeReg!.id.includes(z.id) ||
+            (activeReg!.sampleName && (z.sampleLow === activeReg!.sampleName || z.sampleHigh === activeReg!.sampleName)) ||
+            (activeReg!.lowKey === z.lowKey && activeReg!.highKey === z.highKey)
+        );
+      }
+      if (!targetZone) {
+        targetZone = this.session.zones[0];
+      }
+    }
 
-    const sampleName =
-      (isClassic
-        ? (zone?.sampleLow ?? zone?.sampleHigh ?? activeReg?.sampleName)
-        : (activeReg && activeReg.sampleName ? activeReg.sampleName : (zone?.sampleLow ?? zone?.sampleHigh))) ??
-      'Demo_Sample.wav';
+    if (!targetZone && !activeReg) return null;
+
+    let sampleName =
+      isClassic
+        ? (targetZone?.sampleLow ?? targetZone?.sampleHigh)
+        : (activeReg?.sampleName ?? targetZone?.sampleLow ?? targetZone?.sampleHigh);
+
     const rootKey =
-      (isClassic ? zone?.rootKey : (activeReg?.rootKey ?? zone?.rootKey)) ?? 60;
+      (isClassic ? targetZone?.rootKey : (activeReg?.rootKey ?? targetZone?.rootKey)) ?? 60;
 
-    let raw = this.sampleBuffers.get(sampleName);
+    let raw: ArrayBuffer | undefined;
+    let effectiveSampleName = sampleName;
+    if (sampleName) {
+      raw = this.sampleBuffers.get(sampleName);
+      if (!raw) {
+        const base = sampleName.split(/[\\/]/).pop();
+        if (base && base !== sampleName) raw = this.sampleBuffers.get(base);
+      }
+    }
+
     if (!raw) {
-      raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
-      this.sampleBuffers.set(sampleName, raw);
+      const demoKey = `__demo_${(activeReg?.id ?? targetZone?.id ?? 'zone').replace(/[^a-zA-Z0-9_-]/g, '_')}_k${rootKey}.wav`;
+      raw = this.sampleBuffers.get(demoKey);
+      if (!raw) {
+        raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
+        this.sampleBuffers.set(demoKey, raw);
+      }
+      effectiveSampleName = demoKey;
     }
 
     let decoded: DecodedWav;
@@ -3127,8 +3168,8 @@ export class WebAudioPipeline implements CoreService {
 
     const commonMode = this.session.processConfig.commonPlayback?.loopMode;
     const loopMode = activeReg?.hasPlaybackOverride
-      ? (activeReg.loopMode ?? 'loop_continuous')
-      : (commonMode && commonMode !== 'no_loop' ? commonMode : (activeReg?.loopMode ?? 'loop_continuous'));
+      ? (activeReg.loopMode ?? 'no_loop')
+      : (commonMode && commonMode !== 'no_loop' ? commonMode : (activeReg?.loopMode ?? 'no_loop'));
     const loopStart =
       activeReg && activeReg.loopEnd > activeReg.loopStart
         ? clamp(activeReg.loopStart, 0, Math.max(0, totalFrames - 2))
@@ -3140,9 +3181,9 @@ export class WebAudioPipeline implements CoreService {
     const loopCrossfadeMs = activeReg?.loopCrossfadeMs ?? 15;
 
     return {
-      zoneId: zone?.id ?? 'zone-1',
+      zoneId: targetZone?.id ?? 'zone-1',
       regionId: activeReg?.id,
-      sampleName,
+      sampleName: effectiveSampleName ?? 'Demo_Sample.wav',
       sampleRate: decoded.sampleRate,
       numChannels: decoded.numChannels,
       totalFrames,
@@ -3244,6 +3285,158 @@ export class WebAudioPipeline implements CoreService {
       sampleRate,
       loopEnabled
     );
+  }
+
+  public async auditionRow(opts: {
+    zoneId?: string;
+    regionId?: string;
+  }): Promise<void> {
+    if (!this.session) return;
+    const isClassic = (this.session.processConfig.workingMode ?? 'classic') === 'classic';
+    const extRegions = this.getExtendedRegions();
+
+    let targetZone = opts.zoneId ? this.session.zones.find((z) => z.id === opts.zoneId) : undefined;
+    let targetRegion = (!isClassic && opts.regionId)
+      ? extRegions.find((r) => r.id === opts.regionId)
+      : undefined;
+
+    if (targetRegion && !targetZone) {
+      targetZone =
+        this.session.zones.find(
+          (z) =>
+            targetRegion!.id.includes(z.id) ||
+            (targetRegion!.sampleName && (z.sampleLow === targetRegion!.sampleName || z.sampleHigh === targetRegion!.sampleName)) ||
+            (targetRegion!.lowKey === z.lowKey && targetRegion!.highKey === z.highKey)
+        ) ?? this.session.zones[0];
+    }
+    if (!isClassic && !targetRegion && targetZone) {
+      targetRegion =
+        extRegions.find(
+          (r) =>
+            r.id.includes(targetZone!.id) ||
+            (targetZone!.sampleLow && r.sampleName === targetZone!.sampleLow) ||
+            (r.lowKey === targetZone!.lowKey && r.highKey === targetZone!.highKey)
+        );
+    }
+
+    if (!targetZone && !targetRegion) {
+      if (isClassic) {
+        targetZone = this.session.zones[0];
+      } else {
+        targetRegion = extRegions[0];
+        targetZone = this.session.zones[0];
+      }
+    }
+    if (!targetZone && !targetRegion) return;
+
+    let sampleName: string | undefined;
+    let rootKey = 60;
+    let volumeDb = 0;
+    let pan = 0;
+    let detuneCents = 0;
+    let ampEnv: DahdsrEnvelope | undefined;
+    let loopMode: LoopMode = 'no_loop';
+    let loopStart = 0;
+    let loopEnd = 0;
+    let loopCrossfadeMs = 15;
+
+    if (!isClassic && targetRegion) {
+      sampleName = targetRegion.sampleName || undefined;
+      rootKey = targetRegion.rootKey ?? 60;
+      volumeDb = targetRegion.volume ?? 0;
+      pan = targetRegion.pan ?? 0;
+      detuneCents = targetRegion.detune ?? 0;
+      loopCrossfadeMs = targetRegion.loopCrossfadeMs ?? 15;
+
+      const commonPlayback = this.session.processConfig.commonPlayback;
+      if (targetRegion.hasPlaybackOverride) {
+        loopMode = targetRegion.loopMode ?? 'no_loop';
+      } else if (commonPlayback?.loopMode && commonPlayback.loopMode !== 'no_loop') {
+        loopMode = commonPlayback.loopMode;
+      } else {
+        loopMode = targetRegion.loopMode ?? 'no_loop';
+      }
+
+      loopStart = targetRegion.loopStart ?? 0;
+      loopEnd = targetRegion.loopEnd ?? 0;
+
+      const globalEnv = this.session.articulation?.ampEnv;
+      if (targetRegion.hasArticulationOverride && targetRegion.ampEnvOverride && globalEnv) {
+        ampEnv = { ...globalEnv, ...targetRegion.ampEnvOverride };
+      } else if (globalEnv && this.session.articulation?.ampEnvEnabled !== false) {
+        ampEnv = globalEnv;
+      }
+    } else if (targetZone) {
+      sampleName = (targetZone.sampleLow ?? targetZone.sampleHigh) || undefined;
+      rootKey = targetZone.rootKey ?? 60;
+      volumeDb = targetZone.volume ?? 0;
+      pan = targetZone.pan ?? 0;
+      detuneCents = targetZone.detune ?? 0;
+
+      const commonPlayback = this.session.processConfig.commonPlayback;
+      loopMode = commonPlayback?.loopMode ?? 'no_loop';
+
+      const globalEnv = this.session.articulation?.ampEnv;
+      if (globalEnv && this.session.articulation?.ampEnvEnabled) {
+        ampEnv = globalEnv;
+      }
+    }
+
+    let raw: ArrayBuffer | undefined;
+    let effectiveSampleName = sampleName;
+    if (sampleName) {
+      raw = this.sampleBuffers.get(sampleName);
+      if (!raw) {
+        const base = sampleName.split(/[\\/]/).pop();
+        if (base && base !== sampleName) raw = this.sampleBuffers.get(base);
+      }
+    }
+
+    if (!raw) {
+      const demoKey = `__demo_${(targetRegion?.id ?? targetZone?.id ?? 'row').replace(/[^a-zA-Z0-9_-]/g, '_')}_k${rootKey}.wav`;
+      raw = this.sampleBuffers.get(demoKey);
+      if (!raw) {
+        raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
+        this.sampleBuffers.set(demoKey, raw);
+      }
+      effectiveSampleName = demoKey;
+    }
+
+    let decoded: DecodedWav;
+    try {
+      decoded = decodeWav(raw);
+    } catch {
+      raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
+      decoded = decodeWav(raw);
+    }
+
+    const totalFrames = Math.max(1, decoded.numSamples);
+    if (decoded.instrument && (!loopStart || !loopEnd || loopEnd <= loopStart)) {
+      if (decoded.instrument.loopStart !== undefined && decoded.instrument.loopEnd !== undefined) {
+        loopStart = decoded.instrument.loopStart;
+        loopEnd = decoded.instrument.loopEnd;
+      }
+    }
+
+    const isLoopingMode = loopMode !== 'no_loop' && loopMode !== 'one_shot';
+    const hasValidLoopPoints = loopEnd > loopStart && loopEnd > 0;
+    const loopEnabled = isLoopingMode && hasValidLoopPoints;
+
+    await this.preview.auditionLoopSample({
+      sampleName: effectiveSampleName ?? 'Demo_Sample.wav',
+      rootKey,
+      targetKey: rootKey,
+      loopStartFrame: loopStart,
+      loopEndFrame: loopEnd > 0 ? loopEnd : totalFrames,
+      loopEnabled,
+      loopMode,
+      loopCrossfadeMs,
+      volumeDb,
+      pan,
+      detuneCents,
+      ampEnv,
+      startFromLoopStart: false,
+    });
   }
 
   // ── Phase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode ──

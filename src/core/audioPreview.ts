@@ -187,6 +187,7 @@ export class AudioPreviewService {
   public async auditionLoopSample(opts: {
     sampleName: string;
     rootKey?: MidiNote;
+    targetKey?: MidiNote;
     loopStartFrame: number;
     loopEndFrame: number;
     loopEnabled?: boolean;
@@ -196,6 +197,7 @@ export class AudioPreviewService {
     pan?: number;
     detuneCents?: number;
     ampEnv?: DahdsrEnvelope;
+    startFromLoopStart?: boolean;
   }): Promise<void> {
     if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
       return;
@@ -272,6 +274,17 @@ export class AudioPreviewService {
 
     const source = this.audioCtx.createBufferSource();
     source.buffer = audioBuffer;
+
+    if (
+      typeof opts.targetKey === 'number' &&
+      typeof opts.rootKey === 'number' &&
+      opts.targetKey !== opts.rootKey
+    ) {
+      const semitoneShift = opts.targetKey - opts.rootKey;
+      source.playbackRate.value = clamp(Math.pow(2.0, semitoneShift / 12.0), 0.125, 8.0);
+    } else {
+      source.playbackRate.value = 1.0;
+    }
 
     if (opts.detuneCents !== undefined && opts.detuneCents !== 0 && !isNaN(opts.detuneCents)) {
       source.detune.value = opts.detuneCents;
@@ -370,8 +383,9 @@ export class AudioPreviewService {
     this.activeSourceNode = source;
     this.activeGainNode = gainNode;
     this.activePlaybackMode = 'original';
-    // Start at loopStart so the user immediately hears the loop region & seam
-    const offsetSec = loopOn ? Math.max(0, startSec) : 0;
+    // When startFromLoopStart is true (e.g. Waveform Loop Editor preview), start at loopStart.
+    // Otherwise start from 0 so the sample plays from the beginning naturally.
+    const offsetSec = opts.startFromLoopStart && loopOn ? Math.max(0, startSec) : 0;
     source.start(0, offsetSec);
   }
 

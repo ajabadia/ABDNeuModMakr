@@ -374,6 +374,10 @@ class App {
         const rId = isExtended ? (regionId ?? this.inspector.getSelectedRegionId() ?? undefined) : undefined;
         return this.core.getZoneLoopEditorData(zId, rId);
       },
+      onAuditionRow: (opts) => {
+        void this.core.auditionRow(opts);
+        this.spectralView?.notifyPlaybackStarted();
+      },
       onAuditionLoop: (opts) => {
         const isExtended = this.session?.processConfig.workingMode === 'extended';
         const zId = opts.zoneId ?? this.getActiveZone()?.id;

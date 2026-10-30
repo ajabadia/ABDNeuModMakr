@@ -325,6 +325,15 @@ export interface CoreService {
   ): Promise<void>;
 
   /**
+   * Auditions the specific sample of a Zone or ExtendedRegion row from the beginning ("tal cual es"),
+   * without looping unless an explicit loop is defined on that row.
+   */
+  auditionRow(opts: {
+    zoneId?: string;
+    regionId?: string;
+  }): Promise<void>;
+
+  /**
    * Updates `loopStart` and `loopEnd` in real time on the active `AudioBufferSourceNode`
    * while dragging loop markers.
    */

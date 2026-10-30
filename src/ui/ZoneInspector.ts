@@ -101,6 +101,10 @@ export interface ZoneInspectorHandlers {
   onExportTimeCapsule?: () => void;
   onOpenLoopEditor?: () => void;
   getLoopEditorData?: (zoneId?: string, regionId?: string) => ZoneLoopEditorData | null;
+  onAuditionRow?: (opts: {
+    zoneId?: string;
+    regionId?: string;
+  }) => void;
   onAuditionLoop?: (opts: {
     zoneId?: string;
     regionId?: string;
@@ -2050,7 +2054,12 @@ export class ZoneInspector {
     this.playingRowId = rowKey;
     this.updatePlayButtonStates();
 
-    if (isExtended && regionId) {
+    if (this.handlers.onAuditionRow) {
+      this.handlers.onAuditionRow({
+        zoneId: zoneId || undefined,
+        regionId: isExtended && regionId ? regionId : undefined,
+      });
+    } else if (isExtended && regionId) {
       this.selectedRegionId = regionId;
       const targetZoneId = zoneId || this.currentZone?.id;
       this.handlers.onAuditionLoop?.({
