@@ -325,7 +325,7 @@ export function validateSessionPayload(payload: unknown): Session {
   const zones = zonesRaw.map((z, i) => validateZone(z, i));
 
   const idRaw = body['id'];
-  const nameRaw = body['name'];
+  const nameRaw = body['name'] ?? body['sessionName'];
   const createdRaw = body['createdAt'];
   const now = new Date().toISOString();
 
@@ -387,14 +387,20 @@ export function validateSessionPayload(payload: unknown): Session {
       ? body['detectedInstrumentCategory']
       : undefined;
 
+  const processConfig = validateProcessConfig(body['processConfig']);
+  const resolvedName =
+    typeof nameRaw === 'string' && nameRaw.trim().length > 0
+      ? nameRaw.trim()
+      : (processConfig.modelName || 'Imported Session');
+
   return {
     id: typeof idRaw === 'string' && idRaw.length > 0 ? idRaw : `session_${Date.now()}`,
-    name: typeof nameRaw === 'string' && nameRaw.length > 0 ? nameRaw : 'Imported Session',
+    name: resolvedName,
     zones,
     ...(extendedRegions ? { extendedRegions } : {}),
     ...(articulation ? { articulation } : {}),
     ...(detectedInstrumentCategory ? { detectedInstrumentCategory } : {}),
-    processConfig: validateProcessConfig(body['processConfig']),
+    processConfig,
     dirty: false,
     createdAt: typeof createdRaw === 'string' ? createdRaw : now,
     modifiedAt: now,

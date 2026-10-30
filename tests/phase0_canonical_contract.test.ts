@@ -236,7 +236,15 @@ async function runPhase0Tests(): Promise<void> {
     // Legacy name truncation: modern-neural keeps 32, legacy/dual keeps 11
     const longName = { session: { ...good.session, processConfig: { modelNumber: 1, modelName: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', complexity: 8, parameterSet: 0, targetFormat: 'legacy-neuron' } } };
     assert(parseSessionJson(JSON.stringify(longName)).processConfig.modelName.length === 11, 'legacy modelName must truncate to 11');
-    console.log('  [OK] 0.8 Session schema: valid loads (velSplit kept), 11 corrupt cases rejected, legacy name truncated');
+
+    // Legacy session compatibility: older session with sessionName alias or omitted name
+    const legacySessionName = { session: { ...good.session, sessionName: 'VintagePatch', name: undefined } };
+    assert(parseSessionJson(JSON.stringify(legacySessionName)).name === 'VintagePatch', 'legacy sessionName alias must migrate to session.name');
+
+    const omittedName = { session: { ...good.session, name: undefined, processConfig: { ...good.session.processConfig, modelName: 'FallbackMod' } } };
+    assert(parseSessionJson(JSON.stringify(omittedName)).name === 'FallbackMod', 'omitted session name must fall back to processConfig.modelName');
+
+    console.log('  [OK] 0.8 Session schema: valid loads (velSplit kept), 11 corrupt cases rejected, legacy migration verified');
   }
 
   console.log('=== ALL PHASE 0 CONTRACT TESTS PASSED ===');
