@@ -263,7 +263,7 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 
 ---
 
-## Fase 10 — Estrategia de Despliegue: Vendorizado de `ABDShared`, Vercel y Puente Híbrido
+## Fase 10 — Estrategia de Despliegue: Vendorizado de `ABDShared`, Vercel y CI/CD ✅ COMPLETADA
 
 **Objetivo**: Permitir que `ABDNeuModMakr` funcione desplegado en la nube (Vercel / GitHub Pages) de forma 100% autónoma, sin renunciar a la potencia del hardware local cuando esté disponible.
 
@@ -271,10 +271,10 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
   - Script automatizado (`scripts/vendorSync.js` y comando `npm run vendor:sync`) que empaqueta y sincroniza los módulos compartidos (`Components`, `Contracts`, `Utils`, `Code/NeuronFormats`, `Assets/styles`, `Assets/themes`, `Assets/icons`, `Assets/fonts`, `@abdsynths/midi-keyb`) en `vendor/@abdsynths/`.
   - Configuración autocontenida `file:./vendor/@abdsynths/...` en `package.json` para que GitHub y Vercel compilen el proyecto sin depender de rutas externas en disco.
 - [x] **Configuración de Despliegue Vercel SPA (`vercel.json`)**:
-  - Configuración nativa de Vite SPA con enrutamiento limpio, rewrite a `index.html`, inmutabilidad de caché para `/assets/` (1 año) y cabeceras de seguridad (`nosniff`, `DENY`, `strict-origin-when-cross-origin`).
-- [ ] **Modo 100% Web / Vercel (Client-Side Puro — Despliegue en Producción)**:
-  - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y modelos ligeros en **WebGPU / ONNX Runtime Web (`@huggingface/transformers`)** corren directamente en el navegador del usuario.
-  - Conexión de repositorio en dashboard de Vercel y publicación de la URL pública `*.vercel.app`.
+  - Configuración nativa de Vite SPA con enrutamiento limpio, rewrite a `index.html`, inmutabilidad de caché para `/assets/` (1 año), revalidación de HTML (`max-age=0, must-revalidate`) y cabeceras de seguridad (`nosniff`, `DENY`, `strict-origin-when-cross-origin`).
+- [x] **Modo 100% Web / Vercel (Client-Side Puro — Despliegue en Producción)**:
+  - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y visualizadores corren directamente en el navegador del usuario.
+  - Conexión de repositorio en dashboard de Vercel y publicación de la URL pública [https://abd-neumodmakr.vercel.app/](https://abd-neumodmakr.vercel.app/) verificada sin errores de consola.
 - [ ] **Modo Híbrido con Puente Local ("Local Companion Bridge")**:
   - Aun abriendo la aplicación desde la URL de Vercel (o en `localhost`), la web detecta opcionalmente si hay un micro-servidor local corriendo en la máquina del usuario (`http://127.0.0.1:8389` en Python/FastAPI o C++) con acceso a la GPU local (CUDA/MPS) y al sistema de archivos (`NeuronDB`) para ejecutar modelos de IA pesados (AudioSR, Demucs, entrenamientos de espacio latente) a máxima velocidad.
 
@@ -345,5 +345,5 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 
 - [x] Suite de tests automatizados Fases 1 a 8 (`npm test` + `npm run test:types`)
 - [ ] Tests unitarios y de integración para clasificador acústico de Parameter Sets, motor DSP mejorado, estándar 24-bit/96 kHz, editor de loops, portada `.webp` y contenedor multiformato
-- [ ] Configuración de despliegue continuo en Vercel conectado al repositorio de GitHub
+- [x] Configuración de despliegue continuo en Vercel conectado al repositorio de GitHub ([https://abd-neumodmakr.vercel.app/](https://abd-neumodmakr.vercel.app/))
 - [ ] Empaquetado opcional desktop (WebView2 / Tauri / Electron) junto al puente local de IA
