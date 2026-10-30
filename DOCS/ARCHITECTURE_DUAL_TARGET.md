@@ -1,4 +1,4 @@
-# 🏛️ ABDNeuModMakr — Arquitectura Dual-Target (Legacy Neuron vs. Modern Neural Synth)
+# ABDNeuModMakr -- Arquitectura Dual-Target (Legacy Neuron vs. Modern Neural Synth)
 
 > Documento de diseño arquitectónico y estado de extracción de ingeniería inversa (`NeuronMM_1_2_PC` + `NeuronVS_neurondb`).
 > Fecha: **2026-10-26**.
