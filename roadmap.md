@@ -234,9 +234,9 @@
 
 **Objetivo**: Integración total entre ABDNeuModMakr y el sintetizador de nueva generación ABDAxionikVS mediante el repositorio canónico `AxionikDB`.
 
-### 11.1 Repositorio y Banco Avanzado: `AxionikDB`
-- [ ] Carpeta canónica `AxionikDB` en disco, separada físicamente de la clásica `NeuronDB` para no contaminar el hardware original de 2002.
-- [ ] Estructura de paquete autocontenida por modelo basada en la Cápsula del Tiempo:
+### 11.1 Repositorio y Banco Avanzado: `AxionikDB` [COMPLETADA]
+- [x] Carpeta canónica `AxionikDB` en disco, separada físicamente de la clásica `NeuronDB` para no contaminar el hardware original de 2002.
+- [x] Estructura de paquete autocontenida por modelo basada en la Cápsula del Tiempo:
   ```
   AxionikDB/
   ├── Models/
@@ -248,13 +248,13 @@
   └── Presets/
       └── <preset-name>.axpreset       (Presets de articulación global del sintetizador)
   ```
-- [ ] **Liberación del yugo de ranura (0..511)**: El identificador principal pasa a ser el **Slug Semántico** del modelo (ej. `grand-piano-steinway`, `analog-modular-bass`). La ranura numérica `000..511` solo se genera de forma virtual si se exporta a hardware clásico.
-- [ ] **Sincronización de carpetas y "Guardar como..." (`Save As...`)**:
+- [x] **Liberación del yugo de ranura (0..511)**: El identificador principal pasa a ser el **Slug Semántico** del modelo (`slugifyModelName`, `createUniqueModelSlug`). La ranura numérica `000..511` solo se genera de forma virtual si se exporta a hardware clásico.
+- [x] **Sincronización de carpetas y "Guardar como..." (`Save As...`)**:
   - Opción directa `Salvar en AxionikDB` y `Salvar en AxionikDB como...` para duplicar modelos de forma no destructiva y experimentar con diferentes parámetros o carátulas.
   - Sincronización automática del nombre de la subcarpeta del banco si el usuario renombra el modelo consolidado.
 
-### 11.2 Catálogo Ampliado de Instrumentos y Clasificación IA
-- [ ] Taxonomía moderna de 14 categorías ricas de sonido para el clasificador acústico de IA (WebGPU, WASM y Bridge):
+### 11.2 Catálogo Ampliado de Instrumentos y Clasificación IA [COMPLETADA]
+- [x] Taxonomía moderna de 14 categorías ricas de sonido para el clasificador acústico de IA (WebGPU, WASM y Bridge):
   1. `Vocal & Choir` -> Mapeo clásico: Set 5 (Winds & Voice)
   2. `Drums & Percussion Kit` -> Mapeo clásico: Set 8 (Drums & Perc)
   3. `Orchestral & Strings` -> Mapeo clásico: Set 1 (Strings)
@@ -269,13 +269,13 @@
   12. `Synth Leads & Solos` -> Mapeo clásico: Set 0 (Synth & Neutral)
   13. `SFX, Drones & Cinematic` -> Mapeo clásico: Set 9 (SFX & Experimental)
   14. `Arpeggiated & Sequences` -> Mapeo clásico: Set 8 (Loop Factory)
-- [ ] Los 10 Parameter Sets clásicos de Hartmann (0..9) se calculan automáticamente para retrocompatibilidad hacia la capa `04_classic_enhanced`.
+- [x] Los 10 Parameter Sets clásicos de Hartmann (0..9) se calculan automáticamente para retrocompatibilidad hacia la capa `04_classic_enhanced`.
 
-### 11.3 BankManager en Modo Avanzado (Opción A: Pestañas Unificadas)
-- [ ] En Modo Clásico: El BankManager solo muestra los modelos de `NeuronDB`.
-- [ ] En Modo Avanzado: El BankManager desbloquea dos pestañas superiores (`AxionikDB` y `NeuronDB`), permitiendo cargar modelos clásicos para extenderlos y guardarlos en `AxionikDB`.
+### 11.3 BankManager en Modo Avanzado (Opción A: Pestañas Unificadas) [COMPLETADA]
+- [x] En Modo Clásico: El BankManager solo muestra los modelos de `NeuronDB`.
+- [x] En Modo Avanzado: El BankManager desbloquea dos pestañas superiores (`AxionikDB` y `NeuronDB`), permitiendo cargar modelos clásicos para extenderlos y guardarlos en `AxionikDB`.
 
-### 11.4 Motor Espectral de Alta Definición y Resynators
+### 11.4 Motor Espectral de Alta Definición y Resynators [EN CURSO]
 - [ ] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas).
 - [ ] Separacion de formantes y pitch para Formant Shifting en tiempo real.
 - [ ] Campos de morphing 2D/3D y espacio latente (Autoencoder / VAE).
@@ -284,10 +284,26 @@
 
 ---
 
-## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [POSPUESTO]
+## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [EN PLANIFICACIÓN / EN DESARROLLO]
 
-- [ ] Procesamiento desatendido por lotes sobre colecciones completas de `NeuronDB` o SoundFonts.
-- [ ] Cola de conversion con reporte de metricas y generacion de paquetes multiformato de 5 capas.
+**Objetivo**: Procesamiento desatendido por lotes sobre colecciones completas de `NeuronDB`, archivos multi-preset SoundFont (`.sf2`), librerías de carpetas de muestras (`.wav`/`.aiff`) y definiciones `.sfz`.
+
+### 12.1 Fuentes de Entrada Soportadas en Lote
+- [ ] **SoundFont 2 Multi-Preset**: Detección de todos los presets del SF2, extrayendo cada uno como un modelo candidato independiente con mapeo automático de zonas key/vel.
+- [ ] **Carpetas de Muestras / Instrument Packs**: Procesamiento de directorios con subcarpetas donde cada subcarpeta define un modelo (`Import by Name` o metadatos embebidos).
+- [ ] **NeuronDB Clásico Completo**: Migración y re-análisis en lote de bancos históricos `000.model`..`511.model` para generar Cápsulas del Tiempo y volcarlas en `AxionikDB`.
+
+### 12.2 Motor de Cola Desatendida & Tolerancia a Fallos
+- [ ] Cola FIFO asíncrona no bloqueante en Web Worker (con opción de delegación al Companion Bridge para colecciones masivas de gigabytes en disco local).
+- [ ] Aislamiento de errores: Un archivo corrupto o con sample-rate no estándar no detiene el lote; se registra en el log y el procesador salta al siguiente modelo.
+- [ ] Controles de ejecución: Iniciar, Pausar, Reanudar, Cancelar e Indicador de progreso global (`Modelo N de Total`, tiempo estimado restante).
+
+### 12.3 Configuración de Lote y Destinos de Salida
+- [ ] Perfiles de procesamiento aplicables en bloque:
+  - Complejidad (1..10) o Auto-Complejidad guiada por IA según densidad armónica.
+  - Formato destino: `AxionikDB` (Extended), `NeuronDB` (Classic), o paquete ZIP de Cápsula del Tiempo de 5 capas.
+  - Clasificación acústica y asignación de Parameter Set automática mediante `AcousticIntelligence`.
+- [ ] Reporte final de telemetría: Resumen detallado con número de modelos generados, zonas mapeadas, calidad espectral promedio y lista de advertencias.
 
 ---
 

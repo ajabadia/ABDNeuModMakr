@@ -178,17 +178,39 @@ ABDNeuModMakr/
   - [x] Nivel 3: `BridgeClient` conectado al Companion Bridge local (`http://127.0.0.1:7860`) con descarga en background de modelos neuronales pesados y acceso directo a disco.
   - [x] Dirty Tracking y Hash Caching con SHA-256 (`HashCache.ts`) para evitar reprocesamientos innecesarios.
 
+- [x] **Fase 11 -- Arquitectura AxionikDB, Slugs Semánticos y BankManager Extendido**:
+  - [x] Repositorio físico `AxionikDB` con almacenamiento de Cápsulas del Tiempo de 5 capas.
+  - [x] Identificadores de modelo por **Slug Semántico** (`slugifyModelName`, `createUniqueModelSlug`) liberando el yugo del límite 0..511.
+  - [x] Pestañas duales en `BankDrawer.ts` (`AxionikDB` y `NeuronDB`) con selección de ranura y duplicación "Guardar como...".
+  - [x] Taxonomía ampliada de 14 categorías acústicas con mapeo automático retrocompatible a los 10 Parameter Sets oficiales de Hartmann.
+- [x] **Seguridad, Robustez de Importación y Estandarización (`DOCS/SECURITY_STANDARDS.md`)**:
+  - [x] Sanitización estricta de metadatos (`escHtml`, `escAttr`) en todos los puntos de inyección de nombres (`NeuronDbModal`, `BankDrawer`, `ProcessPanel`, `ZoneInspector`, etc.).
+  - [x] Topes de contención anti-bombas y DoS: `MAX_ZIP_ENTRIES` (2000), `MAX_ZIP_ENTRY_BYTES` (100MB), `MAX_ZIP_TOTAL_BYTES` (300MB), `MAX_SF2_PRESETS` (512), `MAX_SF2_SHDRS` (10000), `MAX_SFZ_TEXT_BYTES` (2MB).
+  - [x] Corrección de clasificación heurística 14-categorías en `Sf2Parser.ts` para evitar solapes de nombres (e.g. Saxofón Barítono clasificado como viento en lugar de coro).
+  - [x] Suite de pruebas `phase7_import_robustness.test.ts` con runner continuo `run_all.ts` ejecutando 9 suites sin abortar ante primer fallo.
+- [x] **Rendimiento Real y Gestión de Memoria**:
+  - [x] Prevención de fugas de `AudioNode` con desconexión estricta en `source.onended` y `stopAudition()`.
+  - [x] Purgado y recolección de basura de buffers de audio huérfanos (`pruneOrphanBuffers()`) tras undo/redo y cambio de sesión.
+  - [x] Optimización de resíntesis aditiva (`resynthesizeModelToPcm`) mediante caché de tramas y envolvimiento de fase en radianes.
+  - [x] Monitor de cuota de almacenamiento en navegador (`navigator.storage.estimate()`) con aviso al superar el 80%.
+
 ---
 
 ## 5. Que FALTA por hacer (Siguientes Fases)
 
-### 5.1 ABDAxionikVS -- Sintetizador C++ / JUCE 9 (Fase 11)
+### 5.1 Fase 12 -- Procesador por Lotes (`Batch Processor`) [EN ESPECIFICACIÓN / DESARROLLO]
+- [ ] Conversión en lote de SoundFonts multi-preset (`.sf2` -> múltiples modelos).
+- [ ] Ingesta y generación desatendida desde carpetas de muestras (`.wav`/`.aiff`) y definiciones `.sfz`.
+- [ ] Migración en bloque de bancos `NeuronDB` hacia `AxionikDB` con generación de Cápsulas del Tiempo.
+- [ ] Cola FIFO tolerante a fallos con telemetría en tiempo real y reporte consolidado.
+
+### 5.2 ABDAxionikVS -- Sintetizador C++ / JUCE 9 (Fase 11.4)
 - [ ] Implementar el motor sintetizador software de reproduccion en tiempo real.
 - [ ] Resynators con morphing vectorial 2D continuo en joysticks Scape/Sphere.
 - [ ] Disparo hibrido de transitorios PCM de micro-ataque fundidos con el cuerpo aditivo.
 - [ ] Modos de salida Surround 4.0 / 5.1 e interpolacion matricial multi-modelo.
 
-### 5.2 Pruebas End-to-End
+### 5.3 Pruebas End-to-End
 - [ ] Suite de pruebas automatizadas con Playwright para verificacion de flujos de interfaz completos.
 
 ---
