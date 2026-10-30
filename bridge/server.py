@@ -75,10 +75,10 @@ MODEL_REGISTRY = {
         "id": "audiosr",
         "name": "AudioSR (96kHz Bandwidth Extension)",
         "task": "super-resolution",
-        "filename": "audiosr_speech_audio_96k.pt",
-        "url": "https://huggingface.co/haoheliu/audiosr/resolve/main/basic/audiosr_speech_audio_96k.pt",
-        "size_mb": 850,
-        "description": "24-bit 96kHz neural bandwidth extension with optional timbre text prompt guidance."
+        "filename": "audiosr_basic.bin",
+        "url": "https://huggingface.co/haoheliu/audiosr_basic/resolve/main/pytorch_model.bin",
+        "size_mb": 5890,
+        "description": "24-bit 96kHz neural bandwidth extension with latent diffusion audio upsampling."
     },
     "htdemucs": {
         "id": "htdemucs",
@@ -86,7 +86,7 @@ MODEL_REGISTRY = {
         "task": "source-separation",
         "filename": "htdemucs_f7e0c4bc.th",
         "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/f7e0c4bc-ba3fe64a.th",
-        "size_mb": 340,
+        "size_mb": 80,
         "description": "High-fidelity isolation of lead instruments and suppression of background acoustic leakage."
     },
     "basicpitch": {
@@ -95,8 +95,17 @@ MODEL_REGISTRY = {
         "task": "pitch-tracking",
         "filename": "basic_pitch_model.onnx",
         "url": "https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx",
-        "size_mb": 22,
+        "size_mb": 1,
         "description": "Polyphonic pitch and note detection for automatic root key detection and transient boundary tagging."
+    },
+    "deepfilter": {
+        "id": "deepfilter",
+        "name": "DeepFilterNet 3 (Neural Audio Denoiser)",
+        "task": "noise-reduction",
+        "filename": "DeepFilterNet3_onnx.tar.gz",
+        "url": "https://github.com/Rikorose/DeepFilterNet/raw/main/models/DeepFilterNet3_onnx.tar.gz",
+        "size_mb": 8,
+        "description": "Real-time speech & instrument neural noise suppression and tape hiss reduction."
     }
 }
 
@@ -119,28 +128,45 @@ def download_model_worker(model_id):
             "progress": 0.0,
             "downloaded_bytes": 0,
             "total_bytes": model_info["size_mb"] * 1024 * 1024,
+            "speed_mbps": 0.0,
             "error": None
         }
 
     try:
         req = urllib.request.Request(
             model_info["url"],
-            headers={"User-Agent": f"ABDNeuModMakr-Bridge/{SERVER_VERSION}"}
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
         )
         with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as f_out:
             total = int(resp.headers.get("Content-Length", model_info["size_mb"] * 1024 * 1024))
             downloaded = 0
-            chunk_size = 64 * 1024
+            chunk_size = 256 * 1024  # 256 KB chunks for high-speed transfer
+            t_start = time.time()
+            last_time = t_start
+            last_bytes = 0
+            speed_mbps = 0.0
+
             while True:
                 chunk = resp.read(chunk_size)
                 if not chunk:
                     break
                 f_out.write(chunk)
                 downloaded += len(chunk)
+
+                now = time.time()
+                if now - last_time >= 0.5:
+                    dt = now - last_time
+                    speed_mbps = round(((downloaded - last_bytes) / dt) / (1024 * 1024), 2)
+                    last_time = now
+                    last_bytes = downloaded
+
                 with DOWNLOAD_LOCK:
                     DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = downloaded
                     DOWNLOAD_TASKS[model_id]["total_bytes"] = total
-                    DOWNLOAD_TASKS[model_id]["progress"] = round((downloaded / total) * 100, 1)
+                    DOWNLOAD_TASKS[model_id]["progress"] = round((downloaded / total) * 100, 1) if total > 0 else 0.0
+                    DOWNLOAD_TASKS[model_id]["speed_mbps"] = speed_mbps
 
         if os.path.exists(dest_path):
             os.remove(dest_path)
@@ -149,6 +175,9 @@ def download_model_worker(model_id):
         with DOWNLOAD_LOCK:
             DOWNLOAD_TASKS[model_id]["status"] = "ready"
             DOWNLOAD_TASKS[model_id]["progress"] = 100.0
+            DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = total
+            DOWNLOAD_TASKS[model_id]["total_bytes"] = total
+            DOWNLOAD_TASKS[model_id]["speed_mbps"] = 0.0
     except Exception as e:
         if os.path.exists(tmp_path):
             try:
@@ -158,6 +187,8 @@ def download_model_worker(model_id):
         with DOWNLOAD_LOCK:
             DOWNLOAD_TASKS[model_id]["status"] = "error"
             DOWNLOAD_TASKS[model_id]["error"] = str(e)
+            DOWNLOAD_TASKS[model_id]["progress"] = 0.0
+            DOWNLOAD_TASKS[model_id]["speed_mbps"] = 0.0
 
 
 def get_system_capabilities():
@@ -412,10 +443,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 status = "ready" if installed else "available"
                 progress = 100.0 if installed else 0.0
                 error = None
+                file_size = os.path.getsize(dest_path) if installed else 0
+                downloaded_bytes = file_size
+                total_bytes = file_size if installed else info["size_mb"] * 1024 * 1024
+                speed_mbps = 0.0
+
                 if task:
                     status = task.get("status", status)
                     progress = task.get("progress", progress)
                     error = task.get("error")
+                    downloaded_bytes = task.get("downloaded_bytes", downloaded_bytes)
+                    total_bytes = task.get("total_bytes", total_bytes)
+                    speed_mbps = task.get("speed_mbps", 0.0)
 
                 models_list.append({
                     "id": m_id,
@@ -427,6 +466,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     "installed": installed,
                     "status": status,
                     "progress": progress,
+                    "downloaded_bytes": downloaded_bytes,
+                    "total_bytes": total_bytes,
+                    "speed_mbps": speed_mbps,
                     "error": error
                 })
 
@@ -448,15 +490,25 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             if not task:
                 dest_path = os.path.join(CHECKPOINTS_DIR, MODEL_REGISTRY.get(m_id, {}).get("filename", ""))
                 installed = os.path.exists(dest_path) if m_id in MODEL_REGISTRY else False
+                file_size = os.path.getsize(dest_path) if installed else 0
                 task = {
                     "model_id": m_id,
                     "status": "ready" if installed else "idle",
                     "progress": 100.0 if installed else 0.0,
+                    "downloaded_bytes": file_size,
+                    "total_bytes": file_size,
+                    "speed_mbps": 0.0,
                     "error": None
                 }
 
             body = json.dumps(task, indent=2).encode('utf-8')
             self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
             self.send_cors_headers()
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))

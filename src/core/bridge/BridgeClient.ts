@@ -64,6 +64,9 @@ export interface BridgeModelInfo {
   installed: boolean;
   status: 'ready' | 'downloading' | 'available' | 'error' | 'idle';
   progress: number;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  speed_mbps?: number;
   error?: string | null;
 }
 
@@ -376,7 +379,15 @@ export class BridgeClient {
   public async getModelProgress(
     modelId: string,
     timeoutMs = 3000
-  ): Promise<{ model_id: string; status: string; progress: number; error?: string | null }> {
+  ): Promise<{
+    model_id: string;
+    status: string;
+    progress: number;
+    downloaded_bytes?: number;
+    total_bytes?: number;
+    speed_mbps?: number;
+    error?: string | null;
+  }> {
     if (!this.currentStatus.connected) {
       return { model_id: modelId, status: 'offline', progress: 0 };
     }
@@ -390,12 +401,63 @@ export class BridgeClient {
       });
       clearTimeout(timer);
       if (!res.ok) return { model_id: modelId, status: 'error', progress: 0 };
-      return (await res.json()) as { model_id: string; status: string; progress: number; error?: string | null };
+      return (await res.json()) as {
+        model_id: string;
+        status: string;
+        progress: number;
+        downloaded_bytes?: number;
+        total_bytes?: number;
+        speed_mbps?: number;
+        error?: string | null;
+      };
     } catch {
       return { model_id: modelId, status: 'error', progress: 0 };
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Transparently ensures a model is installed on the local disk.
+   * If not installed, automatically triggers background downloading and monitors progress.
+   */
+  public async ensureModelInstalled(
+    modelId: string,
+    onProgress?: (progress: number, downloadedMb: number, totalMb: number, speedMbps: number) => void
+  ): Promise<boolean> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const models = await this.getModels();
+    const model = models.find((m) => m.id === modelId);
+    if (model?.installed) {
+      return true;
+    }
+
+    if (model?.status !== 'downloading') {
+      await this.downloadModel(modelId);
+    }
+
+    return new Promise((resolve, reject) => {
+      const poll = setInterval(async () => {
+        try {
+          const prog = await this.getModelProgress(modelId);
+          const dlMb = Math.round((prog.downloaded_bytes ?? 0) / (1024 * 1024));
+          const totMb = Math.round((prog.total_bytes ?? 0) / (1024 * 1024));
+          onProgress?.(prog.progress, dlMb, totMb, prog.speed_mbps ?? 0);
+
+          if (prog.status === 'ready' || (prog.progress >= 100 && prog.status !== 'error')) {
+            clearInterval(poll);
+            resolve(true);
+          } else if (prog.status === 'error') {
+            clearInterval(poll);
+            reject(new Error(prog.error || `Error downloading model ${modelId}`));
+          }
+        } catch {
+          // ignore transient poll network hiccups
+        }
+      }, 1000);
+    });
   }
 }
 

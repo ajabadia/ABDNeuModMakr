@@ -44,7 +44,7 @@ export class AiEngineModal {
   private isTestingByok = false;
   private byokTestResult: { success: boolean; message: string } | null = null;
   private bridgeModels: BridgeModelInfo[] = [];
-  private downloadingModelId: string | null = null;
+  private activePollingModelIds = new Set<string>();
   private downloadPollTimer: ReturnType<typeof setInterval> | null = null;
   private showPassword = false;
 
@@ -110,6 +110,11 @@ export class AiEngineModal {
     }
     try {
       this.bridgeModels = await bridgeClient.getModels();
+      for (const m of this.bridgeModels) {
+        if (m.status === 'downloading') {
+          this.startModelProgressPolling(m.id);
+        }
+      }
       this.renderBridgeModelsList();
     } catch {
       // offline
@@ -567,7 +572,11 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
           <div class="models-section-header">
             <div class="header-left">
               <h4>Catálogo de Modelos Neuronales Locales</h4>
-              <p class="text-muted">Descarga transparente multihilo directamente a tu disco local.</p>
+              <p class="text-muted">
+                Pre-descarga transparente multihilo directamente a tu GPU local.
+                <br/>
+                <small style="opacity: 0.85;">(Nota: Si no los descargas aquí, el sistema los descargará de forma 100% transparente y automática la primera vez que actives su función en el proyecto).</small>
+              </p>
             </div>
             <button type="button" class="btn btn-xs btn-outline" id="btn-refresh-models">
               ${ICONS.refresh} Actualizar Lista
@@ -601,13 +610,24 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
 
     return this.bridgeModels
       .map((m) => {
-        const isDownloading = m.status === 'downloading' || this.downloadingModelId === m.id;
+        const isDownloading = m.status === 'downloading' || this.activePollingModelIds.has(m.id);
+        const pct = Math.min(100, Math.max(0, Math.round(m.progress)));
+        const dlMb = m.downloaded_bytes ? (m.downloaded_bytes / (1024 * 1024)).toFixed(1) : '0';
+        const totMb = m.total_bytes
+          ? (m.total_bytes / (1024 * 1024)).toFixed(0)
+          : m.size_mb.toString();
+        const speedText = m.speed_mbps && m.speed_mbps > 0 ? ` &bull; ${m.speed_mbps.toFixed(1)} MB/s` : '';
+
+        const sizeDisplay = m.size_mb >= 1000
+          ? `${(m.size_mb / 1024).toFixed(1)} GB`
+          : `${m.size_mb} MB`;
+
         return `
         <div class="model-row-card ${m.installed ? 'is-installed' : ''}" data-model-id="${m.id}">
           <div class="model-row-main">
             <div class="model-row-title">
               <strong>${m.name}</strong>
-              <span class="model-size-badge">${m.size_mb} MB</span>
+              <span class="model-size-badge">${sizeDisplay}</span>
               <span class="model-task-badge">${m.task}</span>
             </div>
             <p class="model-row-desc text-muted">${m.description}</p>
@@ -615,8 +635,10 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
               isDownloading
                 ? `
               <div class="model-progress-bar-wrap">
-                <div class="model-progress-bar" style="width: ${Math.round(m.progress * 100)}%"></div>
-                <span class="model-progress-text">${Math.round(m.progress * 100)}%</span>
+                <div class="model-progress-bar-bg">
+                  <div class="model-progress-bar" style="width: ${pct}%"></div>
+                </div>
+                <span class="model-progress-text">${pct}% &bull; ${dlMb} / ${totMb} MB${speedText}</span>
               </div>
             `
                 : ''
@@ -627,8 +649,13 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
               m.installed
                 ? `<span class="badge-installed">${ICONS.check} Instalado en Disco</span>`
                 : isDownloading
-                  ? `<button type="button" class="btn btn-sm btn-outline" disabled>${ICONS.refresh} Descargando...</button>`
-                  : `<button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${m.id}">${ICONS.zap} Descargar (${m.size_mb} MB)</button>`
+                  ? `<button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
+                      <span class="btn-spinner">${ICONS.spinner}</span>
+                      <span>Descargando (${pct}%)...</span>
+                    </button>`
+                  : `<button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${m.id}">
+                      ${ICONS.zap} Descargar (${sizeDisplay})
+                    </button>`
             }
           </div>
         </div>
@@ -879,15 +906,22 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
         const modelId = btn.dataset.id;
         if (!modelId) return;
 
-        this.downloadingModelId = modelId;
+        this.activePollingModelIds.add(modelId);
+        const m = this.bridgeModels.find((x) => x.id === modelId);
+        if (m) {
+          m.status = 'downloading';
+        }
         this.renderBridgeModelsList();
-        toast(`Iniciando descarga multihilo de "${modelId}" en el Bridge...`, 'info');
+        toast(`Iniciando descarga multihilo de "${m?.name || modelId}" en el Bridge...`, 'info');
 
         try {
           await bridgeClient.downloadModel(modelId);
           this.startModelProgressPolling(modelId);
         } catch (err) {
-          this.downloadingModelId = null;
+          this.activePollingModelIds.delete(modelId);
+          if (m) {
+            m.status = 'error';
+          }
           toast(`Error al iniciar descarga: ${String(err)}`, 'error');
           this.renderBridgeModelsList();
         }
@@ -896,32 +930,46 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
   }
 
   private startModelProgressPolling(modelId: string): void {
-    if (this.downloadPollTimer) clearInterval(this.downloadPollTimer);
+    this.activePollingModelIds.add(modelId);
+    if (this.downloadPollTimer) return;
 
     this.downloadPollTimer = setInterval(async () => {
-      try {
-        const prog = await bridgeClient.getModelProgress(modelId);
-        const model = this.bridgeModels.find((m) => m.id === modelId);
-        if (model) {
-          model.progress = prog.progress;
-          model.status = prog.status as BridgeModelInfo['status'];
-          if (prog.status === 'ready' || prog.progress >= 1.0) {
-            model.installed = true;
-            model.status = 'ready';
-            this.downloadingModelId = null;
-            if (this.downloadPollTimer) clearInterval(this.downloadPollTimer);
-            toast(`¡Modelo "${model.name}" descargado y listo en GPU!`, 'success');
-          } else if (prog.status === 'error') {
-            this.downloadingModelId = null;
-            if (this.downloadPollTimer) clearInterval(this.downloadPollTimer);
-            toast(`Fallo en la descarga de "${model.name}": ${prog.error ?? 'Error desconocido'}`, 'error');
-          }
-          this.renderBridgeModelsList();
+      if (this.activePollingModelIds.size === 0) {
+        if (this.downloadPollTimer) {
+          clearInterval(this.downloadPollTimer);
+          this.downloadPollTimer = null;
         }
-      } catch {
-        // poll error
+        return;
       }
-    }, 1500);
+
+      for (const mId of Array.from(this.activePollingModelIds)) {
+        try {
+          const prog = await bridgeClient.getModelProgress(mId);
+          const model = this.bridgeModels.find((m) => m.id === mId);
+          if (model) {
+            model.progress = prog.progress;
+            model.status = prog.status as BridgeModelInfo['status'];
+            model.downloaded_bytes = prog.downloaded_bytes;
+            model.total_bytes = prog.total_bytes;
+            model.speed_mbps = prog.speed_mbps;
+
+            if (prog.status === 'ready' || (prog.progress >= 100 && prog.status !== 'error')) {
+              model.installed = true;
+              model.status = 'ready';
+              model.progress = 100;
+              this.activePollingModelIds.delete(mId);
+              toast(`Modelo "${model.name}" descargado y listo en disco / GPU`, 'success');
+            } else if (prog.status === 'error') {
+              this.activePollingModelIds.delete(mId);
+              toast(`Fallo en la descarga de "${model.name}": ${prog.error ?? 'Error de red'}`, 'error');
+            }
+          }
+        } catch {
+          // transient poll error
+        }
+      }
+      this.renderBridgeModelsList();
+    }, 1000);
   }
 
   private syncActiveBadge(): void {
