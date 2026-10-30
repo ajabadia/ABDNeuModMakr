@@ -15,7 +15,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(__dirname, './src'),
+      '../utils/index.js': path.resolve(__dirname, './vendor/@abdsynths/shared/Utils/index.js'),
+      '@abdsynths/shared/utils': path.resolve(__dirname, './vendor/@abdsynths/shared/Utils/index.js')
     }
   }
 });

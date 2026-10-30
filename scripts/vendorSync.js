@@ -32,7 +32,15 @@ function copyRecursiveSync(src, dest, ignoreFilter = () => false) {
     }
     const entries = fs.readdirSync(src);
     for (const entry of entries) {
-      if (entry === 'node_modules' || entry === '.git' || entry === 'tests') {
+      if (
+        entry === 'node_modules' ||
+        entry === '.git' ||
+        entry === 'tests' ||
+        entry.endsWith('.test.js') ||
+        entry.endsWith('.test.ts') ||
+        entry.endsWith('.spec.js') ||
+        entry.endsWith('.spec.ts')
+      ) {
         continue;
       }
       copyRecursiveSync(
@@ -115,6 +123,14 @@ export function syncVendor() {
     delete pkg.devDependencies;
     delete pkg.scripts;
     fs.writeFileSync(sharedPkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+  }
+
+  // Ensure case consistency in Components/index.js for Linux case-sensitive builds
+  const compIndexPath = path.join(targetShared, 'Components', 'index.js');
+  if (fs.existsSync(compIndexPath)) {
+    let content = fs.readFileSync(compIndexPath, 'utf8');
+    content = content.replace("from '../utils/index.js'", "from '../Utils/index.js'");
+    fs.writeFileSync(compIndexPath, content, 'utf8');
   }
 
   // 2. Sync MidiKeyboard
