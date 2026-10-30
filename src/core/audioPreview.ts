@@ -34,6 +34,7 @@ export class AudioPreviewService {
   private analyserNode: AnalyserNode | null = null;
   private activeSourceNode: AudioBufferSourceNode | null = null;
   private activeGainNode: GainNode | null = null;
+  private activeIntermediateNodes: AudioNode[] = [];
   private activePlaybackMode: PreviewPlaybackMode | null = null;
 
   constructor(sources: PreviewSources) {
@@ -80,12 +81,18 @@ export class AudioPreviewService {
     source.buffer = audioBuffer;
     source.connect(this.analyserNode);
     source.onended = () => {
+      try {
+        source.disconnect();
+      } catch {
+        // Ignore if already disconnected
+      }
       if (this.activeSourceNode === source) {
         this.activeSourceNode = null;
         this.activePlaybackMode = null;
       }
     };
     this.activeSourceNode = source;
+    this.activeIntermediateNodes = [];
     this.activePlaybackMode = 'original';
     source.start();
   }
@@ -166,6 +173,11 @@ export class AudioPreviewService {
     gainNode.connect(this.analyserNode);
 
     source.onended = () => {
+      try {
+        source.disconnect();
+      } catch {
+        // Ignore if already disconnected
+      }
       if (this.activeSourceNode === source) {
         this.activeSourceNode = null;
         this.activePlaybackMode = null;
@@ -182,6 +194,7 @@ export class AudioPreviewService {
 
     this.activeSourceNode = source;
     this.activeGainNode = gainNode;
+    this.activeIntermediateNodes = [gainNode];
     this.activePlaybackMode = mode;
     source.start();
   }
@@ -378,6 +391,11 @@ export class AudioPreviewService {
     lastNode.connect(this.analyserNode);
 
     source.onended = () => {
+      try {
+        source.disconnect();
+      } catch {
+        // Ignore if already disconnected
+      }
       if (this.activeSourceNode === source) {
         this.activeSourceNode = null;
         this.activePlaybackMode = null;
@@ -396,6 +414,7 @@ export class AudioPreviewService {
     };
     this.activeSourceNode = source;
     this.activeGainNode = gainNode;
+    this.activeIntermediateNodes = lastNode !== gainNode ? [gainNode, lastNode] : [gainNode];
     this.activePlaybackMode = 'original';
     // When startFromLoopStart is true (e.g. Waveform Loop Editor preview), start at loopStart.
     // Otherwise start from 0 so the sample plays from the beginning naturally.
@@ -443,8 +462,20 @@ export class AudioPreviewService {
       try {
         if (this.audioCtx) {
           s.stop(this.audioCtx.currentTime + 0.03);
+          setTimeout(() => {
+            try {
+              s.disconnect();
+            } catch {
+              // Ignore
+            }
+          }, 40);
         } else {
           s.stop();
+          try {
+            s.disconnect();
+          } catch {
+            // Ignore
+          }
         }
       } catch {
         // Ignore if already stopped
@@ -452,13 +483,16 @@ export class AudioPreviewService {
       this.activeSourceNode = null;
       this.activePlaybackMode = null;
     }
-    if (this.activeGainNode) {
-      const gn = this.activeGainNode;
+    if (this.activeIntermediateNodes.length > 0) {
+      const nodesToDisconnect = [...this.activeIntermediateNodes];
+      this.activeIntermediateNodes = [];
       setTimeout(() => {
-        try {
-          gn.disconnect();
-        } catch {
-          // Ignore
+        for (const n of nodesToDisconnect) {
+          try {
+            n.disconnect();
+          } catch {
+            // Ignore if already disconnected
+          }
         }
       }, 40);
       this.activeGainNode = null;

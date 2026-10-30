@@ -341,10 +341,60 @@ export class WebAudioPipeline implements CoreService {
     const newSession = parseSessionJson(jsonText);
     this.session = newSession;
     this.clearHistory();
+    this.pruneOrphanBuffers();
     this.ensureZoneDemoBuffers(newSession.zones);
     this.persistToLocalStorage();
     this.emit({ type: 'session-changed', session: newSession });
     return newSession;
+  }
+
+  /**
+   * Discards audio buffers, ribbon envelopes and spectral analyses that are no longer
+   * referenced by the current session or by any active undo/redo history entry.
+   * Prevents memory leaks and unbound buffer accumulation during long editing sessions.
+   */
+  public pruneOrphanBuffers(): { removedCount: number; freedBytesEstimate: number } {
+    const activeNames = new Set<string>();
+
+    if (this.session) {
+      for (const z of this.session.zones) {
+        if (z.sampleLow) activeNames.add(z.sampleLow);
+        if (z.sampleHigh) activeNames.add(z.sampleHigh);
+      }
+      if (this.session.extendedRegions) {
+        for (const r of this.session.extendedRegions) {
+          if (r.sampleName) activeNames.add(r.sampleName);
+        }
+      }
+    }
+
+    const historyNames = this.history.getReferencedSampleNames();
+    for (const name of historyNames) {
+      activeNames.add(name);
+    }
+
+    let removedCount = 0;
+    let freedBytesEstimate = 0;
+
+    for (const [key, buffer] of this.sampleBuffers.entries()) {
+      if (!activeNames.has(key)) {
+        freedBytesEstimate += buffer.byteLength;
+        this.sampleBuffers.delete(key);
+        this.ribbonEnvelopeCache.delete(key);
+        removedCount++;
+      }
+    }
+
+    if (this.session) {
+      const activeZoneIds = new Set(this.session.zones.map((z) => z.id));
+      for (const zoneId of this.spectralCache.keys()) {
+        if (!activeZoneIds.has(zoneId)) {
+          this.spectralCache.delete(zoneId);
+        }
+      }
+    }
+
+    return { removedCount, freedBytesEstimate };
   }
 
   public getSession(): Session | null {
@@ -360,7 +410,7 @@ export class WebAudioPipeline implements CoreService {
 
   private pushHistory(label: string, coalesceKey?: string): void {
     if (!this.session) return;
-    this.history.push(
+    const recorded = this.history.push(
       {
         sessionName: this.session.name,
         zones: this.session.zones,
@@ -372,6 +422,9 @@ export class WebAudioPipeline implements CoreService {
       label,
       coalesceKey
     );
+    if (recorded) {
+      this.pruneOrphanBuffers();
+    }
     this.emit({ type: 'history-changed', history: this.getHistoryState() });
   }
 

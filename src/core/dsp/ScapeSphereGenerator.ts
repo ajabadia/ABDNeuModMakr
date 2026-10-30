@@ -936,6 +936,14 @@ export function resynthesizeModelToPcm(
     const nFrames = Math.max(1, model.numFramesOf(l));
     phases.fill(0.0);
 
+    let prevF0Idx = -1;
+    let amps0: Float32Array = model.ampsOfLayer(l, 0);
+    let amps1: Float32Array = amps0;
+    let offs0: Float32Array = model.offsetsOfLayer(l, 0);
+    let offs1: Float32Array = offs0;
+    let w0 = model.frameWeightAt(l, 0);
+    let w1 = w0;
+
     for (let i = 0; i < numSamples; i++) {
       const normPos = numSamples > 1 ? i / (numSamples - 1) : 0.0;
       const framePos = normPos * Math.max(0, nFrames - 1);
@@ -943,13 +951,16 @@ export function resynthesizeModelToPcm(
       const f1Idx = Math.min(nFrames - 1, f0Idx + 1);
       const frac = framePos - f0Idx;
 
-      const amps0 = model.ampsOfLayer(l, f0Idx);
-      const amps1 = model.ampsOfLayer(l, f1Idx);
-      const offs0 = model.offsetsOfLayer(l, f0Idx);
-      const offs1 = model.offsetsOfLayer(l, f1Idx);
+      if (f0Idx !== prevF0Idx) {
+        prevF0Idx = f0Idx;
+        amps0 = model.ampsOfLayer(l, f0Idx);
+        amps1 = model.ampsOfLayer(l, f1Idx);
+        offs0 = model.offsetsOfLayer(l, f0Idx);
+        offs1 = model.offsetsOfLayer(l, f1Idx);
+        w0 = model.frameWeightAt(l, f0Idx);
+        w1 = model.frameWeightAt(l, f1Idx);
+      }
 
-      const w0 = model.frameWeightAt(l, f0Idx);
-      const w1 = model.frameWeightAt(l, f1Idx);
       const frameWeight = (w0 + (w1 - w0) * frac) * layerWeight;
 
       let sampleSum = 0.0;
@@ -962,6 +973,9 @@ export function resynthesizeModelToPcm(
         if (freq <= 0.0 || freq >= nyquist) continue;
 
         phases[k] += (2.0 * Math.PI * freq) / sampleRate;
+        if (phases[k] > 6.283185307179586) {
+          phases[k] -= 6.283185307179586;
+        }
         sampleSum += amp * Math.sin(phases[k]);
       }
 

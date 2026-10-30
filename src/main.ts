@@ -318,10 +318,11 @@ class App {
       },
       getWaveforms: (zoneId) => this.core.getZoneRibbonWaveforms(zoneId),
       onWaveModeChange: (mode) => {
-        if (mode === 'resynthesis' && this.session) {
-          for (const z of this.session.zones) {
+        if (mode === 'resynthesis') {
+          const activeZone = this.getActiveZone();
+          if (activeZone) {
             try {
-              this.core.inspectZoneSpectrum(z.id);
+              this.core.inspectZoneSpectrum(activeZone.id);
             } catch {
               // ignore
             }
@@ -737,8 +738,8 @@ class App {
         }
         try {
           await withLoading(
-            'CARGANDO MODELO...',
-            `Cargando modelo #${String(slot).padStart(3, '0')} desde el banco...`,
+            'LOADING MODEL...',
+            `Loading model #${String(slot).padStart(3, '0')} from bank...`,
             async () => {
               this.session = await this.core.loadBankModel(slot);
               this.selectedZoneId = this.session.zones[0]?.id ?? null;
@@ -796,26 +797,26 @@ class App {
         const item = this.axionikModels.find((m) => m.slug === slug);
         if (this.session?.dirty) {
           const proceed = await confirmDialog(
-            `Cargar el modelo "${item?.name || slug}" reemplazará la sesión actual. ¿Continuar?`,
-            { confirmLabel: 'Cargar Modelo', cancelLabel: 'Cancelar' }
+            `Loading model "${item?.name || slug}" will replace current session. Continue?`,
+            { confirmLabel: 'Load Model', cancelLabel: 'Cancel' }
           );
           if (!proceed) return;
         }
         try {
           if (bridgeClient.isConnected() && item?.folderPath) {
             const scan = await bridgeClient.scanLocalFiles(item.folderPath);
-            toast(`Cargando modelo "${item.name}" desde AxionikDB...`, 'info');
-            this.telemetryDrawer.addLog(`Cargando modelo "${item.name}" (${slug}) con ${scan.total_files} archivos.`);
+            toast(`Loading model "${item.name}" from AxionikDB...`, 'info');
+            this.telemetryDrawer.addLog(`Loading model "${item.name}" (${slug}) with ${scan.total_files} files.`);
           }
           this.bankDrawer.close();
         } catch (err) {
-          toast(`Error cargando modelo de AxionikDB: ${String(err)}`, 'error');
+          toast(`Error loading model from AxionikDB: ${String(err)}`, 'error');
         }
       },
       onDuplicateAxionik: async (slug: string) => {
         const item = this.axionikModels.find((m) => m.slug === slug);
         const curName = item?.name || slug;
-        const entered = typeof window !== 'undefined' ? window.prompt(`Nombre de la copia para "${curName}":`, `${curName} (Copy)`) : null;
+        const entered = typeof window !== 'undefined' ? window.prompt(`Copy name for "${curName}":`, `${curName} (Copy)`) : null;
         if (!entered || !entered.trim()) return;
         const cleanNewName = entered.trim();
         const existingSlugs = this.axionikModels.map((m) => m.slug);
@@ -945,9 +946,10 @@ class App {
         case 'process-complete':
           this.navbar.setProcessing(false);
           if (this.session) {
-            for (const z of this.session.zones) {
+            const activeZone = this.getActiveZone();
+            if (activeZone) {
               try {
-                this.core.inspectZoneSpectrum(z.id);
+                this.core.inspectZoneSpectrum(activeZone.id);
               } catch {
                 // ignore
               }

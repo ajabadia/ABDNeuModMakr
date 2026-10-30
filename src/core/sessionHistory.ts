@@ -59,6 +59,31 @@ export class SessionHistory {
   }
 
   /**
+   * Returns all sample file names referenced in either the undo or redo stacks,
+   * so abandoned or superseded buffers can be safely garbage-collected without
+   * breaking undo.
+   */
+  public getReferencedSampleNames(): Set<string> {
+    const names = new Set<string>();
+    const collect = (entries: HistoryEntry[]) => {
+      for (const entry of entries) {
+        for (const z of entry.zones) {
+          if (z.sampleLow) names.add(z.sampleLow);
+          if (z.sampleHigh) names.add(z.sampleHigh);
+        }
+        if (entry.extendedRegions) {
+          for (const r of entry.extendedRegions) {
+            if (r.sampleName) names.add(r.sampleName);
+          }
+        }
+      }
+    };
+    collect(this.undoStack);
+    collect(this.redoStack);
+    return names;
+  }
+
+  /**
    * Records the pre-mutation document. Rapid successive pushes with the
    * same `coalesceKey` (slider/input drags) collapse into one step.
    * Returns `true` when a new step was recorded.

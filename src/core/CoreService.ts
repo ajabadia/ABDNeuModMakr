@@ -97,6 +97,9 @@ export interface CoreService {
   /** Get list of unique loaded or referenced sample names */
   getLoadedSampleNames(): string[];
 
+  /** Discard unreferenced audio buffers, envelopes and spectral caches */
+  pruneOrphanBuffers(): { removedCount: number; freedBytesEstimate: number };
+
   /** Get 64-point normalized waveform envelopes for zone ribbon rendering */
   getZoneRibbonWaveforms(zoneId: string): ZoneRibbonWaveforms;
 

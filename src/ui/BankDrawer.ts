@@ -905,6 +905,19 @@ export class BankDrawer {
     } else {
       (this.shell?.toolbarEl.querySelector('input') as HTMLInputElement | null)?.focus();
     }
+    // Check storage quota and alert user if exceeding 80%
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+      navigator.storage.estimate().then((est) => {
+        if (est.quota && est.usage) {
+          const pct = Math.round((est.usage / est.quota) * 100);
+          if (pct >= 80) {
+            this.shell?.setFooterStatus(`Storage warning: browser storage is ${pct}% full (${Math.round(est.usage / (1024 * 1024))}MB used). Consider uninstalling unused models in Settings.`);
+          }
+        }
+      }).catch(() => {
+        // Ignore storage estimate failure
+      });
+    }
   }
 
   public close(): void {
