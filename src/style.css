@@ -811,6 +811,90 @@ input[type="range"] {
   }
 }
 
+/* ── Row ▶ audition: key range on the keybed & key×velocity box in the zone map ── */
+.kbd-white-key.kbd-audition-range,
+.kbd-black-key.kbd-audition-range {
+  box-shadow:
+    inset 0 -6px 0 var(--color-success, #3fb950),
+    inset 0 0 0 999px color-mix(in srgb, var(--color-success, #3fb950) 22%, transparent);
+}
+
+.kbd-white-key.kbd-audition-edge-low,
+.kbd-black-key.kbd-audition-edge-low {
+  box-shadow:
+    inset 3px 0 0 var(--color-success, #3fb950),
+    inset 0 -6px 0 var(--color-success, #3fb950),
+    inset 0 0 0 999px color-mix(in srgb, var(--color-success, #3fb950) 22%, transparent);
+}
+
+.kbd-white-key.kbd-audition-edge-high,
+.kbd-black-key.kbd-audition-edge-high {
+  box-shadow:
+    inset -3px 0 0 var(--color-success, #3fb950),
+    inset 0 -6px 0 var(--color-success, #3fb950),
+    inset 0 0 0 999px color-mix(in srgb, var(--color-success, #3fb950) 22%, transparent);
+}
+
+.kbd-white-key.kbd-audition-root,
+.kbd-black-key.kbd-audition-root {
+  outline: 2px solid var(--color-success, #3fb950);
+  outline-offset: -2px;
+}
+
+.ribbon-zone-block.is-auditioning {
+  outline: 2px solid var(--color-success, #3fb950);
+  outline-offset: -2px;
+}
+
+.ribbon-audition-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 2px solid var(--color-success, #3fb950);
+  background: color-mix(in srgb, var(--color-success, #3fb950) 22%, transparent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  animation: ribbon-audition-pulse 1.2s ease-in-out infinite;
+}
+
+.ribbon-audition-tag {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  padding: 0 4px;
+  color: var(--color-bg-base);
+  background: var(--color-success, #3fb950);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.ribbon-audition-root {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: var(--color-success, #3fb950);
+}
+
+@keyframes ribbon-audition-pulse {
+  50% {
+    background: color-mix(in srgb, var(--color-success, #3fb950) 38%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ribbon-audition-overlay {
+    animation: none;
+  }
+}
+
 .canonical-zone-table tbody td {
   padding: var(--space-2) var(--space-3);
   border-right: 1px solid var(--color-panel-border-dim);

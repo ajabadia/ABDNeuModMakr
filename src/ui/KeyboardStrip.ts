@@ -11,7 +11,7 @@ import {
   analyzeExtendedIntersections,
 } from '../core/extendedAdapter';
 import { midiToNoteName } from './ZoneRibbon';
-import { toMidiVelocity } from '../core/noteMapping';
+import { toMidiVelocity, type RowAuditionSpan } from '../core/noteMapping';
 
 export interface KeyboardStripHandlers {
   /** `velocity` is MIDI 1..127 (pointer Y on the key: top = soft, bottom = loud) */
@@ -28,6 +28,7 @@ export class KeyboardStrip {
   private extendedRegions: ExtendedRegion[] = [];
   private workingMode: WorkingMode = 'classic';
   private kbdInstance: KeyboardInstance | null = null;
+  private auditionSpan: RowAuditionSpan | null = null;
 
   constructor(container: HTMLElement, handlers: KeyboardStripHandlers) {
     this.container = container;
@@ -57,6 +58,37 @@ export class KeyboardStrip {
   public setActiveZone(zone: Zone | null): void {
     this.activeZone = zone;
     this.syncZonesToKeyboard();
+  }
+
+  /**
+   * Marks the key range (and root key) of the table row being auditioned.
+   * If the root key is outside the visible 5 octaves, the keybed scrolls to show it.
+   */
+  public setAuditionSpan(span: RowAuditionSpan | null): void {
+    this.auditionSpan = span ? { ...span } : null;
+    if (span) {
+      const start = this.baseOctave * 12;
+      const end = start + 60;
+      if (span.rootKey < start || span.rootKey > end) {
+        // Centre the root key in the 5-octave window (setBaseOctave re-applies the marks)
+        this.setBaseOctave(Math.floor(span.rootKey / 12) - 2);
+        return;
+      }
+    }
+    this.applyAuditionSpan();
+  }
+
+  private applyAuditionSpan(): void {
+    const keys = this.container.querySelectorAll<HTMLElement>('[data-note]');
+    const s = this.auditionSpan;
+    keys.forEach((el) => {
+      const midi = parseInt(el.getAttribute('data-note') ?? '', 10);
+      const inRange = !!s && !isNaN(midi) && midi >= s.lowKey && midi <= s.highKey;
+      el.classList.toggle('kbd-audition-range', inRange);
+      el.classList.toggle('kbd-audition-root', inRange && midi === s!.rootKey);
+      el.classList.toggle('kbd-audition-edge-low', inRange && midi === s!.lowKey);
+      el.classList.toggle('kbd-audition-edge-high', inRange && midi === s!.highKey);
+    });
   }
 
   public setBaseOctave(oct: number): void {
@@ -213,6 +245,7 @@ export class KeyboardStrip {
         el.appendChild(rootEl);
       }
     });
+    this.applyAuditionSpan();
   }
 
   private bindEvents(): void {

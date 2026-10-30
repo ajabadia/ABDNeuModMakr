@@ -19,7 +19,7 @@ import { ZoneRibbon } from './ui/ZoneRibbon';
 import { ZoneInspector } from './ui/ZoneInspector';
 import { ProcessPanel } from './ui/ProcessPanel';
 import { KeyboardStrip } from './ui/KeyboardStrip';
-import { resolveClassicNoteTargets, resolveExtendedNoteTargets } from './core/noteMapping';
+import { resolveClassicNoteTargets, resolveExtendedNoteTargets, resolveRowAuditionSpan } from './core/noteMapping';
 import { ProcessModal } from './ui/ProcessModal';
 import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
@@ -379,6 +379,19 @@ class App {
         void this.core.auditionRow(opts);
         this.spectralView?.notifyPlaybackStarted();
       },
+      onRowAuditionChange: (row) => {
+        const span =
+          row && this.session
+            ? resolveRowAuditionSpan(
+                this.session.zones,
+                this.core.getExtendedRegions(),
+                this.session.processConfig.workingMode === 'extended',
+                row
+              )
+            : null;
+        this.keyboard?.setAuditionSpan(span);
+        this.ribbon?.setAuditionSpan(span);
+      },
       onAuditionLoop: (opts) => {
         const isExtended = this.session?.processConfig.workingMode === 'extended';
         const zId = opts.zoneId ?? this.getActiveZone()?.id;
@@ -519,6 +532,8 @@ class App {
     this.keyboard = new KeyboardStrip(keyboardMount, {
       onNotePress: (note, velocity) => {
         if (!this.session) return;
+        // Keyboard takes over playback: drop any table-row audition highlight
+        this.inspector.clearPlayingRow();
         const isExtended = this.session.processConfig.workingMode === 'extended';
         // Resolve which row(s)/sample this note + velocity triggers (mode-specific tables)
         const targets = isExtended

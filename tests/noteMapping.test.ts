@@ -4,6 +4,7 @@ import {
   classicLayerForVelocity,
   resolveClassicNoteTargets,
   resolveExtendedNoteTargets,
+  resolveRowAuditionSpan,
   toMidiVelocity,
 } from '../src/core/noteMapping.ts';
 import type { ExtendedRegion, Zone } from '../src/core/types.ts';
@@ -52,3 +53,19 @@ e = resolveExtendedNoteTargets(regs, 20, 100);
 assert.deepEqual([e.regionIds, e.sampleName], [[], undefined]);
 
 console.log('[PASS] noteMapping: classic velocity layers & extended key×velocity regions');
+
+// Row ▶ audition span (keyboard range + zone map box)
+let s = resolveRowAuditionSpan([zA, zB], regs, false, { zoneId: 'a' });
+assert.deepEqual(s, { zoneId: 'a', lowKey: 0, highKey: 59, rootKey: 60, lowVel: 1, highVel: 79 }, 'classic plays Low layer');
+s = resolveRowAuditionSpan([zA, zB], regs, false, { zoneId: 'b' });
+assert.deepEqual([s?.lowVel, s?.highVel], [1, 127], 'single layer covers full velocity');
+const zHighOnly = zone({ id: 'h', lowKey: 10, highKey: 20, sampleHigh: 'h.wav', velSplit: 100 });
+s = resolveRowAuditionSpan([zHighOnly], [], false, { zoneId: 'h' });
+assert.deepEqual([s?.lowVel, s?.highVel], [100, 127], 'only High sample → High layer');
+s = resolveRowAuditionSpan([zA], regs, true, { zoneId: 'a', regionId: 'loud' });
+assert.deepEqual(s, { zoneId: 'a', regionId: 'loud', lowKey: 48, highKey: 71, rootKey: 62, lowVel: 64, highVel: 127 });
+s = resolveRowAuditionSpan([zA], regs, false, { zoneId: 'a', regionId: 'loud' });
+assert.equal(s?.regionId, undefined, 'classic mode ignores region ids');
+assert.equal(resolveRowAuditionSpan([], [], false, { zoneId: 'x' }), null);
+
+console.log('[PASS] noteMapping: row audition key×velocity span (classic layer / extended region)');

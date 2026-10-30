@@ -8,6 +8,7 @@ import {
   analyzeClassicZoneOverlaps,
   analyzeExtendedIntersections,
 } from '../core/extendedAdapter';
+import type { RowAuditionSpan } from '../core/noteMapping';
 import { ICONS } from './icons';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -119,6 +120,7 @@ export class ZoneRibbon {
   private extendedRegions: ExtendedRegion[] = [];
   private workingMode: WorkingMode = 'classic';
   private waveMode: 'original' | 'resynthesis' = 'original';
+  private auditionSpan: RowAuditionSpan | null = null;
 
   constructor(container: HTMLElement, handlers: ZoneRibbonHandlers) {
     this.container = container;
@@ -149,6 +151,47 @@ export class ZoneRibbon {
       const elId = el.getAttribute('data-zone-id');
       el.classList.toggle('is-selected', elId === zoneId);
     });
+  }
+
+  /**
+   * Shows the key × velocity rectangle of the row being auditioned from the table
+   * (classic zone velocity layer or extended region). `null` clears it.
+   */
+  public setAuditionSpan(span: RowAuditionSpan | null): void {
+    this.auditionSpan = span ? { ...span } : null;
+    this.applyAuditionSpan();
+  }
+
+  private applyAuditionSpan(): void {
+    const track = this.container.querySelector<HTMLElement>('#ribbon-track');
+    if (!track) return;
+    track.querySelector('.ribbon-audition-overlay')?.remove();
+    track
+      .querySelectorAll('.ribbon-zone-block.is-auditioning')
+      .forEach((el) => el.classList.remove('is-auditioning'));
+    const s = this.auditionSpan;
+    if (!s) return;
+
+    if (s.zoneId) {
+      track
+        .querySelector(`.ribbon-zone-block[data-zone-id="${CSS.escape(s.zoneId)}"]`)
+        ?.classList.add('is-auditioning');
+    }
+    const leftPct = (s.lowKey / 128) * 100;
+    const widthPct = (Math.max(1, s.highKey - s.lowKey + 1) / 128) * 100;
+    const bottomPct = ((s.lowVel - 1) / 127) * 100;
+    const heightPct = (Math.max(1, s.highVel - s.lowVel + 1) / 127) * 100;
+    const overlay = document.createElement('div');
+    overlay.className = 'ribbon-audition-overlay';
+    overlay.style.left = `${leftPct.toFixed(3)}%`;
+    overlay.style.width = `${widthPct.toFixed(3)}%`;
+    overlay.style.bottom = `${bottomPct.toFixed(2)}%`;
+    overlay.style.height = `${heightPct.toFixed(2)}%`;
+    overlay.title = `Auditioning: Keys ${midiToNoteName(s.lowKey)}..${midiToNoteName(s.highKey)}, Root ${midiToNoteName(s.rootKey)}, Vel ${s.lowVel}..${s.highVel}`;
+    const span = Math.max(1, s.highKey - s.lowKey + 1);
+    const rootPct = ((s.rootKey - s.lowKey + 0.5) / span) * 100;
+    overlay.innerHTML = `<span class="ribbon-audition-tag">▶ ${midiToNoteName(s.lowKey)}–${midiToNoteName(s.highKey)} · V${s.lowVel}–${s.highVel}</span><span class="ribbon-audition-root" style="left:${Math.max(0, Math.min(100, rootPct)).toFixed(1)}%"></span>`;
+    track.appendChild(overlay);
   }
 
   private render(): void {
@@ -278,6 +321,7 @@ export class ZoneRibbon {
     `;
 
     const trackEl = this.container.querySelector<HTMLElement>('#ribbon-track');
+    this.applyAuditionSpan();
 
     // Bind waveform mode toggle buttons (A: Original vs B: Processed)
     const waveBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-ribbon-wave');

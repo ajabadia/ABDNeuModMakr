@@ -73,3 +73,52 @@ export function resolveExtendedNoteTargets(
     rootKey: first?.rootKey,
   };
 }
+
+/** Key × velocity rectangle of a table row being auditioned (keyboard + zone map highlight). */
+export interface RowAuditionSpan {
+  zoneId?: string;
+  regionId?: string;
+  lowKey: MidiNote;
+  highKey: MidiNote;
+  rootKey: MidiNote;
+  lowVel: number;
+  highVel: number;
+}
+
+/**
+ * Resolves the key/velocity span of the row played with the table ▶ button.
+ * Classic: the zone's keys and the velocity layer `auditionRow` plays
+ *          (Low Vel, or High Vel when the zone only has a High sample).
+ * Extended: the region's own key × velocity rectangle.
+ */
+export function resolveRowAuditionSpan(
+  zones: Zone[],
+  regions: ExtendedRegion[],
+  isExtended: boolean,
+  row: { zoneId?: string; regionId?: string }
+): RowAuditionSpan | null {
+  if (isExtended && row.regionId) {
+    const r = regions.find((x) => x.id === row.regionId);
+    if (r) {
+      return {
+        zoneId: row.zoneId,
+        regionId: r.id,
+        lowKey: r.lowKey,
+        highKey: r.highKey,
+        rootKey: r.rootKey,
+        lowVel: r.lowVel,
+        highVel: r.highVel,
+      };
+    }
+  }
+  const z = row.zoneId ? zones.find((x) => x.id === row.zoneId) : undefined;
+  if (!z) return null;
+  const split = Math.max(2, Math.min(127, z.velSplit ?? 64));
+  const playsHighOnly = !z.sampleLow && !!z.sampleHigh;
+  const [lowVel, highVel] = playsHighOnly
+    ? [split, 127]
+    : z.sampleHigh
+      ? [1, split - 1]
+      : [1, 127];
+  return { zoneId: z.id, lowKey: z.lowKey, highKey: z.highKey, rootKey: z.rootKey, lowVel, highVel };
+}

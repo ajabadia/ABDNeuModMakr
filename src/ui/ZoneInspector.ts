@@ -105,6 +105,8 @@ export interface ZoneInspectorHandlers {
     zoneId?: string;
     regionId?: string;
   }) => void;
+  /** Fired when a table row starts (ids) or stops (null) auditioning — drives keyboard & zone map highlight */
+  onRowAuditionChange?: (row: { zoneId?: string; regionId?: string } | null) => void;
   onAuditionLoop?: (opts: {
     zoneId?: string;
     regionId?: string;
@@ -183,6 +185,7 @@ export class ZoneInspector {
   private draggingDrawerLoopHandle: 'start' | 'end' | null = null;
   /** Active row ID currently being auditioned in the table (classic zone ID or extended region ID) */
   private playingRowId: string | null = null;
+  private playingRowStartedAt: number = 0;
   private auditionCheckTimer: number | null = null;
 
   constructor(
@@ -374,7 +377,7 @@ export class ZoneInspector {
     this.allZones = allZones ? allZones.map((z) => ({ ...z })) : zone ? [{ ...zone }] : [];
 
     if (this.handlers.isAuditionPlaying && !this.handlers.isAuditionPlaying()) {
-      this.playingRowId = null;
+      this.setPlayingRow(null);
     }
 
     const activeEl = document.activeElement;
@@ -2134,19 +2137,20 @@ export class ZoneInspector {
 
     if (this.playingRowId === rowKey) {
       this.handlers.onStopAudition?.();
-      this.playingRowId = null;
+      this.setPlayingRow(null);
       this.updatePlayButtonStates();
       return;
     }
 
-    this.playingRowId = rowKey;
+    const rowIds = {
+      zoneId: zoneId || undefined,
+      regionId: isExtended && regionId ? regionId : undefined,
+    };
+    this.setPlayingRow(rowKey, rowIds);
     this.updatePlayButtonStates();
 
     if (this.handlers.onAuditionRow) {
-      this.handlers.onAuditionRow({
-        zoneId: zoneId || undefined,
-        regionId: isExtended && regionId ? regionId : undefined,
-      });
+      this.handlers.onAuditionRow(rowIds);
     } else if (isExtended && regionId) {
       this.selectedRegionId = regionId;
       const targetZoneId = zoneId || this.currentZone?.id;
@@ -2180,6 +2184,31 @@ export class ZoneInspector {
     });
   }
 
+  /** Called when another audition source (e.g. the keyboard) takes over playback. */
+  public clearPlayingRow(): void {
+    if (!this.playingRowId) return;
+    this.setPlayingRow(null);
+    this.updatePlayButtonStates();
+  }
+
+  /**
+   * Single place that changes the auditioning row, so the keyboard and the zone map
+   * highlights always follow start / manual stop / natural end of playback.
+   */
+  private setPlayingRow(
+    rowKey: string | null,
+    ids?: { zoneId?: string; regionId?: string }
+  ): void {
+    const changed = rowKey !== this.playingRowId;
+    this.playingRowId = rowKey;
+    this.playingRowStartedAt = rowKey ? performance.now() : 0;
+    if (rowKey) {
+      this.handlers.onRowAuditionChange?.(ids ?? {});
+    } else if (changed) {
+      this.handlers.onRowAuditionChange?.(null);
+    }
+  }
+
   private startAuditionStateMonitor(): void {
     if (this.auditionCheckTimer !== null) {
       clearInterval(this.auditionCheckTimer);
@@ -2187,9 +2216,11 @@ export class ZoneInspector {
     }
     this.auditionCheckTimer = window.setInterval(() => {
       if (this.playingRowId) {
+        // Grace period: decoding/AudioContext resume may delay the actual start
+        if (performance.now() - this.playingRowStartedAt < 600) return;
         const isPlaying = this.handlers.isAuditionPlaying?.() ?? false;
         if (!isPlaying) {
-          this.playingRowId = null;
+          this.setPlayingRow(null);
           this.updatePlayButtonStates();
           if (this.auditionCheckTimer !== null) {
             clearInterval(this.auditionCheckTimer);
