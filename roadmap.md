@@ -261,6 +261,17 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 - [x] Al ejecutar **`reprocessFromPurestSource` ("Reprocess Purest Source")**, el motor resuelve automáticamente la fuente primaria más pura disponible (`resolvePurestSourceForSample`: `01` o `02` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario `04_classic_enhanced` ya degradado.
 - [x] **Persistencia de activos pesados en `IndexedDB` (`src/core/storage/NeuronAssetStore.ts`)**: Mantiene configuraciones ligeras en `localStorage` y almacena las 5 capas binarias (`raw_sources`, `legacy_originals`, `enhanced_audio`, `model_capsules`) en `IndexedDB` con caché write-through en memoria y fallback automático para tests en Node.js.
 
+### 9.3 Tarea a Estudiar: Ofuscación, Extensión Propietaria y Cifrado del Contenedor (ABDAxionikVS / VST)
+
+> *Nota: Se abordará una vez validado empíricamente en las pruebas que el contenido del paquete actual satisface todas las necesidades del sintetizador y del diseñador sonoro.*
+
+- [ ] **Extensión de Paquete Propia**:
+  - Reemplazar la extensión genérica `.zip` por una extensión de marca propia (ej. `.abdnmodel`, `.axionikpack` o `.npack`).
+- [ ] **Ofuscación y Protección contra Extracción Genérica**:
+  - Alterar o encapsular la cabecera estándar de archivo mediante firma propietaria para evitar que herramientas de descompresión genéricas abran o despiecen las muestras por error.
+- [ ] **Valoración de Cifrado Autenticado (Criptografía AES-256-GCM / Poly1305)**:
+  - Analizar mecanismo de cifrado en reposo integrado con el plugin VST/CLAP/AU (`ABDAxionikVS` en C++ / JUCE 9) y `ABDNeuModMakr`, garantizando que bancos comerciales o modelos de autor solo puedan ser cargados y reproducidos por el motor oficial protegiendo la propiedad intelectual de las muestras.
+
 ---
 
 ## Fase 10 — Estrategia de Despliegue: Vendorizado de `ABDShared`, Vercel y CI/CD ✅ COMPLETADA

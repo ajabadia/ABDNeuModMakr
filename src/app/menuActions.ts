@@ -44,6 +44,79 @@ export class MenuActions {
     this.ctx = ctx;
   }
 
+  async saveSession(): Promise<void> {
+    if (!this.ctx.session) return;
+    await this.ctx.core.saveSession(this.ctx.session);
+    const jsonText = this.ctx.core.exportSessionJson();
+    const blob = new Blob([jsonText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = this.ctx.session.name.replace(/[^A-Za-z0-9_-]/g, '_');
+    a.href = url;
+    a.download = `${safeName}.nmsession.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    this.ctx.shell.getTelemetry().addLog(
+      `Session "${this.ctx.session.name}" saved to localStorage and downloaded as ${safeName}.nmsession.json`
+    );
+  }
+
+  async saveSessionAs(): Promise<void> {
+    if (!this.ctx.session) return;
+    const currentName = this.ctx.session.name || 'NewModel';
+    const entered = typeof window !== 'undefined' ? window.prompt('Enter session name:', currentName) : null;
+    if (entered === null) return;
+    const newName = entered.trim() || currentName;
+    this.ctx.session.name = newName;
+    this.ctx.session.processConfig.modelName = newName;
+    await this.ctx.core.saveSession(this.ctx.session);
+    const jsonText = this.ctx.core.exportSessionJson();
+    const blob = new Blob([jsonText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = newName.replace(/[^A-Za-z0-9_-]/g, '_');
+    a.href = url;
+    a.download = `${safeName}.nmsession.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    this.ctx.shell.getTelemetry().addLog(
+      `Session renamed to "${newName}" and saved as ${safeName}.nmsession.json`
+    );
+    this.ctx.refresh();
+  }
+
+  async exportModel(): Promise<void> {
+    if (!this.ctx.session) return;
+    const slot = this.ctx.session.processConfig.modelNumber;
+    const safeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
+    await this.ctx.core.exportModel(
+      slot,
+      `NeuronModel_${String(slot).padStart(3, '0')}_${safeName}.zip`
+    );
+    this.ctx.shell.getTelemetry().addLog(
+      `Exported model package #${String(slot).padStart(3, '0')} (${this.ctx.session.processConfig.modelName}) as .zip`
+    );
+  }
+
+  async exportModelAs(): Promise<void> {
+    if (!this.ctx.session) return;
+    const slot = this.ctx.session.processConfig.modelNumber;
+    const currentSafeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
+    const defaultPackName = `NeuronModel_${String(slot).padStart(3, '0')}_${currentSafeName}`;
+    const entered = typeof window !== 'undefined' ? window.prompt('Enter model pack filename (without .zip):', defaultPackName) : null;
+    if (entered === null) return;
+    const customName = entered.trim().replace(/\.zip$/i, '') || defaultPackName;
+    const safeCustom = customName.replace(/[^A-Za-z0-9_-]/g, '_');
+    await this.ctx.core.exportModel(slot, `${safeCustom}.zip`);
+    this.ctx.shell.getTelemetry().addLog(
+      `Exported model pack #${String(slot).padStart(3, '0')} as ${safeCustom}.zip`
+    );
+  }
+
   buildNavbarHandlers(): NavbarHandlers {
     return {
       onNewSession: async () => {
@@ -53,25 +126,8 @@ export class MenuActions {
         this.ctx.refresh();
       },
       onOpenSession: () => this.ctx.imports.triggerOpenSession(),
-      onSaveSession: async () => {
-        if (this.ctx.session) {
-          await this.ctx.core.saveSession(this.ctx.session);
-          const jsonText = this.ctx.core.exportSessionJson();
-          const blob = new Blob([jsonText], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          const safeName = this.ctx.session.name.replace(/[^A-Za-z0-9_-]/g, '_');
-          a.href = url;
-          a.download = `${safeName}.nmsession.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          this.ctx.shell.getTelemetry().addLog(
-            `Session "${this.ctx.session.name}" saved to localStorage and downloaded as ${safeName}.nmsession.json`
-          );
-        }
-      },
+      onSaveSession: () => void this.saveSession(),
+      onSaveSessionAs: () => void this.saveSessionAs(),
       onImportSamples: () => this.ctx.imports.triggerAudioImport('samples'),
       onImportSampler: () => this.ctx.imports.triggerSamplerImport?.(),
       onImportFolder: () => this.ctx.imports.triggerFolderImport(),
@@ -79,18 +135,8 @@ export class MenuActions {
       onImportModelFolder: () => this.ctx.imports.triggerModelFolderImport(),
       onConfigureNeuronDbFolder: () => this.ctx.imports.triggerConfigureNeuronDbFolder(),
       onImportModel: () => this.ctx.imports.triggerModelImport(),
-      onExportModel: async () => {
-        if (!this.ctx.session) return;
-        const slot = this.ctx.session.processConfig.modelNumber;
-        const safeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
-        await this.ctx.core.exportModel(
-          slot,
-          `NeuronModel_${String(slot).padStart(3, '0')}_${safeName}.zip`
-        );
-        this.ctx.shell.getTelemetry().addLog(
-          `Exported Dual-Target model package #${String(slot).padStart(3, '0')} (${this.ctx.session.processConfig.modelName}) as .zip`
-        );
-      },
+      onExportModel: () => void this.exportModel(),
+      onExportModelAs: () => void this.exportModelAs(),
       onExportZoneAiff: () => {
         const active = this.ctx.getActiveZone();
         if (!active) return;
@@ -282,20 +328,10 @@ export class MenuActions {
         }
         if (key === 's') {
           e.preventDefault();
-          if (this.ctx.session) {
-            void this.ctx.core.saveSession(this.ctx.session);
-            const jsonText = this.ctx.core.exportSessionJson();
-            const blob = new Blob([jsonText], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const safeName = this.ctx.session.name.replace(/[^A-Za-z0-9_-]/g, '_');
-            a.href = url;
-            a.download = `${safeName}.nmsession.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            this.ctx.shell.getTelemetry().addLog(`Saved session ${safeName}.nmsession.json`);
+          if (e.shiftKey) {
+            void this.saveSessionAs();
+          } else {
+            void this.saveSession();
           }
           return;
         }
@@ -330,16 +366,10 @@ export class MenuActions {
           this.ctx.toggleSpectralPanel();
         } else if (key === 't') {
           e.preventDefault();
-          if (this.ctx.session) {
-            const slot = this.ctx.session.processConfig.modelNumber;
-            const safeName = this.ctx.session.processConfig.modelName.replace(
-              /[^A-Za-z0-9_-]/g,
-              '_'
-            );
-            void this.ctx.core.exportModel(
-              slot,
-              `NeuronModel_${String(slot).padStart(3, '0')}_${safeName}.zip`
-            );
+          if (e.shiftKey) {
+            void this.exportModelAs();
+          } else {
+            void this.exportModel();
           }
         }
         return;

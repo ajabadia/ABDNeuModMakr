@@ -11,6 +11,7 @@ export interface NavbarHandlers {
   onNewSession: () => void;
   onOpenSession: () => void;
   onSaveSession: () => void;
+  onSaveSessionAs?: () => void;
   onImportSamples: () => void;
   onImportSampler?: () => void;
   onImportFolder: () => void;
@@ -19,6 +20,7 @@ export interface NavbarHandlers {
   onImportModel: () => void;
   onConfigureNeuronDbFolder?: () => void;
   onExportModel: () => void;
+  onExportModelAs?: () => void;
   onExportZoneAiff: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -81,7 +83,17 @@ export class AppNavbar {
         items: [
           { id: 101, label: 'New Session (Reset)', action: 'newSession' },
           { id: 102, label: 'Open Session (.nmsession.json)...', action: 'openSession', shortcut: 'Ctrl+O' },
-          { id: 103, label: 'Save Session (.nmsession.json)', action: 'saveSession', shortcut: 'Ctrl+S' },
+          {
+            id: 103,
+            label: 'Save...',
+            submenu: [
+              { id: 1031, label: 'Save Session', action: 'saveSession', shortcut: 'Ctrl+S' },
+              { id: 1032, label: 'Save Session As...', action: 'saveSessionAs', shortcut: 'Ctrl+Shift+S' },
+              { separator: true },
+              { id: 1033, label: 'Save Model Pack (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
+              { id: 1034, label: 'Save Model Pack As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
+            ],
+          },
           { separator: true },
           { id: 104, label: 'Import Audio Files (.wav / .aif)...', action: 'importSamples', shortcut: 'Ctrl+I' },
           { id: 1045, label: 'Import Audio by Name (Hartmann)...', action: 'importByName', shortcut: 'Ctrl+N' },
@@ -92,7 +104,6 @@ export class AppNavbar {
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
           { id: 107, label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
-          { id: 108, label: 'Transfer / Export Model (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
           { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
         ],
       },
@@ -402,6 +413,7 @@ export class AppNavbar {
       case 'newSession': this.handlers.onNewSession(); break;
       case 'openSession': this.handlers.onOpenSession(); break;
       case 'saveSession': this.handlers.onSaveSession(); break;
+      case 'saveSessionAs': this.handlers.onSaveSessionAs?.(); break;
       case 'importSamples': this.handlers.onImportSamples(); break;
       case 'importSampler': this.handlers.onImportSampler?.(); break;
       case 'importFolder': this.handlers.onImportFolder(); break;
@@ -410,6 +422,7 @@ export class AppNavbar {
       case 'configureNeuronDbFolder': this.handlers.onConfigureNeuronDbFolder?.(); break;
       case 'importModel': this.handlers.onImportModel(); break;
       case 'exportModel': this.handlers.onExportModel(); break;
+      case 'exportModelAs': this.handlers.onExportModelAs?.(); break;
       case 'exportZoneAiff': this.handlers.onExportZoneAiff(); break;
       case 'undo': this.handlers.onUndo(); break;
       case 'redo': this.handlers.onRedo(); break;
