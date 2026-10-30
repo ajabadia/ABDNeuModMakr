@@ -295,6 +295,10 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 - [x] **Modo 100% Web / Vercel (Client-Side Puro — Despliegue en Producción)**:
   - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y visualizadores corren directamente en el navegador del usuario.
   - Conexión de repositorio en dashboard de Vercel y publicación de la URL pública [https://abd-neumodmakr.vercel.app/](https://abd-neumodmakr.vercel.app/) verificada sin errores de consola.
+- [x] **Soporte PWA / Offline (Progressive Web App Instalable en Escritorio)**:
+  - Manifiesto web (`manifest.webmanifest`) con soporte standalone, iconos y colores de tema dark.
+  - Service Worker (`public/sw.js`) con estrategia híbrida (Network-First para HTML, Cache-First para bundles `/assets/` y Stale-While-Revalidate para estáticos), permitiendo arrancar y trabajar 100% desconectado de internet.
+  - Integración en la interfaz desde `Help -> Install Desktop App (PWA)...` y eventos `beforeinstallprompt` / `appinstalled`.
 - [ ] **Modo Híbrido con Puente Local ("Local Companion Bridge")**:
   - Aun abriendo la aplicación desde la URL de Vercel (o en `localhost`), la web detecta opcionalmente si hay un micro-servidor local corriendo en la máquina del usuario (`http://127.0.0.1:8389` en Python/FastAPI o C++) con acceso a la GPU local (CUDA/MPS) y al sistema de archivos (`NeuronDB`) para ejecutar modelos de IA pesados (AudioSR, Demucs, entrenamientos de espacio latente) a máxima velocidad.
 
