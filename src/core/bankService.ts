@@ -29,6 +29,8 @@ import {
   buildTimeCapsuleEntries,
   buildTimeCapsuleZipArchive,
 } from './timeCapsule.ts';
+import { bridgeClient, type AxionikSaveFileEntry } from './bridge/BridgeClient.ts';
+import { createUniqueModelSlug, slugifyModelName } from './modelSlug.ts';
 import type { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
 import type {
   BankSummary,
@@ -407,6 +409,224 @@ export class BankService {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
+  }
+
+  /**
+   * Saves the current active model or session to AxionikDB (Fase 11).
+   * Identifies the model by semantic slug (e.g. 'grand-piano-steinway'),
+   * packages the complete self-contained 5-layer Time Capsule,
+   * writes directly to the local AxionikDB library via Companion Bridge if online,
+   * or falls back to browser .axmodel.zip export.
+   */
+  public async saveToAxionikDb(options?: {
+    customSlug?: string;
+    customName?: string;
+    saveAs?: boolean;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }> {
+    const session = this.ctx.getSession();
+    const activeSlot = session?.processConfig.modelNumber ?? 0;
+    const model = this.generatedModels.find((m) => m.slot === activeSlot);
+
+    const modelName =
+      options?.customName ??
+      session?.processConfig.modelName ??
+      model?.name ??
+      `Model_${activeSlot}`;
+
+    const existingSlugs = this.generatedModels
+      .map((m) => m.slug)
+      .filter((s): s is string => typeof s === 'string' && s.length > 0);
+
+    let slug: string;
+    if (options?.customSlug) {
+      slug = slugifyModelName(options.customSlug);
+    } else if (options?.saveAs || !session?.axionikSlug) {
+      slug = createUniqueModelSlug(modelName, existingSlugs);
+    } else {
+      slug = session.axionikSlug;
+    }
+
+    const zones = session?.zones ?? [];
+    let zoneBinaries = this.modelZoneBinaries.get(activeSlot);
+    if (!zoneBinaries) {
+      this.ctx.ensureDemoBuffers(zones);
+      const cfg = session?.processConfig ?? {
+        modelName,
+        modelNumber: activeSlot,
+        parameterSet: model?.parameterSet ?? 0,
+        complexity: model?.complexity ?? 8,
+        targetFormat: model?.targetFormat ?? 'dual',
+      };
+      const analyzedBySample = new Map<string, ZoneBinaryPair>();
+      zoneBinaries = [];
+      for (const zone of zones) {
+        const sLow = zone.sampleLow ?? DEFAULT_SAMPLE_NAME;
+        if (!analyzedBySample.has(sLow)) {
+          const lowBuffer = this.ctx.getSampleBuffer(sLow) ?? null;
+          const analyzedLow = this.ctx.analyzeZone({ zone: { ...zone, sampleLow: sLow }, wavBuffer: lowBuffer }, cfg);
+          const pairLow: ZoneBinaryPair = {
+            scapeBinary: analyzedLow.scapeBinary,
+            sphereBinary: analyzedLow.sphereBinary,
+          };
+          analyzedBySample.set(sLow, pairLow);
+          zoneBinaries.push(pairLow);
+        }
+        if (zone.sampleHigh && !analyzedBySample.has(zone.sampleHigh)) {
+          const highBuffer = this.ctx.getSampleBuffer(zone.sampleHigh) ?? null;
+          const analyzedHigh = this.ctx.analyzeZone(
+            { zone: { ...zone, sampleLow: zone.sampleHigh }, wavBuffer: highBuffer },
+            cfg
+          );
+          const pairHigh: ZoneBinaryPair = {
+            scapeBinary: analyzedHigh.scapeBinary,
+            sphereBinary: analyzedHigh.sphereBinary,
+          };
+          analyzedBySample.set(zone.sampleHigh, pairHigh);
+          zoneBinaries.push(pairHigh);
+        }
+      }
+      this.modelZoneBinaries.set(activeSlot, zoneBinaries);
+    }
+
+    const assetStore = this.ctx.getAssetStore();
+    const rawSourceSamples = new Map<string, ArrayBuffer>();
+    const enhancedAudioSamples = new Map<string, ArrayBuffer>();
+    const seenSamples = new Set<string>();
+
+    for (const z of zones) {
+      for (const sName of [z.sampleLow, z.sampleHigh]) {
+        if (!sName || seenSamples.has(sName)) continue;
+        seenSamples.add(sName);
+        const rawName = assetStore.resolveRawSampleName(sName);
+        const rawBuf = assetStore.getRawSourceSync(rawName);
+        if (rawBuf) {
+          rawSourceSamples.set(rawName, rawBuf);
+        } else if (!this.ctx.hasImportedBinary(sName) && !assetStore.hasEnhancedAudio(sName)) {
+          const activeBuf = this.ctx.getSampleBuffer(sName);
+          if (activeBuf) rawSourceSamples.set(sName, activeBuf);
+        }
+        const enhBuf = assetStore.getEnhancedAudioSync(sName);
+        if (enhBuf) enhancedAudioSamples.set(sName, enhBuf);
+      }
+    }
+
+    const legacyOriginalBundle = assetStore.getLegacyOriginalSlotBundleSync(activeSlot);
+    const effectiveCfg: ProcessConfig = session?.processConfig ?? {
+      modelName,
+      modelNumber: activeSlot,
+      parameterSet: model?.parameterSet ?? 0,
+      complexity: model?.complexity ?? 8,
+      targetFormat: 'dual',
+      workingMode: 'extended',
+    };
+
+    const { entries, manifest, provenance } = buildTimeCapsuleEntries({
+      slot: activeSlot,
+      modelName,
+      processConfig: effectiveCfg,
+      zones,
+      extendedRegions: session?.extendedRegions,
+      articulation: session?.articulation,
+      detectedInstrumentCategory: session?.detectedInstrumentCategory,
+      rawSourceSamples,
+      legacyOriginalBundle,
+      enhancedAudioSamples,
+      classicEnhancedBinaries: zoneBinaries,
+      mapScriptVersion: this.modelMapScriptVersions.get(activeSlot),
+      neuronikModelJson: model?.neuronikModelJson,
+      soundParameterOverrides: mapArticulationToSoundOverrides(session?.articulation),
+      previousProvenance: session?.provenance ?? model?.provenance,
+      includeTopLevelCompatibility: true,
+    });
+
+    if (session) {
+      session.provenance = provenance;
+      session.axionikSlug = slug;
+      session.processConfig.modelName = modelName;
+      session.name = modelName;
+      session.dirty = false;
+    }
+
+    const updatedModel: GeneratedModel = {
+      slot: activeSlot,
+      name: modelName,
+      slug,
+      zoneCount: zones.length,
+      complexity: effectiveCfg.complexity,
+      parameterSet: effectiveCfg.parameterSet,
+      createdAt: model?.createdAt ?? new Date().toISOString(),
+      path: `AxionikDB/Models/${slug}`,
+      targetFormat: 'dual',
+      provenance,
+    };
+    this.upsertModel(updatedModel);
+    this.persistBank();
+
+    let isBridge = false;
+    let savedPath = '';
+    let filesWritten = 0;
+
+    if (bridgeClient.isConnected()) {
+      const libPath =
+        (typeof localStorage !== 'undefined'
+          ? localStorage.getItem('abd_axionikdb_path')
+          : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+
+      const files: AxionikSaveFileEntry[] = entries.map((e) => {
+        if (typeof e.data === 'string') {
+          return { path: e.path, content: e.data };
+        }
+        let binary = '';
+        const len = e.data.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(e.data[i]);
+        }
+        return { path: e.path, content_b64: btoa(binary) };
+      });
+
+      const res = await bridgeClient.saveAxionikModel(libPath, slug, files);
+      isBridge = true;
+      savedPath = res.folder;
+      filesWritten = res.files_written;
+    } else {
+      // Browser fallback: download as .axmodel.zip
+      const zipBytes = this.buildModelZipBytes(activeSlot);
+      if (typeof document !== 'undefined') {
+        const blob = new Blob([zipBytes as unknown as BlobPart], { type: 'application/zip' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${slug}.axmodel.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      savedPath = `${slug}.axmodel.zip`;
+      filesWritten = entries.length;
+    }
+
+    assetStore.setCapsuleRecord({
+      slot: activeSlot,
+      modelName,
+      manifest,
+      provenance,
+      classicEnhancedBinaries: zoneBinaries,
+      extendedModelJson:
+        model?.neuronikModelJson ??
+        JSON.stringify({ name: modelName, slot: activeSlot, slug, format: 2 }),
+      updatedAt: provenance.updatedAt,
+    });
+
+    const bank = await this.loadBank();
+    this.ctx.emit({ type: 'bank-updated', bank });
+
+    return {
+      slug,
+      path: savedPath,
+      isBridge,
+      count: filesWritten,
+    };
   }
 
   /**

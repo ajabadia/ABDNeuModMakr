@@ -6,7 +6,7 @@
 
 ## 1. Que es ABDNeuModMakr
 
-Reinterpretacion moderna del **Hartmann Neuron MODELmaker v1.2** como aplicacion web autonoma (no plugin DAW). Analiza muestras de audio, particiona el teclado MIDI 0..127 en zonas y genera modelos multidimensionales compatibles tanto con el hardware Neuron original como con el sintetizador software ABDAxionikVS / NEURONiK.
+Reinterpretacion moderna del **Hartmann Neuron MODELmaker v1.2** como aplicacion web autonoma (no plugin DAW). Analiza muestras de audio, particiona el teclado MIDI 0..127 en zonas y genera modelos multidimensionales compatibles tanto con el hardware Neuron original como con el sintetizador software ABDAxionikVS.
 
 ### Decision arquitectonica clave: "Separado y Web"
 

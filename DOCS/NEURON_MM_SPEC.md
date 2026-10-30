@@ -1,6 +1,6 @@
 # ABDNeuModMakr -- Especificacion Tecnica del Pipeline y Formatos Neuron
 
-> Consolidación de la ingeniería inversa de `MODELmaker_1_2.exe` (`NASAnalysis.dll` + clases Java de `neuronapp.*`), los formatos binarios de `NeuronDB` (`.scape`, `.sphere`, `map.script`, `MName`, `sound.script`) y el motor espectral `SpectralAnalyzer` (NEURONiK / ABDNeural).
+> Consolidación de la ingeniería inversa de `MODELmaker_1_2.exe` (`NASAnalysis.dll` + clases Java de `neuronapp.*`), los formatos binarios de `NeuronDB` (`.scape`, `.sphere`, `map.script`, `MName`, `sound.script`) y el motor espectral `SpectralAnalyzer` (Axionik / ABDAxionikVS).
 
 ---
 

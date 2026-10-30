@@ -28,7 +28,8 @@ import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
 import { SettingsModal } from './ui/SettingsModal';
 import { withLoading } from './ui/LoadingModal';
-import { bridgeClient } from './core/bridge/BridgeClient';
+import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
+import { createUniqueModelSlug } from './core/modelSlug';
 import { confirmDialog, toast } from './ui/notify';
 import { pwaManager } from './app/pwa';
 
@@ -51,6 +52,7 @@ class App {
   private settingsModal!: SettingsModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
+  private axionikModels: AxionikDbModelEntry[] = [];
 
   constructor() {
     const self = this;
@@ -260,7 +262,25 @@ class App {
     `;
   }
 
+  private async refreshAxionikModels(): Promise<void> {
+    if (!bridgeClient.isConnected()) return;
+    const libPath =
+      (typeof localStorage !== 'undefined'
+        ? localStorage.getItem('abd_axionikdb_path')
+        : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+    try {
+      this.axionikModels = await bridgeClient.scanAxionikDb(libPath);
+    } catch {
+      // transient ignore
+    }
+  }
+
   private initSubsystems(): void {
+    void this.refreshAxionikModels();
+    bridgeClient.subscribe(() => {
+      void this.refreshAxionikModels();
+    });
+
     const navMount = document.querySelector<HTMLElement>('#navbar-container')!;
     const ribbonMount = document.querySelector<HTMLElement>('#ribbon-mount')!;
     const inspectorMount = document.querySelector<HTMLElement>('#inspector-mount')!;
@@ -762,9 +782,59 @@ class App {
       // Refresh rescans the last configured folder without a picker.
       onRefreshLibrary: () => this.imports.refreshNeuronDbFolder(),
       onPickLibrary: (slot) => this.imports.pickLibraryModel(slot),
+
+      // AxionikDB (Modo Avanzado)
+      onRequestAxionik: () => this.axionikModels,
+      onConfigureAxionikDbFolder: () => {
+        this.settingsModal.open('general');
+      },
+      onRefreshAxionik: async () => {
+        await this.refreshAxionikModels();
+        return this.axionikModels.length;
+      },
+      onPickAxionik: async (slug: string) => {
+        const item = this.axionikModels.find((m) => m.slug === slug);
+        if (this.session?.dirty) {
+          const proceed = await confirmDialog(
+            `Cargar el modelo "${item?.name || slug}" reemplazará la sesión actual. ¿Continuar?`,
+            { confirmLabel: 'Cargar Modelo', cancelLabel: 'Cancelar' }
+          );
+          if (!proceed) return;
+        }
+        try {
+          if (bridgeClient.isConnected() && item?.folderPath) {
+            const scan = await bridgeClient.scanLocalFiles(item.folderPath);
+            toast(`Cargando modelo "${item.name}" desde AxionikDB...`, 'info');
+            this.telemetryDrawer.addLog(`Cargando modelo "${item.name}" (${slug}) con ${scan.total_files} archivos.`);
+          }
+          this.bankDrawer.close();
+        } catch (err) {
+          toast(`Error cargando modelo de AxionikDB: ${String(err)}`, 'error');
+        }
+      },
+      onDuplicateAxionik: async (slug: string) => {
+        const item = this.axionikModels.find((m) => m.slug === slug);
+        const curName = item?.name || slug;
+        const entered = typeof window !== 'undefined' ? window.prompt(`Nombre de la copia para "${curName}":`, `${curName} (Copy)`) : null;
+        if (!entered || !entered.trim()) return;
+        const cleanNewName = entered.trim();
+        const existingSlugs = this.axionikModels.map((m) => m.slug);
+        const newSlug = createUniqueModelSlug(cleanNewName, existingSlugs);
+        const libPath =
+          (typeof localStorage !== 'undefined' ? localStorage.getItem('abd_axionikdb_path') : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+        try {
+          await bridgeClient.duplicateAxionikModel(libPath, slug, newSlug, cleanNewName);
+          toast(`Modelo duplicado en AxionikDB: ${newSlug}`, 'success');
+          this.telemetryDrawer.addLog(`Duplicado modelo AxionikDB "${slug}" -> "${newSlug}" ("${cleanNewName}")`);
+          await this.refreshAxionikModels();
+          this.bankDrawer.refreshBank();
+        } catch (err) {
+          toast(`Error al duplicar modelo: ${String(err)}`, 'error');
+        }
+      },
     },
-    // NeuModMakr serves models + library; presets belong to the synth host.
-    { visibleTabs: ['models', 'library'] });
+    // NeuModMakr serves models + classic library + axionikdb advanced
+    { visibleTabs: ['models', 'library', 'axionik'] });
 
     this.processModal = new ProcessModal(modalsMount, {
       onCancel: () => this.core.cancelProcess(),

@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — SpectralAnalyzer
 //
-// Pure TypeScript reimplementation of NEURONiK::ModelMaker::Analysis::SpectralAnalyzer
+// Pure TypeScript reimplementation of Axionik::ModelMaker::Analysis::SpectralAnalyzer
 // (SpectralAnalyzer.h / SpectralAnalyzer.cpp).
 //
 // Features:

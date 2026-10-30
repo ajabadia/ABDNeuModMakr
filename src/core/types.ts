@@ -468,6 +468,8 @@ export interface Session {
   provenance?: ModelProvenance;
   processConfig: ProcessConfig;
   dirty: boolean;
+  /** Modern slug identifier for AxionikDB (e.g. 'grand-piano-steinway') */
+  axionikSlug?: string;
   createdAt: string;
   modifiedAt: string;
 }
@@ -478,6 +480,8 @@ export interface Session {
 export interface GeneratedModel {
   slot: ModelSlot;
   name: string;
+  /** Modern slug identifier for AxionikDB (e.g. 'grand-piano-steinway') */
+  slug?: string;
   zoneCount: number;
   complexity: number;
   parameterSet: number;

@@ -749,7 +749,7 @@ export function generateMapScript(zones: Zone[]): string {
 }
 
 /**
- * Port of `NEURONiK::Common::modelToJson` (`SpectralModelWriter.h`).
+ * Port of `Axionik::Common::modelToJson` (`SpectralModelWriter.h`).
  * Produces the canonical `.neuronikmodel` v2 / v2.1 JSON object.
  */
 export function modelToNeuronikJson(

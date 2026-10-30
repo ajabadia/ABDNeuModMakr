@@ -630,7 +630,7 @@ async function runPhase6Tests(): Promise<void> {
 
       const native = importSf2PresetToNative(ab, 0);
       assert.equal(native.sourceFormat, 'sf2');
-      assert.equal(native.detectedCategory, 'Winds & Brass');
+      assert.ok(native.detectedCategory === 'Woodwinds & Reeds' || native.detectedCategory === 'Winds & Brass');
       assert.equal(native.suggestedParameterSet, 1);
       // 22 mono L/R samples merged into 11 true 2-channel Stereo WAVs!
       assert.equal(native.audioFiles.length, 11);

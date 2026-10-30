@@ -151,6 +151,13 @@ export interface CoreService {
   /** Export a generated model to a path */
   exportModel(slot: number, targetPath: string): Promise<void>;
 
+  /** Save active model/session to modern AxionikDB library (Fase 11) */
+  saveToAxionikDb(options?: {
+    customSlug?: string;
+    customName?: string;
+    saveAs?: boolean;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }>;
+
   /** Import a model from a path into a slot */
   importModel(sourcePath: string, slot: number): Promise<GeneratedModel>;
 

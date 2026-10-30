@@ -20,6 +20,7 @@ import type {
 } from '../core/types';
 import {
   bridgeClient,
+  type AxionikDbModelEntry,
   type BridgeModelInfo,
   type BridgeScanResult,
 } from '../core/bridge/BridgeClient';
@@ -42,6 +43,12 @@ export type SettingsModalTab = 'general' | 'web' | 'cloud' | 'bridge';
 
 const STORAGE_KEY_BANK_PATH = 'neumodmakr_bank_path';
 const DEFAULT_BANK_PATH = 'd:\\desarrollos\\ABDSynths\\_RESOURCES\\Soundfonts';
+
+const STORAGE_KEY_AXIONIK_DB_PATH = 'abd_axionikdb_path';
+const DEFAULT_AXIONIK_DB_PATH = 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+
+const STORAGE_KEY_NEURON_DB_PATH = 'abd_neurondb_path';
+const DEFAULT_NEURON_DB_PATH = 'd:\\desarrollos\\ABDSynths\\NeuronDB';
 
 export class SettingsModal {
   private backdropEl: HTMLElement | null = null;
@@ -66,6 +73,10 @@ export class SettingsModal {
   private editingUrlModelId: string | null = null;
   private scanResults: BridgeScanResult | null = null;
   private isScanning = false;
+  private isScanningAxionik = false;
+  private axionikScanResults: AxionikDbModelEntry[] | null = null;
+  private isScanningNeuronDb = false;
+  private neuronDbScanResults: BridgeScanResult | null = null;
 
   constructor(handlers: SettingsModalHandlers) {
     this.handlers = handlers;
@@ -224,6 +235,8 @@ export class SettingsModal {
     const curFamily = this.handlers.getCurrentThemeFamily?.() ?? 'neuron';
     const curMode = this.handlers.getCurrentThemeMode?.() ?? 'light';
     const curWorkingMode = this.handlers.getCurrentWorkingMode?.() ?? 'classic';
+    const savedAxionikDbPath = localStorage.getItem(STORAGE_KEY_AXIONIK_DB_PATH) || DEFAULT_AXIONIK_DB_PATH;
+    const savedNeuronDbPath = localStorage.getItem(STORAGE_KEY_NEURON_DB_PATH) || DEFAULT_NEURON_DB_PATH;
     const savedBankPath = localStorage.getItem(STORAGE_KEY_BANK_PATH) || DEFAULT_BANK_PATH;
     const isBridgeOnline = bridgeClient.isConnected();
 
@@ -321,21 +334,57 @@ export class SettingsModal {
         <!-- 3. Carpetas de Bancos y Archivos Locales -->
         <div class="settings-section-card">
           <div class="settings-card-header">
-            <h4>${ICONS.folder} Carpetas de Librería Local (NeuronDB &amp; SoundFonts)</h4>
-            <span class="text-muted">Explora y sincroniza colecciones de muestras locales sin límites de carga del navegador.</span>
+            <h4>${ICONS.folder} Carpetas de Librería Local (AxionikDB, NeuronDB &amp; Recursos)</h4>
+            <span class="text-muted">Configura las rutas a tus librerías locales para sincronizarlas con el Companion Bridge.</span>
           </div>
 
-          <div class="settings-bank-path-form">
-            <div class="bank-path-input-wrap">
-              <input type="text" id="input-bank-path" class="form-control" value="${savedBankPath}" placeholder="d:\\desarrollos\\ABDSynths\\_RESOURCES\\Soundfonts" />
-              <button type="button" class="btn btn-primary" id="btn-scan-bank-dir" ${isBridgeOnline ? '' : 'disabled'}>
-                ${ICONS.search} ${this.isScanning ? 'Escaneando...' : 'Escanear Carpeta'}
-              </button>
+          <div class="settings-libraries-container">
+            <!-- 1. AxionikDB (Modo Avanzado) -->
+            <div class="library-path-card">
+              <div class="library-path-header">
+                <strong>Librería AxionikDB (Modo Avanzado / Time-Capsule)</strong>
+                <span class="text-muted">Modelos con slugs semánticos y Time Capsule auto-contenida (<code>manifest.json</code> + <code>cover.webp</code>).</span>
+              </div>
+              <div class="bank-path-input-wrap">
+                <input type="text" id="input-axionikdb-path" class="form-control" value="${savedAxionikDbPath}" placeholder="${DEFAULT_AXIONIK_DB_PATH}" />
+                <button type="button" class="btn btn-primary" id="btn-scan-axionikdb-dir" ${isBridgeOnline ? '' : 'disabled'}>
+                  ${ICONS.search} ${this.isScanningAxionik ? 'Escaneando...' : 'Escanear AxionikDB'}
+                </button>
+              </div>
             </div>
+
+            <!-- 2. NeuronDB (Modo Clásico) -->
+            <div class="library-path-card" style="margin-top: 12px;">
+              <div class="library-path-header">
+                <strong>Librería NeuronDB (Modo Clásico / Hartmann 000..511)</strong>
+                <span class="text-muted">Bancos compatibles con sintetizador Hartmann Neuron original y emulador clásico.</span>
+              </div>
+              <div class="bank-path-input-wrap">
+                <input type="text" id="input-neurondb-path" class="form-control" value="${savedNeuronDbPath}" placeholder="${DEFAULT_NEURON_DB_PATH}" />
+                <button type="button" class="btn btn-outline" id="btn-scan-neurondb-dir" ${isBridgeOnline ? '' : 'disabled'}>
+                  ${ICONS.search} ${this.isScanningNeuronDb ? 'Escaneando...' : 'Escanear NeuronDB'}
+                </button>
+              </div>
+            </div>
+
+            <!-- 3. Recursos SoundFonts / Raw Samples -->
+            <div class="library-path-card" style="margin-top: 12px;">
+              <div class="library-path-header">
+                <strong>Colección SoundFonts y Muestras Raw</strong>
+                <span class="text-muted">Fuentes de muestras acústicas (.sf2, .sfz, .wav) para importación directa.</span>
+              </div>
+              <div class="bank-path-input-wrap">
+                <input type="text" id="input-bank-path" class="form-control" value="${savedBankPath}" placeholder="${DEFAULT_BANK_PATH}" />
+                <button type="button" class="btn btn-outline" id="btn-scan-bank-dir" ${isBridgeOnline ? '' : 'disabled'}>
+                  ${ICONS.search} ${this.isScanning ? 'Escaneando...' : 'Escanear Muestras'}
+                </button>
+              </div>
+            </div>
+
             ${
               !isBridgeOnline
-                ? `<p class="bank-bridge-offline-hint text-muted">
-                    Para explorar carpetas locales sin límites del navegador, inicia el Companion Bridge (<code>start.bat</code>).
+                ? `<p class="bank-bridge-offline-hint text-muted" style="margin-top: 10px;">
+                    Para explorar carpetas locales sin límites del navegador, inicia el Companion Bridge (<code>bridge/server.py</code>).
                   </p>`
                 : ''
             }
@@ -351,6 +400,61 @@ export class SettingsModal {
   }
 
   private buildScanResultsHtml(): string {
+    if (this.axionikScanResults && this.axionikScanResults.length > 0) {
+      return `
+        <div class="scan-summary-card">
+          <div class="scan-summary-header">
+            <strong>Modelos detectados en AxionikDB:</strong>
+            <span class="panel-badge badge-success">${this.axionikScanResults.length} modelos</span>
+          </div>
+          <div class="scan-files-list">
+            ${this.axionikScanResults
+              .slice(0, 30)
+              .map(
+                (m) => `
+              <div class="scan-file-row">
+                <span class="scan-file-name"><strong>${m.name}</strong> <small class="text-muted">(${m.slug})</small></span>
+                <span class="scan-file-size text-muted">${m.category} &bull; Set ${m.parameterSet} &bull; ${m.zoneCount} zonas</span>
+                <span class="scan-file-ext">${m.hasCover ? 'Cover OK' : 'No cover'}</span>
+              </div>
+            `
+              )
+              .join('')}
+            ${
+              this.axionikScanResults.length > 30
+                ? `<div class="scan-more text-muted">+${this.axionikScanResults.length - 30} modelos adicionales disponibles en el explorador de bancos.</div>`
+                : ''
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    if (this.neuronDbScanResults) {
+      return `
+        <div class="scan-summary-card">
+          <div class="scan-summary-header">
+            <strong>Archivos encontrados en NeuronDB (<code>${this.neuronDbScanResults.scanned_path}</code>):</strong>
+            <span class="panel-badge badge-success">${this.neuronDbScanResults.total_files} archivos</span>
+          </div>
+          <div class="scan-files-list">
+            ${this.neuronDbScanResults.files
+              .slice(0, 30)
+              .map(
+                (f) => `
+              <div class="scan-file-row">
+                <span class="scan-file-name">${f.name}</span>
+                <span class="scan-file-size text-muted">${Math.round(f.size / 1024)} KB</span>
+                <span class="scan-file-ext">${f.ext}</span>
+              </div>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+      `;
+    }
+
     if (!this.scanResults) return '';
     return `
       <div class="scan-summary-card">
@@ -976,7 +1080,49 @@ python bridge/server.py</code></pre>
       });
     });
 
-    // Bank path scan
+    // AxionikDB path scan
+    const axionikPathInput = this.backdropEl.querySelector<HTMLInputElement>('#input-axionikdb-path');
+    axionikPathInput?.addEventListener('change', () => {
+      localStorage.setItem(STORAGE_KEY_AXIONIK_DB_PATH, axionikPathInput.value.trim());
+    });
+    this.backdropEl.querySelector('#btn-scan-axionikdb-dir')?.addEventListener('click', async () => {
+      const p = axionikPathInput?.value.trim() || DEFAULT_AXIONIK_DB_PATH;
+      localStorage.setItem(STORAGE_KEY_AXIONIK_DB_PATH, p);
+      this.isScanningAxionik = true;
+      this.render();
+      try {
+        this.axionikScanResults = await bridgeClient.scanAxionikDb(p);
+        toast(`AxionikDB escaneado: ${this.axionikScanResults.length} modelos encontrados`, 'success');
+      } catch (err) {
+        toast(`Error al escanear AxionikDB: ${String(err)}`, 'error');
+      } finally {
+        this.isScanningAxionik = false;
+        this.render();
+      }
+    });
+
+    // NeuronDB path scan
+    const neuronDbPathInput = this.backdropEl.querySelector<HTMLInputElement>('#input-neurondb-path');
+    neuronDbPathInput?.addEventListener('change', () => {
+      localStorage.setItem(STORAGE_KEY_NEURON_DB_PATH, neuronDbPathInput.value.trim());
+    });
+    this.backdropEl.querySelector('#btn-scan-neurondb-dir')?.addEventListener('click', async () => {
+      const p = neuronDbPathInput?.value.trim() || DEFAULT_NEURON_DB_PATH;
+      localStorage.setItem(STORAGE_KEY_NEURON_DB_PATH, p);
+      this.isScanningNeuronDb = true;
+      this.render();
+      try {
+        this.neuronDbScanResults = await bridgeClient.scanLocalFiles(p);
+        toast(`NeuronDB escaneado: ${this.neuronDbScanResults.total_files} archivos encontrados`, 'success');
+      } catch (err) {
+        toast(`Error al escanear NeuronDB: ${String(err)}`, 'error');
+      } finally {
+        this.isScanningNeuronDb = false;
+        this.render();
+      }
+    });
+
+    // Soundfonts / Raw Bank path scan
     const pathInput = this.backdropEl.querySelector<HTMLInputElement>('#input-bank-path');
     pathInput?.addEventListener('change', () => {
       localStorage.setItem(STORAGE_KEY_BANK_PATH, pathInput.value.trim());

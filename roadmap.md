@@ -230,8 +230,52 @@
 
 ---
 
-## Fase 11 — Procesado del Modo Extendido, Modelos Surround y Nuevos Resynators (`ABDAxionikVS`) [EN PLANIFICACION]
+## Fase 11 — Procesado del Modo Extendido, Arquitectura AxionikDB y Nuevos Resynators (`ABDAxionikVS`) [EN CURSO / ESPECIFICADA]
 
+**Objetivo**: Integración total entre ABDNeuModMakr y el sintetizador de nueva generación ABDAxionikVS mediante el repositorio canónico `AxionikDB`.
+
+### 11.1 Repositorio y Banco Avanzado: `AxionikDB`
+- [ ] Carpeta canónica `AxionikDB` en disco, separada físicamente de la clásica `NeuronDB` para no contaminar el hardware original de 2002.
+- [ ] Estructura de paquete autocontenida por modelo basada en la Cápsula del Tiempo:
+  ```
+  AxionikDB/
+  ├── Models/
+  │   └── <model-slug>/
+  │       ├── manifest.json            (Metadatos completos, linaje, etiquetas acústicas)
+  │       ├── cover.webp               (Carátula 512x512)
+  │       ├── 04_classic_enhanced/     (MName, map.script, .scape, .sphere, sound.script)
+  │       └── 05_extended_model/       (model.nmmodel, extended_map.json, 2D regions)
+  └── Presets/
+      └── <preset-name>.axpreset       (Presets de articulación global del sintetizador)
+  ```
+- [ ] **Liberación del yugo de ranura (0..511)**: El identificador principal pasa a ser el **Slug Semántico** del modelo (ej. `grand-piano-steinway`, `analog-modular-bass`). La ranura numérica `000..511` solo se genera de forma virtual si se exporta a hardware clásico.
+- [ ] **Sincronización de carpetas y "Guardar como..." (`Save As...`)**:
+  - Opción directa `Salvar en AxionikDB` y `Salvar en AxionikDB como...` para duplicar modelos de forma no destructiva y experimentar con diferentes parámetros o carátulas.
+  - Sincronización automática del nombre de la subcarpeta del banco si el usuario renombra el modelo consolidado.
+
+### 11.2 Catálogo Ampliado de Instrumentos y Clasificación IA
+- [ ] Taxonomía moderna de 14 categorías ricas de sonido para el clasificador acústico de IA (WebGPU, WASM y Bridge):
+  1. `Vocal & Choir` -> Mapeo clásico: Set 5 (Winds & Voice)
+  2. `Drums & Percussion Kit` -> Mapeo clásico: Set 8 (Drums & Perc)
+  3. `Orchestral & Strings` -> Mapeo clásico: Set 1 (Strings)
+  4. `Keyboards & Acoustic Pianos` -> Mapeo clásico: Set 2 (Keyboards)
+  5. `Electric Pianos & Tines` -> Mapeo clásico: Set 2 (Keyboards)
+  6. `Bass & Low End` -> Mapeo clásico: Set 4 (Bass)
+  7. `Plucked & Ethnic / World` -> Mapeo clásico: Set 3 (Plucked)
+  8. `Brass & Horns` -> Mapeo clásico: Set 1 (Winds & Brass)
+  9. `Woodwinds & Reeds` -> Mapeo clásico: Set 1 (Winds & Brass)
+  10. `Mallets & Chromatic Perc` -> Mapeo clásico: Set 7 (Mallets & Bells)
+  11. `Pads & Atmospheres` -> Mapeo clásico: Set 6 (Pads & Textures)
+  12. `Synth Leads & Solos` -> Mapeo clásico: Set 0 (Synth & Neutral)
+  13. `SFX, Drones & Cinematic` -> Mapeo clásico: Set 9 (SFX & Experimental)
+  14. `Arpeggiated & Sequences` -> Mapeo clásico: Set 8 (Loop Factory)
+- [ ] Los 10 Parameter Sets clásicos de Hartmann (0..9) se calculan automáticamente para retrocompatibilidad hacia la capa `04_classic_enhanced`.
+
+### 11.3 BankManager en Modo Avanzado (Opción A: Pestañas Unificadas)
+- [ ] En Modo Clásico: El BankManager solo muestra los modelos de `NeuronDB`.
+- [ ] En Modo Avanzado: El BankManager desbloquea dos pestañas superiores (`AxionikDB` y `NeuronDB`), permitiendo cargar modelos clásicos para extenderlos y guardarlos en `AxionikDB`.
+
+### 11.4 Motor Espectral de Alta Definición y Resynators
 - [ ] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas).
 - [ ] Separacion de formantes y pitch para Formant Shifting en tiempo real.
 - [ ] Campos de morphing 2D/3D y espacio latente (Autoencoder / VAE).

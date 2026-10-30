@@ -34,7 +34,7 @@ export interface ExtraLayerFrames {
 }
 
 /**
- * Pure TypeScript representation of `NEURONiK::Common::SpectralModel`.
+ * Pure TypeScript representation of `Axionik::Common::SpectralModel`.
  */
 export class SpectralModelData {
   public readonly amplitudes: Float32Array = new Float32Array(64);

@@ -15,6 +15,8 @@ export interface NavbarHandlers {
   onOpenSession: () => void;
   onSaveSession: () => void;
   onSaveSessionAs?: () => void;
+  onSaveToAxionikDb?: () => void;
+  onSaveToAxionikDbAs?: () => void;
   onImportSamples: () => void;
   onImportSampler?: () => void;
   onImportFolder: () => void;
@@ -106,8 +108,11 @@ export class AppNavbar {
               { id: 1031, label: 'Save Session', action: 'saveSession', shortcut: 'Ctrl+S' },
               { id: 1032, label: 'Save Session As...', action: 'saveSessionAs', shortcut: 'Ctrl+Shift+S' },
               { separator: true },
-              { id: 1033, label: 'Save Model Pack (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
-              { id: 1034, label: 'Save Model Pack As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
+              { id: 1033, label: 'Save Model to AxionikDB...', action: 'saveToAxionikDb' },
+              { id: 1034, label: 'Save Model to AxionikDB As (Duplicate)...', action: 'saveToAxionikDbAs' },
+              { separator: true },
+              { id: 1035, label: 'Save Model Pack (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
+              { id: 1036, label: 'Save Model Pack As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
             ],
           },
           { separator: true },
@@ -549,6 +554,8 @@ export class AppNavbar {
       case 'importModelFolder': this.handlers.onImportModelFolder(); break;
       case 'configureNeuronDbFolder': this.handlers.onConfigureNeuronDbFolder?.(); break;
       case 'importModel': this.handlers.onImportModel(); break;
+      case 'saveToAxionikDb': this.handlers.onSaveToAxionikDb?.(); break;
+      case 'saveToAxionikDbAs': this.handlers.onSaveToAxionikDbAs?.(); break;
       case 'exportModel': this.handlers.onExportModel(); break;
       case 'exportModelAs': this.handlers.onExportModelAs?.(); break;
       case 'exportZoneAiff': this.handlers.onExportZoneAiff(); break;

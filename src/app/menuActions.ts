@@ -127,6 +127,44 @@ export class MenuActions {
     );
   }
 
+  async saveToAxionikDb(): Promise<void> {
+    if (!this.ctx.session) return;
+    try {
+      const res = await this.ctx.core.saveToAxionikDb();
+      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'paquete .axmodel.zip descargado';
+      this.ctx.shell.getTelemetry().addLog(
+        `Guardado en AxionikDB: slug "${res.slug}" (${res.count} archivos en ${where}).`
+      );
+      toast(`Guardado en AxionikDB: ${res.slug}`, 'success');
+      this.ctx.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.shell.getTelemetry().addLog(`Error guardando en AxionikDB: ${msg}`);
+      toast(`Error en AxionikDB: ${msg}`, 'error');
+    }
+  }
+
+  async saveToAxionikDbAs(): Promise<void> {
+    if (!this.ctx.session) return;
+    const currentName = this.ctx.session.name || 'New Model';
+    const entered = typeof window !== 'undefined' ? window.prompt('Nombre del modelo en AxionikDB:', currentName) : null;
+    if (entered === null) return;
+    const newName = entered.trim() || currentName;
+    try {
+      const res = await this.ctx.core.saveToAxionikDb({ customName: newName, saveAs: true });
+      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'paquete .axmodel.zip descargado';
+      this.ctx.shell.getTelemetry().addLog(
+        `Duplicado / Guardado como en AxionikDB: "${newName}" [slug: ${res.slug}] (${where}).`
+      );
+      toast(`Guardado en AxionikDB como: ${res.slug}`, 'success');
+      this.ctx.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.shell.getTelemetry().addLog(`Error guardando como en AxionikDB: ${msg}`);
+      toast(`Error en AxionikDB: ${msg}`, 'error');
+    }
+  }
+
   buildNavbarHandlers(): NavbarHandlers {
     return {
       onNewSession: async () => {
@@ -145,6 +183,8 @@ export class MenuActions {
       onOpenSession: () => this.ctx.imports.triggerOpenSession(),
       onSaveSession: () => void this.saveSession(),
       onSaveSessionAs: () => void this.saveSessionAs(),
+      onSaveToAxionikDb: () => void this.saveToAxionikDb(),
+      onSaveToAxionikDbAs: () => void this.saveToAxionikDbAs(),
       onImportSamples: () => this.ctx.imports.triggerAudioImport('samples'),
       onImportSampler: () => this.ctx.imports.triggerSamplerImport?.(),
       onImportFolder: () => this.ctx.imports.triggerFolderImport(),

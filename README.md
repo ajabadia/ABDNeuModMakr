@@ -14,7 +14,7 @@ A diferencia de un sintetizador en tiempo real (que opera como plugin VST3/CLAP/
 2. **Multiplataforma sin dependencias**: Corre directamente en el navegador con tecnologias web estandar (HTML5 / TypeScript / Web Audio API) o como PWA instalable en escritorio, y se despliega directamente en la nube (Vercel).
 3. **Servicio universal a ambos mundos**:
    - Genera archivos `.model` y `.sound` 100% compatibles con el **Hartmann Neuron hardware** original (2002) y con `NeuronVS` (via tarjetas CompactFlash o carpetas de `NeuronDB`).
-   - Genera y audita los bancos de modelos de alta definicion para la recreacion software moderna **ABDAxionikVS / NEURONiK**.
+   - Genera y audita los bancos de modelos de alta definicion para la recreacion software moderna **ABDAxionikVS**.
 4. **Pipeline Hibrido Dual-Target**:
    - **`WebAudioPipeline` (TypeScript nativo)**: Decodificacion WAV/AIFF nativa en navegador, calculo STFT, peak-picking armonico, y extraccion de tramas Scape/Sphere mediante Web Workers sin dependencias externas.
    - **Estandar de Audio Maestro (`Master Wave Standard`)**: Remuestreo sinc polifasico a **24-bit PCM / 96.000 Hz**, extension de ancho de banda armonica (BWE) hasta 42 kHz, reduccion de ruido y espacializacion multicanal (Mono / Estereo / Quad Surround 4.0).

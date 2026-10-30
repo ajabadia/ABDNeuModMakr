@@ -46,6 +46,25 @@ export interface BridgeScanResult {
   files: BridgeScanFile[];
 }
 
+export interface AxionikDbModelEntry {
+  slug: string;
+  name: string;
+  category: string;
+  parameterSet: number;
+  zoneCount: number;
+  complexity: number;
+  hasCover: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  folderPath: string;
+}
+
+export interface AxionikSaveFileEntry {
+  path: string;
+  content?: string;
+  content_b64?: string;
+}
+
 export interface BridgeEnhanceOptions {
   targetSampleRate?: number;
   targetLoopSec?: number;
@@ -522,6 +541,153 @@ export class BridgeClient {
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
       return (await res.json()) as { status: string; url: string; is_custom_url: boolean };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Scans an AxionikDB directory for modern models.
+   */
+  public async scanAxionikDb(libraryPath: string, timeoutMs = 10000): Promise<AxionikDbModelEntry[]> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/scan_axionik?path=${encodeURIComponent(libraryPath)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { models?: AxionikDbModelEntry[] };
+      return data.models ?? [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Saves model files to AxionikDB/Models/<slug> on local disk via Bridge.
+   */
+  public async saveAxionikModel(
+    libraryPath: string,
+    slug: string,
+    files: AxionikSaveFileEntry[],
+    timeoutMs = 30000
+  ): Promise<{ status: string; slug: string; folder: string; files_written: number }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/save_axionik_model`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          library_path: libraryPath,
+          slug,
+          files,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; slug: string; folder: string; files_written: number };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Duplicates an existing Axionik model into a new slug and updates manifest.
+   */
+  public async duplicateAxionikModel(
+    libraryPath: string,
+    sourceSlug: string,
+    newSlug: string,
+    newName: string,
+    timeoutMs = 15000
+  ): Promise<{ status: string; source_slug: string; new_slug: string; dest_dir: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/duplicate_axionik_model`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          library_path: libraryPath,
+          source_slug: sourceSlug,
+          new_slug: newSlug,
+          new_name: newName,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; source_slug: string; new_slug: string; dest_dir: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Renames an existing Axionik model folder / slug and updates manifest.
+   */
+  public async renameAxionikModel(
+    libraryPath: string,
+    oldSlug: string,
+    newSlug: string,
+    newName: string,
+    timeoutMs = 10000
+  ): Promise<{ status: string; old_slug: string; new_slug: string; folder: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/rename_axionik_model`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          library_path: libraryPath,
+          old_slug: oldSlug,
+          new_slug: newSlug,
+          new_name: newName,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; old_slug: string; new_slug: string; folder: string };
     } finally {
       clearTimeout(timer);
     }

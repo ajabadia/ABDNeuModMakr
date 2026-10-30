@@ -7,7 +7,7 @@
 
 ## 1. Visión General: ¿Por qué una Arquitectura de Doble Destino (Dual-Target)?
 
-El propósito de **ABDNeuModMakr** no se limita a reemplazar la herramienta antigua de PC/Mac para generar bancos clásicos del hardware Hartmann Neuron (2002) o del plugin `NeuronVS` original. El objetivo final es alimentar una **reinterpretación moderna del sintetizador neuronal (`ABDNeural` / `NEURONiK`)** que:
+El propósito de **ABDNeuModMakr** no se limita a reemplazar la herramienta antigua de PC/Mac para generar bancos clásicos del hardware Hartmann Neuron (2002) o del plugin `NeuronVS` original. El objetivo final es alimentar una **reinterpretación moderna del sintetizador neuronal (`ABDAxionikVS` / `Axionik`)** que:
 1. **Pueda leer y reproducir los bancos antiguos (`000..511.model` / `.sound`)** con fidelidad total.
 2. **Supere las limitaciones técnicas de 2002** cuando se creen modelos nuevos (mayor resolución espectral en coma flotante, soporte estéreo espacial, separación real en múltiples capas armónicas/inarmónicas/transitorias, y ausencia de cuantización forzada a `int16`/`uint16` sobre rejilla fija de $44,1\text{ kHz}$).
 

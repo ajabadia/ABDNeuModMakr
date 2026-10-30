@@ -3166,6 +3166,14 @@ export class WebAudioPipeline implements CoreService {
     return this.bank.exportModel(slot, targetPath);
   }
 
+  public async saveToAxionikDb(options?: {
+    customSlug?: string;
+    customName?: string;
+    saveAs?: boolean;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }> {
+    return this.bank.saveToAxionikDb(options);
+  }
+
   public exportZoneAsAiff(zoneId: string): { filename: string; bytes: Uint8Array } {
     return this.bank.exportZoneAsAiff(zoneId);
   }

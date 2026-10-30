@@ -647,7 +647,12 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
           <div class="model-row-action">
             ${
               m.installed
-                ? `<span class="badge-installed">${ICONS.check} Instalado en Disco</span>`
+                ? `
+                <span class="badge-installed">${ICONS.check} Instalado en Disco</span>
+                <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${m.id}" title="Eliminar este modelo del disco para liberar espacio">
+                  ${ICONS.trash} Desinstalar
+                </button>
+              `
                 : isDownloading
                   ? `<button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
                       <span class="btn-spinner">${ICONS.spinner}</span>
@@ -924,6 +929,33 @@ cd bridge &amp;&amp; run_bridge.bat</code></pre>
           }
           toast(`Error al iniciar descarga: ${String(err)}`, 'error');
           this.renderBridgeModelsList();
+        }
+      });
+    });
+
+    // Delete / Uninstall buttons
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-delete-model').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const modelId = btn.dataset.id;
+        if (!modelId) return;
+        const m = this.bridgeModels.find((x) => x.id === modelId);
+        const confirmed = window.confirm(
+          `¿Deseas desinstalar "${m?.name || modelId}" de tu disco local para liberar espacio?`
+        );
+        if (!confirmed) return;
+
+        try {
+          const res = await bridgeClient.deleteModel(modelId);
+          if (m) {
+            m.installed = false;
+            m.status = 'available';
+            m.progress = 0;
+            m.downloaded_bytes = 0;
+          }
+          toast(`Modelo desinstalado: ${res.freed_mb ?? 0} MB liberados en disco`, 'info');
+          this.renderBridgeModelsList();
+        } catch (err) {
+          toast(`Error al desinstalar modelo: ${String(err)}`, 'error');
         }
       });
     });

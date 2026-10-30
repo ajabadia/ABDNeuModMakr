@@ -16,8 +16,10 @@ import { bankCardHtml, bindBankCards } from '@abdsynths/shared/components/bank/b
 import { bankChipsHtml, bindBankChips, type BankChipItem } from '@abdsynths/shared/components/bank/bankChips.js';
 import { classifyBankCategory } from '@abdsynths/shared/components/bank/bankCategories.js';
 import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/formats/neuron';
+import type { AxionikDbModelEntry } from '../core/bridge/BridgeClient';
+import { AXIONIK_CATEGORIES } from '../core/modelSlug';
 
-export type BankTab = 'models' | 'presets' | 'library';
+export type BankTab = 'models' | 'presets' | 'library' | 'axionik';
 
 export interface BankDrawerOptions {
   /** Tabs rendered by the drawer. Default `['models', 'presets']`.
@@ -53,6 +55,16 @@ export interface BankDrawerHandlers {
    * points at Folder…). Rejected on scan errors (the drawer reports it).
    */
   onRefreshLibrary?: () => Promise<{ models: number; presets: number } | null>;
+  /** Live AxionikDB modern library entries */
+  onRequestAxionik?: () => AxionikDbModelEntry[];
+  /** Axionik model chosen for loading */
+  onPickAxionik?: (slug: string) => void;
+  /** Axionik model chosen for duplicating / save as */
+  onDuplicateAxionik?: (slug: string) => void;
+  /** Configure AxionikDB folder */
+  onConfigureAxionikDbFolder?: () => void;
+  /** Refresh AxionikDB */
+  onRefreshAxionik?: () => Promise<number | null>;
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
@@ -63,7 +75,8 @@ export function getPresetCategoryInfo(category: string): { icon: string; catClas
 const TAB_LABELS: Record<BankTab, string> = {
   models: 'GENERATED MODELS',
   presets: 'SOUND PRESETS',
-  library: 'LIBRARY',
+  library: 'NEURONDB (CLÁSICO)',
+  axionik: 'AXIONIKDB (AVANZADO)',
 };
 
 export class BankDrawer {
@@ -83,6 +96,8 @@ export class BankDrawer {
   /** Category pills (row only serves the pick; filtering stays here). */
   private selectedModelCategory: number | 'all' = 'all';
   private selectedLibraryCategory: string = 'all';
+  private selectedAxionikSlug: string | null = null;
+  private selectedAxionikCategory: string = 'all';
   private chipsUnbind: (() => void) | null = null;
 
   constructor(container: HTMLElement, handlers: BankDrawerHandlers, options?: BankDrawerOptions) {
@@ -295,6 +310,13 @@ export class BankDrawer {
       );
       return;
     }
+    if (this.activeTab === 'axionik' && this.selectedAxionikSlug !== null) {
+      const entry = this.handlers.onRequestAxionik?.().find((e) => e.slug === this.selectedAxionikSlug);
+      this.shell.setFooterStatus(
+        entry ? `${base} | Sel: ${entry.name} (${entry.slug})` : base
+      );
+      return;
+    }
     if (this.activeTab === 'presets' && this.selectedPresetSlot !== null) {
       const preset = this.currentBank?.presets.find((p) => p.slot === this.selectedPresetSlot);
       this.shell.setFooterStatus(
@@ -329,6 +351,8 @@ export class BankDrawer {
         this.selectedModelCategory = id === 'all' ? 'all' : parseInt(id || '0', 10);
       } else if (this.activeTab === 'library') {
         this.selectedLibraryCategory = id;
+      } else if (this.activeTab === 'axionik') {
+        this.selectedAxionikCategory = id;
       }
       this.renderChips();
       this.renderActiveTab();
@@ -395,6 +419,23 @@ export class BankDrawer {
       }
       return { items, activeId: this.selectedLibraryCategory };
     }
+    if (this.activeTab === 'axionik') {
+      const entries = this.handlers.onRequestAxionik?.() ?? [];
+      const counts: Record<string, number> = {};
+      for (const e of entries) {
+        counts[e.category] = (counts[e.category] || 0) + 1;
+      }
+      const items: BankChipItem[] = [{ id: 'all', label: 'All', count: entries.length }];
+      for (const cat of AXIONIK_CATEGORIES) {
+        const count = counts[cat.name] || 0;
+        items.push({
+          id: cat.name,
+          label: cat.name,
+          count,
+        });
+      }
+      return { items, activeId: this.selectedAxionikCategory };
+    }
     return null;
   }
 
@@ -403,6 +444,8 @@ export class BankDrawer {
       this.renderPresets();
     } else if (this.activeTab === 'library') {
       this.renderLibrary();
+    } else if (this.activeTab === 'axionik') {
+      this.renderAxionik();
     } else {
       this.renderModels();
     }
@@ -725,6 +768,120 @@ export class BankDrawer {
         if (action !== 'load') return;
         this.setSelectedLibrary(slot);
         this.handlers.onPickLibrary?.(slot);
+      },
+    });
+  }
+
+  private renderAxionik(): void {
+    if (!this.shell) return;
+    const container = this.shell.contentEl;
+
+    const entries = this.handlers.onRequestAxionik?.() ?? [];
+
+    const inCategory =
+      this.selectedAxionikCategory === 'all'
+        ? entries
+        : entries.filter((e) => e.category === this.selectedAxionikCategory);
+
+    const filtered = this.filterQuery
+      ? inCategory.filter(
+          (e) =>
+            (e.name || '').toLowerCase().includes(this.filterQuery.toLowerCase()) ||
+            (e.slug || '').toLowerCase().includes(this.filterQuery.toLowerCase()) ||
+            (e.category || '').toLowerCase().includes(this.filterQuery.toLowerCase())
+        )
+      : inCategory;
+
+    this.shell.setBadge(
+      filtered.length === entries.length
+        ? `${entries.length} IN AXIONIKDB`
+        : `${filtered.length} / ${entries.length} IN AXIONIKDB`
+    );
+
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.database}</span>
+          <span class="empty-msg">No models in AxionikDB library yet</span>
+          <span class="ndb-dim">Save your extended models to AxionikDB or configure the library folder in Settings.</span>
+          <button type="button" class="btn btn-xs btn-primary ndb-empty-action" id="btn-axionik-configure">
+            <span class="btn-icon">${ICONS.folder}</span>
+            <span>Configure AxionikDB Folder...</span>
+          </button>
+        </div>
+      `;
+      container.querySelector('#btn-axionik-configure')?.addEventListener('click', () => {
+        this.handlers.onConfigureAxionikDbFolder?.();
+      });
+      return;
+    }
+
+    if (filtered.length === 0) {
+      const emptyMsg = this.filterQuery
+        ? `No AxionikDB models matching "${this.filterQuery}"`
+        : 'No AxionikDB models in this category yet';
+      container.innerHTML = `
+        <div class="neurondb-empty-state">
+          <span class="empty-icon">${ICONS.database}</span>
+          <span class="empty-msg">${emptyMsg}</span>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="ndb-grid axionik-grid">
+        ${filtered
+          .map((e, idx) => {
+            const catClass = `cat-${e.parameterSet ?? 0}`;
+            const iconKey = (`param${e.parameterSet ?? 0}` as keyof typeof ICONS);
+            return bankCardHtml({
+              slot: idx,
+              catClass,
+              catLabel: e.category,
+              name: e.name,
+              iconHtml: ICONS[iconKey] || ICONS.database,
+              badges: [
+                e.slug,
+                `${e.zoneCount} Zones`,
+                `Set ${e.parameterSet}`,
+                e.hasCover ? 'Cover OK' : 'No Cover',
+              ],
+              actions: [
+                { id: 'load', label: 'Load', title: `Load Model "${e.name}" into the editor` },
+                { id: 'duplicate', label: 'Duplicate', title: `Duplicate / Save As...`, iconHtml: ICONS.layers },
+              ],
+              selected: e.slug === this.selectedAxionikSlug,
+            });
+          })
+          .join('')}
+      </div>
+    `;
+
+    this.bindCards({
+      onCardClick: (slot) => {
+        const item = filtered[slot];
+        if (item) {
+          this.selectedAxionikSlug = item.slug;
+          this.updateFooterSelection();
+        }
+      },
+      onCardDblClick: (slot) => {
+        const item = filtered[slot];
+        if (item) {
+          this.selectedAxionikSlug = item.slug;
+          this.handlers.onPickAxionik?.(item.slug);
+        }
+      },
+      onAction: ({ slot, action }) => {
+        const item = filtered[slot];
+        if (!item) return;
+        this.selectedAxionikSlug = item.slug;
+        if (action === 'load') {
+          this.handlers.onPickAxionik?.(item.slug);
+        } else if (action === 'duplicate') {
+          this.handlers.onDuplicateAxionik?.(item.slug);
+        }
       },
     });
   }

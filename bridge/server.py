@@ -24,6 +24,8 @@ import json
 import io
 import time
 import struct
+import shutil
+import base64
 import argparse
 import urllib.request
 import threading
@@ -590,6 +592,52 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in ('/api/fs/scan_axionik', '/fs/scan_axionik'):
+            query = parse_qs(parsed.query)
+            target_dir = query.get('path', [os.path.join(os.getcwd(), 'AxionikDB')])[0]
+            models_dir = os.path.join(target_dir, 'Models') if os.path.exists(os.path.join(target_dir, 'Models')) else target_dir
+
+            results = []
+            if os.path.exists(models_dir) and os.path.isdir(models_dir):
+                for item in sorted(os.listdir(models_dir)):
+                    sub_path = os.path.join(models_dir, item)
+                    if os.path.isdir(sub_path):
+                        manifest_path = os.path.join(sub_path, 'manifest.json')
+                        if os.path.exists(manifest_path):
+                            try:
+                                with open(manifest_path, 'r', encoding='utf-8') as mf:
+                                    mdata = json.load(mf)
+                                cover_path = os.path.join(sub_path, '05_extended_model', 'cover.webp')
+                                has_cover = os.path.exists(cover_path)
+                                cfg = mdata.get('processConfig', {})
+                                results.append({
+                                    'slug': item,
+                                    'name': mdata.get('modelName') or cfg.get('modelName') or item,
+                                    'category': cfg.get('category') or mdata.get('category') or 'Complex Hybrid',
+                                    'parameterSet': cfg.get('parameterSet', 0),
+                                    'zoneCount': len(mdata.get('zones', [])),
+                                    'complexity': cfg.get('complexity', 8),
+                                    'hasCover': has_cover,
+                                    'createdAt': mdata.get('createdAt', ''),
+                                    'updatedAt': mdata.get('updatedAt', ''),
+                                    'folderPath': sub_path
+                                })
+                            except Exception:
+                                pass
+            body = json.dumps({
+                'status': 'ok',
+                'library_path': target_dir,
+                'total_models': len(results),
+                'models': results
+            }, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         self.send_response(404)
         self.send_cors_headers()
         self.end_headers()
@@ -785,6 +833,169 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', str(len(err_msg)))
                 self.end_headers()
                 self.wfile.write(err_msg)
+            return
+
+        if path in ('/api/fs/save_axionik_model', '/fs/save_axionik_model'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            slug = payload.get('slug', 'model')
+            files = payload.get('files', [])
+
+            target_model_dir = os.path.join(library_path, 'Models', slug)
+            os.makedirs(target_model_dir, exist_ok=True)
+
+            written = 0
+            for f_item in files:
+                rel_path = f_item.get('path', '').replace('\\', '/').lstrip('/')
+                if not rel_path:
+                    continue
+                full_dest = os.path.join(target_model_dir, *rel_path.split('/'))
+                os.makedirs(os.path.dirname(full_dest), exist_ok=True)
+                if 'content_b64' in f_item:
+                    data = base64.b64decode(f_item['content_b64'])
+                    with open(full_dest, 'wb') as fp:
+                        fp.write(data)
+                elif 'content' in f_item:
+                    with open(full_dest, 'w', encoding='utf-8') as fp:
+                        fp.write(f_item['content'])
+                written += 1
+
+            res = json.dumps({
+                'status': 'ok',
+                'slug': slug,
+                'folder': target_model_dir,
+                'files_written': written
+            }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/fs/duplicate_axionik_model', '/fs/duplicate_axionik_model'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            source_slug = payload.get('source_slug', '')
+            new_slug = payload.get('new_slug', '')
+            new_name = payload.get('new_name', '')
+
+            src_dir = os.path.join(library_path, 'Models', source_slug)
+            dest_dir = os.path.join(library_path, 'Models', new_slug)
+
+            if not os.path.exists(src_dir):
+                err = json.dumps({'error': f"Source model folder not found: {source_slug}"}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            if os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir)
+            shutil.copytree(src_dir, dest_dir)
+
+            # Update manifest.json in new folder
+            manifest_path = os.path.join(dest_dir, 'manifest.json')
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r', encoding='utf-8') as fp:
+                        mdata = json.load(fp)
+                    mdata['modelName'] = new_name
+                    if 'processConfig' in mdata:
+                        mdata['processConfig']['modelName'] = new_name
+                    mdata['updatedAt'] = time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    with open(manifest_path, 'w', encoding='utf-8') as fp:
+                        json.dump(mdata, fp, indent=2)
+                except Exception:
+                    pass
+
+            res = json.dumps({
+                'status': 'ok',
+                'source_slug': source_slug,
+                'new_slug': new_slug,
+                'dest_dir': dest_dir
+            }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/fs/rename_axionik_model', '/fs/rename_axionik_model'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            old_slug = payload.get('old_slug', '')
+            new_slug = payload.get('new_slug', '')
+            new_name = payload.get('new_name', '')
+
+            src_dir = os.path.join(library_path, 'Models', old_slug)
+            dest_dir = os.path.join(library_path, 'Models', new_slug)
+
+            if not os.path.exists(src_dir):
+                err = json.dumps({'error': f"Model folder not found: {old_slug}"}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            if src_dir != dest_dir:
+                if os.path.exists(dest_dir):
+                    shutil.rmtree(dest_dir)
+                os.rename(src_dir, dest_dir)
+
+            manifest_path = os.path.join(dest_dir, 'manifest.json')
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r', encoding='utf-8') as fp:
+                        mdata = json.load(fp)
+                    mdata['modelName'] = new_name
+                    if 'processConfig' in mdata:
+                        mdata['processConfig']['modelName'] = new_name
+                    mdata['updatedAt'] = time.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    with open(manifest_path, 'w', encoding='utf-8') as fp:
+                        json.dump(mdata, fp, indent=2)
+                except Exception:
+                    pass
+
+            res = json.dumps({
+                'status': 'ok',
+                'old_slug': old_slug,
+                'new_slug': new_slug,
+                'folder': dest_dir
+            }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
             return
 
         self.send_response(404)

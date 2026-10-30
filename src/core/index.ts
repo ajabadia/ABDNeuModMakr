@@ -5,6 +5,7 @@
 
 export * from './types.ts';
 export * from './CoreService.ts';
+export * from './modelSlug.ts';
 export * from './extendedAdapter.ts';
 export * from './dsp/AcousticIntelligence.ts';
 export * from './dsp/MasterWaveEnhancer.ts';
