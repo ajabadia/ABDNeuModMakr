@@ -81,7 +81,11 @@ El proyecto esta optimizado para Vercel:
 - **`Waveform Loop Editor`**: Editor visual de bucles con zoom horizontal continuo (1x a 32x), marcadores arrastrables `L-START`, `L-END` y rampa de crossfade, lupa de empalme de cruce por cero (*Zero-Crossing Magnifier*) y motor inteligente con 4 algoritmos (`pitch_periodic`, `ncc_zc`, `min_seam_energy`, `equal_power_xfade`).
 - **`ProcessPanel`**: Configuracion del modelo de salida (slot 0..511, nombre de hasta 11 caracteres hardware o 32 caracteres extendidos, complejidad 1..10, seleccion de los 10 Parameter Sets oficiales con autodeteccion inteligente y carga de portada `.webp`).
 - **`KeyboardStrip`**: Teclado de piano interactivo impulsado por `@abdsynths/midi-keyb`, con representacion de zonas en vivo, indicador pin iluminado en la nota raiz, limites de zona y soporte tactil/QWERTY.
-- **`AiEngineModal`**: Matriz de configuracion modular de 3 pestanas: Motor Web Integrado (WebGPU/WASM), Cloud AI (BYOK con Replicate, Hugging Face y Gemini) y Companion Bridge local con descarga automatizada de modelos.
+- **`SettingsModal`**: Centro unificado de configuracion accesible desde el boton de rueda dentada en el Navbar (`Ctrl+,`):
+  1. *General*: Selector de Hardware Skins (6 familias), Modo Claro/Oscuro, Modo de Trabajo (Clasico vs Extendido con garantia bidireccional no destructiva) y rutas de librerias de bancos locales con exploracion automatica.
+  2. *Motor Web*: Procesamiento de serie en navegador 100% gratuito con WebGPU / WASM y matriz DSP modular de 5 etapas.
+  3. *Cloud BYOK*: Conexiones privadas directas a Replicate, Hugging Face y Gemini con persistencia de clave exclusiva en `localStorage`.
+  4. *Companion Bridge*: Monitor de GPU dedicada (RTX 3070 8GB VRAM / CUDA), catalogo con descarga multihilo transparente, desinstalacion de modelos de disco para liberar espacio y configurador de URLs/mirrors personalizadas.
 - **`NeuronDbModal`**: Navegador modal de modelos de fabrica y de usuario de `NeuronDB`, con filtros rapidos por Parameter Set y Complejidad.
 - **`BankDrawer`**: Cajon retractil para examinar la biblioteca de modelos generados y presets de NeuronDB con exportacion directa a paquete `.zip` Dual-Target.
 - **`TelemetryDrawer`**: Cajon de diagnostico y auditoria de cobertura continua MIDI (0..127) y registro de operaciones.

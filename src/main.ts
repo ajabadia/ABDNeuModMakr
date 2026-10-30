@@ -26,8 +26,7 @@ import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
-import { BridgeModal, bridgeModal } from './ui/BridgeModal';
-import { AiEngineModal } from './ui/AiEngineModal';
+import { SettingsModal } from './ui/SettingsModal';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient } from './core/bridge/BridgeClient';
 import { confirmDialog, toast } from './ui/notify';
@@ -49,22 +48,33 @@ class App {
   private telemetryDrawer!: TelemetryDrawer;
   private bankDrawer!: BankDrawer;
   private neuronDbModal = new NeuronDbModal();
-  private bridgeModal: BridgeModal = bridgeModal;
-  private aiEngineModal!: AiEngineModal;
+  private settingsModal!: SettingsModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
 
   constructor() {
     const self = this;
-    this.aiEngineModal = new AiEngineModal({
+    this.settingsModal = new SettingsModal({
       onUpdateAiConfig: (config) => {
         if (!self.session) return;
         self.session = self.core.updateProcessConfig({ aiConfig: config });
         self.refreshUI();
       },
-      onOpenBridgeStatus: () => {
-        self.bridgeModal.open();
+      onSelectThemeFamily: (family) => {
+        self.setThemeFamily(family);
       },
+      onSetThemeMode: (mode) => {
+        self.setThemeMode(mode);
+      },
+      onSetWorkingMode: (mode) => {
+        if (!self.session) return;
+        self.session = self.core.updateProcessConfig({ workingMode: mode });
+        self.refreshUI();
+        self.telemetryDrawer.addLog(`Working mode switched to: ${mode}`);
+      },
+      getCurrentThemeFamily: () => self.themeFamilies[self.currentFamilyIndex],
+      getCurrentThemeMode: () => self.currentThemeMode,
+      getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
     });
 
     this.imports = new ImportHandlers({
@@ -102,8 +112,9 @@ class App {
       getActiveZoneIndex: () => self.getActiveZoneIndex(),
       handleStartProcess: () => self.handleStartProcess(),
       toggleSpectralPanel: () => self.toggleSpectralPanel(),
-      openAiEngineModal: () => self.aiEngineModal.open(self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
-      openBridgeModal: () => self.bridgeModal.open(),
+      openSettingsModal: (tab) => self.settingsModal.open(tab ?? 'general', self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+      openAiEngineModal: () => self.settingsModal.open('web', self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+      openBridgeModal: () => self.settingsModal.open('bridge', self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
       toggleAiAssistance: () => self.handleToggleAiAssistance(),
       selectThemeFamily: (family: string) => self.setThemeFamily(family),
       cycleThemeFamily: () => self.cycleThemeFamily(),
@@ -608,7 +619,7 @@ class App {
           this.inspector.setZone(this.getActiveZone(), this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
           this.updateSpectralView(this.getActiveZone());
         },
-        onOpenAiEngineModal: () => this.aiEngineModal.open(this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+        onOpenAiEngineModal: () => this.settingsModal.open('web', this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
         onStartProcess: () => this.handleStartProcess(),
         onAutoDetectParameterSet: () => {
           const active = this.getActiveZone();

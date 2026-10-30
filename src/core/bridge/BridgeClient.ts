@@ -61,6 +61,9 @@ export interface BridgeModelInfo {
   filename: string;
   size_mb: number;
   description: string;
+  url?: string;
+  default_url?: string;
+  is_custom_url?: boolean;
   installed: boolean;
   status: 'ready' | 'downloading' | 'available' | 'error' | 'idle';
   progress: number;
@@ -458,6 +461,70 @@ export class BridgeClient {
         }
       }, 1000);
     });
+  }
+
+  /**
+   * Deletes a downloaded model checkpoint from disk to free up local storage.
+   */
+  public async deleteModel(modelId: string, timeoutMs = 5000): Promise<{ status: string; freed_mb?: number }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/models/delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ model_id: modelId }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; freed_mb?: number };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Sets or resets a custom download URL for an AI model checkpoint.
+   */
+  public async updateModelUrl(
+    modelId: string,
+    newUrl: string,
+    timeoutMs = 5000
+  ): Promise<{ status: string; url: string; is_custom_url: boolean }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/models/url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ model_id: modelId, url: newUrl }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; url: string; is_custom_url: boolean };
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 

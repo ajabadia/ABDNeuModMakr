@@ -112,6 +112,34 @@ MODEL_REGISTRY = {
 DOWNLOAD_TASKS = {}
 DOWNLOAD_LOCK = threading.Lock()
 
+MODELS_CONFIG_FILE = os.path.join(CHECKPOINTS_DIR, 'models_config.json')
+
+
+def load_custom_model_urls():
+    if os.path.exists(MODELS_CONFIG_FILE):
+        try:
+            with open(MODELS_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_custom_model_urls(cfg):
+    try:
+        with open(MODELS_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2)
+    except Exception:
+        pass
+
+
+def get_model_download_url(model_id):
+    info = MODEL_REGISTRY.get(model_id)
+    if not info:
+        return ""
+    custom = load_custom_model_urls()
+    return custom.get(model_id) or info["url"]
+
 
 def download_model_worker(model_id):
     model_info = MODEL_REGISTRY.get(model_id)
@@ -120,6 +148,7 @@ def download_model_worker(model_id):
 
     dest_path = os.path.join(CHECKPOINTS_DIR, model_info["filename"])
     tmp_path = dest_path + ".download"
+    download_url = get_model_download_url(model_id)
 
     with DOWNLOAD_LOCK:
         DOWNLOAD_TASKS[model_id] = {
@@ -134,7 +163,7 @@ def download_model_worker(model_id):
 
     try:
         req = urllib.request.Request(
-            model_info["url"],
+            download_url,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
@@ -434,6 +463,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
         if path in ('/api/models', '/models'):
             models_list = []
+            custom_urls = load_custom_model_urls()
             for m_id, info in MODEL_REGISTRY.items():
                 dest_path = os.path.join(CHECKPOINTS_DIR, info["filename"])
                 installed = os.path.exists(dest_path)
@@ -456,6 +486,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     total_bytes = task.get("total_bytes", total_bytes)
                     speed_mbps = task.get("speed_mbps", 0.0)
 
+                effective_url = custom_urls.get(m_id) or info["url"]
                 models_list.append({
                     "id": m_id,
                     "name": info["name"],
@@ -463,6 +494,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     "filename": info["filename"],
                     "size_mb": info["size_mb"],
                     "description": info["description"],
+                    "url": effective_url,
+                    "default_url": info["url"],
+                    "is_custom_url": bool(custom_urls.get(m_id)),
                     "installed": installed,
                     "status": status,
                     "progress": progress,
@@ -593,6 +627,104 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     t.start()
                     res = json.dumps({"status": "started", "model_id": model_id}).encode('utf-8')
 
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/models/delete', '/models/delete'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            model_id = payload.get("model_id", "")
+            if model_id not in MODEL_REGISTRY:
+                err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
+
+            dest_path = os.path.join(CHECKPOINTS_DIR, MODEL_REGISTRY[model_id]["filename"])
+            freed_bytes = 0
+            if os.path.exists(dest_path):
+                try:
+                    freed_bytes = os.path.getsize(dest_path)
+                    os.remove(dest_path)
+                except Exception as e:
+                    err_msg = json.dumps({"error": f"Failed to delete model file: {e}"}).encode('utf-8')
+                    self.send_response(500)
+                    self.send_cors_headers()
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(err_msg)))
+                    self.end_headers()
+                    self.wfile.write(err_msg)
+                    return
+
+            with DOWNLOAD_LOCK:
+                if model_id in DOWNLOAD_TASKS:
+                    del DOWNLOAD_TASKS[model_id]
+
+            res = json.dumps({
+                "status": "deleted",
+                "model_id": model_id,
+                "freed_bytes": freed_bytes,
+                "freed_mb": round(freed_bytes / (1024 * 1024), 1)
+            }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/models/url', '/models/url'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            model_id = payload.get("model_id", "")
+            new_url = payload.get("url", "").strip()
+
+            if model_id not in MODEL_REGISTRY:
+                err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
+
+            cfg = load_custom_model_urls()
+            if new_url and new_url != MODEL_REGISTRY[model_id]["url"]:
+                cfg[model_id] = new_url
+            else:
+                if model_id in cfg:
+                    del cfg[model_id]
+            save_custom_model_urls(cfg)
+
+            res = json.dumps({
+                "status": "updated",
+                "model_id": model_id,
+                "url": get_model_download_url(model_id),
+                "is_custom_url": bool(cfg.get(model_id))
+            }).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
             self.send_header('Content-Type', 'application/json')

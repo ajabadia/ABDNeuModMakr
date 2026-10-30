@@ -25,9 +25,12 @@
  */
 @import './tokens.css';
 @import './themes/ms2000.css';
+@import './themes/ms2000-light.css';
 @import './themes/microkorg.css';
 @import './themes/advanced.css';
+@import './themes/advanced-light.css';
 @import './themes/cz101.css';
+@import './themes/cz101-light.css';
 @import './themes/deepmind.css';
 @import './themes/juno.css';
 @import './themes/audiolab.css';

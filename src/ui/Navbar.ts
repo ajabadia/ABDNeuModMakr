@@ -8,6 +8,8 @@ import { ICONS } from './icons';
 import { cloudByokClient } from '../core/ai/CloudByokClient';
 import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
+export type SettingsModalTab = 'general' | 'web' | 'cloud' | 'bridge';
+
 export interface NavbarHandlers {
   onNewSession: () => void;
   onOpenSession: () => void;
@@ -25,6 +27,7 @@ export interface NavbarHandlers {
   onExportZoneAiff: () => void;
   onInstallPwa?: () => void;
   onOpenAiEngineModal?: () => void;
+  onOpenSettingsModal?: (tab?: SettingsModalTab) => void;
   onToggleAiAssistance?: () => void;
   onOpenBridgeModal?: () => void;
   onUndo: () => void;
@@ -131,6 +134,8 @@ export class AppNavbar {
           { separator: true },
           { id: 205, label: 'Auto-Repair MIDI Coverage (0..127)', action: 'autoRepairCoverage' },
           { id: 206, label: 'Reset to Single Zone (0..127)', action: 'clearZones' },
+          { separator: true },
+          { id: 207, label: 'Preferences & Settings...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
         ],
       },
       {
@@ -200,7 +205,8 @@ export class AppNavbar {
           { id: 902, label: 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
           { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
-          { id: 905, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
+          { id: 905, label: 'Settings & General Preferences...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
+          { id: 906, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
           { id: 904, label: 'About NEURON MODELmaker...', action: 'about' },
         ],
       },
@@ -250,6 +256,9 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon btn-theme-toggle" id="nav-btn-theme" title="Siguiente sintetizador / skin">
         <span class="theme-icon">${ICONS.palette}</span>
       </button>
+      <button type="button" class="btn btn-hud-icon btn-settings-toggle" id="nav-btn-settings" title="Configuración General y Asistencia IA (Ctrl+,)">
+        <span class="settings-icon">${ICONS.settings}</span>
+      </button>
     `;
 
     this.navBarInstance = createSynthNavBar({
@@ -289,12 +298,20 @@ export class AppNavbar {
 
     // AI HUD Pill click & contextmenu -> opens the AI configuration matrix modal directly
     this.aiPillElement?.addEventListener('click', () => {
-      this.handlers.onOpenAiEngineModal?.();
+      if (this.handlers.onOpenSettingsModal) {
+        this.handlers.onOpenSettingsModal('web');
+      } else {
+        this.handlers.onOpenAiEngineModal?.();
+      }
     });
 
     this.aiPillElement?.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.handlers.onOpenAiEngineModal?.();
+      if (this.handlers.onOpenSettingsModal) {
+        this.handlers.onOpenSettingsModal('bridge');
+      } else {
+        this.handlers.onOpenAiEngineModal?.();
+      }
     });
 
     // Initial AI indicator sync
@@ -323,6 +340,13 @@ export class AppNavbar {
       this.handlers.onToggleThemeMode?.();
     });
     rightSlot.querySelector('#nav-btn-theme')?.addEventListener('click', () => this.handlers.onToggleTheme());
+    rightSlot.querySelector('#nav-btn-settings')?.addEventListener('click', () => {
+      if (this.handlers.onOpenSettingsModal) {
+        this.handlers.onOpenSettingsModal('general');
+      } else {
+        this.handlers.onOpenAiEngineModal?.();
+      }
+    });
   }
 
   public setSpectralVisible(visible: boolean): void {
@@ -567,8 +591,27 @@ export class AppNavbar {
         }
         break;
       case 'toggleThemeMode': this.handlers.onToggleThemeMode?.(); break;
-      case 'openAiEngineModal': this.handlers.onOpenAiEngineModal?.(); break;
-      case 'openBridgeModal': this.handlers.onOpenBridgeModal?.(); break;
+      case 'openSettingsModal':
+        if (this.handlers.onOpenSettingsModal) {
+          this.handlers.onOpenSettingsModal('general');
+        } else {
+          this.handlers.onOpenAiEngineModal?.();
+        }
+        break;
+      case 'openAiEngineModal':
+        if (this.handlers.onOpenSettingsModal) {
+          this.handlers.onOpenSettingsModal('web');
+        } else {
+          this.handlers.onOpenAiEngineModal?.();
+        }
+        break;
+      case 'openBridgeModal':
+        if (this.handlers.onOpenSettingsModal) {
+          this.handlers.onOpenSettingsModal('bridge');
+        } else {
+          this.handlers.onOpenBridgeModal?.();
+        }
+        break;
       case 'manual': this.showDocModal('manual'); break;
       case 'specs': this.showDocModal('specs'); break;
       case 'installPwa': this.handlers.onInstallPwa?.(); break;

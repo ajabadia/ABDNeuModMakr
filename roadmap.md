@@ -220,6 +220,14 @@
 - [x] Conmutador sol/luna directo en el HUD y persistencia de tema en `localStorage`.
 - [x] Politica estricta de **Cero Emojis** en toda la interfaz (iconos monocromos SVG).
 
+### 10.8 Modal Unificado de Configuracion General & Gestion de Modelos (`SettingsModal.ts`)
+- [x] Icono de rueda dentada en el extremo derecho del Navbar (`ICONS.settings` / atajo `Ctrl+,`).
+- [x] Unificacion de ajustes generales: Hardware Skin (6 familias), modo Claro/Oscuro, Modo Clasico vs Extendido (con garantia bidireccional no destructiva) y rutas de libreria local con escaneo Bridge.
+- [x] Consolidacion de las matrices de IA: WebGPU/WASM, Cloud BYOK y Companion Bridge en un unico dialogo modular coherente.
+- [x] Gestion de espacio en disco: accion para **Desinstalar / Borrar modelos neuronales** de disco para liberar gigabytes de almacenamiento cuando no se necesiten.
+- [x] Editor de URLs / Mirrors de descarga por modelo: permite personalizar la URL de pesos (por si cambian los repositorios o se usan checkpoints propios fine-tuneados) con opcion de restablecer la URL oficial en un clic.
+- [x] Animacion de spinner de descarga y estados de carga en tiempo real sin falsos bloqueos.
+
 ---
 
 ## Fase 11 — Procesado del Modo Extendido, Modelos Surround y Nuevos Resynators (`ABDAxionikVS`) [EN PLANIFICACION]

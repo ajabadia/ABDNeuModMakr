@@ -12,7 +12,7 @@ import type { SpectralView } from '../ui/SpectralView';
 import type { TelemetryDrawer } from '../ui/TelemetryDrawer';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { ImportHandlers } from './importHandlers';
-import { toast } from '../ui/notify';
+import { confirmDialog, toast } from '../ui/notify';
 import { pwaManager } from './pwa';
 
 export interface MenuShell {
@@ -37,6 +37,7 @@ export interface MenuContext {
   getActiveZoneIndex(): number;
   handleStartProcess(): Promise<void>;
   toggleSpectralPanel(): void;
+  openSettingsModal?: (tab?: import('../ui/Navbar').SettingsModalTab) => void;
   openAiEngineModal?: () => void;
   openBridgeModal?: () => void;
   toggleAiAssistance?: () => void;
@@ -129,6 +130,13 @@ export class MenuActions {
   buildNavbarHandlers(): NavbarHandlers {
     return {
       onNewSession: async () => {
+        if (this.ctx.session?.dirty) {
+          const ok = await confirmDialog(
+            'Tienes cambios sin guardar en la sesión actual. ¿Deseas descartarlos y crear una nueva sesión?',
+            { confirmLabel: 'Crear Nueva Sesión', cancelLabel: 'Cancelar', danger: true }
+          );
+          if (!ok) return;
+        }
         this.ctx.session = await this.ctx.core.newSession('Init Model');
         this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
         this.ctx.shell.getTelemetry().addLog('Created new session: Init Model');
@@ -166,15 +174,20 @@ export class MenuActions {
       },
       onExportZoneAiff: () => {
         const active = this.ctx.getActiveZone();
-        if (!active) return;
+        if (!active) {
+          toast('No hay una zona activa seleccionada para exportar.', 'warning');
+          return;
+        }
         try {
           const { filename, bytes } = this.ctx.core.exportZoneAsAiff(active.id);
           this.ctx.shell.getTelemetry().addLog(
             `Exported canonical 44.1 kHz 16-bit Mono AIFF: ${filename} (${bytes.byteLength} bytes)`
           );
+          toast(`Muestra exportada: ${filename}`, 'success');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.ctx.shell.getTelemetry().addLog(`AIFF export error: ${msg}`);
+          toast(`Error al exportar AIFF: ${msg}`, 'error');
         }
       },
       onUndo: () => this.performUndo(),
@@ -275,6 +288,7 @@ export class MenuActions {
         this.ctx.shell.getBank().close();
         this.ctx.shell.getTelemetry().open();
       },
+      onOpenSettingsModal: (tab) => this.ctx.openSettingsModal?.(tab),
       onOpenAiEngineModal: () => this.ctx.openAiEngineModal?.(),
       onToggleAiAssistance: () => this.ctx.toggleAiAssistance?.(),
       onOpenBridgeModal: () => this.ctx.openBridgeModal?.(),
@@ -408,6 +422,9 @@ export class MenuActions {
           } else {
             void this.exportModel();
           }
+        } else if (key === ',' || key === ';') {
+          e.preventDefault();
+          this.ctx.openSettingsModal?.('general');
         }
         return;
       }
