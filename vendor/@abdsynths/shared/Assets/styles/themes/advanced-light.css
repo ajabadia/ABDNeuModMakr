@@ -1,0 +1,50 @@
+/* Hartmann Advanced / Cyberpunk -- Precision Magenta & Platinum (Light Theme) */
+[data-theme="advanced-light"], body.skin-advanced-light, body.theme-advanced-light {
+  --color-bg-base:                #edebee;
+  --color-panel-bg:               #f5f4f7;
+  --color-panel-surface:          #fdfcff;
+  --color-panel-surface-elevated: #ffffff;
+  --navbar-bg:                    #f5f4f7;
+  --navbar-shadow:                0 1px 3px rgba(30, 20, 35, 0.10);
+  --color-panel-border:           rgba(194, 0, 94, 0.18);
+  --color-panel-border-strong:    rgba(194, 0, 94, 0.35);
+  --color-panel-border-dim:       rgba(194, 0, 94, 0.08);
+  --shadow-card:                  0 4px 16px rgba(30, 20, 35, 0.07);
+  --shadow-card-hover:            0 6px 20px rgba(30, 20, 35, 0.12);
+
+  /* Deep Precision Magenta Accent */
+  --color-accent:                 #c2005e;
+  --color-accent-rgb:             194, 0, 94;
+  --color-accent-hover:           #e60070;
+  --color-accent-active:          #99004a;
+  --color-accent-dim:             rgba(194, 0, 94, 0.12);
+
+  --color-success:                #15803d;
+  --color-success-rgb:            21, 128, 61;
+  --color-warning:                #b45309;
+  --color-warning-rgb:            180, 83, 9;
+  --color-danger:                 #dc2626;
+  --color-danger-rgb:             220, 38, 38;
+  --color-info:                   #0284c7;
+  --color-info-rgb:               2, 132, 199;
+
+  /* Typography (High contrast plum/charcoal on platinum) */
+  --color-text-main:              #1c1722;
+  --color-text-muted:             #5e5468;
+  --color-text-dim:               #887d94;
+
+  /* Cyan Cyberpunk LCD Display */
+  --color-lcd-bg:                 #0f171d;
+  --color-lcd-text:               #00e5ff;
+  --color-lcd-border:             rgba(0, 229, 255, 0.38);
+
+  /* Scrollbars */
+  --color-scrollbar-thumb:        #cbbfd2;
+  --color-scrollbar-thumb-hover:  #b29fbc;
+  --color-scrollbar-thumb-active: #947ea0;
+  --color-scrollbar-track:        #f5f4f7;
+
+  /* Vector / Stick Pad */
+  --color-stick-pad-bg:           #edebee;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #ffffff 0%, #e0dce4 100%);
+}

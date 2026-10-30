@@ -1,0 +1,51 @@
+/* Korg MS2000 & microKORG -- Teal Heritage (Light Theme) */
+/* Inspired by the vintage silver/champagne casing with teal knobs and emerald LCD */
+[data-theme="ms2000-light"], body.skin-ms2000-light, body.theme-ms2000-light {
+  --color-bg-base:                #dbe4ec;
+  --color-panel-bg:               #e6edf4;
+  --color-panel-surface:          #f2f7fb;
+  --color-panel-surface-elevated: #ffffff;
+  --navbar-bg:                    #e6edf4;
+  --navbar-shadow:                0 1px 3px rgba(10, 25, 40, 0.10);
+  --color-panel-border:           rgba(0, 115, 160, 0.20);
+  --color-panel-border-strong:    rgba(0, 115, 160, 0.38);
+  --color-panel-border-dim:       rgba(0, 115, 160, 0.10);
+  --shadow-card:                  0 4px 16px rgba(10, 25, 40, 0.07);
+  --shadow-card-hover:            0 6px 20px rgba(10, 25, 40, 0.12);
+
+  /* Korg Teal Accent (High-contrast cyan/teal for crisp light UI) */
+  --color-accent:                 #007a9e;
+  --color-accent-rgb:             0, 122, 158;
+  --color-accent-hover:           #0096bf;
+  --color-accent-active:          #005f7c;
+  --color-accent-dim:             rgba(0, 122, 158, 0.12);
+
+  --color-success:                #15803d;
+  --color-success-rgb:            21, 128, 61;
+  --color-warning:                #b45309;
+  --color-warning-rgb:            180, 83, 9;
+  --color-danger:                 #dc2626;
+  --color-danger-rgb:             220, 38, 38;
+  --color-info:                   #0284c7;
+  --color-info-rgb:               2, 132, 199;
+
+  /* Typography (Deep navy/charcoal on cool light alloy) */
+  --color-text-main:              #0a1824;
+  --color-text-muted:             #3b5c74;
+  --color-text-dim:               #6b8a9f;
+
+  /* Classic MS2000 Green LCD Display */
+  --color-lcd-bg:                 #182a1d;
+  --color-lcd-text:               #4ef06b;
+  --color-lcd-border:             rgba(78, 240, 107, 0.38);
+
+  /* Scrollbars */
+  --color-scrollbar-thumb:        #b8c8d8;
+  --color-scrollbar-thumb-hover:  #94abc2;
+  --color-scrollbar-thumb-active: #6e8fae;
+  --color-scrollbar-track:        #e6edf4;
+
+  /* Vector / Stick Pad */
+  --color-stick-pad-bg:           #dbe4ec;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #ffffff 0%, #cfdce7 100%);
+}

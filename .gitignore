@@ -48,3 +48,9 @@ Thumbs.db
 # Deployment & Test Runners
 .vercel/
 .playwright-mcp/
+
+# Python & AI Checkpoints
+__pycache__/
+*.py[cod]
+bridge/models/checkpoints/*
+!bridge/models/checkpoints/.gitkeep

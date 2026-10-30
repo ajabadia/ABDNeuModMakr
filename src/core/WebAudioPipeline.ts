@@ -162,6 +162,7 @@ export class WebAudioPipeline implements CoreService {
   > = new Map();
   private readonly assetStore: NeuronAssetStore = new NeuronAssetStore();
   private readonly analyzer: SpectralAnalyzer = new SpectralAnalyzer();
+  private readonly enhancedSourceHashes: Map<string, string> = new Map();
 
   private worker: Worker | null = null;
   private isRunning = false;
@@ -2734,9 +2735,23 @@ export class WebAudioPipeline implements CoreService {
     }
   }
 
+  private computeAudioBufferHash(buf: ArrayBuffer, extraTag = ''): string {
+    const bytes = new Uint8Array(buf);
+    let h1 = 0x811c9dc5;
+    let h2 = 0x811c9dc5;
+    const len = bytes.length;
+    const step = Math.max(1, Math.floor(len / 512));
+    for (let i = 0; i < len; i += step) {
+      h1 = Math.imul(h1 ^ bytes[i], 0x01000193);
+      h2 = Math.imul(h2 ^ (bytes[i] + i), 0x01000193);
+    }
+    return `${(h1 >>> 0).toString(16)}${(h2 >>> 0).toString(16)}_${len}_${extraTag}`;
+  }
+
   public async promoteZoneToMasterWave(
     zoneId?: string,
-    config?: Partial<MasterWaveConfig>
+    config?: Partial<MasterWaveConfig>,
+    options?: { forceRebuild?: boolean; preserveManualLoops?: boolean }
   ): Promise<MasterWaveResult | null> {
     if (!this.session) return null;
     const zone =
@@ -2770,6 +2785,15 @@ export class WebAudioPipeline implements CoreService {
     let originSampleName = currentSampleName;
     let sourceLayerUsed: '01_raw_source' | '02_legacy_original' = '01_raw_source';
 
+    // Manual loop detection & preservation
+    const isManualLoop = Boolean(
+      options?.preserveManualLoops ||
+      (matchReg && matchReg.loopEnd > matchReg.loopStart && matchReg.loopMode !== 'no_loop')
+    );
+    const existingLoopStart = matchReg?.loopStart ?? 0;
+    const existingLoopEnd = matchReg?.loopEnd ?? 0;
+    const existingLoopMode = matchReg?.loopMode ?? 'loop_continuous';
+
     if (purest?.sourceLayer === '02_legacy_original') {
       sourceLayerUsed = '02_legacy_original';
       originSampleName = purest.sampleName;
@@ -2794,22 +2818,60 @@ export class WebAudioPipeline implements CoreService {
         this.assetStore.setRawSource(originSampleName, rawBuf);
       }
 
-      promoted = await promoteBufferToMasterWave(
-        rawBuf,
-        originSampleName,
-        zone.id,
-        mergedCfg,
-        {
-          rootKey: zone.rootKey,
-          detuneCents: zone.detune,
-          loopStart: matchReg?.loopStart,
-          loopEnd: matchReg?.loopEnd,
-          loopMode:
-            matchReg?.loopMode === 'ping_pong' || matchReg?.loopMode === 'loop_backward'
-              ? 'loop_continuous'
-              : matchReg?.loopMode,
-        }
-      );
+      // Content Hash & Idempotent Cache Check (Dirty Tracking)
+      const cfgTag = `${mergedCfg.promotionMethod}_${mergedCfg.targetSampleRate}_${mergedCfg.channelLayout}_${mergedCfg.enableBandwidthExtension}`;
+      const rawFingerprint = this.computeAudioBufferHash(rawBuf, cfgTag);
+      const baseStem = originSampleName.replace(/\.(wav|aif|aiff)$/i, '');
+      const expectedMasterName = baseStem.endsWith('_96k24b') ? `${baseStem}.wav` : `${baseStem}_96k24b.wav`;
+
+      if (
+        !options?.forceRebuild &&
+        this.enhancedSourceHashes.get(originSampleName) === rawFingerprint &&
+        this.assetStore.hasEnhancedAudio(expectedMasterName)
+      ) {
+        const cachedBuf = this.assetStore.getEnhancedAudioSync(expectedMasterName)!;
+        const decodedRaw = decodeWav(rawBuf);
+        const channelsCount = mergedCfg.channelLayout === 'stereo' ? 2 : mergedCfg.channelLayout === 'quad-surround' ? 4 : 1;
+        promoted = {
+          wav24Buffer: cachedBuf,
+          result: {
+            zoneId: zone.id,
+            sampleName: originSampleName,
+            masterSampleName: expectedMasterName,
+            originalSampleRate: decodedRaw.sampleRate || 44100,
+            masterSampleRate: mergedCfg.targetSampleRate,
+            bitDepth: 24,
+            numChannels: channelsCount,
+            originalDurationSec: Number(decodedRaw.durationSec.toFixed(3)),
+            masterDurationSec: Number(((cachedBuf.byteLength / (3 * channelsCount)) / mergedCfg.targetSampleRate).toFixed(3)),
+            loopExpanded: false,
+            loopStart: existingLoopStart,
+            loopEnd: existingLoopEnd,
+            loopDurationSec: Math.max(0, (existingLoopEnd - existingLoopStart) / mergedCfg.targetSampleRate),
+            zeroCrossingCorrelation: 1.0,
+            promotionMethodUsed: mergedCfg.promotionMethod,
+            aiProviderUsed: undefined,
+          },
+        };
+      } else {
+        promoted = await promoteBufferToMasterWave(
+          rawBuf,
+          originSampleName,
+          zone.id,
+          mergedCfg,
+          {
+            rootKey: zone.rootKey,
+            detuneCents: zone.detune,
+            loopStart: matchReg?.loopStart,
+            loopEnd: matchReg?.loopEnd,
+            loopMode:
+              matchReg?.loopMode === 'ping_pong' || matchReg?.loopMode === 'loop_backward'
+                ? 'loop_continuous'
+                : matchReg?.loopMode,
+          }
+        );
+        this.enhancedSourceHashes.set(originSampleName, rawFingerprint);
+      }
     }
 
     this.pushHistory(`Promote "${originSampleName}" to 24-bit/96kHz Master Wave`);
@@ -2835,10 +2897,24 @@ export class WebAudioPipeline implements CoreService {
         reg.sampleName = promoted.result.masterSampleName;
         reg.sampleRate = promoted.result.masterSampleRate;
         reg.numChannels = promoted.result.numChannels;
-        reg.loopStart = promoted.result.loopStart;
-        reg.loopEnd = promoted.result.loopEnd;
-        if (reg.loopMode === 'no_loop' && promoted.result.loopEnd > promoted.result.loopStart) {
-          reg.loopMode = 'loop_continuous';
+
+        if (isManualLoop && existingLoopEnd > existingLoopStart) {
+          // Scale manual loop frame positions proportionally only if sample rate changed
+          const origBuf = purest?.sourceLayer === '01_raw_source' ? purest.rawBuffer : null;
+          const currentRate = matchReg?.sampleRate ?? (origBuf ? decodeWav(origBuf).sampleRate : 44100);
+          const scale =
+            currentRate > 0 && currentRate !== promoted.result.masterSampleRate
+              ? promoted.result.masterSampleRate / currentRate
+              : 1.0;
+          reg.loopStart = Math.round(existingLoopStart * scale);
+          reg.loopEnd = Math.round(existingLoopEnd * scale);
+          reg.loopMode = existingLoopMode;
+        } else {
+          reg.loopStart = promoted.result.loopStart;
+          reg.loopEnd = promoted.result.loopEnd;
+          if (reg.loopMode === 'no_loop' && promoted.result.loopEnd > promoted.result.loopStart) {
+            reg.loopMode = 'loop_continuous';
+          }
         }
       }
     }
@@ -2866,12 +2942,13 @@ export class WebAudioPipeline implements CoreService {
   }
 
   public async promoteAllZonesToMasterWave(
-    config?: Partial<MasterWaveConfig>
+    config?: Partial<MasterWaveConfig>,
+    options?: { forceRebuild?: boolean; preserveManualLoops?: boolean }
   ): Promise<MasterWaveResult[]> {
     if (!this.session) return [];
     const results: MasterWaveResult[] = [];
     for (const z of this.session.zones) {
-      const res = await this.promoteZoneToMasterWave(z.id, config);
+      const res = await this.promoteZoneToMasterWave(z.id, config, options);
       if (res) results.push(res);
     }
     return results;
@@ -2999,7 +3076,10 @@ export class WebAudioPipeline implements CoreService {
       primaryUsed = purest.sourceLayer;
 
       if (shouldPromoteMasterWave || purest.sourceLayer === '02_legacy_original') {
-        await this.promoteZoneToMasterWave(zone.id, cfg.masterWaveConfig);
+        await this.promoteZoneToMasterWave(zone.id, cfg.masterWaveConfig, {
+          forceRebuild: options?.forceRebuild,
+          preserveManualLoops: true,
+        });
       } else if (purest.sourceLayer === '01_raw_source') {
         // Restore zone directly to unaltered 01_raw_source WAV buffer
         this.sampleBuffers.set(purest.rawSampleName, purest.rawBuffer);

@@ -51,6 +51,20 @@ export interface BridgeEnhanceOptions {
   targetLoopSec?: number;
   capabilities?: string[];
   timeoutMs?: number;
+  textPrompt?: string;
+}
+
+export interface BridgeModelInfo {
+  id: string;
+  name: string;
+  task: string;
+  filename: string;
+  size_mb: number;
+  description: string;
+  installed: boolean;
+  status: 'ready' | 'downloading' | 'available' | 'error' | 'idle';
+  progress: number;
+  error?: string | null;
 }
 
 export const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:7860';
@@ -282,6 +296,7 @@ export class BridgeClient {
           'X-Target-Sample-Rate': String(targetSr),
           'X-Target-Loop-Sec': String(targetLoopSec),
           'X-Capabilities': caps.join(','),
+          ...(options.textPrompt ? { 'X-Text-Prompt': options.textPrompt } : {}),
         },
         body: audioData instanceof Uint8Array ? (audioData.buffer as ArrayBuffer) : audioData,
         signal: controller.signal,
@@ -295,6 +310,89 @@ export class BridgeClient {
 
       const buffer = await res.arrayBuffer();
       return new Uint8Array(buffer);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Fetches the registered AI models, their local installation status and download progress.
+   */
+  public async getModels(timeoutMs = 5000): Promise<BridgeModelInfo[]> {
+    if (!this.currentStatus.connected) {
+      return [];
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/models`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      const data = (await res.json()) as { models?: BridgeModelInfo[] };
+      return data.models ?? [];
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Triggers background download of an AI model checkpoint in the companion bridge.
+   */
+  public async downloadModel(modelId: string, timeoutMs = 5000): Promise<{ status: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/models/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ model_id: modelId }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        throw new Error(`Download request failed (HTTP ${res.status})`);
+      }
+      return (await res.json()) as { status: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Queries download progress for a specific model ID.
+   */
+  public async getModelProgress(
+    modelId: string,
+    timeoutMs = 3000
+  ): Promise<{ model_id: string; status: string; progress: number; error?: string | null }> {
+    if (!this.currentStatus.connected) {
+      return { model_id: modelId, status: 'offline', progress: 0 };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/models/progress?model_id=${encodeURIComponent(modelId)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return { model_id: modelId, status: 'error', progress: 0 };
+      return (await res.json()) as { model_id: string; status: string; progress: number; error?: string | null };
+    } catch {
+      return { model_id: modelId, status: 'error', progress: 0 };
     } finally {
       clearTimeout(timer);
     }

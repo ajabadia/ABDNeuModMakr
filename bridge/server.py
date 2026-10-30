@@ -25,6 +25,8 @@ import io
 import time
 import struct
 import argparse
+import urllib.request
+import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
@@ -61,6 +63,101 @@ except ImportError:
 
 SERVER_VERSION = "1.0.0"
 DEFAULT_PORT = 7860
+
+CHECKPOINTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'checkpoints')
+try:
+    os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
+except Exception:
+    pass
+
+MODEL_REGISTRY = {
+    "audiosr": {
+        "id": "audiosr",
+        "name": "AudioSR (96kHz Bandwidth Extension)",
+        "task": "super-resolution",
+        "filename": "audiosr_speech_audio_96k.pt",
+        "url": "https://huggingface.co/haoheliu/audiosr/resolve/main/basic/audiosr_speech_audio_96k.pt",
+        "size_mb": 850,
+        "description": "24-bit 96kHz neural bandwidth extension with optional timbre text prompt guidance."
+    },
+    "htdemucs": {
+        "id": "htdemucs",
+        "name": "HTDemucs v4 (Stem Separator & De-bleeder)",
+        "task": "source-separation",
+        "filename": "htdemucs_f7e0c4bc.th",
+        "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/f7e0c4bc-ba3fe64a.th",
+        "size_mb": 340,
+        "description": "High-fidelity isolation of lead instruments and suppression of background acoustic leakage."
+    },
+    "basicpitch": {
+        "id": "basicpitch",
+        "name": "Spotify Basic Pitch (Neural F0 / Note Tracker)",
+        "task": "pitch-tracking",
+        "filename": "basic_pitch_model.onnx",
+        "url": "https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx",
+        "size_mb": 22,
+        "description": "Polyphonic pitch and note detection for automatic root key detection and transient boundary tagging."
+    }
+}
+
+DOWNLOAD_TASKS = {}
+DOWNLOAD_LOCK = threading.Lock()
+
+
+def download_model_worker(model_id):
+    model_info = MODEL_REGISTRY.get(model_id)
+    if not model_info:
+        return
+
+    dest_path = os.path.join(CHECKPOINTS_DIR, model_info["filename"])
+    tmp_path = dest_path + ".download"
+
+    with DOWNLOAD_LOCK:
+        DOWNLOAD_TASKS[model_id] = {
+            "model_id": model_id,
+            "status": "downloading",
+            "progress": 0.0,
+            "downloaded_bytes": 0,
+            "total_bytes": model_info["size_mb"] * 1024 * 1024,
+            "error": None
+        }
+
+    try:
+        req = urllib.request.Request(
+            model_info["url"],
+            headers={"User-Agent": f"ABDNeuModMakr-Bridge/{SERVER_VERSION}"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as f_out:
+            total = int(resp.headers.get("Content-Length", model_info["size_mb"] * 1024 * 1024))
+            downloaded = 0
+            chunk_size = 64 * 1024
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f_out.write(chunk)
+                downloaded += len(chunk)
+                with DOWNLOAD_LOCK:
+                    DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = downloaded
+                    DOWNLOAD_TASKS[model_id]["total_bytes"] = total
+                    DOWNLOAD_TASKS[model_id]["progress"] = round((downloaded / total) * 100, 1)
+
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        os.rename(tmp_path, dest_path)
+
+        with DOWNLOAD_LOCK:
+            DOWNLOAD_TASKS[model_id]["status"] = "ready"
+            DOWNLOAD_TASKS[model_id]["progress"] = 100.0
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        with DOWNLOAD_LOCK:
+            DOWNLOAD_TASKS[model_id]["status"] = "error"
+            DOWNLOAD_TASKS[model_id]["error"] = str(e)
 
 
 def get_system_capabilities():
@@ -304,6 +401,69 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in ('/api/models', '/models'):
+            models_list = []
+            for m_id, info in MODEL_REGISTRY.items():
+                dest_path = os.path.join(CHECKPOINTS_DIR, info["filename"])
+                installed = os.path.exists(dest_path)
+                with DOWNLOAD_LOCK:
+                    task = DOWNLOAD_TASKS.get(m_id)
+                
+                status = "ready" if installed else "available"
+                progress = 100.0 if installed else 0.0
+                error = None
+                if task:
+                    status = task.get("status", status)
+                    progress = task.get("progress", progress)
+                    error = task.get("error")
+
+                models_list.append({
+                    "id": m_id,
+                    "name": info["name"],
+                    "task": info["task"],
+                    "filename": info["filename"],
+                    "size_mb": info["size_mb"],
+                    "description": info["description"],
+                    "installed": installed,
+                    "status": status,
+                    "progress": progress,
+                    "error": error
+                })
+
+            body = json.dumps({"models": models_list, "checkpoints_dir": CHECKPOINTS_DIR}, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path in ('/api/models/progress', '/models/progress'):
+            query = parse_qs(parsed.query)
+            m_id = query.get('model_id', [''])[0]
+            with DOWNLOAD_LOCK:
+                task = DOWNLOAD_TASKS.get(m_id)
+
+            if not task:
+                dest_path = os.path.join(CHECKPOINTS_DIR, MODEL_REGISTRY.get(m_id, {}).get("filename", ""))
+                installed = os.path.exists(dest_path) if m_id in MODEL_REGISTRY else False
+                task = {
+                    "model_id": m_id,
+                    "status": "ready" if installed else "idle",
+                    "progress": 100.0 if installed else 0.0,
+                    "error": None
+                }
+
+            body = json.dumps(task, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ('/api/fs/scan', '/fs/scan'):
             query = parse_qs(parsed.query)
             target_dir = query.get('path', [os.getcwd()])[0]
@@ -352,6 +512,43 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
 
+        if path in ('/api/models/download', '/models/download'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            model_id = payload.get("model_id", "")
+            if model_id not in MODEL_REGISTRY:
+                err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
+
+            with DOWNLOAD_LOCK:
+                task = DOWNLOAD_TASKS.get(model_id)
+                if task and task.get("status") == "downloading":
+                    res = json.dumps({"status": "already_downloading", "model_id": model_id}).encode('utf-8')
+                else:
+                    t = threading.Thread(target=download_model_worker, args=(model_id,), daemon=True)
+                    t.start()
+                    res = json.dumps({"status": "started", "model_id": model_id}).encode('utf-8')
+
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
         if path in ('/api/enhance', '/enhance'):
             content_len = int(self.headers.get('Content-Length', 0))
             if content_len <= 0 or content_len > 150 * 1024 * 1024:  # 150 MB safety cap
@@ -376,6 +573,10 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             caps_hdr = self.headers.get('X-Capabilities', '')
             capabilities = [c.strip() for c in caps_hdr.split(',') if c.strip()]
+
+            prompt_hdr = self.headers.get('X-Text-Prompt', '')
+            if prompt_hdr:
+                sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] Neural Timbre Guidance Prompt: '{prompt_hdr}'\n")
 
             # Execute processing
             try:

@@ -743,6 +743,7 @@ export interface ReprocessPurestOptions {
   masterWaveConfig?: Partial<MasterWaveConfig>;
   complexity?: number;
   parameterSet?: number;
+  forceRebuild?: boolean;
 }
 
 /** Diagnostics summary of the asynchronous `NeuronAssetStore` (`IndexedDB` + write-through cache) */

@@ -121,9 +121,9 @@ class App {
     if (family === 'neuron') return this.currentThemeMode === 'light' ? 'neuron-light' : 'neuron-dark';
     if (family === 'virus-snow') return this.currentThemeMode === 'light' ? 'virus-snow' : 'virus-snow-dark';
     if (family === 'audiolab') return this.currentThemeMode === 'light' ? 'audiolab-light' : 'audiolab';
-    if (family === 'ms2000') return 'ms2000';
-    if (family === 'advanced') return 'advanced';
-    if (family === 'cz101') return 'cz101';
+    if (family === 'ms2000') return this.currentThemeMode === 'light' ? 'ms2000-light' : 'ms2000';
+    if (family === 'advanced') return this.currentThemeMode === 'light' ? 'advanced-light' : 'advanced';
+    if (family === 'cz101') return this.currentThemeMode === 'light' ? 'cz101-light' : 'cz101';
     return 'neuron-light';
   }
 
