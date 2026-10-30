@@ -97,7 +97,8 @@ export class AudioPreviewService {
   public async auditionZoneComparison(
     zoneId: string,
     mode: PreviewPlaybackMode,
-    targetNote?: MidiNote
+    targetNote?: MidiNote,
+    sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void> {
     if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
       return;
@@ -121,9 +122,12 @@ export class AudioPreviewService {
         ? (this.sources.getEnhancedMono?.(zone.id) ?? this.sources.getResynthMono(zone.id))
         : this.sources.getResynthMono(zone.id);
 
+    // Original mode can play a specific velocity layer / extended region sample
+    const useOverride = mode === 'original' && !!sampleOverride?.sampleName;
+    const pitchRoot = useOverride ? sampleOverride!.rootKey : zone.rootKey;
     const semitoneShift =
       targetNote !== undefined
-        ? targetNote - zone.rootKey + (zone.detune || 0) / 100
+        ? targetNote - pitchRoot + (zone.detune || 0) / 100
         : (zone.detune || 0) / 100;
     const playbackRate = Math.pow(2.0, semitoneShift / 12.0);
     const linearGain = Math.pow(10.0, (zone.volume || 0) / 20.0);
@@ -134,10 +138,12 @@ export class AudioPreviewService {
       audioBuffer = this.audioCtx.createBuffer(1, mono.length, 44100);
       audioBuffer.copyToChannel(new Float32Array(mono), 0);
     } else {
-      const sampleName = zone.sampleLow ?? DEFAULT_SAMPLE_NAME;
+      const sampleName = useOverride
+        ? sampleOverride!.sampleName
+        : (zone.sampleLow ?? DEFAULT_SAMPLE_NAME);
       const raw =
         this.sources.getSampleBuffer(sampleName) ??
-        synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
+        synthesizeDemoWav('strings', pitchRoot, 44100, 1.0);
       const decoded = decodeWav(raw);
       audioBuffer = this.audioCtx.createBuffer(
         decoded.numChannels,

@@ -160,6 +160,9 @@ export class ZoneInspector {
   private totalZones: number = 1;
   private workingMode: WorkingMode = 'classic';
   private selectedRegionId: string | null = null;
+  /** Live keyboard notes → table rows/cells they trigger (classic zone+layer or extended regions) */
+  private activeNoteHits = new Map<number, { zoneId?: string; layer?: 'low' | 'high'; regionIds: string[]; startedAt: number }>();
+  private noteReleaseTimers = new Map<number, number>();
   private lastExtendedRegionCount: number = 0;
   /** Top-level scope in Extended Drawer: 'region' (Sample-Specific & Overrides) vs 'model' (Model Common & Global) */
   private activeDrawerScope: 'region' | 'model' = 'region';
@@ -550,8 +553,8 @@ export class ZoneInspector {
             <td class="col-key ${hasOverlap ? 'is-overlap-cell' : ''}" title="${overlapTip}">${lowKeyStr}</td>
             <td class="col-key is-root">${rootKeyStr}</td>
             <td class="col-key ${hasOverlap ? 'is-overlap-cell' : ''}" title="${overlapTip}">${highKeyStr}</td>
-            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleLow ? `Vel 1..${hasHigh ? zoneSplit - 1 : 127}: ${zone.sampleLow}` : 'No Low Vel sample'}">${lowVelHtml}</td>
-            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" title="${zone.sampleHigh ? `Vel ${zoneSplit}..127: ${zone.sampleHigh}` : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
+            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="low" title="${zone.sampleLow ? `Vel 1..${hasHigh ? zoneSplit - 1 : 127}: ${zone.sampleLow}` : 'No Low Vel sample'}">${lowVelHtml}</td>
+            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="high" title="${zone.sampleHigh ? `Vel ${zoneSplit}..127: ${zone.sampleHigh}` : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
             <td class="col-num">${detuneStr}</td>
             <td class="col-num">${volumeStr}</td>
             <td class="col-num">${panStr}</td>
@@ -1897,6 +1900,9 @@ export class ZoneInspector {
     const z = this.currentZone;
     const isExtended = this.workingMode === 'extended';
 
+    // Re-apply live keyboard note highlights after every table re-render
+    this.applyNoteHighlights(false);
+
     // Row selection in Zone / Region Table
     const rows = this.container.querySelectorAll<HTMLElement>('tr.zone-table-row');
     rows.forEach((row) => {
@@ -2037,6 +2043,88 @@ export class ZoneInspector {
         if (ok) this.handlers.onDeleteZone(z.id);
       });
     });
+  }
+
+  /**
+   * Highlights the table row(s) a keyboard note triggers.
+   * Classic: the zone row plus its Low Vel / High Vel cell for the played velocity.
+   * Extended: every region row whose key AND velocity ranges contain the note.
+   */
+  public highlightNote(
+    note: number,
+    hit: { zoneId?: string; layer?: 'low' | 'high'; regionIds: string[] }
+  ): void {
+    const pending = this.noteReleaseTimers.get(note);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.noteReleaseTimers.delete(note);
+    }
+    this.activeNoteHits.set(note, { ...hit, regionIds: [...hit.regionIds], startedAt: performance.now() });
+    this.applyNoteHighlights(true);
+  }
+
+  /** Clears a note highlight (kept visible ≥ 250 ms so quick taps are still noticeable). */
+  public releaseNote(note: number): void {
+    const hit = this.activeNoteHits.get(note);
+    if (!hit) return;
+    const remaining = Math.max(0, 250 - (performance.now() - hit.startedAt));
+    const clear = () => {
+      this.noteReleaseTimers.delete(note);
+      this.activeNoteHits.delete(note);
+      this.applyNoteHighlights(false);
+    };
+    if (remaining === 0) {
+      clear();
+    } else {
+      this.noteReleaseTimers.set(note, window.setTimeout(clear, remaining));
+    }
+  }
+
+  private applyNoteHighlights(scrollIntoView: boolean): void {
+    const isExtended = this.workingMode === 'extended';
+    this.container
+      .querySelectorAll('.is-note-active, .is-note-layer-active')
+      .forEach((el) => el.classList.remove('is-note-active', 'is-note-layer-active'));
+    if (this.activeNoteHits.size === 0) return;
+
+    let firstRow: HTMLElement | null = null;
+    for (const hit of this.activeNoteHits.values()) {
+      if (isExtended) {
+        for (const regId of hit.regionIds) {
+          const row = this.container.querySelector<HTMLElement>(
+            `tr.zone-table-row[data-region-id="${CSS.escape(regId)}"]`
+          );
+          if (!row) continue;
+          row.classList.add('is-note-active');
+          row.querySelector('.col-sample')?.classList.add('is-note-layer-active');
+          firstRow ??= row;
+        }
+      } else if (hit.zoneId) {
+        const row = this.container.querySelector<HTMLElement>(
+          `tr.zone-table-row[data-zone-id="${CSS.escape(hit.zoneId)}"]:not([data-region-id])`
+        );
+        if (!row) continue;
+        row.classList.add('is-note-active');
+        row
+          .querySelector(`td[data-vel-layer="${hit.layer ?? 'low'}"]`)
+          ?.classList.add('is-note-layer-active');
+        firstRow ??= row;
+      }
+    }
+
+    if (scrollIntoView && firstRow) {
+      const scroller = firstRow.closest<HTMLElement>('.zone-table-scroll');
+      if (scroller) {
+        const sRect = scroller.getBoundingClientRect();
+        const rRect = firstRow.getBoundingClientRect();
+        const head = scroller.querySelector('thead')?.getBoundingClientRect().height ?? 0;
+        if (rRect.top < sRect.top + head) {
+          scroller.scrollTop -= sRect.top + head - rRect.top;
+        } else if (rRect.bottom > sRect.bottom) {
+          scroller.scrollTop += rRect.bottom - sRect.bottom;
+        }
+      }
+    }
   }
 
   private handleRowPlayClick(zoneId: string | null, regionId: string | null): void {

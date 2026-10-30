@@ -11,9 +11,11 @@ import {
   analyzeExtendedIntersections,
 } from '../core/extendedAdapter';
 import { midiToNoteName } from './ZoneRibbon';
+import { toMidiVelocity } from '../core/noteMapping';
 
 export interface KeyboardStripHandlers {
-  onNotePress: (midiNote: number) => void;
+  /** `velocity` is MIDI 1..127 (pointer Y on the key: top = soft, bottom = loud) */
+  onNotePress: (midiNote: number, velocity: number) => void;
   onNoteRelease: (midiNote: number) => void;
 }
 
@@ -102,8 +104,8 @@ export class KeyboardStrip {
       containerId: 'piano-keyboard',
       wheelPitchId: null,
       wheelModId: null,
-      onNoteOn: (note: number) => {
-        this.handlers.onNotePress(note);
+      onNoteOn: (note: number, velocity?: number) => {
+        this.handlers.onNotePress(note, toMidiVelocity(velocity));
       },
       onNoteOff: (note: number) => {
         this.handlers.onNoteRelease(note);
@@ -123,7 +125,10 @@ export class KeyboardStrip {
         enableRetrig: false,
         enableQwerty: true,
         showQwertyLabels: false,
-        enableTouch: true
+        enableTouch: true,
+        // Velocity from click height on the key so Low/High velocity layers can be auditioned
+        velocitySource: 'yPosition',
+        velocityCurve: 'normal'
       }
     });
   }

@@ -19,6 +19,7 @@ import { ZoneRibbon } from './ui/ZoneRibbon';
 import { ZoneInspector } from './ui/ZoneInspector';
 import { ProcessPanel } from './ui/ProcessPanel';
 import { KeyboardStrip } from './ui/KeyboardStrip';
+import { resolveClassicNoteTargets, resolveExtendedNoteTargets } from './core/noteMapping';
 import { ProcessModal } from './ui/ProcessModal';
 import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
@@ -516,23 +517,40 @@ class App {
 
     // 5. Keyboard Strip
     this.keyboard = new KeyboardStrip(keyboardMount, {
-      onNotePress: (note) => {
+      onNotePress: (note, velocity) => {
+        if (!this.session) return;
+        const isExtended = this.session.processConfig.workingMode === 'extended';
+        // Resolve which row(s)/sample this note + velocity triggers (mode-specific tables)
+        const targets = isExtended
+          ? resolveExtendedNoteTargets(this.core.getExtendedRegions(), note, velocity)
+          : resolveClassicNoteTargets(this.session.zones, note, velocity);
         // Find zone covering this note, select it, and audition at `note` pitch
-        const found = this.session?.zones.find((z) => note >= z.lowKey && note <= z.highKey);
+        const found = this.session.zones.find((z) => note >= z.lowKey && note <= z.highKey);
+        this.inspector.highlightNote(note, {
+          zoneId: targets.zoneId ?? found?.id,
+          layer: targets.layer,
+          regionIds: targets.regionIds,
+        });
         if (found) {
           if (found.id !== this.selectedZoneId) {
             this.selectedZoneId = found.id;
             this.ribbon.setActiveZone(found.id);
-            this.inspector.setZone(found, this.getActiveZoneIndex(), this.session!.zones.length, this.session!.zones, this.session!.processConfig.workingMode);
+            this.inspector.setZone(found, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
             this.keyboard.setActiveZone(found);
             this.updateSpectralView(found);
           }
           const kbMode = this.spectralView.getKeyboardMode();
-          void this.core.auditionZoneComparison(found.id, kbMode, note);
+          const override =
+            targets.sampleName !== undefined
+              ? { sampleName: targets.sampleName, rootKey: targets.rootKey ?? found.rootKey }
+              : undefined;
+          void this.core.auditionZoneComparison(found.id, kbMode, note, override);
           this.spectralView.notifyPlaybackStarted();
         }
       },
-      onNoteRelease: (_note) => {}
+      onNoteRelease: (note) => {
+        this.inspector.releaseNote(note);
+      }
     });
     this.keyboard.setZones(this.session!.zones, this.selectedZoneId);
 

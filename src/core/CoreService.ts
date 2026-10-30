@@ -162,7 +162,9 @@ export interface CoreService {
   auditionZoneComparison(
     zoneId: string,
     mode: 'original' | 'resynthesis' | 'enhanced',
-    targetNote?: MidiNote
+    targetNote?: MidiNote,
+    /** Original mode: play this sample (velocity layer / extended region) instead of `zone.sampleLow` */
+    sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void>;
 
   /** Stop any active sample or resynthesis playback */

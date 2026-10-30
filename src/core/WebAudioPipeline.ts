@@ -1197,9 +1197,10 @@ export class WebAudioPipeline implements CoreService {
   public async auditionZoneComparison(
     zoneId: string,
     mode: 'original' | 'resynthesis' | 'enhanced',
-    targetNote?: MidiNote
+    targetNote?: MidiNote,
+    sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void> {
-    return this.preview.auditionZoneComparison(zoneId, mode, targetNote);
+    return this.preview.auditionZoneComparison(zoneId, mode, targetNote, sampleOverride);
   }
 
   public stopAudition(): void {

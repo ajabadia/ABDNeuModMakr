@@ -777,6 +777,40 @@ input[type="range"] {
   font-weight: 700;
 }
 
+/* Live keyboard note: row(s) that the played note + velocity triggers.
+   Drawn on cells (inset shadows) so it composes with selection & overlap tints. */
+.canonical-zone-table tbody tr.zone-table-row > td {
+  transition: background var(--transition-fast), box-shadow 180ms ease-out;
+}
+
+.canonical-zone-table tbody tr.zone-table-row.is-note-active > td {
+  background: color-mix(in srgb, var(--color-success, #3fb950) 16%, transparent);
+  box-shadow:
+    inset 0 2px 0 var(--color-success, #3fb950),
+    inset 0 -2px 0 var(--color-success, #3fb950);
+  transition: none;
+}
+
+.canonical-zone-table tbody tr.zone-table-row.is-note-active > td:first-child {
+  box-shadow:
+    inset 0 2px 0 var(--color-success, #3fb950),
+    inset 0 -2px 0 var(--color-success, #3fb950),
+    inset 4px 0 0 var(--color-success, #3fb950);
+}
+
+/* The exact sample that sounds (classic Low/High Vel cell, extended sample cell) */
+.canonical-zone-table tbody tr.zone-table-row.is-note-active > td.is-note-layer-active {
+  background: color-mix(in srgb, var(--color-success, #3fb950) 38%, transparent);
+  color: var(--color-text-main);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canonical-zone-table tbody tr.zone-table-row > td {
+    transition: none;
+  }
+}
+
 .canonical-zone-table tbody td {
   padding: var(--space-2) var(--space-3);
   border-right: 1px solid var(--color-panel-border-dim);
