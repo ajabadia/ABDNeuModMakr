@@ -214,9 +214,10 @@ export class AudioPreviewService {
     const rootKey = opts.rootKey ?? 60;
     let raw = this.sources.getSampleBuffer(samplePath);
     if (!raw) {
+      // Transient demo tone: never cache it under the real sample name, so a later
+      // reload/hydration of the genuine sample is not shadowed by a stale demo buffer.
       const parsedKey = parseRootKeyFromFilename(samplePath, rootKey);
       raw = synthesizeDemoWav('strings', parsedKey, 44100, 1.0);
-      this.sources.setSampleBuffer(samplePath, raw);
     }
 
     const decoded = decodeWav(raw);
@@ -231,9 +232,16 @@ export class AudioPreviewService {
         ? opts.loopEndFrame
         : Math.max(effStartFrame + 1, Math.floor(totalFrames * 0.85));
 
-    const isPingPong = opts.loopMode === 'ping_pong';
+    // Only reshape the PCM (crossfade / ping-pong unroll) when a loop will actually play.
+    // Otherwise a one-shot audition would hear the mirrored ping-pong tail or a
+    // crossfaded seam baked into the buffer ("doubled" sound).
+    const wantLoop =
+      opts.loopEnabled !== false &&
+      opts.loopMode !== 'no_loop' &&
+      opts.loopMode !== 'one_shot';
+    const isPingPong = wantLoop && opts.loopMode === 'ping_pong';
     const xfadeFrames =
-      opts.loopCrossfadeMs && opts.loopCrossfadeMs > 0
+      wantLoop && opts.loopCrossfadeMs && opts.loopCrossfadeMs > 0
         ? Math.round((opts.loopCrossfadeMs / 1000) * sr)
         : 0;
 

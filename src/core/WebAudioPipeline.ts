@@ -173,14 +173,7 @@ export class WebAudioPipeline implements CoreService {
   private readonly preview: AudioPreviewService = new AudioPreviewService({
     getZone: (zoneId: string) => this.session?.zones.find((z) => z.id === zoneId),
     getFirstZone: () => this.session?.zones[0],
-    getSampleBuffer: (name: string) => {
-      let b = this.sampleBuffers.get(name);
-      if (!b && name) {
-        const base = name.split(/[\\/]/).pop();
-        if (base && base !== name) b = this.sampleBuffers.get(base);
-      }
-      return b;
-    },
+    getSampleBuffer: (name: string) => this.lookupSampleBuffer(name),
     setSampleBuffer: (name: string, buffer: ArrayBuffer) => {
       this.sampleBuffers.set(name, buffer);
       if (name) {
@@ -3122,23 +3115,16 @@ export class WebAudioPipeline implements CoreService {
 
     if (!targetZone && !activeReg) return null;
 
-    let sampleName =
-      isClassic
-        ? (targetZone?.sampleLow ?? targetZone?.sampleHigh)
-        : (activeReg?.sampleName ?? targetZone?.sampleLow ?? targetZone?.sampleHigh);
+    const sampleName =
+      (isClassic
+        ? (targetZone?.sampleLow || targetZone?.sampleHigh)
+        : (activeReg?.sampleName || targetZone?.sampleLow || targetZone?.sampleHigh)) || undefined;
 
     const rootKey =
       (isClassic ? targetZone?.rootKey : (activeReg?.rootKey ?? targetZone?.rootKey)) ?? 60;
 
-    let raw: ArrayBuffer | undefined;
+    let raw: ArrayBuffer | undefined = this.lookupSampleBuffer(sampleName);
     let effectiveSampleName = sampleName;
-    if (sampleName) {
-      raw = this.sampleBuffers.get(sampleName);
-      if (!raw) {
-        const base = sampleName.split(/[\\/]/).pop();
-        if (base && base !== sampleName) raw = this.sampleBuffers.get(base);
-      }
-    }
 
     if (!raw) {
       const demoKey = `__demo_${(activeReg?.id ?? targetZone?.id ?? 'zone').replace(/[^a-zA-Z0-9_-]/g, '_')}_k${rootKey}.wav`;
@@ -3179,10 +3165,16 @@ export class WebAudioPipeline implements CoreService {
         ? clamp(activeReg.loopEnd, loopStart + 1, totalFrames)
         : clamp(defaultLoopEnd, loopStart + 1, totalFrames);
     const loopCrossfadeMs = activeReg?.loopCrossfadeMs ?? 15;
+    const hasExplicitLoopPoints = Boolean(
+      (activeReg && activeReg.loopEnd > activeReg.loopStart) ||
+        (decoded.instrument?.loopEnd &&
+          decoded.instrument.loopEnd > (decoded.instrument.loopStart ?? 0))
+    );
 
     return {
       zoneId: targetZone?.id ?? 'zone-1',
       regionId: activeReg?.id,
+      hasExplicitLoopPoints,
       sampleName: effectiveSampleName ?? 'Demo_Sample.wav',
       sampleRate: decoded.sampleRate,
       numChannels: decoded.numChannels,
@@ -3197,6 +3189,11 @@ export class WebAudioPipeline implements CoreService {
     };
   }
 
+  /**
+   * Loop Editor audition ("Play Loop"): always loops between the editor markers
+   * (falling back to Forward Loop when the region has no loop mode yet) and starts
+   * at the loop start so the seam is heard immediately.
+   */
   public async auditionLoop(
     zoneId: string,
     opts?: {
@@ -3212,64 +3209,104 @@ export class WebAudioPipeline implements CoreService {
   ): Promise<void> {
     const data = this.getZoneLoopEditorData(zoneId, opts?.regionId);
     if (!data) return;
+    const loopEnabled = opts?.loopEnabled !== false;
+    const isLoopingMode = data.loopMode !== 'no_loop' && data.loopMode !== 'one_shot';
+    await this.playLoopEditorData(data, {
+      ...opts,
+      loopEnabled,
+      loopMode: loopEnabled && !isLoopingMode ? 'loop_continuous' : data.loopMode,
+      startFromLoopStart: loopEnabled,
+    });
+  }
 
-    let volumeDb = opts?.volumeDb;
-    let pan = opts?.pan;
-    let detuneCents = opts?.detuneCents;
-    let ampEnv = opts?.ampEnv;
+  /**
+   * Row audition (▶ in the zone/region table): plays exactly the row's sample from
+   * 0 s with its volume, pan, detune and amp envelope. Loops only when the row has a
+   * looping mode AND explicit loop points (region or WAV `smpl` chunk).
+   * Shares sample resolution with the Loop Editor (`getZoneLoopEditorData`).
+   */
+  public async auditionRow(opts: {
+    zoneId?: string;
+    regionId?: string;
+  }): Promise<void> {
+    const data = this.getZoneLoopEditorData(opts.zoneId, opts.regionId);
+    if (!data) return;
+    const isLoopingMode = data.loopMode !== 'no_loop' && data.loopMode !== 'one_shot';
+    const loopEnabled = isLoopingMode && Boolean(data.hasExplicitLoopPoints);
+    await this.playLoopEditorData(data, {
+      loopEnabled,
+      loopMode: loopEnabled ? data.loopMode : 'no_loop',
+      startFromLoopStart: false,
+    });
+  }
 
-    if (opts?.regionId && this.session?.extendedRegions) {
-      const reg = this.session.extendedRegions.find((r) => r.id === opts.regionId);
-      if (reg) {
-        if (volumeDb === undefined) volumeDb = reg.volume;
-        if (pan === undefined) pan = reg.pan;
-        if (detuneCents === undefined) detuneCents = reg.detune;
-        if (ampEnv === undefined) {
-          const globalEnv = this.session.articulation?.ampEnv;
-          if (reg.hasArticulationOverride && reg.ampEnvOverride && globalEnv) {
-            ampEnv = { ...globalEnv, ...reg.ampEnvOverride };
-          } else if (globalEnv && this.session.articulation?.ampEnvEnabled !== false) {
-            ampEnv = globalEnv;
-          }
+  private async playLoopEditorData(
+    data: ZoneLoopEditorData,
+    opts: {
+      loopStartFrame?: number;
+      loopEndFrame?: number;
+      loopEnabled: boolean;
+      loopMode: LoopMode;
+      startFromLoopStart: boolean;
+      volumeDb?: number;
+      pan?: number;
+      detuneCents?: number;
+      ampEnv?: DahdsrEnvelope;
+    }
+  ): Promise<void> {
+    if (!this.session) return;
+    let { volumeDb, pan, detuneCents, ampEnv } = opts;
+
+    // Use the ids actually resolved by getZoneLoopEditorData (never the UI selection)
+    const reg = data.regionId
+      ? this.session.extendedRegions?.find((r) => r.id === data.regionId)
+      : undefined;
+    if (reg) {
+      if (volumeDb === undefined) volumeDb = reg.volume;
+      if (pan === undefined) pan = reg.pan;
+      if (detuneCents === undefined) detuneCents = reg.detune;
+      if (ampEnv === undefined) {
+        const globalEnv = this.session.articulation?.ampEnv;
+        if (reg.hasArticulationOverride && reg.ampEnvOverride && globalEnv) {
+          ampEnv = { ...globalEnv, ...reg.ampEnvOverride };
+        } else if (globalEnv && this.session.articulation?.ampEnvEnabled !== false) {
+          ampEnv = globalEnv;
         }
       }
     } else {
-      const zone = this.session?.zones.find((z) => z.id === zoneId);
+      const zone = this.session.zones.find((z) => z.id === data.zoneId);
       if (zone) {
         if (volumeDb === undefined) volumeDb = zone.volume;
         if (pan === undefined) pan = zone.pan;
         if (detuneCents === undefined) detuneCents = zone.detune;
-        if (ampEnv === undefined && this.session?.articulation?.ampEnv && this.session.articulation.ampEnvEnabled) {
+        if (ampEnv === undefined && this.session.articulation?.ampEnv && this.session.articulation.ampEnvEnabled) {
           ampEnv = this.session.articulation.ampEnv;
         }
       }
     }
 
     const startFrame =
-      opts?.loopStartFrame !== undefined && opts.loopStartFrame >= 0
+      opts.loopStartFrame !== undefined && opts.loopStartFrame >= 0
         ? opts.loopStartFrame
         : data.loopStart;
     const endFrame =
-      opts?.loopEndFrame !== undefined && opts.loopEndFrame > startFrame
+      opts.loopEndFrame !== undefined && opts.loopEndFrame > startFrame
         ? opts.loopEndFrame
         : data.loopEnd;
-    const loopEnabled =
-      opts?.loopEnabled !== undefined
-        ? opts.loopEnabled
-        : data.loopMode !== 'no_loop' && data.loopMode !== 'one_shot';
 
     await this.preview.auditionLoopSample({
       sampleName: data.sampleName,
       rootKey: data.rootKey,
       loopStartFrame: startFrame,
       loopEndFrame: endFrame,
-      loopEnabled,
-      loopMode: data.loopMode,
+      loopEnabled: opts.loopEnabled,
+      loopMode: opts.loopMode,
       loopCrossfadeMs: data.loopCrossfadeMs,
       volumeDb,
       pan,
       detuneCents,
       ampEnv,
+      startFromLoopStart: opts.startFromLoopStart,
     });
   }
 
@@ -3285,158 +3322,6 @@ export class WebAudioPipeline implements CoreService {
       sampleRate,
       loopEnabled
     );
-  }
-
-  public async auditionRow(opts: {
-    zoneId?: string;
-    regionId?: string;
-  }): Promise<void> {
-    if (!this.session) return;
-    const isClassic = (this.session.processConfig.workingMode ?? 'classic') === 'classic';
-    const extRegions = this.getExtendedRegions();
-
-    let targetZone = opts.zoneId ? this.session.zones.find((z) => z.id === opts.zoneId) : undefined;
-    let targetRegion = (!isClassic && opts.regionId)
-      ? extRegions.find((r) => r.id === opts.regionId)
-      : undefined;
-
-    if (targetRegion && !targetZone) {
-      targetZone =
-        this.session.zones.find(
-          (z) =>
-            targetRegion!.id.includes(z.id) ||
-            (targetRegion!.sampleName && (z.sampleLow === targetRegion!.sampleName || z.sampleHigh === targetRegion!.sampleName)) ||
-            (targetRegion!.lowKey === z.lowKey && targetRegion!.highKey === z.highKey)
-        ) ?? this.session.zones[0];
-    }
-    if (!isClassic && !targetRegion && targetZone) {
-      targetRegion =
-        extRegions.find(
-          (r) =>
-            r.id.includes(targetZone!.id) ||
-            (targetZone!.sampleLow && r.sampleName === targetZone!.sampleLow) ||
-            (r.lowKey === targetZone!.lowKey && r.highKey === targetZone!.highKey)
-        );
-    }
-
-    if (!targetZone && !targetRegion) {
-      if (isClassic) {
-        targetZone = this.session.zones[0];
-      } else {
-        targetRegion = extRegions[0];
-        targetZone = this.session.zones[0];
-      }
-    }
-    if (!targetZone && !targetRegion) return;
-
-    let sampleName: string | undefined;
-    let rootKey = 60;
-    let volumeDb = 0;
-    let pan = 0;
-    let detuneCents = 0;
-    let ampEnv: DahdsrEnvelope | undefined;
-    let loopMode: LoopMode = 'no_loop';
-    let loopStart = 0;
-    let loopEnd = 0;
-    let loopCrossfadeMs = 15;
-
-    if (!isClassic && targetRegion) {
-      sampleName = targetRegion.sampleName || undefined;
-      rootKey = targetRegion.rootKey ?? 60;
-      volumeDb = targetRegion.volume ?? 0;
-      pan = targetRegion.pan ?? 0;
-      detuneCents = targetRegion.detune ?? 0;
-      loopCrossfadeMs = targetRegion.loopCrossfadeMs ?? 15;
-
-      const commonPlayback = this.session.processConfig.commonPlayback;
-      if (targetRegion.hasPlaybackOverride) {
-        loopMode = targetRegion.loopMode ?? 'no_loop';
-      } else if (commonPlayback?.loopMode && commonPlayback.loopMode !== 'no_loop') {
-        loopMode = commonPlayback.loopMode;
-      } else {
-        loopMode = targetRegion.loopMode ?? 'no_loop';
-      }
-
-      loopStart = targetRegion.loopStart ?? 0;
-      loopEnd = targetRegion.loopEnd ?? 0;
-
-      const globalEnv = this.session.articulation?.ampEnv;
-      if (targetRegion.hasArticulationOverride && targetRegion.ampEnvOverride && globalEnv) {
-        ampEnv = { ...globalEnv, ...targetRegion.ampEnvOverride };
-      } else if (globalEnv && this.session.articulation?.ampEnvEnabled !== false) {
-        ampEnv = globalEnv;
-      }
-    } else if (targetZone) {
-      sampleName = (targetZone.sampleLow ?? targetZone.sampleHigh) || undefined;
-      rootKey = targetZone.rootKey ?? 60;
-      volumeDb = targetZone.volume ?? 0;
-      pan = targetZone.pan ?? 0;
-      detuneCents = targetZone.detune ?? 0;
-
-      const commonPlayback = this.session.processConfig.commonPlayback;
-      loopMode = commonPlayback?.loopMode ?? 'no_loop';
-
-      const globalEnv = this.session.articulation?.ampEnv;
-      if (globalEnv && this.session.articulation?.ampEnvEnabled) {
-        ampEnv = globalEnv;
-      }
-    }
-
-    let raw: ArrayBuffer | undefined;
-    let effectiveSampleName = sampleName;
-    if (sampleName) {
-      raw = this.sampleBuffers.get(sampleName);
-      if (!raw) {
-        const base = sampleName.split(/[\\/]/).pop();
-        if (base && base !== sampleName) raw = this.sampleBuffers.get(base);
-      }
-    }
-
-    if (!raw) {
-      const demoKey = `__demo_${(targetRegion?.id ?? targetZone?.id ?? 'row').replace(/[^a-zA-Z0-9_-]/g, '_')}_k${rootKey}.wav`;
-      raw = this.sampleBuffers.get(demoKey);
-      if (!raw) {
-        raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
-        this.sampleBuffers.set(demoKey, raw);
-      }
-      effectiveSampleName = demoKey;
-    }
-
-    let decoded: DecodedWav;
-    try {
-      decoded = decodeWav(raw);
-    } catch {
-      raw = synthesizeDemoWav('strings', rootKey, 44100, 1.0);
-      decoded = decodeWav(raw);
-    }
-
-    const totalFrames = Math.max(1, decoded.numSamples);
-    if (decoded.instrument && (!loopStart || !loopEnd || loopEnd <= loopStart)) {
-      if (decoded.instrument.loopStart !== undefined && decoded.instrument.loopEnd !== undefined) {
-        loopStart = decoded.instrument.loopStart;
-        loopEnd = decoded.instrument.loopEnd;
-      }
-    }
-
-    const isLoopingMode = loopMode !== 'no_loop' && loopMode !== 'one_shot';
-    const hasValidLoopPoints = loopEnd > loopStart && loopEnd > 0;
-    const loopEnabled = isLoopingMode && hasValidLoopPoints;
-
-    await this.preview.auditionLoopSample({
-      sampleName: effectiveSampleName ?? 'Demo_Sample.wav',
-      rootKey,
-      targetKey: rootKey,
-      loopStartFrame: loopStart,
-      loopEndFrame: loopEnd > 0 ? loopEnd : totalFrames,
-      loopEnabled,
-      loopMode,
-      loopCrossfadeMs,
-      volumeDb,
-      pan,
-      detuneCents,
-      ampEnv,
-      startFromLoopStart: false,
-    });
   }
 
   // ── Phase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode ──
@@ -3473,9 +3358,51 @@ export class WebAudioPipeline implements CoreService {
 
   // ── Private Helpers ─────────────────────────────────────
 
+  /**
+   * Resolves a sample's WAV buffer by exact name, then basename, then from the
+   * persisted `NeuronAssetStore` (Layer 01 raw source / Layer 03 enhanced audio,
+   * hydrated from IndexedDB on startup). Store hits are cached in `sampleBuffers`.
+   */
+  private lookupSampleBuffer(name: string | null | undefined): ArrayBuffer | undefined {
+    if (!name) return undefined;
+    const base = name.split(/[\\/]/).pop() || name;
+    const candidates = base !== name ? [name, base] : [name];
+    for (const key of candidates) {
+      const hit = this.sampleBuffers.get(key);
+      if (hit) return hit;
+    }
+    for (const key of candidates) {
+      const stored =
+        this.assetStore.getRawSourceSync(key) ?? this.assetStore.getEnhancedAudioSync(key);
+      if (stored) {
+        this.sampleBuffers.set(name, stored);
+        return stored;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * After a page reload `sampleBuffers` is empty: repopulate it from the
+   * IndexedDB-hydrated asset store for every sample referenced by the session
+   * (classic zones and extended regions) before any demo fallback is synthesized.
+   */
+  private rehydrateSessionSampleBuffers(): void {
+    if (!this.session) return;
+    const names = new Set<string>();
+    for (const z of this.session.zones) {
+      if (z.sampleLow) names.add(z.sampleLow);
+      if (z.sampleHigh) names.add(z.sampleHigh);
+    }
+    for (const r of this.session.extendedRegions ?? []) {
+      if (r.sampleName) names.add(r.sampleName);
+    }
+    for (const n of names) this.lookupSampleBuffer(n);
+  }
+
   private ensureZoneDemoBuffers(zones: Zone[]): void {
     for (const z of zones) {
-      if (z.sampleLow && !this.sampleBuffers.has(z.sampleLow)) {
+      if (z.sampleLow && !this.lookupSampleBuffer(z.sampleLow)) {
         const lower = z.sampleLow.toLowerCase();
         const timbre = lower.includes('bass')
           ? 'bass'
@@ -3519,6 +3446,7 @@ export class WebAudioPipeline implements CoreService {
     const restored = restoreSessionFromLocalStorage();
     if (restored) {
       this.session = restored;
+      this.rehydrateSessionSampleBuffers();
       this.ensureZoneDemoBuffers(this.session.zones);
     }
     this.bank.restoreBank();

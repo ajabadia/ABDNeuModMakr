@@ -394,6 +394,11 @@ export interface ZoneLoopEditorData {
   loopEnd: number;
   loopCrossfadeMs: number;
   rootKey: MidiNote;
+  /**
+   * True when loop points come from the region itself or from the WAV `smpl` chunk
+   * (not from the 20%/85% editor defaults). Row audition only loops when this is set.
+   */
+  hasExplicitLoopPoints?: boolean;
 }
 
 /** Process execution state */
