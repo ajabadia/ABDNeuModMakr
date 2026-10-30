@@ -3257,10 +3257,10 @@ export class ZoneInspector {
     ctx.save();
     ctx.scale(dpr, dpr);
 
-    const bgColor = getThemeColor('--color-panel-surface', '#0d1520');
+    const bgColor = getThemeColor('--color-panel-surface', '#151f2e');
     const origColor = getThemeColor('--color-cable-midi-in', '#06b6d4');
-    const accentColor = getThemeColor('--color-accent', '#00e676');
-    const warningColor = getThemeColor('--color-warning', '#ffb142');
+    const accentColor = getThemeColor('--color-accent', '#00c3ff');
+    const warningColor = getThemeColor('--color-warning', '#ffaa00');
     const mutedColor = getThemeColor('--color-text-muted', '#7e9bb5');
     const borderColor = getThemeColor('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
     const dimGridColor = getThemeColor('--color-panel-border', 'rgba(0, 195, 255, 0.2)');

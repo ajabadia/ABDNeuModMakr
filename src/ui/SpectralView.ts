@@ -74,8 +74,8 @@ function resolveThemeToken(varName: string, fallback: string): string {
 }
 
 const LAYER_TOKEN_VARS: readonly { cssVar: string; fallback: string }[] = [
-  { cssVar: '--color-accent', fallback: '#00e676' },
-  { cssVar: '--color-warning', fallback: '#ffb142' },
+  { cssVar: '--color-accent', fallback: '#00c3ff' },
+  { cssVar: '--color-warning', fallback: '#ffaa00' },
   { cssVar: '--color-cable-midi-in', fallback: '#06b6d4' },
   { cssVar: '--color-cable-midi-out', fallback: '#a855f7' },
 ];
@@ -737,8 +737,8 @@ export class SpectralView {
       this.keyboardMode === 'original'
         ? resolveThemeToken('--color-cable-midi-in', '#06b6d4')
         : this.keyboardMode === 'enhanced'
-          ? resolveThemeToken('--color-accent', '#00e676')
-          : resolveThemeToken('--color-warning', '#ffb142');
+          ? resolveThemeToken('--color-accent', '#00c3ff')
+          : resolveThemeToken('--color-warning', '#ffaa00');
     ctx.fillText(badgeLabel, 8, 14);
   }
 
@@ -762,8 +762,8 @@ export class SpectralView {
     const plotH = Math.max(40, height - padBottom - padTop);
     const layerColors = getLayerColors();
     const mutedColor = resolveThemeToken('--color-text-muted', '#7e9bb5');
-    const accentColor = resolveThemeToken('--color-accent', '#00e676');
-    const warningColor = resolveThemeToken('--color-warning', '#ffb142');
+    const accentColor = resolveThemeToken('--color-accent', '#00c3ff');
+    const warningColor = resolveThemeToken('--color-warning', '#ffaa00');
     const infoColor = resolveThemeToken('--color-cable-midi-in', '#06b6d4');
 
     // Horizontal dB grid lines
@@ -876,8 +876,8 @@ export class SpectralView {
     const enhancedPeaks = this.inspection.enhancedResynthPeaks ?? resynthPeaks;
     const laneH = height / 3;
     const origColor = resolveThemeToken('--color-cable-midi-in', '#06b6d4');
-    const legacyColor = resolveThemeToken('--color-warning', '#ffb142');
-    const enhancedColor = resolveThemeToken('--color-accent', '#00e676');
+    const legacyColor = resolveThemeToken('--color-warning', '#ffaa00');
+    const enhancedColor = resolveThemeToken('--color-accent', '#00c3ff');
     const borderColor = resolveThemeToken('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
     const dimGridColor = resolveThemeToken('--color-panel-border', 'rgba(0, 195, 255, 0.2)');
 
@@ -1370,8 +1370,8 @@ export class SpectralView {
     const seamW = Math.max(80, width - seamX0);
 
     const origColor = resolveThemeToken('--color-cable-midi-in', '#06b6d4');
-    const accentColor = resolveThemeToken('--color-accent', '#00e676');
-    const warningColor = resolveThemeToken('--color-warning', '#ffb142');
+    const accentColor = resolveThemeToken('--color-accent', '#00c3ff');
+    const warningColor = resolveThemeToken('--color-warning', '#ffaa00');
     const mutedColor = resolveThemeToken('--color-text-muted', '#7e9bb5');
     const borderColor = resolveThemeToken('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
     const dimGridColor = resolveThemeToken('--color-panel-border', 'rgba(0, 195, 255, 0.2)');
@@ -1464,7 +1464,7 @@ export class SpectralView {
       const fx = alignRight ? Math.max(0, x - flagW) : Math.min(waveW - flagW, x);
       ctx.fillStyle = color;
       ctx.fillRect(fx, 20, flagW, flagH);
-      ctx.fillStyle = resolveThemeToken('--color-panel-surface', '#0d1520');
+      ctx.fillStyle = resolveThemeToken('--color-panel-surface', '#151f2e');
       ctx.font = 'bold 9px monospace';
       ctx.fillText(label, fx + 4, 31);
     };
