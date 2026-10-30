@@ -5,7 +5,7 @@
 // zone id generation, zone/session creation. No behavior change.
 // ─────────────────────────────────────────────────────────
 
-import type { MidiNote, Session, Zone } from './types.ts';
+import { DEFAULT_AI_ASSISTANCE_CONFIG, type MidiNote, type Session, type Zone } from './types.ts';
 
 let zoneIdCounter = 0;
 export function nextZoneId(): string {
@@ -44,6 +44,7 @@ export function createInitialSession(name: string): Session {
       complexity: 8,
       parameterSet: 0,
       targetFormat: 'dual',
+      aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG },
     },
     dirty: false,
     createdAt: now,

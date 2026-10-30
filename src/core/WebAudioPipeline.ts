@@ -61,6 +61,7 @@ import {
 } from '@abdsynths/shared/formats/neuron';
 
 import { parseSessionJson } from './sessionSchema.ts';
+import { DEFAULT_AI_ASSISTANCE_CONFIG } from './types.ts';
 import type {
   AcousticClassificationResult,
   AssetStoreDiagnostics,
@@ -511,6 +512,12 @@ export class WebAudioPipeline implements CoreService {
     }
     if (changes.coverArtwork !== undefined) {
       cfg.coverArtwork = changes.coverArtwork ? { ...changes.coverArtwork } : null;
+    }
+    if (changes.aiConfig !== undefined) {
+      cfg.aiConfig = {
+        ...(cfg.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+        ...changes.aiConfig,
+      };
     }
 
     this.markDirty();

@@ -7,6 +7,7 @@ import './style.css';
 import {
   createCoreService,
   DEFAULT_MASTER_WAVE_CONFIG,
+  DEFAULT_AI_ASSISTANCE_CONFIG,
   type CoreService,
   type Zone,
   type Session,
@@ -25,6 +26,9 @@ import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
+import { BridgeModal, bridgeModal } from './ui/BridgeModal';
+import { AiEngineModal } from './ui/AiEngineModal';
+import { bridgeClient } from './core/bridge/BridgeClient';
 import { confirmDialog, toast } from './ui/notify';
 import { pwaManager } from './app/pwa';
 
@@ -44,11 +48,24 @@ class App {
   private telemetryDrawer!: TelemetryDrawer;
   private bankDrawer!: BankDrawer;
   private neuronDbModal = new NeuronDbModal();
+  private bridgeModal: BridgeModal = bridgeModal;
+  private aiEngineModal!: AiEngineModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
 
   constructor() {
     const self = this;
+    this.aiEngineModal = new AiEngineModal({
+      onUpdateAiConfig: (config) => {
+        if (!self.session) return;
+        self.session = self.core.updateProcessConfig({ aiConfig: config });
+        self.refreshUI();
+      },
+      onOpenBridgeStatus: () => {
+        self.bridgeModal.open();
+      },
+    });
+
     this.imports = new ImportHandlers({
       core: self.core,
       get session() { return self.session; },
@@ -84,6 +101,9 @@ class App {
       getActiveZoneIndex: () => self.getActiveZoneIndex(),
       handleStartProcess: () => self.handleStartProcess(),
       toggleSpectralPanel: () => self.toggleSpectralPanel(),
+      openAiEngineModal: () => self.aiEngineModal.open(self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
+      openBridgeModal: () => self.bridgeModal.open(),
+      toggleAiAssistance: () => self.handleToggleAiAssistance(),
     });
   }
 
@@ -458,7 +478,7 @@ class App {
           });
           this.session = this.core.getSession()!;
           const errors = this.core.validateCoverage();
-          this.navbar.updateSession(this.session, errors);
+          this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
         }
       },
       onAuditionLoop: (opts) => {
@@ -486,7 +506,7 @@ class App {
         onConfigChange: (cfg) => {
           this.session = this.core.updateProcessConfig(cfg);
           const errors = this.core.validateCoverage();
-          this.navbar.updateSession(this.session, errors);
+          this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
           this.processPanel.setValidation(errors, this.session.zones);
           // Working Mode / target format changes re-gate the inspector's
           // velSplit slider, so re-sync it with the stored session config.
@@ -596,7 +616,7 @@ class App {
             errors,
             zones: this.session.zones,
           });
-          this.navbar.updateSession(this.session, errors);
+          this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
           this.bankDrawer.setSelectedSlot(slot);
           this.telemetryDrawer.addLog(
             `Loaded Model #${String(slot).padStart(3, '0')} '${this.session.name}' from bank (${this.session.zones.length} zone(s)).`
@@ -643,6 +663,32 @@ class App {
     this.imports.bindGlobalDragAndDrop();
     this.menus.bindUnsavedChangesGuard();
     pwaManager.registerServiceWorker();
+    bridgeClient.startAutoPolling(10000);
+    bridgeClient.subscribe(() => {
+      if (this.session) {
+        this.navbar.updateAiState(this.session.processConfig.aiConfig, bridgeClient.isConnected());
+      }
+    });
+  }
+
+  private handleToggleAiAssistance(): void {
+    if (!this.session) return;
+    const current = this.session.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG;
+    const nextEnabled = !current.enabled;
+    this.session = this.core.updateProcessConfig({
+      aiConfig: { ...current, enabled: nextEnabled },
+    });
+    if (nextEnabled) {
+      const isBridge = bridgeClient.isConnected();
+      if (!isBridge) {
+        toast('Asistencia por IA activada (usando fallback DSP local si el Companion Bridge está apagado)', 'info');
+      } else {
+        toast('Asistencia por IA activada (Companion Bridge listo)', 'success');
+      }
+    } else {
+      toast('Modo 100% Algorítmico (DSP Puro) activado', 'info');
+    }
+    this.refreshUI();
   }
 
   private async handleCoverImageUpload(file: File): Promise<void> {
@@ -741,7 +787,7 @@ class App {
     const extRegions = this.session.extendedRegions ?? [];
     const workingMode = this.session.processConfig.workingMode ?? 'classic';
 
-    this.navbar.updateSession(this.session, errors);
+    this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
     this.navbar.updateHistory(this.core.getHistoryState());
     this.ribbon.setZones(this.session.zones, this.selectedZoneId, extRegions, workingMode);
     this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, workingMode);

@@ -12,17 +12,23 @@
 // ─────────────────────────────────────────────────────────
 
 import type {
+  AiAssistanceConfig,
+  ClassifierMethod,
   CommonPlaybackDefaults,
   CrossfadeCurve,
+  DenoiseMethod,
   DspAlgorithmMode,
   ExtendedRegion,
+  LoopExpansionMethod,
   LoopMode,
   MasterChannelLayout,
   MasterPromotionMethod,
   MasterWaveConfig,
+  MasterWaveMethod,
   MidiNote,
   ModelCoverArtwork,
   ProcessConfig,
+  SeparationMethod,
   Session,
   SynthArticulationConfig,
   TargetFormat,
@@ -254,6 +260,24 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     }
   }
 
+  let aiConfig: AiAssistanceConfig | undefined;
+  if (isRecord(cfg['aiConfig'])) {
+    const a = cfg['aiConfig'];
+    const validMw = (v: unknown): MasterWaveMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    const validSep = (v: unknown): SeparationMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    const validLoop = (v: unknown): LoopExpansionMethod => (v === 'ai' || v === 'manual' ? v : 'dsp');
+    const validClf = (v: unknown): ClassifierMethod => (v === 'ai' || v === 'manual' ? v : 'dsp');
+    const validDen = (v: unknown): DenoiseMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    aiConfig = {
+      enabled: typeof a['enabled'] === 'boolean' ? a['enabled'] : false,
+      masterWave: validMw(a['masterWave']),
+      separation: validSep(a['separation']),
+      loopExpansion: validLoop(a['loopExpansion']),
+      classifier: validClf(a['classifier']),
+      denoise: validDen(a['denoise']),
+    };
+  }
+
   return {
     modelNumber: slotNum,
     modelName,
@@ -265,6 +289,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     ...(masterWaveConfig !== undefined ? { masterWaveConfig } : {}),
     ...(commonPlayback !== undefined ? { commonPlayback } : {}),
     ...(coverArtwork !== undefined ? { coverArtwork } : {}),
+    ...(aiConfig !== undefined ? { aiConfig } : {}),
   };
 }
 

@@ -157,6 +157,42 @@ export interface MasterWaveResult {
   aiProviderUsed?: string;
 }
 
+/**
+ * Modular AI Assistance vs. Algorithmic DSP Engine options for each pipeline stage:
+ *   - 'dsp': 100% deterministic local DSP in pure TypeScript/WebAudio (fast, bit-perfect, zero latency).
+ *   - 'ai': Neural model assistance via Local Companion Bridge (AudioSR, Demucs, Outpainting, etc.).
+ *   - 'manual' or 'bypass': Keep original sample, manual user parameters, or bypass processing.
+ */
+export type MasterWaveMethod = 'dsp' | 'ai' | 'bypass';
+export type SeparationMethod = 'dsp' | 'ai' | 'bypass';
+export type LoopExpansionMethod = 'dsp' | 'ai' | 'manual';
+export type ClassifierMethod = 'dsp' | 'ai' | 'manual';
+export type DenoiseMethod = 'dsp' | 'ai' | 'bypass';
+
+export interface AiAssistanceConfig {
+  /** Master switch for AI assistance. If false, entire engine runs 100% deterministic DSP */
+  enabled: boolean;
+  /** 1. Master Wave 24b/96kHz: 'dsp' (Sinc polyphase + BWE) vs 'ai' (AudioSR) vs 'bypass' (Original) */
+  masterWave: MasterWaveMethod;
+  /** 2. Scape vs Sphere Separation: 'dsp' (HPSS median) vs 'ai' (HTDemucs) vs 'bypass' (Direct 1:1) */
+  separation: SeparationMethod;
+  /** 3. Sustained Loop Expansion: 'dsp' (NCC Zero-Crossing) vs 'ai' (Outpainting) vs 'manual' (User points) */
+  loopExpansion: LoopExpansionMethod;
+  /** 4. Timbre & Parameter Set: 'dsp' (Spectral centroid heuristic) vs 'ai' (Neural classifier) vs 'manual' (Manual 0..9) */
+  classifier: ClassifierMethod;
+  /** 5. Denoise & Audio Restoration: 'dsp' (Multiband gate) vs 'ai' (DeepFilterNet) vs 'bypass' (Raw) */
+  denoise: DenoiseMethod;
+}
+
+export const DEFAULT_AI_ASSISTANCE_CONFIG: AiAssistanceConfig = {
+  enabled: false,
+  masterWave: 'dsp',
+  separation: 'dsp',
+  loopExpansion: 'dsp',
+  classifier: 'dsp',
+  denoise: 'dsp',
+};
+
 export type LoopMode =
   | 'no_loop'
   | 'loop_continuous'
@@ -356,6 +392,10 @@ export interface ProcessConfig {
    * Never written into classic `.model` binaries so 2001 hardware compatibility stays 100% intact.
    */
   coverArtwork?: ModelCoverArtwork | null;
+  /**
+   * Modular AI Assistance vs. Deterministic DSP Engine configuration matrix.
+   */
+  aiConfig?: AiAssistanceConfig;
 }
 
 /**

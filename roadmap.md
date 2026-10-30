@@ -299,8 +299,14 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
   - Manifiesto web (`manifest.webmanifest`) con soporte standalone, iconos y colores de tema dark.
   - Service Worker (`public/sw.js`) con estrategia híbrida (Network-First para HTML, Cache-First para bundles `/assets/` y Stale-While-Revalidate para estáticos), permitiendo arrancar y trabajar 100% desconectado de internet.
   - Integración en la interfaz desde `Help -> Install Desktop App (PWA)...` y eventos `beforeinstallprompt` / `appinstalled`.
-- [ ] **Modo Híbrido con Puente Local ("Local Companion Bridge")**:
-  - Aun abriendo la aplicación desde la URL de Vercel (o en `localhost`), la web detecta opcionalmente si hay un micro-servidor local corriendo en la máquina del usuario (`http://127.0.0.1:8389` en Python/FastAPI o C++) con acceso a la GPU local (CUDA/MPS) y al sistema de archivos (`NeuronDB`) para ejecutar modelos de IA pesados (AudioSR, Demucs, entrenamientos de espacio latente) a máxima velocidad.
+- [x] **Modo Híbrido con Puente Local ("Local Companion Bridge") & Matriz Modular IA vs DSP**:
+  - Servidor local Python ligero (`bridge/server.py`) y lanzador en 1 clic para Windows (`bridge/run_bridge.bat`): arranca inmediatamente sobre la librería estándar de Python (`http.server`) sin requerir `pip install` para sus funciones básicas, y aprovecha aceleración `numpy`, `soundfile`, `scipy` y `torch`/CUDA si están instaladas.
+  - Soporte de cabeceras CORS tanto para despliegue web en Vercel (`https://abd-neumodmakr.vercel.app`) como para desarrollo local (`localhost:8388`/`8389`).
+  - Endpoints de alto rendimiento: `GET /api/health` (inspección de hardware, GPU/CUDA y librerías), `GET /api/fs/scan` (escaneo directo de carpetas de disco para `NeuronDB` y SoundFonts sin restricciones de sandbox web) y `POST /api/enhance` (remuestreo 24b/96k, BWE armónico, outpainting de bucles con preservación de metadatos `smpl`).
+  - Cliente frontend `BridgeClient` (`src/core/bridge/BridgeClient.ts`) con auto-sondeo periódico silencioso en segundo plano (cada 10s) y reconexión automática.
+  - **Pill/Switch Visible en la Cabecera (Navbar HUD)**: Conmutador directo de Asistencia por IA interactivo (`[ 🪄 IA: OFF (DSP) ]`, `[ ✨ IA: 5/5 ACTIVA ]`, `[ ⚡ IA: X/5 HÍBRIDO ▾ ]`) con clic para alternar maestro y clic derecho/menú para acceder a la matriz modular.
+  - **Matriz Modular de Procesado: Algorítmico (DSP) vs. IA (`AiEngineModal.ts`)**: Selección quirúrgica etapa por etapa (1. Master Wave 24b/96k, 2. Separación Scape/Sphere, 3. Expansión y Empalme de Bucle, 4. Clasificador Tímbrico y Parameter Set 0..9, 5. Reducción de Ruido) con perfiles rápidos (*100% DSP Puro*, *Híbrido Óptimo*, *Máxima Calidad IA*).
+  - Modal de estado y diagnóstico del Bridge (`BridgeModal.ts`) con prueba de latencia, detalle de GPU/bibliotecas y escáner de rutas locales del disco.
 
 ---
 

@@ -5,7 +5,7 @@
 
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
-import type { Session, HistoryState, TargetFormat, WorkingMode } from '../core/types';
+import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
 export interface NavbarHandlers {
   onNewSession: () => void;
@@ -23,6 +23,9 @@ export interface NavbarHandlers {
   onExportModelAs?: () => void;
   onExportZoneAiff: () => void;
   onInstallPwa?: () => void;
+  onOpenAiEngineModal?: () => void;
+  onToggleAiAssistance?: () => void;
+  onOpenBridgeModal?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onAddZone: () => void;
@@ -51,6 +54,8 @@ export class AppNavbar {
   } | null = null;
   private statusElement: HTMLElement | null = null;
   private coverageElement: HTMLElement | null = null;
+  private aiPillElement: HTMLElement | null = null;
+  private aiTextElement: HTMLElement | null = null;
   private processBtn: HTMLButtonElement | null = null;
   private undoBtn: HTMLButtonElement | null = null;
   private redoBtn: HTMLButtonElement | null = null;
@@ -144,6 +149,8 @@ export class AppNavbar {
               { id: 309, label: 'Extended (.nmmodel)', action: 'setTargetFormat', value: 'modern-neural' },
             ],
           },
+          { separator: true },
+          { id: 310, label: 'AI Assistance & DSP Processing Engine...', action: 'openAiEngineModal' },
         ],
       },
       {
@@ -175,6 +182,7 @@ export class AppNavbar {
           { id: 902, label: 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
           { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
+          { id: 905, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
           { id: 904, label: 'About NEURON MODELmaker...', action: 'about' },
         ],
       },
@@ -191,6 +199,11 @@ export class AppNavbar {
       <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="Click to inspect or repair MIDI 0..127 coverage">
         <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.alert}</span>
         <span class="hud-coverage-text">${initialCoverage.length === 0 ? '128/128 MIDI KEYS OK' : `${initialCoverage.length} GAPS DETECTED`}</span>
+      </div>
+      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Asistencia por IA vs. Motor Algorítmico DSP. Clic para alternar; clic derecho para matriz modular.">
+        <span class="hud-ai-dot"></span>
+        <span class="hud-ai-text" id="hud-ai-text">IA: OFF (DSP)</span>
+        <span class="hud-ai-chevron">▾</span>
       </div>
     `;
 
@@ -245,9 +258,29 @@ export class AppNavbar {
 
     this.statusElement = centerSlot.querySelector('#hud-model-name');
     this.coverageElement = centerSlot.querySelector('#hud-coverage-pill');
+    this.aiPillElement = centerSlot.querySelector('#hud-ai-pill');
+    this.aiTextElement = centerSlot.querySelector('#hud-ai-text');
     this.processBtn = rightSlot.querySelector('#nav-btn-process');
     this.undoBtn = rightSlot.querySelector('#nav-btn-undo');
     this.redoBtn = rightSlot.querySelector('#nav-btn-redo');
+
+    // AI HUD Pill click & contextmenu
+    this.aiPillElement?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.classList.contains('hud-ai-chevron')) {
+        this.handlers.onOpenAiEngineModal?.();
+      } else {
+        this.handlers.onToggleAiAssistance?.();
+      }
+    });
+
+    this.aiPillElement?.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.handlers.onOpenAiEngineModal?.();
+    });
+
+    // Initial AI indicator sync
+    this.updateAiState(initialSession.processConfig.aiConfig);
 
     // Center coverage pill click -> always surface the coverage audit.
     // (Toggle semantics hid the audit under an open Bank drawer, which
@@ -280,10 +313,11 @@ export class AppNavbar {
     this.syncActiveMenuChecks();
   }
 
-  public updateSession(session: Session, coverageErrors: string[]): void {
+  public updateSession(session: Session, coverageErrors: string[], isBridgeConnected = false): void {
     this.currentTargetFormat = session.processConfig.targetFormat ?? 'dual';
     this.currentWorkingMode = session.processConfig.workingMode ?? 'classic';
     this.syncActiveMenuChecks();
+    this.updateAiState(session.processConfig.aiConfig, isBridgeConnected);
 
     if (this.statusElement) {
       const slot = String(session.processConfig.modelNumber).padStart(3, '0');
@@ -308,6 +342,30 @@ export class AppNavbar {
         ? 'Process Model Now (Ctrl+P)'
         : `Cannot process: ${coverageErrors[0] ?? 'Assign audio sample(s) to keyboard zones'}`;
     }
+  }
+
+  public updateAiState(aiConfig?: AiAssistanceConfig, isBridgeConnected = false): void {
+    if (!this.aiPillElement || !this.aiTextElement) return;
+    const enabled = aiConfig?.enabled ?? false;
+    if (!enabled) {
+      this.aiPillElement.className = 'hud-pill hud-ai-pill is-ai-off';
+      this.aiTextElement.textContent = 'IA: OFF (DSP)';
+      this.aiPillElement.title = 'Modo 100% Algorítmico (DSP Puro). Clic para alternar; clic derecho para matriz modular.';
+      return;
+    }
+
+    let count = 0;
+    if (aiConfig?.masterWave === 'ai') count++;
+    if (aiConfig?.separation === 'ai') count++;
+    if (aiConfig?.loopExpansion === 'ai') count++;
+    if (aiConfig?.classifier === 'ai') count++;
+    if (aiConfig?.denoise === 'ai') count++;
+
+    const isAllAi = count === 5;
+    const bridgeMark = isBridgeConnected ? ' (Bridge Conectado)' : ' (Bridge Offline - Fallback DSP)';
+    this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
+    this.aiTextElement.textContent = isAllAi ? '✨ IA: 5/5 ACTIVA' : `⚡ IA: ${count}/5 HÍBRIDO`;
+    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas${bridgeMark}. Clic para alternar; clic derecho para matriz modular.`;
   }
 
 
@@ -453,6 +511,8 @@ export class AppNavbar {
         }
         break;
       case 'toggleTheme': this.handlers.onToggleTheme(); break;
+      case 'openAiEngineModal': this.handlers.onOpenAiEngineModal?.(); break;
+      case 'openBridgeModal': this.handlers.onOpenBridgeModal?.(); break;
       case 'manual': this.showDocModal('manual'); break;
       case 'specs': this.showDocModal('specs'); break;
       case 'installPwa': this.handlers.onInstallPwa?.(); break;

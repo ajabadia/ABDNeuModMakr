@@ -1504,7 +1504,71 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 17. Fase 13 (Waveform Loop Editor & Seam Magnifier) & Fase 14 (Model Cover Artwork .webp in Layer 05)');
 
-  console.log('=== ALL PHASE 6, 7, 8, 9, 13 & 14 TESTS PASSED ===');
+  // ── 18. Fase 10.B: AI Assistance vs Algorithmic DSP Matrix & Companion Bridge ──
+  {
+    const { DEFAULT_AI_ASSISTANCE_CONFIG } = await import('../src/core/types.ts');
+    const { BridgeClient, DEFAULT_BRIDGE_URL } = await import('../src/core/bridge/BridgeClient.ts');
+    const { parseSessionJson } = await import('../src/core/sessionSchema.ts');
+
+    // 18a. Default configuration verification
+    assert.equal(DEFAULT_BRIDGE_URL, 'http://127.0.0.1:7860');
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.enabled, false);
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.masterWave, 'dsp');
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.separation, 'dsp');
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.loopExpansion, 'dsp');
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.classifier, 'dsp');
+    assert.equal(DEFAULT_AI_ASSISTANCE_CONFIG.denoise, 'dsp');
+
+    // 18b. Modular per-stage configuration & session roundtrip
+    const p = new WebAudioPipeline();
+    await p.init();
+    await p.newSession('AiMatrixSession');
+
+    // Default session must have aiConfig initialized
+    const sess = p.getSession()!;
+    assert.ok(sess.processConfig.aiConfig !== undefined);
+    assert.equal(sess.processConfig.aiConfig.enabled, false);
+
+    // Update with hybrid profile: DSP master wave + AI separation & loop outpainting
+    p.updateProcessConfig({
+      aiConfig: {
+        enabled: true,
+        masterWave: 'dsp',
+        separation: 'ai',
+        loopExpansion: 'ai',
+        classifier: 'dsp',
+        denoise: 'dsp',
+      },
+    });
+
+    const updated = p.getSession()!;
+    assert.equal(updated.processConfig.aiConfig?.enabled, true);
+    assert.equal(updated.processConfig.aiConfig?.separation, 'ai');
+    assert.equal(updated.processConfig.aiConfig?.loopExpansion, 'ai');
+    assert.equal(updated.processConfig.aiConfig?.masterWave, 'dsp');
+
+    // JSON export & schema validation roundtrip
+    const jsonStr = p.exportSessionJson();
+    const parsed = parseSessionJson(jsonStr);
+    assert.equal(parsed.processConfig.aiConfig?.enabled, true);
+    assert.equal(parsed.processConfig.aiConfig?.separation, 'ai');
+    assert.equal(parsed.processConfig.aiConfig?.loopExpansion, 'ai');
+    assert.equal(parsed.processConfig.aiConfig?.masterWave, 'dsp');
+
+    // 18c. BridgeClient headless initialization & URL handling
+    const client = new BridgeClient('http://127.0.0.1:7860/');
+    assert.equal(client.getUrl(), 'http://127.0.0.1:7860');
+    assert.equal(client.isConnected(), false);
+    assert.equal(client.getStatus().connected, false);
+
+    client.setUrl('http://localhost:8389');
+    assert.equal(client.getUrl(), 'http://localhost:8389');
+
+    p.dispose();
+  }
+  console.log('[PASS] 18. Fase 10.B (Modular AI Assistance vs DSP Matrix & Local Bridge Client)');
+
+  console.log('=== ALL PHASE 6, 7, 8, 9, 13, 14 & 18 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {

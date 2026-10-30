@@ -37,6 +37,9 @@ export interface MenuContext {
   getActiveZoneIndex(): number;
   handleStartProcess(): Promise<void>;
   toggleSpectralPanel(): void;
+  openAiEngineModal?: () => void;
+  openBridgeModal?: () => void;
+  toggleAiAssistance?: () => void;
 }
 
 export class MenuActions {
@@ -268,6 +271,9 @@ export class MenuActions {
         this.ctx.shell.getBank().close();
         this.ctx.shell.getTelemetry().open();
       },
+      onOpenAiEngineModal: () => this.ctx.openAiEngineModal?.(),
+      onToggleAiAssistance: () => this.ctx.toggleAiAssistance?.(),
+      onOpenBridgeModal: () => this.ctx.openBridgeModal?.(),
       onSelectTheme: (theme) => {
         const idx = this.ctx.themes.indexOf(theme);
         if (idx >= 0) {

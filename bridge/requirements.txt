@@ -1,0 +1,15 @@
+# ABDSynths NEURON MODELmaker — Local Companion Bridge Dependencies
+
+# Requisitos base para procesamiento de audio en alta resolucion (24-bit / 96 kHz)
+numpy>=1.24.0
+soundfile>=0.12.0
+scipy>=1.10.0
+
+# Opcionales para aceleracion por GPU / Modelos de Deep Learning (CUDA / PyTorch)
+# Descomentar segun tu version de CUDA (https://pytorch.org/get-started/locally/)
+# torch>=2.2.0
+# torchaudio>=2.2.0
+
+# Opcionales para servidor asincrono de alto rendimiento
+# fastapi>=0.110.0
+# uvicorn>=0.28.0
