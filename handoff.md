@@ -193,22 +193,36 @@ ABDNeuModMakr/
   - [x] Purgado y recolección de basura de buffers de audio huérfanos (`pruneOrphanBuffers()`) tras undo/redo y cambio de sesión.
   - [x] Optimización de resíntesis aditiva (`resynthesizeModelToPcm`) mediante caché de tramas y envolvimiento de fase en radianes.
   - [x] Monitor de cuota de almacenamiento en navegador (`navigator.storage.estimate()`) con aviso al superar el 80%.
+- [x] **Fase 12 — Procesador por Lotes (`Batch Processor`)**:
+  - [x] Extractor multi-preset de SoundFonts 2 (`Sf2BatchExtractor.ts`) con extracción desglosada por bancos/presets.
+  - [x] Extractor de carpetas de muestras (`FolderBatchExtractor.ts`) por estructura de directorios y prefijos de instrumento.
+  - [x] Inspección Preflight obligatoria previa al arranque (`preflight.ts`) con desglose de qué va a hacer, cómo lo va a hacer (heredando configuración activa de IA, DSP clásico/mejorado y modo de trabajo) y qué ficheros se procesarán.
+  - [x] Cola secuencial asíncrona (`BatchQueue.ts`) tolerante a fallos (errores individuales no abortan el lote), con controles de inicio, pausa, reanudación y cancelación.
+  - [x] Destino dual: Exportación a paquete maestro PKZIP o sincronización directa con `AxionikDB` vía Companion Bridge.
+  - [x] Interfaz de usuario (`BatchProcessorModal.ts`), botón en Navbar y atajo de teclado `Ctrl+Shift+B`.
+  - [x] Suite de pruebas automatizadas `phase12_batch.test.ts` con 11/11 suites pasando en el runner continuo `run_all.ts`.
 
 ---
 
 ## 5. Que FALTA por hacer (Siguientes Fases)
 
-### 5.1 Fase 12 -- Procesador por Lotes (`Batch Processor`) [EN ESPECIFICACIÓN / DESARROLLO]
-- [ ] Conversión en lote de SoundFonts multi-preset (`.sf2` -> múltiples modelos).
-- [ ] Ingesta y generación desatendida desde carpetas de muestras (`.wav`/`.aiff`) y definiciones `.sfz`.
-- [ ] Migración en bloque de bancos `NeuronDB` hacia `AxionikDB` con generación de Cápsulas del Tiempo.
-- [ ] Cola FIFO tolerante a fallos con telemetría en tiempo real y reporte consolidado.
-
-### 5.2 ABDAxionikVS -- Sintetizador C++ / JUCE 9 (Fase 11.4)
+### 5.1 ABDAxionikVS -- Sintetizador C++ / JUCE 9 (Fase 11.4 & Fase 19)
+- [x] Doble denominacion de modelo en la integracion con ABDAxionikVS:
+  - `modelName`: 11 caracteres ASCII estrictos para compatibilidad con el hardware Hartmann original (archivo MName y display LCD de 2002).
+  - `expandedName`: Nombre sin limite de caracteres para presets modernos, visualizacion en ABDAxionikVS y metadatos JSON de AxionikDB.
 - [ ] Implementar el motor sintetizador software de reproduccion en tiempo real.
+- [ ] **Modo Rompler Puro (Fase 19)**: Cargar y reproducir directamente la materia prima intacta de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, aprovechando filtros analógicos modelados, DAHDSR y loops calibrados. Posibilidad de capas híbridas Rompler + Resíntesis Neuronal.
 - [ ] Resynators con morphing vectorial 2D continuo en joysticks Scape/Sphere.
 - [ ] Disparo hibrido de transitorios PCM de micro-ataque fundidos con el cuerpo aditivo.
 - [ ] Modos de salida Surround 4.0 / 5.1 e interpolacion matricial multi-modelo.
+
+### 5.2 Utilidades de Exportación y Preparación de Muestras (Fases 16 & 18)
+- [ ] **Utilidad Universal de Exportación Multi-Formato (Fase 16)**: Exportación desde menú `File` de zonas e instrumentos raw originales a SoundFont 2 (`.sf2`), SFZ, Kontakt 5 (`.nki`), HALion, SampleTank y cadena de audio contigua (Sample Chain WAV/AIFF).
+- [ ] **Audio Chopper / Slicer Inteligente & Auto-Mapeo Multicapa (Fase 18)**:
+  - Trimming de silencios y división de audio continua (WAV/AIFF) en slices discretos.
+  - Modo Drums con clasificación asistida por IA/espectral y mapeo a General MIDI (GM Drum Map).
+  - Modo Cromático con autodetección de tono y reparto equidistante (rootKey centrado).
+  - Distribución multicapa por volumen/dinámica (Velocity Layers) y control opcional de solapamientos según compatibilidad del formato destino.
 
 ### 5.3 Pruebas End-to-End
 - [ ] Suite de pruebas automatizadas con Playwright para verificacion de flujos de interfaz completos.

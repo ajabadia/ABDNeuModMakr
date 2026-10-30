@@ -361,7 +361,8 @@ export interface Sf2PresetOption {
 
 export interface ProcessConfig {
   modelNumber: ModelSlot;     // 0..511
-  modelName: string;          // max 11 characters
+  modelName: string;          // max 11 characters (Classic Hartmann MName)
+  expandedName?: string;      // Unrestricted full name for Extended Mode & ABDAxionikVS
   complexity: number;         // 1..10, default 8
   parameterSet: number;       // 0..9
   targetFormat?: TargetFormat; // default 'dual'
@@ -396,6 +397,32 @@ export interface ProcessConfig {
    * Modular AI Assistance vs. Deterministic DSP Engine configuration matrix.
    */
   aiConfig?: AiAssistanceConfig;
+  /**
+   * Extended Mode — Rich model metadata & custom tag/value attributes for AxionikDB / ABDAxionikVS.
+   */
+  extendedMetadata?: ExtendedModelMetadata;
+}
+
+/** Key-value pair for arbitrary user-defined metadata tags in Extended Mode */
+export interface CustomMetadataTag {
+  tag: string;
+  value: string;
+}
+
+/** Comprehensive metadata specification for Extended Mode & ABDAxionikVS */
+export interface ExtendedModelMetadata {
+  author?: string;            // Sound designer or instrument creator
+  vendor?: string;            // Library or sample publisher (e.g., Polyphone.io, Spitfire)
+  version?: string;           // Semantic model version (e.g., "1.0.0", "2.1")
+  releaseYear?: string;       // Year of release/recording
+  sourceUrl?: string;         // Origin download URL (e.g. from polyphone.io, archive.org)
+  sourceFormat?: string;      // 'sf2' | 'sfz' | 'wav_pack' | 'aiff_session' | 'neuron_db' | 'custom'
+  sourcePresetName?: string;  // Original preset name if extracted from SF2/SFZ
+  license?: string;           // Distribution or usage license (e.g. CC0, CC-BY 4.0, Public Domain, Commercial)
+  copyright?: string;         // Copyright notice (e.g., "(c) 2026 Axel Hartmann / ABD")
+  description?: string;       // Usage notes, musical description, performance instructions
+  tags?: string[];            // Category tags / keywords
+  customAttributes?: CustomMetadataTag[]; // Arbitrary user-defined tag/value pairs
 }
 
 /**
@@ -424,6 +451,8 @@ export interface ZoneLoopEditorData {
   regionId?: string;
   sampleName: string;
   sampleRate: number;
+  bitsPerSample?: number;
+  byteSize?: number;
   numChannels: number;
   totalFrames: number;
   durationSec: number;
@@ -738,6 +767,7 @@ export interface TimeCapsuleManifest {
   /** Fase 14: True when `05_extended_model/cover.webp` is packaged inside the container */
   hasCoverArtwork?: boolean;
   coverArtworkMeta?: Omit<ModelCoverArtwork, 'webpDataUrl'>;
+  extendedMetadata?: ExtendedModelMetadata;
 }
 
 /** Options for re-processing a model strictly from its purest origin layer (`01_raw_source` or `02_legacy_original`) */

@@ -41,7 +41,9 @@ export interface SettingsModalHandlers {
   getCurrentWorkingMode?: () => WorkingMode;
 }
 
-export type SettingsModalTab = 'general' | 'web' | 'cloud' | 'bridge';
+export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge';
+export type SettingsMainTab = 'general' | 'ai';
+export type AiSubTab = 'web' | 'cloud' | 'bridge';
 
 const STORAGE_KEY_BANK_PATH = 'neumodmakr_bank_path';
 const DEFAULT_BANK_PATH = 'd:\\desarrollos\\ABDSynths\\_RESOURCES\\Soundfonts';
@@ -64,7 +66,8 @@ export class SettingsModal {
     classifier: 'dsp',
     denoise: 'dsp',
   };
-  private currentTab: SettingsModalTab = 'general';
+  private activeMainTab: SettingsMainTab = 'general';
+  private activeAiSubTab: AiSubTab = 'web';
   private handlers: SettingsModalHandlers;
   private unsubscribeBridge: (() => void) | null = null;
   private webGpuStatus: WebGpuDeviceStatus | null = null;
@@ -82,6 +85,10 @@ export class SettingsModal {
   private isScanningNeuronDb = false;
   private neuronDbScanResults: BridgeScanResult | null = null;
 
+  public get currentTab(): SettingsModalTab {
+    return this.activeMainTab === 'general' ? 'general' : this.activeAiSubTab;
+  }
+
   constructor(handlers: SettingsModalHandlers) {
     this.handlers = handlers;
   }
@@ -93,7 +100,14 @@ export class SettingsModal {
     if (config) {
       this.currentConfig = { ...config };
     }
-    this.currentTab = tab;
+    if (tab === 'general') {
+      this.activeMainTab = 'general';
+    } else if (tab === 'ai') {
+      this.activeMainTab = 'ai';
+    } else if (tab === 'web' || tab === 'cloud' || tab === 'bridge') {
+      this.activeMainTab = 'ai';
+      this.activeAiSubTab = tab;
+    }
     this.webGpuStatus = webNeuralEngine.getDeviceStatus();
 
     if (!this.backdropEl) {
@@ -209,39 +223,58 @@ export class SettingsModal {
           </button>
         </div>
 
-        <!-- Mode Navigation Tabs -->
-        <div class="ai-tabs-nav">
-          <button type="button" class="ai-tab-btn ${this.currentTab === 'general' ? 'is-active' : ''}" data-tab="general">
-            <span class="ai-tab-icon">${ICONS.sliders}</span>
-            <span class="ai-tab-title">General</span>
-            <span class="ai-tab-tag">Themes, Mode &amp; Paths</span>
+        <!-- Primary Navigation Tabs (General | IA) -->
+        <div class="ai-tabs-nav modal-primary-tabs">
+          <button type="button" class="primary-tab-btn ${this.activeMainTab === 'general' ? 'is-active' : ''}" data-main-tab="general">
+            <span class="primary-tab-icon">${ICONS.sliders}</span>
+            <div class="primary-tab-text">
+              <span class="primary-tab-title">General</span>
+              <span class="primary-tab-tag">Themes, Mode &amp; Paths</span>
+            </div>
           </button>
-          <button type="button" class="ai-tab-btn ${this.currentTab === 'web' ? 'is-active' : ''}" data-tab="web">
-            <span class="ai-tab-icon">${ICONS.cpu}</span>
-            <span class="ai-tab-title">Built-in Web Engine</span>
-            <span class="ai-tab-tag">In-Browser (100% Free)</span>
-          </button>
-          <button type="button" class="ai-tab-btn ${this.currentTab === 'cloud' ? 'is-active' : ''}" data-tab="cloud">
-            <span class="ai-tab-icon">${ICONS.cloud}</span>
-            <span class="ai-tab-title">Cloud AI (BYOK)</span>
-            <span class="ai-tab-tag">Private User Keys</span>
-          </button>
-          <button type="button" class="ai-tab-btn ${this.currentTab === 'bridge' ? 'is-active' : ''}" data-tab="bridge">
-            <span class="ai-tab-icon">${ICONS.database}</span>
-            <span class="ai-tab-title">Companion Bridge</span>
-            <span class="ai-tab-tag">Local GPU (VRAM)</span>
+          <button type="button" class="primary-tab-btn ${this.activeMainTab === 'ai' ? 'is-active' : ''}" data-main-tab="ai">
+            <span class="primary-tab-icon">${ICONS.cpu}</span>
+            <div class="primary-tab-text">
+              <span class="primary-tab-title">IA</span>
+              <span class="primary-tab-tag">Web Engine, Cloud BYOK &amp; Local GPU</span>
+            </div>
           </button>
         </div>
 
-        <!-- Master Switch & Presets Bar (Shown in Web Tab) -->
-        ${this.currentTab === 'web' ? this.renderMasterWebBar(cfg) : ''}
+        <!-- AI Engine Sub-tabs (Visible only when in IA tab) -->
+        ${
+          this.activeMainTab === 'ai'
+            ? `
+          <div class="ai-subtabs-nav">
+            <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'web' ? 'is-active' : ''}" data-ai-subtab="web">
+              <span class="subtab-icon">${ICONS.cpu}</span>
+              <span class="subtab-title">Built-in Web Engine</span>
+              <span class="subtab-tag">In-Browser (100% Free)</span>
+            </button>
+            <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'bridge' ? 'is-active' : ''}" data-ai-subtab="bridge">
+              <span class="subtab-icon">${ICONS.database}</span>
+              <span class="subtab-title">Companion Bridge</span>
+              <span class="subtab-tag">Local GPU (VRAM)</span>
+            </button>
+            <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'cloud' ? 'is-active' : ''}" data-ai-subtab="cloud">
+              <span class="subtab-icon">${ICONS.cloud}</span>
+              <span class="subtab-title">Cloud AI (BYOK)</span>
+              <span class="subtab-tag">Private User Keys</span>
+            </button>
+          </div>
+        `
+            : ''
+        }
+
+        <!-- Master Switch & Presets Bar (Shown in Web Tab under IA) -->
+        ${this.activeMainTab === 'ai' && this.activeAiSubTab === 'web' ? this.renderMasterWebBar(cfg) : ''}
 
         <!-- Tab Body -->
         <div class="modal-body ai-modal-body">
-          ${this.currentTab === 'general' ? this.renderGeneralTab() : ''}
-          ${this.currentTab === 'web' ? this.renderWebTab(cfg) : ''}
-          ${this.currentTab === 'cloud' ? this.renderCloudTab() : ''}
-          ${this.currentTab === 'bridge' ? this.renderBridgeTab() : ''}
+          ${this.activeMainTab === 'general' ? this.renderGeneralTab() : ''}
+          ${this.activeMainTab === 'ai' && this.activeAiSubTab === 'web' ? this.renderWebTab(cfg) : ''}
+          ${this.activeMainTab === 'ai' && this.activeAiSubTab === 'cloud' ? this.renderCloudTab() : ''}
+          ${this.activeMainTab === 'ai' && this.activeAiSubTab === 'bridge' ? this.renderBridgeTab() : ''}
         </div>
 
         <!-- Footer -->
@@ -292,11 +325,10 @@ export class SettingsModal {
             ${skinFamilies
               .map(
                 (s) => `
-              <label class="settings-skin-opt ${curFamily === s.id ? 'is-selected' : ''}">
+              <label class="settings-skin-opt ${curFamily === s.id ? 'is-selected' : ''}" title="${escAttr(s.desc)}">
                 <input type="radio" name="opt-theme-family" value="${s.id}" ${curFamily === s.id ? 'checked' : ''} />
                 <div class="skin-opt-body">
                   <strong>${escHtml(s.name)}</strong>
-                  <small class="text-muted">${escHtml(s.desc)}</small>
                 </div>
               </label>
             `
@@ -547,7 +579,40 @@ export class SettingsModal {
     `;
   }
 
+  private getActiveAiPreset(cfg: AiAssistanceConfig): 'dsp' | 'hybrid' | 'max' | 'custom' {
+    if (!cfg.enabled) {
+      return 'dsp';
+    }
+    const isDsp =
+      cfg.masterWave === 'dsp' &&
+      cfg.separation === 'dsp' &&
+      cfg.loopExpansion === 'dsp' &&
+      cfg.classifier === 'dsp' &&
+      cfg.denoise === 'dsp';
+    if (isDsp) return 'dsp';
+
+    const isHybrid =
+      cfg.masterWave === 'dsp' &&
+      cfg.separation === 'ai' &&
+      cfg.loopExpansion === 'ai' &&
+      cfg.classifier === 'dsp' &&
+      cfg.denoise === 'ai';
+    if (isHybrid) return 'hybrid';
+
+    const isMax =
+      cfg.masterWave === 'ai' &&
+      cfg.separation === 'ai' &&
+      cfg.loopExpansion === 'ai' &&
+      cfg.classifier === 'ai' &&
+      cfg.denoise === 'ai';
+    if (isMax) return 'max';
+
+    return 'custom';
+  }
+
   private renderMasterWebBar(cfg: AiAssistanceConfig): string {
+    const activePreset = this.getActiveAiPreset(cfg);
+
     return `
       <div class="ai-master-bar">
         <div class="ai-master-toggle-wrap">
@@ -561,16 +626,19 @@ export class SettingsModal {
           </span>
         </div>
 
-        <div class="ai-presets-group">
+        <div class="ai-presets-group" id="ai-presets-group">
           <span class="presets-label">Quick Presets:</span>
-          <button type="button" class="btn btn-sm btn-preset" id="btn-preset-all-dsp" title="Pure deterministic classic math algorithms (fast and reproducible)">
+          <button type="button" class="btn btn-sm btn-preset ${activePreset === 'dsp' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-dsp" title="Pure deterministic classic math algorithms (fast and reproducible)">
             ${ICONS.cpu} 100% DSP
           </button>
-          <button type="button" class="btn btn-sm btn-preset btn-preset-highlight" id="btn-preset-hybrid" title="Recommended optimal balance (Sinc DSP + AI Separation &amp; Outpainting)">
+          <button type="button" class="btn btn-sm btn-preset ${activePreset === 'hybrid' ? 'btn-preset-highlight' : ''}" id="btn-preset-hybrid" title="Recommended optimal balance (Sinc DSP + AI Separation &amp; Outpainting)">
             ${ICONS.zap} Optimal Hybrid
           </button>
-          <button type="button" class="btn btn-sm btn-preset btn-preset-ai" id="btn-preset-all-ai" title="All processing stages AI-assisted">
-            ${ICONS.ai} Max AI Quality
+          <button type="button" class="btn btn-sm btn-preset ${activePreset === 'max' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-ai" title="All processing stages AI-assisted">
+            ${ICONS.sparkle} Max AI Quality
+          </button>
+          <button type="button" class="btn btn-sm btn-preset ${activePreset === 'custom' ? 'btn-preset-highlight' : ''}" id="btn-preset-custom" title="Custom configuration (non-standard combination of stages)">
+            ${ICONS.sliders} Custom
           </button>
         </div>
       </div>
@@ -761,6 +829,24 @@ export class SettingsModal {
           ? byok.huggingfaceToken ?? ''
           : byok.geminiApiKey ?? '';
 
+    const providerMeta = {
+      replicate: {
+        url: 'https://replicate.com/account/api-tokens',
+        label: 'Obtain Replicate API Token',
+      },
+      huggingface: {
+        url: 'https://huggingface.co/settings/tokens',
+        label: 'Obtain Hugging Face User Token',
+      },
+      gemini: {
+        url: 'https://aistudio.google.com/app/apikey',
+        label: 'Get Google AI Studio API Key',
+      },
+    }[byok.provider] ?? {
+      url: 'https://replicate.com/account/api-tokens',
+      label: 'Obtain API Token',
+    };
+
     return `
       <div class="ai-byok-container">
         <!-- Privacy & Direct Billing Guarantee Banner -->
@@ -835,15 +921,18 @@ export class SettingsModal {
                 ${ICONS.trash}
               </button>
             </div>
-            <small class="text-muted byok-help-hint">
-              ${
-                byok.provider === 'replicate'
-                  ? 'Obtain your personal token at <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener">replicate.com/account/api-tokens</a>.'
-                  : byok.provider === 'huggingface'
-                    ? 'Obtain your user token at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>.'
-                    : 'Get your free developer API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.'
-              }
-            </small>
+            <div class="byok-url-action-row">
+              <a
+                href="${escAttr(providerMeta.url)}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-sm btn-secondary byok-url-btn"
+                title="Open ${escAttr(providerMeta.label)} dashboard in a new tab"
+              >
+                ${ICONS.externalLink}
+                <span>${escHtml(providerMeta.label)}</span>
+              </a>
+            </div>
           </div>
 
           ${
@@ -1002,35 +1091,47 @@ python bridge/server.py</code></pre>
                 <div class="url-editor-label">Model Download URL:</div>
                 <div class="url-editor-input-row">
                   <input type="text" class="form-control input-custom-model-url" data-id="${escAttr(m.id)}" value="${escAttr(m.url || '')}" placeholder="${escAttr(m.default_url || '')}" />
+                  <button type="button" class="btn btn-xs btn-outline btn-check-model-url" data-id="${escAttr(m.id)}" title="Check if URL is reachable and valid">Check URL</button>
                   <button type="button" class="btn btn-xs btn-primary btn-save-model-url" data-id="${escAttr(m.id)}">Save</button>
                   <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${escAttr(m.id)}">Reset to Official</button>
                   <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${escAttr(m.id)}">Cancel</button>
                 </div>
+                <div class="url-check-feedback" data-id="${escAttr(m.id)}" style="display: none; margin-top: 6px; font-size: 11px; font-family: var(--font-mono);"></div>
               </div>
             `
                 : ''
             }
           </div>
           <div class="model-row-action">
-            <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
-              ${ICONS.settings} URL
-            </button>
             ${
               m.installed
                 ? `
                 <span class="badge-installed">${ICONS.check} Installed on Disk</span>
+                <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+                  ${ICONS.settings} URL
+                </button>
                 <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${escAttr(m.id)}" title="Delete this model from local disk to free space">
                   ${ICONS.trash} Uninstall
                 </button>
               `
                 : isDownloading
-                  ? `<button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
-                      <span class="btn-spinner">${ICONS.spinner}</span>
-                      <span>Downloading (${pct}%)...</span>
-                    </button>`
-                  : `<button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${escAttr(m.id)}">
-                      ${ICONS.zap} Download (${sizeDisplay})
-                    </button>`
+                  ? `
+                  <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+                    ${ICONS.settings} URL
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
+                    <span class="btn-spinner">${ICONS.spinner}</span>
+                    <span>Downloading (${pct}%)...</span>
+                  </button>
+                `
+                  : `
+                  <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+                    ${ICONS.settings} URL
+                  </button>
+                  <button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${escAttr(m.id)}">
+                    ${ICONS.zap} Download (${sizeDisplay})
+                  </button>
+                `
             }
           </div>
         </div>
@@ -1085,25 +1186,38 @@ python bridge/server.py</code></pre>
       toast('Settings saved and applied successfully', 'success');
     });
 
-    // Tab Navigation
-    this.backdropEl.querySelectorAll<HTMLButtonElement>('.ai-tab-btn').forEach((btn) => {
+    // Primary Tab Navigation (General | IA)
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.primary-tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab as SettingsModalTab;
-        if (tab && tab !== this.currentTab) {
-          this.currentTab = tab;
+        const mainTab = btn.dataset.mainTab as SettingsMainTab;
+        if (mainTab && mainTab !== this.activeMainTab) {
+          this.activeMainTab = mainTab;
           this.render();
         }
       });
     });
 
-    if (this.currentTab === 'general') {
+    // AI Sub-tab Navigation (Web | Cloud | Bridge)
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.ai-subtab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const subtab = btn.dataset.aiSubtab as AiSubTab;
+        if (subtab && subtab !== this.activeAiSubTab) {
+          this.activeAiSubTab = subtab;
+          this.render();
+        }
+      });
+    });
+
+    if (this.activeMainTab === 'general') {
       this.bindGeneralTabEvents();
-    } else if (this.currentTab === 'web') {
-      this.bindWebTabEvents();
-    } else if (this.currentTab === 'cloud') {
-      this.bindCloudTabEvents();
-    } else if (this.currentTab === 'bridge') {
-      this.bindBridgeTabEvents();
+    } else {
+      if (this.activeAiSubTab === 'web') {
+        this.bindWebTabEvents();
+      } else if (this.activeAiSubTab === 'cloud') {
+        this.bindCloudTabEvents();
+      } else if (this.activeAiSubTab === 'bridge') {
+        this.bindBridgeTabEvents();
+      }
     }
   }
 
@@ -1215,6 +1329,7 @@ python bridge/server.py</code></pre>
     masterToggle?.addEventListener('change', () => {
       this.currentConfig.enabled = masterToggle.checked;
       this.syncActiveBadge();
+      this.syncPresetButtons();
     });
 
     // Preset buttons
@@ -1265,6 +1380,7 @@ python bridge/server.py</code></pre>
             setter(r.value);
             this.syncActiveBadge();
             this.syncOptionSelectionClasses();
+            this.syncPresetButtons();
           }
         });
       });
@@ -1427,6 +1543,60 @@ python bridge/server.py</code></pre>
       });
     });
 
+    // Check Model URL buttons
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-check-model-url').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const modelId = btn.dataset.id;
+        if (!modelId) return;
+        const input = this.backdropEl?.querySelector<HTMLInputElement>(`.input-custom-model-url[data-id="${modelId}"]`);
+        const feedback = this.backdropEl?.querySelector<HTMLElement>(`.url-check-feedback[data-id="${modelId}"]`);
+        const m = this.bridgeModels.find((x) => x.id === modelId);
+        const urlToCheck = input?.value.trim() || m?.url || m?.default_url || '';
+
+        if (!urlToCheck) {
+          toast('Please enter a URL to check', 'warning');
+          return;
+        }
+
+        const originalText = btn.textContent;
+        btn.textContent = 'Checking...';
+        btn.disabled = true;
+
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.color = 'var(--color-text-muted)';
+          feedback.textContent = 'Contacting server...';
+        }
+
+        try {
+          const res = await bridgeClient.checkModelUrl(urlToCheck);
+          if (res.reachable) {
+            const sizeStr = res.size_bytes ? ` • ${(res.size_bytes / (1024 * 1024)).toFixed(1)} MB` : '';
+            if (feedback) {
+              feedback.style.color = 'var(--color-success)';
+              feedback.textContent = `✓ URL is reachable (HTTP ${res.status_code || 200}${sizeStr})`;
+            }
+            toast(`URL is reachable (HTTP ${res.status_code || 200}${sizeStr})`, 'success');
+          } else {
+            if (feedback) {
+              feedback.style.color = 'var(--color-danger)';
+              feedback.textContent = `✗ URL check failed: ${res.error || 'Server returned unreachable status'}`;
+            }
+            toast(`URL unreachable: ${res.error || 'Check failed'}`, 'error');
+          }
+        } catch (err) {
+          if (feedback) {
+            feedback.style.color = 'var(--color-danger)';
+            feedback.textContent = `✗ Error: ${String(err)}`;
+          }
+          toast(`Error checking URL: ${String(err)}`, 'error');
+        } finally {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      });
+    });
+
     // Save Custom URL buttons
     this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-save-model-url').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1531,5 +1701,21 @@ python bridge/server.py</code></pre>
       const input = label.querySelector<HTMLInputElement>('input[type="radio"]');
       label.classList.toggle('is-selected', Boolean(input?.checked));
     });
+  }
+
+  private syncPresetButtons(): void {
+    const group = this.backdropEl?.querySelector('#ai-presets-group');
+    if (!group) return;
+    const activePreset = this.getActiveAiPreset(this.currentConfig);
+
+    const btnDsp = group.querySelector('#btn-preset-all-dsp');
+    const btnHybrid = group.querySelector('#btn-preset-hybrid');
+    const btnMax = group.querySelector('#btn-preset-all-ai');
+    const btnCustom = group.querySelector('#btn-preset-custom');
+
+    btnDsp?.classList.toggle('btn-preset-highlight', activePreset === 'dsp');
+    btnHybrid?.classList.toggle('btn-preset-highlight', activePreset === 'hybrid');
+    btnMax?.classList.toggle('btn-preset-highlight', activePreset === 'max');
+    btnCustom?.classList.toggle('btn-preset-highlight', activePreset === 'custom');
   }
 }

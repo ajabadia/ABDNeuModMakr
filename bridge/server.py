@@ -19,6 +19,8 @@ Features:
 """
 
 import os
+import re
+import secrets
 import sys
 import json
 import io
@@ -115,6 +117,51 @@ DOWNLOAD_TASKS = {}
 DOWNLOAD_LOCK = threading.Lock()
 
 MODELS_CONFIG_FILE = os.path.join(CHECKPOINTS_DIR, 'models_config.json')
+
+# --- S5 hardening: auth + traversal + allowlists (SECURITY_STANDARDS.md) ---
+BRIDGE_TOKEN = os.environ.get('ABD_BRIDGE_TOKEN') or secrets.token_hex(16)
+ALLOWED_ORIGINS = frozenset([
+    'http://localhost:8388',
+    'http://127.0.0.1:8388',
+    'http://localhost:7860',
+    'http://127.0.0.1:7860',
+    'https://abd-neumodmakr.vercel.app',
+])
+ALLOWED_DOWNLOAD_HOSTS = frozenset([
+    'huggingface.co',
+    'raw.githubusercontent.com',
+    'github.com',
+    'dl.fbaipublicfiles.com',
+])
+SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-_]{0,63}$')
+
+def is_safe_slug(v):
+    return isinstance(v, str) and bool(SLUG_RE.match(v))
+
+def safe_join(base, *parts):
+    joined = os.path.abspath(os.path.join(base, *parts))
+    if joined != os.path.abspath(base) and not joined.startswith(os.path.abspath(base) + os.sep):
+        return None
+    return joined
+
+def is_safe_rel_path(v):
+    if not isinstance(v, str) or len(v) == 0 or len(v) > 512:
+        return False
+    n = v.replace('\\', '/')
+    if n.startswith('/') or re.match(r'^[a-zA-Z]:[\\/]', n) or '\0' in n:
+        return False
+    if '..' in n.split('/'):
+        return False
+    return True
+
+def is_allowed_custom_url(v):
+    try:
+        u = urlparse(v)
+    except Exception:
+        return False
+    if u.scheme != 'https' or len(v) > 2000:
+        return False
+    return (u.hostname or '').lower() in ALLOWED_DOWNLOAD_HOSTS
 
 
 def load_custom_model_urls():
@@ -437,7 +484,10 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 class BridgeRequestHandler(BaseHTTPRequestHandler):
     def send_cors_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
+        origin = self.headers.get('Origin', '')
+        allowed = origin if origin in ALLOWED_ORIGINS else 'http://127.0.0.1:8388'
+        self.send_header('Access-Control-Allow-Origin', allowed)
+        self.send_header('Vary', 'Origin')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Target-Sample-Rate, X-Target-Loop-Sec, X-Capabilities, X-Requested-With')
         self.send_header('Access-Control-Expose-Headers', 'X-AI-Provider, Content-Length, Content-Type')
@@ -447,6 +497,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.send_cors_headers()
         self.send_header('Content-Length', '0')
         self.end_headers()
+
+    def require_auth(self):
+        if os.environ.get('ABD_BRIDGE_TOKEN') and self.headers.get('X-Bridge-Token') != BRIDGE_TOKEN:
+            err = json.dumps({'error': 'unauthorized (missing/invalid X-Bridge-Token)'}).encode('utf-8')
+            self.send_response(401)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+            return False
+        return True
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -684,6 +746,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/models/delete', '/models/delete'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
@@ -738,6 +802,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/models/url', '/models/url'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
@@ -752,6 +818,16 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             if model_id not in MODEL_REGISTRY:
                 err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
                 self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
+
+            if new_url and not is_allowed_custom_url(new_url):
+                err_msg = json.dumps({'error': 'custom URL host not allowlisted (https + host permitido)'}).encode('utf-8')
+                self.send_response(400)
                 self.send_cors_headers()
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', str(len(err_msg)))
@@ -781,7 +857,71 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(res)
             return
 
+        if path in ('/api/models/check_url', '/models/check_url'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            check_url = payload.get("url", "").strip()
+            if not check_url or not is_allowed_custom_url(check_url):
+                res = json.dumps({"reachable": False, "error": "URL host not allowed or invalid HTTPS (allowed: huggingface.co, github.com)"}).encode('utf-8')
+                self.send_response(200)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(res)))
+                self.end_headers()
+                self.wfile.write(res)
+                return
+
+            try:
+                req = urllib.request.Request(
+                    check_url,
+                    headers={'User-Agent': 'ABDNeuModMakr/1.0', 'Range': 'bytes=0-1024'}
+                )
+                with urllib.request.urlopen(req, timeout=7) as resp:
+                    status_code = resp.getcode()
+                    content_range = resp.headers.get('Content-Range')
+                    total_bytes = None
+                    if content_range and '/' in content_range:
+                        tot_str = content_range.split('/')[-1]
+                        if tot_str.isdigit():
+                            total_bytes = int(tot_str)
+                    if not total_bytes:
+                        cl = resp.headers.get('Content-Length')
+                        if cl and cl.isdigit() and int(cl) > 1024:
+                            total_bytes = int(cl)
+
+                    res = json.dumps({
+                        "reachable": status_code in (200, 206, 301, 302),
+                        "status_code": status_code,
+                        "size_bytes": total_bytes,
+                    }).encode('utf-8')
+                    self.send_response(200)
+                    self.send_cors_headers()
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(res)))
+                    self.end_headers()
+                    self.wfile.write(res)
+                    return
+            except Exception as e:
+                res = json.dumps({"reachable": False, "error": str(e)}).encode('utf-8')
+                self.send_response(200)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(res)))
+                self.end_headers()
+                self.wfile.write(res)
+                return
+
         if path in ('/api/enhance', '/enhance'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             if content_len <= 0 or content_len > 150 * 1024 * 1024:  # 150 MB safety cap
                 self.send_response(400)
@@ -836,6 +976,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/fs/save_axionik_model', '/fs/save_axionik_model'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
@@ -846,22 +988,48 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
             slug = payload.get('slug', 'model')
             files = payload.get('files', [])
+            if not is_safe_slug(slug) or not isinstance(files, list) or len(files) > 128:
+                err = json.dumps({'error': 'invalid slug (^[a-z0-9][a-z0-9-_]{0,63}$) o demasiados ficheros (max 128)'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
 
-            target_model_dir = os.path.join(library_path, 'Models', slug)
+            target_model_dir = safe_join(library_path, 'Models', slug)
+            if target_model_dir is None:
+                err = json.dumps({'error': 'library_path fuera de rango'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
             os.makedirs(target_model_dir, exist_ok=True)
 
             written = 0
             for f_item in files:
-                rel_path = f_item.get('path', '').replace('\\', '/').lstrip('/')
-                if not rel_path:
+                rel_path = f_item.get('path', '')
+                if not is_safe_rel_path(rel_path):
                     continue
-                full_dest = os.path.join(target_model_dir, *rel_path.split('/'))
+                full_dest = safe_join(target_model_dir, *rel_path.replace('\\', '/').split('/'))
+                if full_dest is None:
+                    continue
                 os.makedirs(os.path.dirname(full_dest), exist_ok=True)
                 if 'content_b64' in f_item:
+                    if len(f_item['content_b64']) > 70 * 1024 * 1024:
+                        continue
                     data = base64.b64decode(f_item['content_b64'])
+                    if len(data) > 50 * 1024 * 1024:
+                        continue
                     with open(full_dest, 'wb') as fp:
                         fp.write(data)
                 elif 'content' in f_item:
+                    if len(f_item['content']) > 5 * 1024 * 1024:
+                        continue
                     with open(full_dest, 'w', encoding='utf-8') as fp:
                         fp.write(f_item['content'])
                 written += 1
@@ -881,6 +1049,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/fs/duplicate_axionik_model', '/fs/duplicate_axionik_model'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
@@ -893,8 +1063,26 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             new_slug = payload.get('new_slug', '')
             new_name = payload.get('new_name', '')
 
-            src_dir = os.path.join(library_path, 'Models', source_slug)
-            dest_dir = os.path.join(library_path, 'Models', new_slug)
+            if not is_safe_slug(source_slug) or not is_safe_slug(new_slug):
+                err = json.dumps({'error': 'invalid slug'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+            src_dir = safe_join(library_path, 'Models', source_slug)
+            dest_dir = safe_join(library_path, 'Models', new_slug)
+            if src_dir is None or dest_dir is None:
+                err = json.dumps({'error': 'library_path fuera de rango'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
 
             if not os.path.exists(src_dir):
                 err = json.dumps({'error': f"Source model folder not found: {source_slug}"}).encode('utf-8')
@@ -940,6 +1128,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/fs/rename_axionik_model', '/fs/rename_axionik_model'):
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
@@ -952,8 +1142,26 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             new_slug = payload.get('new_slug', '')
             new_name = payload.get('new_name', '')
 
-            src_dir = os.path.join(library_path, 'Models', old_slug)
-            dest_dir = os.path.join(library_path, 'Models', new_slug)
+            if not is_safe_slug(old_slug) or not is_safe_slug(new_slug):
+                err = json.dumps({'error': 'invalid slug'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+            src_dir = safe_join(library_path, 'Models', old_slug)
+            dest_dir = safe_join(library_path, 'Models', new_slug)
+            if src_dir is None or dest_dir is None:
+                err = json.dumps({'error': 'library_path fuera de rango'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
 
             if not os.path.exists(src_dir):
                 err = json.dumps({'error': f"Model folder not found: {old_slug}"}).encode('utf-8')
@@ -1023,6 +1231,10 @@ def run_server(port=DEFAULT_PORT):
     print(f"  Device: {caps['device']} ({caps['gpu_name']})")
     print(f"  Libraries: NumPy={caps['libraries']['numpy']} SoundFile={caps['libraries']['soundfile']} Torch={caps['libraries']['torch']}")
     print(f"  Listening on: http://127.0.0.1:{server_address[1]}")
+    if os.environ.get('ABD_BRIDGE_TOKEN'):
+        print("  Auth: X-Bridge-Token enforced (ABD_BRIDGE_TOKEN).")
+    else:
+        print(f"  Auth: generated token {BRIDGE_TOKEN} (send as X-Bridge-Token; set ABD_BRIDGE_TOKEN to pin).")
     print("  Compatible with Vercel Web & Local UI. Press Ctrl+C to stop.")
     print("=" * 64)
 

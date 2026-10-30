@@ -37,6 +37,7 @@ import {
 } from '../src/core/waveforms.ts';
 import { AudioPreviewService } from '../src/core/audioPreview.ts';
 import { WebAudioPipeline } from '../src/core/WebAudioPipeline.ts';
+import { parseSessionJson } from '../src/core/sessionSchema.ts';
 import { ImportHandlers, type ImportContext } from '../src/app/importHandlers.ts';
 import { MenuActions, type MenuContext } from '../src/app/menuActions.ts';
 import type { CoreService } from '../src/core/CoreService.ts';
@@ -1567,6 +1568,87 @@ async function runPhase6Tests(): Promise<void> {
     p.dispose();
   }
   console.log('[PASS] 18. Fase 10.B (Modular AI Assistance vs DSP Matrix & Local Bridge Client)');
+
+  // ── 19. Fase 17: Dual-Name Independence (Classic vs Extended) & Extended Metadata ──
+  {
+    const pipe = new WebAudioPipeline();
+    await pipe.init();
+    await pipe.newSession('DualNameTest');
+
+    // Initially both informed with the same base name
+    const initialCfg = pipe.getSession()!.processConfig;
+    assert.equal(initialCfg.modelName, 'NewModel');
+    assert.equal(initialCfg.expandedName, 'NewModel');
+
+    // 19a. Switch to Extended Mode and set a long, expressive name
+    await pipe.updateProcessConfig({
+      workingMode: 'extended',
+      expandedName: 'Stradivarius Solo Cello Expressive Legato 1982',
+    });
+
+    const extCfg = pipe.getSession()!.processConfig;
+    assert.equal(extCfg.workingMode, 'extended');
+    assert.equal(extCfg.expandedName, 'Stradivarius Solo Cello Expressive Legato 1982');
+    assert.ok(extCfg.expandedName.length > 11);
+
+    // 19b. Switch to Classic Mode: classic modelName must be <= 11 chars and NOT corrupt expandedName
+    await pipe.updateProcessConfig({
+      workingMode: 'classic',
+      modelName: 'STRADCELLO1',
+    });
+
+    const classicCfg = pipe.getSession()!.processConfig;
+    assert.equal(classicCfg.workingMode, 'classic');
+    assert.equal(classicCfg.modelName, 'STRADCELLO1');
+    assert.equal(classicCfg.modelName.length, 11);
+    // expandedName remains completely intact!
+    assert.equal(classicCfg.expandedName, 'Stradivarius Solo Cello Expressive Legato 1982');
+
+    // 19c. Switch BACK to Extended Mode: expandedName is still full and untruncated!
+    await pipe.updateProcessConfig({
+      workingMode: 'extended',
+    });
+
+    const reExtCfg = pipe.getSession()!.processConfig;
+    assert.equal(reExtCfg.workingMode, 'extended');
+    assert.equal(reExtCfg.expandedName, 'Stradivarius Solo Cello Expressive Legato 1982');
+    assert.equal(reExtCfg.modelName, 'STRADCELLO1');
+
+    // 19d. ExtendedModelMetadata persistence and custom tag attributes
+    await pipe.updateProcessConfig({
+      extendedMetadata: {
+        author: 'Axel & ABD Acoustics',
+        version: '2.4.0',
+        license: 'CC-BY-SA 4.0',
+        sourceUrl: 'https://polyphone.io/en/soundfonts/strad-1982',
+        sourceFormat: 'sf2',
+        description: 'Recorded in Berlin chamber hall with vintage Telefunken U47',
+        customAttributes: [
+          { tag: 'Microphone', value: 'Telefunken U47' },
+          { tag: 'Hall', value: 'Berlin Chamber' },
+        ],
+      },
+    });
+
+    const metaCfg = pipe.getSession()!.processConfig;
+    assert.equal(metaCfg.extendedMetadata?.author, 'Axel & ABD Acoustics');
+    assert.equal(metaCfg.extendedMetadata?.version, '2.4.0');
+    assert.equal(metaCfg.extendedMetadata?.license, 'CC-BY-SA 4.0');
+    assert.equal(metaCfg.extendedMetadata?.customAttributes?.length, 2);
+    assert.equal(metaCfg.extendedMetadata?.customAttributes?.[0].tag, 'Microphone');
+    assert.equal(metaCfg.extendedMetadata?.customAttributes?.[0].value, 'Telefunken U47');
+
+    // 19e. Session JSON roundtrip & validation
+    const jsonStr = pipe.exportSessionJson();
+    const restored = parseSessionJson(jsonStr);
+    assert.equal(restored.processConfig.expandedName, 'Stradivarius Solo Cello Expressive Legato 1982');
+    assert.equal(restored.processConfig.modelName, 'STRADCELLO1');
+    assert.equal(restored.processConfig.extendedMetadata?.license, 'CC-BY-SA 4.0');
+    assert.equal(restored.processConfig.extendedMetadata?.customAttributes?.length, 2);
+
+    pipe.dispose();
+  }
+  console.log('[PASS] 19. Fase 17 (Doble Nomenclatura: modelName vs expandedName & ExtendedModelMetadata)');
 
   console.log('=== ALL PHASE 6, 7, 8, 9, 13, 14 & 18 TESTS PASSED ===');
 }

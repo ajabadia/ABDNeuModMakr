@@ -94,8 +94,32 @@ export interface BridgeModelInfo {
 
 export const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:7860';
 const STORAGE_KEY_URL = 'neumodmakr_bridge_url';
+const MAX_BRIDGE_URL_LENGTH = 500;
+
+/** S4.1: la URL del bridge es entrada no confiable (localStorage/UI). Solo http(s), sin credenciales. */
+export function validateBridgeUrl(v: unknown): string {
+  const fallback = DEFAULT_BRIDGE_URL;
+  if (v === undefined || v === null) return fallback;
+  if (typeof v !== 'string') throw new Error('Invalid bridge URL: must be a string');
+  const t = v.trim();
+  if (t.length === 0) return fallback;
+  if (t.length > MAX_BRIDGE_URL_LENGTH) throw new Error(`Invalid bridge URL: too long (max ${MAX_BRIDGE_URL_LENGTH})`);
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    throw new Error('Invalid bridge URL: must be a valid http(s) URL');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error('Invalid bridge URL: only http(s) allowed');
+  }
+  if (u.username || u.password) throw new Error('Invalid bridge URL: credentials in URL are blocked');
+  return t.replace(/\/+$/, '');
+}
 
 export type BridgeStatusListener = (status: BridgeStatus) => void;
+
+const STORAGE_KEY_TOKEN = 'neumodmakr_bridge_token';
 
 export class BridgeClient {
   private url: string;
@@ -106,9 +130,13 @@ export class BridgeClient {
 
   constructor(initialUrl?: string) {
     if (initialUrl) {
-      this.url = initialUrl.replace(/\/+$/, '');
+      this.url = validateBridgeUrl(initialUrl);
     } else if (typeof localStorage !== 'undefined') {
-      this.url = (localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_BRIDGE_URL).replace(/\/+$/, '');
+      try {
+        this.url = validateBridgeUrl(localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_BRIDGE_URL);
+      } catch {
+        this.url = DEFAULT_BRIDGE_URL;
+      }
     } else {
       this.url = DEFAULT_BRIDGE_URL;
     }
@@ -124,8 +152,23 @@ export class BridgeClient {
     return this.url;
   }
 
+  public setBridgeToken(token: string): void {
+    if (typeof localStorage !== 'undefined') {
+      if (token.trim().length > 0) localStorage.setItem(STORAGE_KEY_TOKEN, token.trim());
+      else localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }
+  }
+
+  private authHeaders(base: Record<string, string> = {}): Record<string, string> {
+    try {
+      const t = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_TOKEN) : null;
+      if (t && t.trim().length > 0) return { ...base, 'X-Bridge-Token': t.trim() };
+    } catch { /* ignore */ }
+    return base;
+  }
+
   public setUrl(newUrl: string): void {
-    const clean = (newUrl.trim() || DEFAULT_BRIDGE_URL).replace(/\/+$/, '');
+    const clean = validateBridgeUrl(newUrl.trim() || DEFAULT_BRIDGE_URL);
     if (clean === this.url) return;
     this.url = clean;
     if (typeof localStorage !== 'undefined') {
@@ -195,7 +238,7 @@ export class BridgeClient {
         const healthEndpoint = `${this.url}/api/health`;
         const res = await fetch(healthEndpoint, {
           method: 'GET',
-          headers: { Accept: 'application/json' },
+          headers: this.authHeaders({ Accept: 'application/json' }),
           signal: controller.signal,
         });
         clearTimeout(timer);
@@ -279,7 +322,7 @@ export class BridgeClient {
       const url = `${this.url}/api/fs/scan?path=${encodeURIComponent(targetPath)}`;
       const res = await fetch(url, {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: this.authHeaders({ Accept: 'application/json' }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -316,13 +359,13 @@ export class BridgeClient {
       const endpoint = `${this.url}/api/enhance`;
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'audio/wav',
           'X-Target-Sample-Rate': String(targetSr),
           'X-Target-Loop-Sec': String(targetLoopSec),
           'X-Capabilities': caps.join(','),
           ...(options.textPrompt ? { 'X-Text-Prompt': options.textPrompt } : {}),
-        },
+        }),
         body: audioData instanceof Uint8Array ? (audioData.buffer as ArrayBuffer) : audioData,
         signal: controller.signal,
       });
@@ -352,7 +395,7 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/models`, {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: this.authHeaders({ Accept: 'application/json' }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -378,10 +421,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/models/download`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({ model_id: modelId }),
         signal: controller.signal,
       });
@@ -418,7 +461,7 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/models/progress?model_id=${encodeURIComponent(modelId)}`, {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: this.authHeaders({ Accept: 'application/json' }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -494,10 +537,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/models/delete`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({ model_id: modelId }),
         signal: controller.signal,
       });
@@ -528,10 +571,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/models/url`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({ model_id: modelId, url: newUrl }),
         signal: controller.signal,
       });
@@ -547,6 +590,54 @@ export class BridgeClient {
   }
 
   /**
+   * Tests whether a model download URL is valid and reachable.
+   */
+  public async checkModelUrl(
+    testUrl: string,
+    timeoutMs = 8000
+  ): Promise<{ reachable: boolean; status_code?: number; size_bytes?: number; error?: string }> {
+    if (!testUrl || !/^https?:\/\//i.test(testUrl.trim())) {
+      return { reachable: false, error: 'URL must begin with http:// or https://' };
+    }
+
+    if (this.currentStatus.connected) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(`${this.url}/api/models/check_url`, {
+          method: 'POST',
+          headers: this.authHeaders({
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          }),
+          body: JSON.stringify({ url: testUrl }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          return (await res.json()) as { reachable: boolean; status_code?: number; size_bytes?: number; error?: string };
+        }
+      } catch {
+        clearTimeout(timer);
+      }
+    }
+
+    // Direct browser fetch check fallback
+    try {
+      const resp = await fetch(testUrl, { method: 'HEAD', mode: 'cors' });
+      const sizeHeader = resp.headers.get('content-length');
+      const sizeBytes = sizeHeader ? parseInt(sizeHeader, 10) : undefined;
+      return {
+        reachable: resp.ok || resp.status === 200 || resp.status === 206,
+        status_code: resp.status,
+        size_bytes: Number.isNaN(sizeBytes) ? undefined : sizeBytes,
+      };
+    } catch (err) {
+      return { reachable: false, error: String(err) };
+    }
+  }
+
+  /**
    * Scans an AxionikDB directory for modern models.
    */
   public async scanAxionikDb(libraryPath: string, timeoutMs = 10000): Promise<AxionikDbModelEntry[]> {
@@ -558,7 +649,7 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/fs/scan_axionik?path=${encodeURIComponent(libraryPath)}`, {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: this.authHeaders({ Accept: 'application/json' }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -589,10 +680,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/fs/save_axionik_model`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({
           library_path: libraryPath,
           slug,
@@ -629,10 +720,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/fs/duplicate_axionik_model`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({
           library_path: libraryPath,
           source_slug: sourceSlug,
@@ -670,10 +761,10 @@ export class BridgeClient {
     try {
       const res = await fetch(`${this.url}/api/fs/rename_axionik_model`, {
         method: 'POST',
-        headers: {
+        headers: this.authHeaders({
           'Content-Type': 'application/json',
           Accept: 'application/json',
-        },
+        }),
         body: JSON.stringify({
           library_path: libraryPath,
           old_slug: oldSlug,

@@ -16,8 +16,10 @@ import type {
   ClassifierMethod,
   CommonPlaybackDefaults,
   CrossfadeCurve,
+  CustomMetadataTag,
   DenoiseMethod,
   DspAlgorithmMode,
+  ExtendedModelMetadata,
   ExtendedRegion,
   LoopExpansionMethod,
   LoopMode,
@@ -42,12 +44,88 @@ import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
 
-/** Max model-name length: 11 chars on hardware, 32 in modern/extended. */
+/** Max model-name length: 11 chars on classic hardware, unrestricted/128 in modern/extended. */
 export const MAX_MODEL_NAME_LEGACY = 11;
-export const MAX_MODEL_NAME_MODERN = 32;
+export const MAX_MODEL_NAME_MODERN = 128;
 
 /** Hard cap: at most one single-note zone per MIDI key. */
 export const MAX_ZONE_COUNT = 128;
+
+/** S3.2 security caps (see ABDShared Docs/architecture/SECURITY_STANDARDS.md). */
+export const MAX_ID_LENGTH = 128;
+export const MAX_SESSION_NAME_LENGTH = 64;
+export const MAX_SAMPLE_NAME_LENGTH = 256;
+export const MAX_ORIGINAL_NAME_LENGTH = 128;
+export const MAX_WEBP_DATA_URL_LENGTH = 700_000; // ~512 KB binario
+/** 2048*2048 RGBA = 16 MB, muy por encima del cover 512px (1 MB). */
+export const MAX_WEBP_BYTES = 1_048_576;
+export const MAX_ENDPOINT_LENGTH = 500;
+export const ID_PATTERN = /^[A-Za-z0-9-_]+$/;
+export const SAMPLE_NAME_PATTERN = /^[\w\-. /\\()\[\]]+$/u;
+
+export function isSafeSampleName(v: string): boolean {
+  if (v.length === 0 || v.length > MAX_SAMPLE_NAME_LENGTH) return false;
+  if (v.includes('..')) return false;
+  if (v.startsWith('/') || v.startsWith('\\')) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(v)) return false;
+  return SAMPLE_NAME_PATTERN.test(v);
+}
+
+export function validateIdField(field: string, v: unknown, fallback: () => string): string {
+  if (typeof v !== 'string' || v.length === 0) return fallback();
+  const t = v.trim();
+  if (t.length === 0 || t.length > MAX_ID_LENGTH || !ID_PATTERN.test(t)) {
+    throw fieldError(field, `must match ${ID_PATTERN} (1..${MAX_ID_LENGTH})`);
+  }
+  return t;
+}
+
+/** Bloquea SSRF (169.254/10/8/172.16/12/192.168/16/0.0.0.0/*.local), salvo loopback explícito. */
+export function validateAiBridgeEndpoint(v: unknown): string {
+  const fallback = DEFAULT_MASTER_WAVE_CONFIG.aiBridgeEndpoint ?? 'http://127.0.0.1:7860/api/enhance';
+  if (v === undefined) return fallback;
+  if (typeof v !== 'string') throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'must be a URL string');
+  const t = v.trim();
+  if (t.length === 0 || t.length > MAX_ENDPOINT_LENGTH) {
+    throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', `must be 1..${MAX_ENDPOINT_LENGTH} chars`);
+  }
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'must be a valid http(s) URL');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'must use http(s)');
+  }
+  const host = u.hostname.toLowerCase();
+  const isLoopback =
+    host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+  if (!isLoopback) {
+    if (
+      host.endsWith('.local') ||
+      host === '0.0.0.0' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      host === '169.254.169.254' ||
+      host.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    ) {
+      throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'private/link-local hosts are blocked');
+    }
+  }
+  return t;
+}
+
+export function validateWebpDataUrl(field: string, v: unknown): string {
+  if (typeof v !== 'string' || !v.startsWith('data:image/webp;base64,')) {
+    throw fieldError(field, 'must start with data:image/webp;base64,');
+  }
+  if (v.length > MAX_WEBP_DATA_URL_LENGTH) {
+    throw fieldError(field, `too large (${v.length} chars, max ${MAX_WEBP_DATA_URL_LENGTH})`);
+  }
+  return v;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -76,7 +154,7 @@ function validateZone(raw: unknown, index: number): Zone {
   const idRaw = raw['id'];
   const id =
     typeof idRaw === 'string' && idRaw.length > 0
-      ? idRaw
+      ? validateIdField(`zones[${index}].id`, idRaw, () => `imported-zone-${index}-${Date.now().toString(36)}`)
       : `imported-zone-${index}-${Date.now().toString(36)}`;
 
   const lowRaw = raw['lowKey'] ?? 0;
@@ -99,11 +177,15 @@ function validateZone(raw: unknown, index: number): Zone {
 
   const sampleLowRaw = raw['sampleLow'] ?? null;
   const sampleHighRaw = raw['sampleHigh'] ?? null;
-  if (sampleLowRaw !== null && typeof sampleLowRaw !== 'string') {
-    throw fieldError(`zones[${index}].sampleLow`, 'must be a string or null');
+  if (sampleLowRaw !== null) {
+    if (typeof sampleLowRaw !== 'string' || !isSafeSampleName(sampleLowRaw)) {
+      throw fieldError(`zones[${index}].sampleLow`, 'must be a safe sample name (<=256, sin .. ni ruta absoluta) o null');
+    }
   }
-  if (sampleHighRaw !== null && typeof sampleHighRaw !== 'string') {
-    throw fieldError(`zones[${index}].sampleHigh`, 'must be a string or null');
+  if (sampleHighRaw !== null) {
+    if (typeof sampleHighRaw !== 'string' || !isSafeSampleName(sampleHighRaw)) {
+      throw fieldError(`zones[${index}].sampleHigh`, 'must be a safe sample name (<=256, sin .. ni ruta absoluta) o null');
+    }
   }
 
   const velRaw = raw['velSplit'] ?? 64;
@@ -151,6 +233,14 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
   }
   const modelName = modelNameRaw.trim().slice(0, nameLimit) || 'MyModel';
 
+  const expandedNameRaw = cfg['expandedName'];
+  let expandedName: string | undefined;
+  if (typeof expandedNameRaw === 'string' && expandedNameRaw.trim().length > 0) {
+    expandedName = expandedNameRaw.trim().slice(0, MAX_MODEL_NAME_MODERN);
+  } else if (typeof modelNameRaw === 'string' && modelNameRaw.trim().length > 0) {
+    expandedName = modelNameRaw.trim().slice(0, MAX_MODEL_NAME_MODERN);
+  }
+
   const workingModeRaw = cfg['workingMode'];
   let workingMode: WorkingMode | undefined;
   if (workingModeRaw !== undefined) {
@@ -194,10 +284,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
         typeof m['enableDenoiseGate'] === 'boolean'
           ? m['enableDenoiseGate']
           : DEFAULT_MASTER_WAVE_CONFIG.enableDenoiseGate,
-      aiBridgeEndpoint:
-        typeof m['aiBridgeEndpoint'] === 'string'
-          ? m['aiBridgeEndpoint']
-          : DEFAULT_MASTER_WAVE_CONFIG.aiBridgeEndpoint,
+      aiBridgeEndpoint: validateAiBridgeEndpoint(m['aiBridgeEndpoint']),
     };
   }
 
@@ -246,15 +333,20 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
   let coverArtwork: ModelCoverArtwork | null | undefined;
   if (cfg['coverArtwork'] === null) {
     coverArtwork = null;
-  } else if (isRecord(cfg['coverArtwork'])) {
+  } else  if (isRecord(cfg['coverArtwork'])) {
     const c = cfg['coverArtwork'];
     if (typeof c['webpDataUrl'] === 'string' && c['webpDataUrl'].startsWith('data:image/webp;base64,')) {
+      const webpDataUrl = validateWebpDataUrl('processConfig.coverArtwork.webpDataUrl', c['webpDataUrl']);
+      const rawOriginal = typeof c['originalName'] === 'string' && c['originalName'].trim().length > 0 ? c['originalName'].trim() : 'cover.webp';
+      if (rawOriginal.length > MAX_ORIGINAL_NAME_LENGTH || /[<>"'&]/.test(rawOriginal) || rawOriginal.includes('..')) {
+        throw fieldError('processConfig.coverArtwork.originalName', `must be 1..${MAX_ORIGINAL_NAME_LENGTH} sin <>&"' ni ..`);
+      }
       coverArtwork = {
-        webpDataUrl: c['webpDataUrl'],
-        byteLength: Math.max(0, Math.round(asFiniteNumber(c['byteLength']) ?? (c['webpDataUrl'].length * 3) / 4)),
-        width: Math.max(1, Math.round(asFiniteNumber(c['width']) ?? 512)),
-        height: Math.max(1, Math.round(asFiniteNumber(c['height']) ?? 512)),
-        originalName: typeof c['originalName'] === 'string' ? c['originalName'] : 'cover.webp',
+        webpDataUrl,
+        byteLength: Math.max(0, Math.min(MAX_WEBP_BYTES, Math.round(asFiniteNumber(c['byteLength']) ?? (webpDataUrl.length * 3) / 4))),
+        width: Math.max(1, Math.min(2048, Math.round(asFiniteNumber(c['width']) ?? 512))),
+        height: Math.max(1, Math.min(2048, Math.round(asFiniteNumber(c['height']) ?? 512))),
+        originalName: rawOriginal,
         updatedAt: typeof c['updatedAt'] === 'string' ? c['updatedAt'] : new Date().toISOString(),
       };
     }
@@ -278,9 +370,42 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     };
   }
 
+  let extendedMetadata: ExtendedModelMetadata | undefined;
+  if (isRecord(cfg['extendedMetadata'])) {
+    const meta = cfg['extendedMetadata'];
+    const asStr = (v: unknown): string | undefined => (typeof v === 'string' ? v.trim() : undefined);
+    const customAttrs: CustomMetadataTag[] = [];
+    if (Array.isArray(meta['customAttributes'])) {
+      for (const item of meta['customAttributes']) {
+        if (isRecord(item) && typeof item['tag'] === 'string' && typeof item['value'] === 'string') {
+          const t = item['tag'].trim();
+          const v = item['value'].trim();
+          if (t.length > 0) {
+            customAttrs.push({ tag: t, value: v });
+          }
+        }
+      }
+    }
+    extendedMetadata = {
+      ...(asStr(meta['author']) ? { author: asStr(meta['author']) } : {}),
+      ...(asStr(meta['vendor']) ? { vendor: asStr(meta['vendor']) } : {}),
+      ...(asStr(meta['version']) ? { version: asStr(meta['version']) } : {}),
+      ...(asStr(meta['releaseYear']) ? { releaseYear: asStr(meta['releaseYear']) } : {}),
+      ...(asStr(meta['sourceUrl']) ? { sourceUrl: asStr(meta['sourceUrl']) } : {}),
+      ...(asStr(meta['sourceFormat']) ? { sourceFormat: asStr(meta['sourceFormat']) } : {}),
+      ...(asStr(meta['sourcePresetName']) ? { sourcePresetName: asStr(meta['sourcePresetName']) } : {}),
+      ...(asStr(meta['license']) ? { license: asStr(meta['license']) } : {}),
+      ...(asStr(meta['copyright']) ? { copyright: asStr(meta['copyright']) } : {}),
+      ...(asStr(meta['description']) ? { description: asStr(meta['description']) } : {}),
+      ...(Array.isArray(meta['tags']) ? { tags: meta['tags'].filter((t): t is string => typeof t === 'string' && t.trim().length > 0) } : {}),
+      ...(customAttrs.length > 0 ? { customAttributes: customAttrs } : {}),
+    };
+  }
+
   return {
     modelNumber: slotNum,
     modelName,
+    ...(expandedName !== undefined ? { expandedName } : {}),
     complexity: complexityNum,
     parameterSet: paramSetNum,
     targetFormat,
@@ -290,6 +415,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     ...(commonPlayback !== undefined ? { commonPlayback } : {}),
     ...(coverArtwork !== undefined ? { coverArtwork } : {}),
     ...(aiConfig !== undefined ? { aiConfig } : {}),
+    ...(extendedMetadata !== undefined ? { extendedMetadata } : {}),
   };
 }
 
@@ -335,8 +461,8 @@ export function validateSessionPayload(payload: unknown): Session {
         .filter((r): r is Record<string, unknown> => isRecord(r))
         .map((r, i) =>
           cloneExtendedRegion({
-            id: typeof r.id === 'string' && r.id ? r.id : `ext-reg-${i + 1}`,
-            sampleName: typeof r.sampleName === 'string' ? r.sampleName : '',
+            id: typeof r.id === 'string' && r.id ? validateIdField(`extendedRegions[${i}].id`, r.id, () => `ext-reg-${i + 1}`) : `ext-reg-${i + 1}`,
+            sampleName: typeof r.sampleName === 'string' && r.sampleName.length > 0 ? (() => { if (!isSafeSampleName(r.sampleName as string)) throw fieldError(`extendedRegions[${i}].sampleName`, 'must be a safe sample name o vacio'); return r.sampleName as string; })() : '',
             lowKey: clampInt(asFiniteNumber(r.lowKey) ?? 0, 0, 127),
             highKey: clampInt(asFiniteNumber(r.highKey) ?? 127, 0, 127),
             rootKey: clampInt(asFiniteNumber(r.rootKey) ?? 60, 0, 127),
@@ -382,19 +508,30 @@ export function validateSessionPayload(payload: unknown): Session {
     ? cloneArticulation(artRaw as unknown as SynthArticulationConfig)
     : undefined;
 
+  const detectedRaw = body['detectedInstrumentCategory'];
   const detectedInstrumentCategory =
-    typeof body['detectedInstrumentCategory'] === 'string'
-      ? body['detectedInstrumentCategory']
+    typeof detectedRaw === 'string' && detectedRaw.trim().length > 0
+      ? (() => {
+          const t = detectedRaw.trim();
+          if (t.length > MAX_SESSION_NAME_LENGTH) throw fieldError('detectedInstrumentCategory', `must be 1..${MAX_SESSION_NAME_LENGTH}`);
+          return t;
+        })()
       : undefined;
 
   const processConfig = validateProcessConfig(body['processConfig']);
-  const resolvedName =
+  let resolvedName =
     typeof nameRaw === 'string' && nameRaw.trim().length > 0
       ? nameRaw.trim()
       : (processConfig.modelName || 'Imported Session');
+  if (resolvedName.length > MAX_SESSION_NAME_LENGTH) {
+    throw fieldError('name', `must be 1..${MAX_SESSION_NAME_LENGTH}`);
+  }
+  if (/[<>]/.test(resolvedName)) {
+    throw fieldError('name', 'must not contain < or >');
+  }
 
   return {
-    id: typeof idRaw === 'string' && idRaw.length > 0 ? idRaw : `session_${Date.now()}`,
+    id: typeof idRaw === 'string' && idRaw.length > 0 ? validateIdField('id', idRaw, () => `session_${Date.now()}`) : `session_${Date.now()}`,
     name: resolvedName,
     zones,
     ...(extendedRegions ? { extendedRegions } : {}),

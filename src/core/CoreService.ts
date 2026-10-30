@@ -276,12 +276,14 @@ export interface CoreService {
    * Returns current decoded format metadata (sampleRate, bitsPerSample, numChannels, durationSec, loopStart/loopEnd)
    * for the specified zone's primary sample.
    */
-  getZoneSampleFormatInfo(zoneId?: string): {
+  getZoneSampleFormatInfo(zoneId?: string, regionId?: string): {
     sampleName: string;
     sampleRate: number;
     bitsPerSample: number;
     numChannels: number;
     durationSec: number;
+    totalFrames?: number;
+    byteSize?: number;
     loopStart: number;
     loopEnd: number;
   } | null;

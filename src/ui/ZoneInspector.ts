@@ -85,12 +85,14 @@ export interface ZoneInspectorHandlers {
   getZoneClassification?: (zoneId: string) => AcousticClassificationResult | undefined;
   onAutoDetectZone?: (zoneId: string) => void;
   getMasterWaveConfig?: () => MasterWaveConfig;
-  getZoneSampleFormatInfo?: (zoneId: string) => {
+  getZoneSampleFormatInfo?: (zoneId?: string, regionId?: string) => {
     sampleName: string;
     sampleRate: number;
     bitsPerSample: number;
     numChannels: number;
     durationSec: number;
+    totalFrames?: number;
+    byteSize?: number;
     loopStart: number;
     loopEnd: number;
   } | null;
@@ -423,9 +425,9 @@ export class ZoneInspector {
           const dispRoot = this.drawerElement.querySelector('#disp-root-note');
           const dispHigh = this.drawerElement.querySelector('#disp-high-note');
           const dispVelSpan = this.drawerElement.querySelector('#disp-vel-span');
-          if (dispLow) dispLow.textContent = midiNoteToString(activeRegion.lowKey);
-          if (dispRoot) dispRoot.textContent = midiNoteToString(activeRegion.rootKey);
-          if (dispHigh) dispHigh.textContent = midiNoteToString(activeRegion.highKey);
+          if (dispLow) dispLow.textContent = midiToNoteName(activeRegion.lowKey);
+          if (dispRoot) dispRoot.textContent = midiToNoteName(activeRegion.rootKey);
+          if (dispHigh) dispHigh.textContent = midiToNoteName(activeRegion.highKey);
           if (dispVelSpan) {
             const spanSteps = Math.max(1, activeRegion.highVel - activeRegion.lowVel + 1);
             dispVelSpan.textContent = `Vel ${activeRegion.lowVel}..${activeRegion.highVel} (${spanSteps})`;
@@ -476,9 +478,9 @@ export class ZoneInspector {
       const dispLow = this.drawerElement.querySelector('#disp-low-note');
       const dispRoot = this.drawerElement.querySelector('#disp-root-note');
       const dispHigh = this.drawerElement.querySelector('#disp-high-note');
-      if (dispLow) dispLow.textContent = midiNoteToString(z.lowKey);
-      if (dispRoot) dispRoot.textContent = midiNoteToString(z.rootKey);
-      if (dispHigh) dispHigh.textContent = midiNoteToString(z.highKey);
+      if (dispLow) dispLow.textContent = midiToNoteName(z.lowKey);
+      if (dispRoot) dispRoot.textContent = midiToNoteName(z.rootKey);
+      if (dispHigh) dispHigh.textContent = midiToNoteName(z.highKey);
 
       const valDetune = this.drawerElement.querySelector('#val-detune');
       const valVolume = this.drawerElement.querySelector('#val-volume');
@@ -693,6 +695,28 @@ export class ZoneInspector {
           <div class="zone-inspector-panel">
             <!-- Extended Mode 2D Multi-Region Sampler Table (1 Row per Sampler Region) -->
             <div class="zone-table-card">
+              <div class="zone-table-toolbar">
+                <div class="panel-actions">
+                  <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeDrawerScope === 'region' && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
+                    ${ICONS.wave} Loop Editor
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B/C Resynthesis Inspector (Shortcut: Ctrl+E)">
+                    ${ICONS.wave} Spectral / A-B
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Edit Selected Region #${activeIndex + 1} (Particular Sample, Keys, Velocity, Loop Points &amp; Region Exceptions)">
+                    ${ICONS.settings} Edit Region #${activeIndex + 1}
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-model-common-drawer" title="Open Model Common &amp; Global Settings (Common Playback Defaults, Master Articulation, Master 24/96 &amp; Time Capsule)">
+                    ${ICONS.sliders} Model Common &amp; Global
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" title="Create a new empty Sampler Region at the next available Key/Velocity range">
+                    ${ICONS.plus} New Region
+                  </button>
+                  <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDeleteReg ? 'disabled' : ''} title="Remove selected Sampler Region">
+                    ${ICONS.trash} Remove Region
+                  </button>
+                </div>
+              </div>
               <div class="zone-table-scroll" tabindex="0" role="region" aria-label="Extended 2D Sampler Regions Table">
                 <table class="canonical-zone-table is-extended-table" aria-label="Extended 2D Sampler Regions Table">
                   <thead>
@@ -722,26 +746,6 @@ export class ZoneInspector {
                   ${intersectBadgeHtml}
                   <span class="panel-caption">${midiNoteToString(activeRegion.lowKey)} .. ${midiNoteToString(activeRegion.highKey)} | Root: ${midiNoteToString(activeRegion.rootKey)} | Vel: ${activeRegion.lowVel}..${activeRegion.highVel}${sampleTitle ? ` | ${escHtml(sampleTitle)}` : ' | Empty Sample'}${this.handlers.getDetectedCategory?.() ? ` • ${escHtml(this.handlers.getDetectedCategory?.())}` : ''}</span>
                 </div>
-                <div class="panel-actions">
-                  <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeDrawerScope === 'region' && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
-                    ${ICONS.wave} Loop Editor
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B/C Resynthesis Inspector (Shortcut: Ctrl+E)">
-                    ${ICONS.wave} Spectral / A-B
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Edit Selected Region #${activeIndex + 1} (Particular Sample, Keys, Velocity, Loop Points &amp; Region Exceptions)">
-                    ${ICONS.settings} Edit Region #${activeIndex + 1}
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-model-common-drawer" title="Open Model Common &amp; Global Settings (Common Playback Defaults, Master Articulation, Master 24/96 &amp; Time Capsule)">
-                    ${ICONS.sliders} Model Common &amp; Global
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" title="Create a new empty Sampler Region at the next available Key/Velocity range">
-                    ${ICONS.plus} New Region
-                  </button>
-                  <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDeleteReg ? 'disabled' : ''} title="Remove selected Sampler Region">
-                    ${ICONS.trash} Remove Region
-                  </button>
-                </div>
               </div>
             </div>
           </div>
@@ -759,6 +763,25 @@ export class ZoneInspector {
       <div class="zone-inspector-panel">
         <!-- Canonical Hartmann MODELmaker v1.2 Zone Table (1..128 Zones Max) -->
         <div class="zone-table-card">
+          <div class="zone-table-toolbar">
+            <div class="panel-actions">
+              <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
+                ${ICONS.wave} Loop Editor
+              </button>
+              <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral & A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
+                ${ICONS.wave} Spectral / A-B
+              </button>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Open Right Drawer to Edit Zone #${this.zoneIndex + 1} Metadata">
+                ${ICONS.settings} Edit Zone #${this.zoneIndex + 1}
+              </button>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" ${!canSplit ? 'disabled' : ''} title="New Zone / Split at Root Key (Max 128 zones, 1 per MIDI key)">
+                ${ICONS.plus} New Zone
+              </button>
+              <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDelete ? 'disabled' : ''} title="Remove Zone and merge boundaries (Shortcut: Delete)">
+                ${ICONS.trash} Remove Zone
+              </button>
+            </div>
+          </div>
           <div class="zone-table-scroll" tabindex="0" role="region" aria-label="Canonical Hartmann Key Zone Table">
             <table class="canonical-zone-table" aria-label="Canonical Hartmann Key Zone Table">
               <thead>
@@ -784,23 +807,6 @@ export class ZoneInspector {
             <div class="zone-table-status">
               <span class="panel-badge">ZONE #${this.zoneIndex + 1} (${this.totalZones} / 128 MAX)</span>
               <span class="panel-caption">${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)} | Root: ${midiNoteToString(z.rootKey)}</span>
-            </div>
-            <div class="panel-actions">
-              <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
-                ${ICONS.wave} Loop Editor
-              </button>
-              <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral & A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
-                ${ICONS.wave} Spectral / A-B
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Open Right Drawer to Edit Zone #${this.zoneIndex + 1} Metadata">
-                ${ICONS.settings} Edit Zone #${this.zoneIndex + 1}
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" ${!canSplit ? 'disabled' : ''} title="New Zone / Split at Root Key (Max 128 zones, 1 per MIDI key)">
-                ${ICONS.plus} New Zone
-              </button>
-              <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDelete ? 'disabled' : ''} title="Remove Zone and merge boundaries (Shortcut: Delete)">
-                ${ICONS.trash} Remove Zone
-              </button>
             </div>
           </div>
         </div>
@@ -871,6 +877,67 @@ export class ZoneInspector {
     const effDetune = isExtended && activeReg ? activeReg.detune : z.detune;
     const effVolume = isExtended && activeReg ? activeReg.volume : z.volume;
     const effPan = isExtended && activeReg ? activeReg.pan : z.pan;
+
+    const effFmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id, activeReg?.id) ?? null;
+    const rowKey = isExtended ? (activeReg?.id ?? z.id) : z.id;
+    const isCurrentPlaying = this.playingRowId !== null && this.playingRowId === rowKey;
+
+    const formatByteSize = (bytes?: number): string => {
+      if (!bytes || bytes <= 0) return '—';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    const renderTechSpecsBox = (info: NonNullable<ReturnType<NonNullable<ZoneInspectorHandlers['getZoneSampleFormatInfo']>>>) => {
+      if (!info) return '';
+      const chLabel =
+        info.numChannels === 4
+          ? '4.0 Quad'
+          : info.numChannels === 2
+            ? '2.0 Stereo'
+            : info.numChannels === 1
+              ? '1.0 Mono'
+              : `${info.numChannels} ch`;
+      const resLabel = `${info.bitsPerSample}-bit PCM`;
+      const rateLabel = `${(info.sampleRate / 1000).toFixed(1)} kHz`;
+      const sizeLabel = formatByteSize(info.byteSize);
+      const framesCount = info.totalFrames ?? Math.round(info.durationSec * info.sampleRate);
+      const durLabel = `${info.durationSec.toFixed(3)}s (${framesCount.toLocaleString()} f)`;
+      const hasLoop = info.loopEnd > info.loopStart;
+      const loopLabel = hasLoop
+        ? `${info.loopStart.toLocaleString()}..${info.loopEnd.toLocaleString()}`
+        : 'No Loop';
+
+      return `
+        <div class="sample-tech-spec-box" title="Sample Technical Specifications">
+          <div class="spec-cell">
+            <span class="spec-label">FILE SIZE</span>
+            <span class="spec-value is-highlight">${sizeLabel}</span>
+          </div>
+          <div class="spec-cell">
+            <span class="spec-label">CHANNELS</span>
+            <span class="spec-value">${chLabel}</span>
+          </div>
+          <div class="spec-cell">
+            <span class="spec-label">RESOLUTION</span>
+            <span class="spec-value">${resLabel}</span>
+          </div>
+          <div class="spec-cell">
+            <span class="spec-label">SAMPLE RATE</span>
+            <span class="spec-value">${rateLabel}</span>
+          </div>
+          <div class="spec-cell">
+            <span class="spec-label">DURATION</span>
+            <span class="spec-value">${durLabel}</span>
+          </div>
+          <div class="spec-cell">
+            <span class="spec-label">LOOP RANGE</span>
+            <span class="spec-value ${hasLoop ? 'is-loop' : 'is-muted'}">${loopLabel}</span>
+          </div>
+        </div>
+      `;
+    };
 
     const regSampleLabel =
       isExtended && activeReg
@@ -1002,7 +1069,7 @@ export class ZoneInspector {
                   <label for="inp-low-key">LOW KEY</label>
                   <div class="input-with-note">
                     <input type="number" id="inp-low-key" min="${isExtended ? 0 : minLowKey}" max="${isExtended ? 127 : maxLowKey}" value="${effLowKey}" ${!isExtended && !prevZone ? 'disabled title="First zone always starts at 0 C-2 in Classic Mode"' : ''} />
-                    <span class="note-display" id="disp-low-note">${midiNoteToString(effLowKey)}</span>
+                    <span class="note-display" id="disp-low-note">${midiToNoteName(effLowKey)}</span>
                   </div>
                 </div>
 
@@ -1010,7 +1077,7 @@ export class ZoneInspector {
                   <label for="inp-root-key">ROOT KEY</label>
                   <div class="input-with-note">
                     <input type="number" id="inp-root-key" min="0" max="127" value="${effRootKey}" />
-                    <span class="note-display" id="disp-root-note">${midiNoteToString(effRootKey)}</span>
+                    <span class="note-display" id="disp-root-note">${midiToNoteName(effRootKey)}</span>
                   </div>
                 </div>
 
@@ -1018,7 +1085,7 @@ export class ZoneInspector {
                   <label for="inp-high-key">HIGH KEY</label>
                   <div class="input-with-note">
                     <input type="number" id="inp-high-key" min="${isExtended ? 0 : minHighKey}" max="${isExtended ? 127 : maxHighKey}" value="${effHighKey}" ${!isExtended && !nextZone ? 'disabled title="Last zone always ends at 127 G8 in Classic Mode"' : ''} />
-                    <span class="note-display" id="disp-high-note">${midiNoteToString(effHighKey)}</span>
+                    <span class="note-display" id="disp-high-note">${midiToNoteName(effHighKey)}</span>
                   </div>
                 </div>
               </div>
@@ -1079,6 +1146,7 @@ export class ZoneInspector {
                       ${activeReg.sampleName ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Region Sample">${ICONS.close}</button>` : ''}
                     </div>
                   </div>
+                  ${activeReg.sampleName && effFmtInfo ? renderTechSpecsBox(effFmtInfo) : ''}
                 </div>
               </div>
             </div>
@@ -1105,6 +1173,7 @@ export class ZoneInspector {
                       ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Low Vel Sample">${ICONS.close}</button>` : ''}
                     </div>
                   </div>
+                  ${z.sampleLow && effFmtInfo ? renderTechSpecsBox(effFmtInfo) : ''}
                 </div>
 
                 <div class="sample-slot-card ${z.sampleHigh ? 'has-file' : 'is-empty'}" id="card-sample-high">
@@ -1162,6 +1231,35 @@ export class ZoneInspector {
                 </div>
               </div>
             </div>
+
+            <!-- 4. Sample Waveform Representation & Synchronized Table Audition -->
+            ${
+              (isExtended ? activeReg?.sampleName : (z.sampleLow || z.sampleHigh))
+                ? `
+            <div class="inspector-section section-drawer-waveform">
+              <div class="section-title">WAVEFORM &amp; REGION AUDITION</div>
+              <div class="drawer-waveform-card">
+                <div class="drawer-waveform-canvas-container">
+                  <canvas id="drawer-preview-waveform-canvas" class="drawer-preview-waveform-canvas"></canvas>
+                  <div class="drawer-waveform-overlay">
+                    <span class="drawer-waveform-tag-name">${escHtml(isExtended ? (activeReg?.sampleName ?? '') : (z.sampleLow ?? z.sampleHigh ?? ''))}</span>
+                    <span class="drawer-waveform-tag-dur">${(effFmtInfo?.durationSec ?? 0).toFixed(3)}s</span>
+                  </div>
+                </div>
+                <div class="drawer-waveform-footer">
+                  <button type="button" class="drawer-waveform-play-btn btn-row-play ${isCurrentPlaying ? 'is-playing' : ''}" data-play-region-id="${isExtended && activeReg ? activeReg.id : ''}" data-play-zone-id="${z.id}" data-play-row-id="${rowKey}" title="${isCurrentPlaying ? 'Stop playback' : 'Audition sample (Loop, DAHDSR Envelopes, Volume, Pan, Detune)'}">
+                    ${isCurrentPlaying ? ICONS.stop : ICONS.play}
+                  </button>
+                  <div class="drawer-waveform-status-info">
+                    <span class="status-indicator-dot ${isCurrentPlaying ? 'is-active' : ''}"></span>
+                    <span class="status-text">${isCurrentPlaying ? 'Auditioning... Click to Stop' : 'Ready for audition (Volume, Pan, Detune &amp; Loop applied)'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            `
+                : ''
+            }
           </div>
 
           <!-- REGION SUB-PANE B: Interactive Waveform Loop Editor, Exceptions & Sample Acoustic -->
@@ -1184,6 +1282,8 @@ export class ZoneInspector {
     this.bindDrawerEvents();
     if (regSubTab === 'loop-acoustic') {
       requestAnimationFrame(() => this.drawDrawerLoopCanvas());
+    } else {
+      requestAnimationFrame(() => this.drawDrawerPreviewWaveform());
     }
   }
 
@@ -1307,6 +1407,9 @@ export class ZoneInspector {
             </button>
             <button type="button" class="btn-overlay-toggle" id="btn-drawer-loop-zoom-in" title="Zoom In Waveform around Loop Region">
               Zoom +
+            </button>
+            <button type="button" class="btn-overlay-toggle" id="btn-drawer-loop-zoom-out" title="Zoom Out Waveform">
+              Zoom -
             </button>
             <button type="button" class="btn-overlay-toggle" id="btn-drawer-loop-zoom-reset" title="Reset Waveform Zoom (1x)">
               1x
@@ -2184,6 +2287,20 @@ export class ZoneInspector {
           : 'Audition sample (Loop, DAHDSR Envelopes, Volume, Pan, Detune)'
       );
     });
+
+    const isExtended = this.workingMode === 'extended';
+    const activeReg = isExtended ? this.getExtendedContext().activeRegion : null;
+    const rowKey = isExtended ? (activeReg?.id ?? this.currentZone?.id ?? '') : (this.currentZone?.id ?? '');
+    const isDrawerPlaying = this.playingRowId !== null && this.playingRowId === rowKey;
+
+    const drawerStatusDot = this.drawerElement?.querySelector('.drawer-waveform-status-info .status-indicator-dot');
+    const drawerStatusText = this.drawerElement?.querySelector('.drawer-waveform-status-info .status-text');
+    if (drawerStatusDot) drawerStatusDot.classList.toggle('is-active', isDrawerPlaying);
+    if (drawerStatusText) {
+      drawerStatusText.textContent = isDrawerPlaying
+        ? 'Auditioning (Synced with Table Play)'
+        : 'Ready for audition (Volume, Pan, Detune & Loop applied)';
+    }
   }
 
   /** Called when another audition source (e.g. the keyboard) takes over playback. */
@@ -2344,12 +2461,28 @@ export class ZoneInspector {
     const inpExtLowVel = this.drawerElement.querySelector('#inp-ext-low-vel') as HTMLInputElement | null;
     const inpExtHighVel = this.drawerElement.querySelector('#inp-ext-high-vel') as HTMLInputElement | null;
 
+    inpLow?.addEventListener('input', () => {
+      const v = parseInt(inpLow.value, 10);
+      if (!Number.isNaN(v) && v >= 0 && v <= 127) {
+        const d = this.drawerElement?.querySelector('#disp-low-note');
+        if (d) d.textContent = midiToNoteName(v);
+      }
+    });
+
     inpLow?.addEventListener('change', () => {
       const val = Math.min(127, Math.max(0, parseInt(inpLow.value, 10) || 0));
       if (isExtended && activeReg && this.handlers.onUpdateExtendedRegion) {
         this.handlers.onUpdateExtendedRegion(activeReg.id, { lowKey: val });
       } else {
         this.handlers.onUpdateZone(z.id, { lowKey: val });
+      }
+    });
+
+    inpRoot?.addEventListener('input', () => {
+      const v = parseInt(inpRoot.value, 10);
+      if (!Number.isNaN(v) && v >= 0 && v <= 127) {
+        const d = this.drawerElement?.querySelector('#disp-root-note');
+        if (d) d.textContent = midiToNoteName(v);
       }
     });
 
@@ -2361,6 +2494,14 @@ export class ZoneInspector {
         this.handlers.onUpdateExtendedRegion(activeReg.id, { rootKey: val });
       } else {
         this.handlers.onUpdateZone(z.id, { rootKey: val });
+      }
+    });
+
+    inpHigh?.addEventListener('input', () => {
+      const v = parseInt(inpHigh.value, 10);
+      if (!Number.isNaN(v) && v >= 0 && v <= 127) {
+        const d = this.drawerElement?.querySelector('#disp-high-note');
+        if (d) d.textContent = midiToNoteName(v);
       }
     });
 
@@ -2563,8 +2704,13 @@ export class ZoneInspector {
     });
 
     this.drawerElement.querySelector('#btn-play-low')?.addEventListener('click', () => {
-      const sampleToPlay = isExtended && activeReg ? activeReg.sampleName : z.sampleLow;
-      if (sampleToPlay) this.handlers.onAuditionSample(sampleToPlay);
+      this.handleRowPlayClick(z.id, isExtended && activeReg ? activeReg.id : null);
+    });
+
+    this.drawerElement.querySelector('.drawer-waveform-play-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.handleRowPlayClick(z.id, isExtended && activeReg ? activeReg.id : null);
     });
 
     // Sample High actions (Classic Mode)
@@ -3038,7 +3184,14 @@ export class ZoneInspector {
       if (d) {
         this.drawerLoopViewCenterNorm = ((d.loopStart + d.loopEnd) * 0.5) / Math.max(1, d.totalFrames);
       }
-      this.drawerLoopZoomFactor = this.drawerLoopZoomFactor >= 16 ? 1 : this.drawerLoopZoomFactor * 2;
+      this.drawerLoopZoomFactor = Math.min(32, this.drawerLoopZoomFactor * 2);
+      this.drawDrawerLoopCanvas();
+    });
+
+    this.drawerElement.querySelector('#btn-drawer-loop-zoom-out')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.drawerLoopZoomFactor = Math.max(1.0, this.drawerLoopZoomFactor / 2);
       this.drawDrawerLoopCanvas();
     });
 
@@ -3238,6 +3391,100 @@ export class ZoneInspector {
       },
       { passive: false }
     );
+  }
+
+  private drawDrawerPreviewWaveform(): void {
+    if (!this.drawerElement) return;
+    const canvas = this.drawerElement.querySelector('#drawer-preview-waveform-canvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const isExtended = this.workingMode === 'extended';
+    const activeReg = isExtended ? this.getExtendedContext().activeRegion : null;
+    const d = this.ensureDrawerLoopData(this.currentZone?.id, activeReg?.id);
+
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(300, Math.floor(rect.width || 560));
+    const height = Math.max(50, Math.floor(rect.height || 64));
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+    }
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = 'rgba(10, 15, 24, 0.85)';
+    ctx.fillRect(0, 0, width, height);
+
+    if (!d || !d.monoPcm || d.monoPcm.length === 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px monospace';
+      ctx.fillText('No sample audio buffer loaded', 14, height * 0.55);
+      ctx.restore();
+      return;
+    }
+
+    // Grid center line
+    const centerY = height * 0.5;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.stroke();
+
+    // Loop region highlight if loop exists
+    if (d.loopEnd > d.loopStart && d.totalFrames > 0) {
+      const loopStartX = (d.loopStart / d.totalFrames) * width;
+      const loopEndX = (d.loopEnd / d.totalFrames) * width;
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+      ctx.fillRect(loopStartX, 0, loopEndX - loopStartX, height);
+
+      // Loop start line
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(loopStartX, 0);
+      ctx.lineTo(loopStartX, height);
+      ctx.stroke();
+
+      // Loop end line
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(loopEndX, 0);
+      ctx.lineTo(loopEndX, height);
+      ctx.stroke();
+    }
+
+    // Waveform envelope
+    const numPoints = Math.min(width, 400);
+    const env = computeZoomedWaveformEnvelope(d.monoPcm, 0, d.totalFrames, numPoints);
+    const ampScale = height * 0.44;
+
+    // Draw gradient waveform bars / fill
+    const grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, '#38bdf8');
+    grad.addColorStop(0.5, '#0ea5e9');
+    grad.addColorStop(1, '#0284c7');
+
+    ctx.fillStyle = grad;
+    const stepX = width / numPoints;
+    for (let i = 0; i < numPoints; i++) {
+      const x = i * stepX;
+      const maxVal = env.max[i] ?? 0;
+      const minVal = env.min[i] ?? 0;
+      const topY = centerY - maxVal * ampScale;
+      const botY = centerY - minVal * ampScale;
+      const barH = Math.max(1.5, botY - topY);
+      ctx.fillRect(x, topY, Math.max(1, stepX - 0.5), barH);
+    }
+
+    ctx.restore();
   }
 
   private drawDrawerLoopCanvas(): void {

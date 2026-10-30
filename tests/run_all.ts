@@ -21,6 +21,8 @@ const TEST_FILES = [
   'phase6_units.test.ts',
   'noteMapping.test.ts',
   'phase7_import_robustness.test.ts',
+  'phase12_batch.test.ts',
+  'security_hardening.test.ts',
 ];
 
 interface TestResult {

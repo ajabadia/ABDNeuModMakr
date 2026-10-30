@@ -252,6 +252,9 @@
 - [x] **Sincronización de carpetas y "Guardar como..." (`Save As...`)**:
   - Opción directa `Salvar en AxionikDB` y `Salvar en AxionikDB como...` para duplicar modelos de forma no destructiva y experimentar con diferentes parámetros o carátulas.
   - Sincronización automática del nombre de la subcarpeta del banco si el usuario renombra el modelo consolidado.
+- [x] **Doble Denominación de Modelo (Dual-Naming: Classic 11-char vs Expanded Unrestricted)**:
+  - **Modo Clásico**: `modelName` limitado estrictamente a 11 caracteres ASCII (limitación física del hardware Hartmann Neuron 2002 para archivos `MName` y visualización LCD).
+  - **Modo Extendido**: `expandedName` sin limitación arbitraria de caracteres para presets modernos y el ecosistema `ABDAxionikVS`, manteniendo en paralelo un `modelName` de 11 caracteres para retrocompatibilidad hacia la capa clásica `04_classic_enhanced`.
 
 ### 11.2 Catálogo Ampliado de Instrumentos y Clasificación IA [COMPLETADA]
 - [x] Taxonomía moderna de 14 categorías ricas de sonido para el clasificador acústico de IA (WebGPU, WASM y Bridge):
@@ -284,26 +287,25 @@
 
 ---
 
-## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [EN PLANIFICACIÓN / EN DESARROLLO]
+## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [COMPLETADA]
 
 **Objetivo**: Procesamiento desatendido por lotes sobre colecciones completas de `NeuronDB`, archivos multi-preset SoundFont (`.sf2`), librerías de carpetas de muestras (`.wav`/`.aiff`) y definiciones `.sfz`.
 
 ### 12.1 Fuentes de Entrada Soportadas en Lote
-- [ ] **SoundFont 2 Multi-Preset**: Detección de todos los presets del SF2, extrayendo cada uno como un modelo candidato independiente con mapeo automático de zonas key/vel.
-- [ ] **Carpetas de Muestras / Instrument Packs**: Procesamiento de directorios con subcarpetas donde cada subcarpeta define un modelo (`Import by Name` o metadatos embebidos).
-- [ ] **NeuronDB Clásico Completo**: Migración y re-análisis en lote de bancos históricos `000.model`..`511.model` para generar Cápsulas del Tiempo y volcarlas en `AxionikDB`.
+- [x] **SoundFont 2 Multi-Preset**: Detección de todos los presets del SF2, extrayendo cada uno como un modelo candidato independiente con mapeo automático de zonas key/vel (`Sf2BatchExtractor.ts`).
+- [x] **Carpetas de Muestras / Instrument Packs**: Procesamiento de directorios con subcarpetas donde cada subcarpeta define un modelo (`FolderBatchExtractor.ts`), o agrupación por prefijo de instrumento.
+- [x] **NeuronDB Clásico Completo**: Migración y re-análisis en lote de bancos históricos `000.model`..`511.model` para generar Cápsulas del Tiempo de 5 capas.
 
 ### 12.2 Motor de Cola Desatendida & Tolerancia a Fallos
-- [ ] Cola FIFO asíncrona no bloqueante en Web Worker (con opción de delegación al Companion Bridge para colecciones masivas de gigabytes en disco local).
-- [ ] Aislamiento de errores: Un archivo corrupto o con sample-rate no estándar no detiene el lote; se registra en el log y el procesador salta al siguiente modelo.
-- [ ] Controles de ejecución: Iniciar, Pausar, Reanudar, Cancelar e Indicador de progreso global (`Modelo N de Total`, tiempo estimado restante).
+- [x] Cola FIFO asíncrona no bloqueante (`BatchQueue.ts`) con procesamiento secuencial desatendido y liberación de memoria por modelo.
+- [x] Aislamiento de errores: Un archivo corrupto o con sample-rate no estándar no detiene el lote; se registra en el log y el procesador salta al siguiente modelo.
+- [x] Controles de ejecución: Iniciar, Pausar, Reanudar, Cancelar e Indicador de progreso global (`Modelo N de Total`, tiempo estimado restante, porcentaje global e individual).
 
-### 12.3 Configuración de Lote y Destinos de Salida
-- [ ] Perfiles de procesamiento aplicables en bloque:
-  - Complejidad (1..10) o Auto-Complejidad guiada por IA según densidad armónica.
-  - Formato destino: `AxionikDB` (Extended), `NeuronDB` (Classic), o paquete ZIP de Cápsula del Tiempo de 5 capas.
-  - Clasificación acústica y asignación de Parameter Set automática mediante `AcousticIntelligence`.
-- [ ] Reporte final de telemetría: Resumen detallado con número de modelos generados, zonas mapeadas, calidad espectral promedio y lista de advertencias.
+### 12.3 Configuración de Lote, Preflight & Destinos de Salida
+- [x] **Herencia de Configuración Activa**: El lote hereda la configuración activa de la sesión (algoritmo DSP Clásico/Mejorado, Modo de Trabajo Clásico/Extendido, Motor IA activo WebWorker/CUDA Bridge, formato destino).
+- [x] **Inspección Preflight Obligatoria**: Resumen detallado previo al arranque que desglosa **qué va a hacer**, **cómo lo va a hacer**, qué motor IA/DSP empleará y **sobre qué ficheros** operará (`preflight.ts`).
+- [x] **Destinos**: Exportación a archivo maestro PKZIP (`.zip`) con todas las Cápsulas del Tiempo o sincronización directa a la librería local `AxionikDB` vía Companion Bridge.
+- [x] **UI y Atajos**: Modal interactivo de 4 pasos (`BatchProcessorModal.ts`), botón de acceso directo en Navbar y atajo de teclado `Ctrl+Shift+B`. Suite de tests automatizada (`phase12_batch.test.ts`) integrada en el ejecutor continuo `run_all.ts`.
 
 ---
 
@@ -332,3 +334,99 @@
 - [x] Verificacion estricta de tipos (`npm run test:types` 0 errores).
 - [x] Build de produccion optimizado (`npm run build` en <1s).
 - [x] CI/CD y despliegue continuo en Vercel vinculado a la rama `master`.
+
+---
+
+## Fase 16 — Utilidad Universal de Exportación Multi-Formato desde File (Bancos e Instrumentos Raw) [PLANIFICADA]
+
+**Objetivo**: Exportar la colección de zonas, mapeos y muestras originales (material *raw* antes de análisis/procesamiento de resíntesis) a los principales estándares de la industria del sampling y samplers virtuales/hardware.
+
+### 16.1 Integración en Interfaz de Usuario
+- [ ] Nuevo acceso en el menú principal: `File -> Export Sampler / Multi-Format Bank...` (con atajo y selector de perfiles).
+- [ ] Diálogo de configuración con múltiples opciones (similar a Save As / Export):
+  - Selección de formato de salida.
+  - Selección de resolución y sample rate de audio (conservar original o remuestrear a 44.1k/48k/96k).
+  - Normalización opcional y retención de metadatos/licencia.
+  - Opciones de estructura de carpetas (monolítico incrustado vs parche con subcarpeta `Samples/`).
+
+### 16.2 Formatos de Destino Soportados (Muestras Originales Intactas)
+*Nota*: La exportación opera exclusivamente sobre la materia prima original (muestras WAV/AIFF directas, zonas `lowKey..highKey`, `lowVel..highVel`, `rootKey`, afinación, volumen, paneo y rangos de loop `L-START`/`L-END`), **sin pasar por los transformadores espectrales Scape/Sphere de Neuron**.
+
+1. **SoundFont 2 (`.sf2`)**:
+   - Generador binario RIFF `sfbk` con bloques `INFO` (nombre de preset, autor, licencia, software), `sdta` (banco de muestras PCM16 contiguo con padding) y `pdta` (jerarquía PHDR/PBAG/PMOD/PGEN -> IHDR/IBAG/IMOD/IGEN -> SHDR con cabeceras de muestra y bucle).
+2. **SFZ Format (`.sfz` + carpeta de samples)**:
+   - Archivo de definición en texto plano estándar compatible con Cakewalk/Plogue/LinuxSampler/Sforzando.
+   - Declaración de encabezados `<control>`, `<global>`, `<group>` y `<region>` con rutas relativas a las muestras, puntos de loop, rangos de teclas y velocidades.
+3. **Native Instruments Kontakt (`.nki` - ej. Kontakt 5)**:
+   - Parche de instrumento Kontakt o formato estructurado con zonas y mapeo de grupos basado en las especificaciones técnicas disponibles de parches monolíticos/desempaquetados.
+4. **Steinberg HALion (`.vstpreset` / `.fxp`)**:
+   - Estructura de programa y capas de zona para el sampler de Steinberg con mapeo de articulación.
+5. **IK Multimedia SampleTank**:
+   - Definición de instrumento de librería SampleTank con metadatos asociados.
+6. **Otros formatos abiertos con especificación técnica documentada**:
+   - Decent Sampler (`.dspreset` basado en XML).
+   - Bitwig Studio Multisample (`.multisample`).
+7. **Cadena Lineal de Muestras Concatenadas (WAV / AIFF "Sample Chain / Key Map")**:
+   - Exportación de un único archivo de audio lineal continuo (`.wav` o `.aiff`) con todos los tonos/muestras ordenados y pegados secuencialmente uno detrás de otro.
+   - Incrustación de marcas de división/cue points o regiones RIFF/smpl para samplers hardware y grooves (Elektron Octatrack, Roland SP-404, Korg electribe, OP-1/OP-Z).
+
+---
+
+## Fase 17 — Evolución Conjunta con ABDAxionikVS (Metadatos Ricos y Doble Nomenclatura) [COMPLETADA EN CLIENTE]
+
+- [x] **Doble Nomenclatura de Modelos Totalmente Independiente**:
+  - `modelName`: Nombre estricto clásico de 11 caracteres ASCII (hardware Hartmann Neuron 2002 / `MName` legacy).
+  - `expandedName`: Nombre sin restricción de longitud de caracteres para el modo extendido y presets de `ABDAxionikVS`.
+  - Conmutación no destructiva bidireccional: Escribir un nombre extendido largo (ej. 50 caracteres) y alternar a Modo Clásico muestra el nombre clásico de 11 caracteres; al regresar a Modo Extendido el nombre extendido permanece 100% íntegro e inalterado.
+  - Inicialización consistente: Al crear una sesión o importar muestras, ambos nombres se inicializan con el valor base apropiado.
+- [x] **Metadatos Ricos y Atributos Libres (`ExtendedModelMetadata`)**:
+  - Proveniencia y origen: URL de procedencia del SoundFont/muestra (`sourceUrl`) con botón de apertura web, formato original (`sourceFormat`), preset de origen (`sourcePresetName`).
+  - Licencia y autoría: Autor/diseñador sonoro (`author`), librería/distribuidor (`vendor`), versión semántica (`version`, ej. "1.0.0"), tipo de licencia (`license`, ej. "CC-BY 4.0", "CC0", "Comercial") y descripción técnica/acústica (`description`).
+  - Atributos libres definidos por el usuario: pares de metadatos `customAttributes: [{ tag: string, value: string }]` con editor dinámico interactivo en la tarjeta de `ProcessPanel.ts` (`+ Add Tag` y eliminación individual).
+  - Validación y persistencia en esquema de sesión (`sessionSchema.ts`) y empaquetado transparente en la Cápsula del Tiempo (`manifest.json` y `05_extended_model/extended_map.json`).
+
+---
+
+## Fase 18 — Utilidad Inteligente de Troceado (Audio Chopper / Slicer) y Auto-Mapeo Multicapa por Tono y Volumen [PLANIFICADA]
+
+**Objetivo**: Segmentar archivos de audio continuos (WAV/AIFF) en rebanadas individuales (slices) y distribuirlos de forma inteligente en zonas de teclado y capas de velocidad, con lógica especializada para percusión o instrumentos cromáticos.
+
+### 18.1 Flujo Modular Desacoplado en Etapas
+1. **Limpieza y Trimming de Silencios (*Silence Stripping*)**:
+   - Detección de umbral dinámico RMS para eliminar espacios vacíos al inicio, entre tomas y al final de las muestras.
+   - Snapping automático del inicio y final de corte en puntos exactos de cruce por cero (zero-crossing) para prevenir chasquidos.
+2. **Rebanado / Detección de Transitorios (*Chopping / Slicing*)**:
+   - Detección de transitorios basada en flujo espectral (Spectral Flux), densidad de onsets o tracking neural (Spotify Basic Pitch).
+   - Generación de marcadores de slice editables interactivamente.
+3. **Clasificación del Tipo de Material (Drums vs Cromático)**:
+   - **Modo Ritmos / Percusión (Drums)**:
+     - Clasificación asistida por algoritmos o IA del tipo de golpe (Kick, Snare, Hi-Hat cerrado/abierto, Toms, Platos, Percusión).
+     - Asignación y distribución automática siguiendo la norma universal **General MIDI (GM Drum Map)** (ej. Kick en C1/36, Snare en D1/38, Closed Hat en F#1/42, etc.).
+   - **Modo Tonal / Cromático (Instrument / Melodic)**:
+     - Detección automática de F0 y nota raíz (root key) de cada fragmento.
+     - Reparto inteligente equidistante sobre el keybed: colocación de la nota raíz en el centro exacto de su rango (`rootKey` centrado entre `lowKey` y `highKey`), calculando las fronteras intermedias equidistantes entre notas consecutivas según las mejores prácticas de la industria de samplers profesionales.
+4. **Distribución Multicapa por Volumen / Dinámica (Velocity Layers)**:
+   - Medición de amplitud de pico y energía RMS de cada slice correspondiente a un mismo tono o elemento percusivo.
+   - Asignación a capas de velocidad ordenadas (ej. suave 1..42, medio 43..85, fuerte 86..127).
+5. **Control de Solapamiento Configurable (*Overlap Policy*)**:
+   - Modo por defecto: Partición disjunta y contigua 0..127 sin solapamientos de notas ni velocidades.
+   - Opción conmutable de solapamiento: Permitir solape de rangos para crossfading de zonas y velocity switching.
+   - Validación de compatibilidad contra el perfil de exportación activo (e.g. limitación clásica vs libertad extendida).
+6. **Arquitectura Transversal Reutilizable**:
+   - Los submódulos de auto-detección tonal y re-distribución equidistante de zonas son utilidades independientes del Core, aplicables a cualquier sesión o lote de importación, no restringidas únicamente al chopper.
+
+---
+
+## Fase 19 — Modo Rompler Puro en ABDAxionikVS (Reproducción de Audio Crudo / Raw Multisample) [PLANIFICADA]
+
+**Objetivo**: Permitir que el sintetizador software `ABDAxionikVS` opere como un rompler tradicional de alta definición, cargando y reproduciendo directamente la materia prima sin procesar de la capa `01_raw_source` (o `03_enhanced_audio` en 24-bit/96kHz).
+
+### 19.1 Características y Aprovechamiento del Sistema
+- **Reproducción Directa PCM de Alta Fidelidad**: Carga de multisamples con mapeos de zonas key/vel intactos, prescindiendo opcionalmente de los transformadores Scape/Sphere.
+- **Herencia Integral del Motor de Síntesis**:
+  - Filtros multimodo modelados analógicamente, distorsión no lineal y generadores DAHDSR ultra-rápidos.
+  - Reproducción de bucles continuos y ping-pong perfeccionados con el editor de loops y lupa de cruce por cero de NeuModMakr.
+  - Interpolación polifónica sinc de alta calidad sin artefactos de aliasing.
+- **Capas Híbridas Rompler + Resíntesis Neuronal**: Posibilidad de apilar o hacer morphing entre una capa de audio muestreado crudo (ataque rápido y natural) y una capa aditiva de resíntesis neuronal Hartmann (cuerpo mutante y modelado espectral continuo).
+
+

@@ -8,7 +8,7 @@ import { ICONS } from './icons';
 import { cloudByokClient } from '../core/ai/CloudByokClient';
 import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
-export type SettingsModalTab = 'general' | 'web' | 'cloud' | 'bridge';
+export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge';
 
 export interface NavbarHandlers {
   onNewSession: () => void;
@@ -45,6 +45,7 @@ export interface NavbarHandlers {
   onToggleZoneDrawer: () => void;
   onToggleSpectral: () => void;
   onToggleBank: () => void;
+  onOpenBatchModal?: () => void;
   onToggleLogs: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
   onOpenAudit?: () => void;
@@ -220,12 +221,14 @@ export class AppNavbar {
     // Center HUD Slot
     const centerSlot = document.createElement('div');
     centerSlot.className = 'nav-hud-center';
-    const initMaxLen = (initialSession.processConfig.workingMode ?? 'classic') === 'extended' ? 32 : 11;
+    const isInitExt = (initialSession.processConfig.workingMode ?? 'classic') === 'extended';
+    const initName = isInitExt ? (initialSession.processConfig.expandedName || initialSession.processConfig.modelName) : initialSession.processConfig.modelName;
     const initSlot = String(initialSession.processConfig.modelNumber).padStart(3, '0');
+    const initCharInfo = isInitExt ? `${initName.length} chars (Extended)` : `${initName.length}/11 chars`;
     centerSlot.innerHTML = `
       <div class="hud-pill hud-model-pill" title="Active target model slot, hardware name, and character length">
         <span class="hud-label">TARGET MODEL:</span>
-        <span class="hud-value hud-model-name" id="hud-model-name">#${initSlot} &bull; ${initialSession.processConfig.modelName} &bull; ${initialSession.processConfig.modelName.length}/${initMaxLen} chars</span>
+        <span class="hud-value hud-model-name" id="hud-model-name">#${initSlot} &bull; ${initName} &bull; ${initCharInfo}</span>
       </div>
       <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="Click to inspect or repair MIDI 0..127 coverage">
         <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.piano}</span>
@@ -253,6 +256,9 @@ export class AppNavbar {
       </button>
       <button type="button" class="btn btn-hud-icon" id="nav-btn-bank" title="NeuronDB Bank Browser (Ctrl+B)">
         ${ICONS.database}
+      </button>
+      <button type="button" class="btn btn-hud-icon" id="nav-btn-batch" title="Batch Processor (Phase 12) (Ctrl+Shift+B)">
+        ${ICONS.layers}
       </button>
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
         ${ICONS.terminal}
@@ -341,6 +347,7 @@ export class AppNavbar {
     this.processBtn?.addEventListener('click', () => this.handlers.onStartProcess());
     rightSlot.querySelector('#nav-btn-spectral')?.addEventListener('click', () => this.handlers.onToggleSpectral());
     rightSlot.querySelector('#nav-btn-bank')?.addEventListener('click', () => this.handlers.onToggleBank());
+    rightSlot.querySelector('#nav-btn-batch')?.addEventListener('click', () => this.handlers.onOpenBatchModal?.());
     rightSlot.querySelector('#nav-btn-logs')?.addEventListener('click', () => this.handlers.onToggleLogs());
     this.themeModeBtn = rightSlot.querySelector('#nav-btn-theme-mode');
     this.themeModeBtn?.addEventListener('click', () => {
@@ -387,8 +394,10 @@ export class AppNavbar {
     if (this.statusElement) {
       const slot = String(session.processConfig.modelNumber).padStart(3, '0');
       const dirtyMark = session.dirty ? ' *' : '';
-      const maxLen = (session.processConfig.workingMode ?? 'classic') === 'extended' ? 32 : 11;
-      this.statusElement.textContent = `#${slot} \u2022 ${session.processConfig.modelName}${dirtyMark} \u2022 ${session.processConfig.modelName.length}/${maxLen} chars`;
+      const isExt = (session.processConfig.workingMode ?? 'classic') === 'extended';
+      const displayName = isExt ? (session.processConfig.expandedName || session.processConfig.modelName) : session.processConfig.modelName;
+      const charInfo = isExt ? `${displayName.length} chars (Extended)` : `${displayName.length}/11 chars`;
+      this.statusElement.textContent = `#${slot} \u2022 ${displayName}${dirtyMark} \u2022 ${charInfo}`;
     }
 
     if (this.coverageElement) {

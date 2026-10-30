@@ -90,8 +90,8 @@ export class ProcessPanel {
     }
     const activeEl = document.activeElement;
     const isTypingInput =
-      activeEl instanceof HTMLInputElement &&
-      (activeEl.id === 'inp-model-name' || activeEl.id === 'inp-model-slot');
+      (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) &&
+      this.container.contains(activeEl);
     if (
       isTypingInput &&
       this.container.contains(activeEl) &&
@@ -165,7 +165,7 @@ export class ProcessPanel {
 
 
   private getMaxNameLength(): number {
-    return this.currentConfig.targetFormat === 'modern-neural' ? 32 : 11;
+    return (this.currentConfig.workingMode ?? 'classic') === 'extended' ? 128 : 11;
   }
 
   private syncDomValues(): void {
@@ -174,19 +174,25 @@ export class ProcessPanel {
     const valComp = this.container.querySelector('#val-complexity') as HTMLElement | null;
     const nameCounter = this.container.querySelector('#val-name-counter') as HTMLElement | null;
 
-    const maxLen = this.getMaxNameLength();
+    const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
+    const activeName = isExt ? (this.currentConfig.expandedName || this.currentConfig.modelName) : this.currentConfig.modelName;
+
     if (inpSlot && document.activeElement !== inpSlot) {
       inpSlot.value = String(this.currentConfig.modelNumber);
     }
     if (inpName) {
-      inpName.maxLength = maxLen;
+      if (isExt) {
+        inpName.removeAttribute('maxlength');
+      } else {
+        inpName.maxLength = 11;
+      }
       if (document.activeElement !== inpName) {
-        inpName.value = this.currentConfig.modelName;
+        inpName.value = activeName;
       }
     }
     if (nameCounter) {
-      const len = (inpName?.value ?? this.currentConfig.modelName).length;
-      nameCounter.textContent = `${len}/${maxLen} chars`;
+      const len = (inpName?.value ?? activeName).length;
+      nameCounter.textContent = isExt ? `${len} chars (Extended)` : `${len}/11 chars`;
     }
     if (valComp) {
       const recDepth = STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
@@ -286,7 +292,6 @@ export class ProcessPanel {
     const activeSet =
       this.parameterSets.find((p) => p.id === this.currentConfig.parameterSet) ||
       this.parameterSets[0];
-    const maxLen = this.getMaxNameLength();
     const recDepth =
       STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
     const activeTarget = this.currentConfig.targetFormat ?? 'dual';
@@ -346,10 +351,10 @@ export class ProcessPanel {
           <div class="form-row-name-slot">
             <div class="form-group">
               <div class="label-with-val">
-                <label for="inp-model-name" title="Auto-filled from first sample if not edited manually. Hardware MName max 11 ASCII chars; Extended .nmmodel max 32.">MODEL NAME</label>
-                <span class="val-pill" id="val-name-counter">${this.currentConfig.modelName.length}/${maxLen} chars</span>
+                <label for="inp-model-name" title="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended Model Name: Unrestricted character length for modern presets and ABDAxionikVS integration.' : 'Classic Hardware MName: Strictly max 11 ASCII characters for Hartmann Neuron 2002 compatibility.'}">${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'MODEL NAME (EXTENDED)' : 'MODEL NAME (CLASSIC)'}</label>
+                <span class="val-pill" id="val-name-counter">${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? `${((this.currentConfig.expandedName || this.currentConfig.modelName) ?? '').length} chars (No limit)` : `${this.currentConfig.modelName.length}/11 chars`}</span>
               </div>
-              <input type="text" id="inp-model-name" maxlength="${maxLen}" value="${escAttr(this.currentConfig.modelName)}" placeholder="Auto from sample..." title="Model Name (max ${maxLen} chars)" />
+              <input type="text" id="inp-model-name" ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? '' : 'maxlength="11"'} value="${escAttr((this.currentConfig.workingMode ?? 'classic') === 'extended' ? (this.currentConfig.expandedName || this.currentConfig.modelName) : this.currentConfig.modelName)}" placeholder="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended model name...' : 'Auto from sample...'}" title="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended Model Name (Unrestricted length)' : 'Hardware Model Name (max 11 chars)'}" />
             </div>
 
             <div class="form-group">
@@ -475,6 +480,8 @@ export class ProcessPanel {
                 })()
               : ''
           }
+
+          ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? this.renderExtendedMetadataSection() : ''}
 
           <div class="validation-inline-bar is-ok is-compact-hidden" id="val-config-status">
             <span class="val-status-icon">${ICONS.alert}</span>
@@ -642,10 +649,11 @@ export class ProcessPanel {
     const txt = this.container.querySelector('#val-config-text') as HTMLElement | null;
     const slotBadge = this.container.querySelector('#val-slot-badge') as HTMLElement | null;
     const nameCounter = this.container.querySelector('#val-name-counter') as HTMLElement | null;
+    const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
     const maxLen = this.getMaxNameLength();
 
     if (nameCounter) {
-      nameCounter.textContent = `${rawName.length}/${maxLen} chars`;
+      nameCounter.textContent = isExt ? `${rawName.length} chars (No limit)` : `${rawName.length}/${maxLen} chars`;
     }
 
     const clampedSlot = Math.min(511, Math.max(0, Number.isNaN(rawSlot) ? 0 : rawSlot));
@@ -695,11 +703,22 @@ export class ProcessPanel {
     });
 
     inpName?.addEventListener('input', () => {
-      const maxLen = this.getMaxNameLength();
+      const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
       const raw = inpName.value;
       this.updateValidationBanner(this.currentConfig.modelNumber, raw);
-      const val = raw.trim().slice(0, maxLen) || 'UNTITLED';
-      this.currentConfig.modelName = val;
+      if (isExt) {
+        const fullVal = raw.trim() || 'UNTITLED';
+        this.currentConfig.expandedName = fullVal;
+        if (!this.currentConfig.modelName || this.currentConfig.modelName === 'UNTITLED' || this.currentConfig.modelName === 'NewModel') {
+          this.currentConfig.modelName = fullVal.slice(0, 11);
+        }
+      } else {
+        const val = raw.trim().slice(0, 11) || 'UNTITLED';
+        this.currentConfig.modelName = val;
+        if (!this.currentConfig.expandedName || this.currentConfig.expandedName === 'UNTITLED' || this.currentConfig.expandedName === 'NewModel') {
+          this.currentConfig.expandedName = val;
+        }
+      }
       this.handlers.onConfigChange({ ...this.currentConfig });
     });
 
@@ -749,6 +768,12 @@ export class ProcessPanel {
         const m = (btn.getAttribute('data-working-mode') === 'extended' ? 'extended' : 'classic') as WorkingMode;
         if ((this.currentConfig.workingMode ?? 'classic') === m) return;
         this.currentConfig.workingMode = m;
+        if (!this.currentConfig.expandedName) {
+          this.currentConfig.expandedName = this.currentConfig.modelName || 'UNTITLED';
+        }
+        if (!this.currentConfig.modelName) {
+          this.currentConfig.modelName = (this.currentConfig.expandedName || 'UNTITLED').slice(0, 11);
+        }
         this.render();
         this.handlers.onConfigChange({ ...this.currentConfig });
       });
@@ -892,6 +917,173 @@ export class ProcessPanel {
     this.container.querySelector('#btn-cta-process')?.addEventListener('click', () => {
       if (!this.getSufficientDataStatus().canGenerate) return;
       this.handlers.onStartProcess();
+    });
+
+    this.bindExtendedMetadataEvents();
+  }
+
+  private renderExtendedMetadataSection(): string {
+    const meta = this.currentConfig.extendedMetadata ?? {};
+    const customAttrs = meta.customAttributes ?? [];
+
+    return `
+      <!-- Extended Model Metadata & Provenance (Extended Mode / ABDAxionikVS) -->
+      <div class="settings-section-card extended-meta-card" style="margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-panel-surface-elevated); border: 1px solid var(--color-panel-border); border-radius: var(--radius-sm);">
+        <div class="settings-card-header" style="margin-bottom: 8px;">
+          <div class="label-with-val">
+            <label style="font-weight: 700; font-size: var(--text-xs); letter-spacing: 0.05em; color: var(--color-accent); display: flex; align-items: center; gap: 6px;">
+              ${ICONS.database} EXTENDED MODEL METADATA &amp; PROVENANCE
+            </label>
+            <span class="val-pill" style="font-size: 10px;">ABDAxionikVS</span>
+          </div>
+        </div>
+
+        <div class="extended-meta-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="meta-inp-author" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Author / Creator</label>
+              <input type="text" id="meta-inp-author" class="form-control" value="${escAttr(meta.author ?? '')}" placeholder="Sound designer..." />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="meta-inp-version" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Version</label>
+              <input type="text" id="meta-inp-version" class="form-control" value="${escAttr(meta.version ?? '1.0.0')}" placeholder="1.0.0" />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="meta-inp-license" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">License</label>
+              <input type="text" id="meta-inp-license" class="form-control" value="${escAttr(meta.license ?? '')}" placeholder="e.g. CC-BY 4.0, CC0, Commercial" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label for="meta-inp-source-url" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Source / SF2 Origin URL</label>
+              <div style="display: flex; gap: 4px;">
+                <input type="url" id="meta-inp-source-url" class="form-control" value="${escAttr(meta.sourceUrl ?? '')}" placeholder="https://..." style="flex: 1;" />
+                ${meta.sourceUrl ? `<a href="${escAttr(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline" title="Open URL in browser">${ICONS.externalLink}</a>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
+            <label for="meta-inp-description" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Description &amp; Performance Notes</label>
+            <textarea id="meta-inp-description" class="form-control" rows="2" placeholder="Musical characteristics, acoustic tips, recording gear...">${escHtml(meta.description ?? '')}</textarea>
+          </div>
+
+          <!-- Free-form Tag/Value Attributes -->
+          <div class="custom-attributes-wrap" style="margin-top: 10px; border-top: 1px dashed var(--color-panel-border); padding-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted);">
+                Custom Metadata Tags (${customAttrs.length})
+              </span>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-add-meta-tag" title="Add arbitrary custom tag & value attribute (e.g. Mic, Preamp, Hall, Style)">
+                ${ICONS.plus} Add Tag
+              </button>
+            </div>
+
+            <div id="custom-meta-tags-list">
+              ${customAttrs.map((attr, idx) => `
+                <div class="custom-attr-item" data-index="${idx}" style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+                  <input type="text" class="form-control inp-meta-tag" data-index="${idx}" value="${escAttr(attr.tag)}" placeholder="Tag (e.g. Mic)" style="flex: 1;" />
+                  <input type="text" class="form-control inp-meta-val" data-index="${idx}" value="${escAttr(attr.value)}" placeholder="Value (e.g. U87)" style="flex: 2;" />
+                  <button type="button" class="btn btn-xs btn-ghost btn-danger-hover btn-remove-meta-tag" data-index="${idx}" title="Remove tag">
+                    ${ICONS.trash}
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private bindExtendedMetadataEvents(): void {
+    const authorInp = this.container.querySelector('#meta-inp-author') as HTMLInputElement | null;
+    authorInp?.addEventListener('input', () => {
+      this.currentConfig.extendedMetadata = {
+        ...(this.currentConfig.extendedMetadata ?? {}),
+        author: authorInp.value.trim(),
+      };
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    const versionInp = this.container.querySelector('#meta-inp-version') as HTMLInputElement | null;
+    versionInp?.addEventListener('input', () => {
+      this.currentConfig.extendedMetadata = {
+        ...(this.currentConfig.extendedMetadata ?? {}),
+        version: versionInp.value.trim(),
+      };
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    const licenseInp = this.container.querySelector('#meta-inp-license') as HTMLInputElement | null;
+    licenseInp?.addEventListener('input', () => {
+      this.currentConfig.extendedMetadata = {
+        ...(this.currentConfig.extendedMetadata ?? {}),
+        license: licenseInp.value.trim(),
+      };
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    const urlInp = this.container.querySelector('#meta-inp-source-url') as HTMLInputElement | null;
+    urlInp?.addEventListener('input', () => {
+      this.currentConfig.extendedMetadata = {
+        ...(this.currentConfig.extendedMetadata ?? {}),
+        sourceUrl: urlInp.value.trim(),
+      };
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    const descInp = this.container.querySelector('#meta-inp-description') as HTMLTextAreaElement | null;
+    descInp?.addEventListener('input', () => {
+      this.currentConfig.extendedMetadata = {
+        ...(this.currentConfig.extendedMetadata ?? {}),
+        description: descInp.value.trim(),
+      };
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    this.container.querySelector('#btn-add-meta-tag')?.addEventListener('click', () => {
+      const curMeta = this.currentConfig.extendedMetadata ?? {};
+      const curAttrs = [...(curMeta.customAttributes ?? [])];
+      curAttrs.push({ tag: '', value: '' });
+      this.currentConfig.extendedMetadata = {
+        ...curMeta,
+        customAttributes: curAttrs,
+      };
+      this.render();
+      this.handlers.onConfigChange({ ...this.currentConfig });
+    });
+
+    this.container.querySelectorAll<HTMLInputElement>('.inp-meta-tag').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const idx = parseInt(inp.dataset.index ?? '-1', 10);
+        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes?.[idx]) {
+          this.currentConfig.extendedMetadata.customAttributes[idx].tag = inp.value;
+          this.handlers.onConfigChange({ ...this.currentConfig });
+        }
+      });
+    });
+
+    this.container.querySelectorAll<HTMLInputElement>('.inp-meta-val').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const idx = parseInt(inp.dataset.index ?? '-1', 10);
+        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes?.[idx]) {
+          this.currentConfig.extendedMetadata.customAttributes[idx].value = inp.value;
+          this.handlers.onConfigChange({ ...this.currentConfig });
+        }
+      });
+    });
+
+    this.container.querySelectorAll<HTMLButtonElement>('.btn-remove-meta-tag').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.index ?? '-1', 10);
+        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes) {
+          this.currentConfig.extendedMetadata.customAttributes.splice(idx, 1);
+          this.render();
+          this.handlers.onConfigChange({ ...this.currentConfig });
+        }
+      });
     });
   }
 }

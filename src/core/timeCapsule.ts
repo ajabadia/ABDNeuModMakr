@@ -520,11 +520,23 @@ export function extractTimeCapsuleFromFiles(
   inputFiles: readonly { name: string; data: Uint8Array }[]
 ): ExtractedTimeCapsule {
   const expanded: { name: string; data: Uint8Array }[] = [];
+  const isUnsafeZipPath = (p: string): boolean => {
+    const norm = p.replace(/\\/g, '/');
+    return (
+      norm.length === 0 ||
+      norm.length > 512 ||
+      norm.startsWith('/') ||
+      /^[a-zA-Z]:[\\/]/.test(norm) ||
+      norm.split('/').includes('..') ||
+      norm.includes('\0')
+    );
+  };
   for (const f of inputFiles) {
     const lowerName = f.name.toLowerCase();
     if (lowerName.endsWith('.zip') || lowerName.endsWith('.nmpack')) {
       const unzipped = parseZipArchive(f.data);
       for (const u of unzipped) {
+        if (isUnsafeZipPath(u.path)) continue; // S6.2 Zip-Slip: ignora entradas con .. o absolutas
         expanded.push({ name: u.path, data: u.data });
       }
     } else {

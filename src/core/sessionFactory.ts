@@ -41,6 +41,7 @@ export function createInitialSession(name: string): Session {
     processConfig: {
       modelNumber: 0,
       modelName: 'NewModel',
+      expandedName: 'NewModel',
       complexity: 8,
       parameterSet: 0,
       targetFormat: 'dual',

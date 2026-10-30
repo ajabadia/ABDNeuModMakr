@@ -19,6 +19,7 @@ import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/for
 import type { AxionikDbModelEntry } from '../core/bridge/BridgeClient';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
 import { escAttr } from './escape';
+import { isSafeCoverDataUrl } from '../core/bankService';
 
 export type BankTab = 'models' | 'presets' | 'library' | 'axionik';
 
@@ -528,15 +529,16 @@ export class BankDrawer {
               usedCount > 0
                 ? `${usedCount} Sound${usedCount === 1 ? '' : 's'}`
                 : 'Unused';
-            const cardIconHtml = m.coverWebpDataUrl
-              ? `<img src="${escAttr(m.coverWebpDataUrl)}" alt="${escAttr(m.name)}" class="ndb-card-cover-img" />`
+            const safeCover = isSafeCoverDataUrl(m.coverWebpDataUrl) ? m.coverWebpDataUrl : undefined;
+            const cardIconHtml = safeCover
+              ? `<img src="${escAttr(safeCover)}" alt="${escAttr(m.name)}" class="ndb-card-cover-img" />`
               : ICONS[iconKey] || ICONS.database;
             const badges = [
               `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
               `Lvl ${m.complexity}`,
               usageBadge,
             ];
-            if (m.coverWebpDataUrl) {
+            if (safeCover) {
               badges.push('WEBP');
             }
             return bankCardHtml({

@@ -27,6 +27,7 @@ import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
 import { SettingsModal } from './ui/SettingsModal';
+import { BatchProcessorModal } from './ui/BatchProcessorModal';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { createUniqueModelSlug } from './core/modelSlug';
@@ -50,6 +51,7 @@ class App {
   private bankDrawer!: BankDrawer;
   private neuronDbModal = new NeuronDbModal();
   private settingsModal!: SettingsModal;
+  private batchModal!: BatchProcessorModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
@@ -77,6 +79,27 @@ class App {
       getCurrentThemeFamily: () => self.themeFamilies[self.currentFamilyIndex],
       getCurrentThemeMode: () => self.currentThemeMode,
       getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
+    });
+
+    this.batchModal = new BatchProcessorModal({
+      getCurrentProcessConfig: () =>
+        self.session?.processConfig ?? {
+          modelNumber: 1,
+          modelName: 'Batch',
+          complexity: 8,
+          parameterSet: 0,
+          targetFormat: 'dual',
+          dspAlgorithm: 'legacy',
+          workingMode: 'extended',
+        },
+      getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
+      getAiEngineStatusLabel: () => {
+        if (bridgeClient.isConnected()) return 'Local Companion Bridge (FastAPI / CUDA GPU)';
+        return 'Web Worker DSP & In-Browser Additive Engine';
+      },
+      onRefreshBankDrawer: () => {
+        void self.refreshAxionikModels();
+      },
     });
 
     this.imports = new ImportHandlers({
@@ -122,6 +145,7 @@ class App {
       cycleThemeFamily: () => self.cycleThemeFamily(),
       setThemeMode: (mode: 'light' | 'dark') => self.setThemeMode(mode),
       toggleThemeMode: () => self.toggleThemeMode(),
+      openBatchModal: () => self.batchModal.open(),
     });
   }
 
@@ -458,7 +482,7 @@ class App {
       },
       getMasterWaveConfig: () =>
         this.session?.processConfig.masterWaveConfig ?? DEFAULT_MASTER_WAVE_CONFIG,
-      getZoneSampleFormatInfo: (zoneId) => this.core.getZoneSampleFormatInfo(zoneId),
+      getZoneSampleFormatInfo: (zoneId, regionId) => this.core.getZoneSampleFormatInfo(zoneId, regionId),
       onPromoteZoneToMasterWave: async (zoneId, cfg) => {
         const res = await this.core.promoteZoneToMasterWave(zoneId, cfg);
         if (res) {

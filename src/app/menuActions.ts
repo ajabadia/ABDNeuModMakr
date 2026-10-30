@@ -45,6 +45,7 @@ export interface MenuContext {
   cycleThemeFamily?: () => void;
   setThemeMode?: (mode: 'light' | 'dark') => void;
   toggleThemeMode?: () => void;
+  openBatchModal?: () => void;
 }
 
 export class MenuActions {
@@ -317,6 +318,7 @@ export class MenuActions {
         // Telemetry so the two never stack and mask each other.
         if (willOpen) this.ctx.shell.getTelemetry().close();
       },
+      onOpenBatchModal: () => this.ctx.openBatchModal?.(),
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();
         this.ctx.shell.getTelemetry().toggle();
@@ -442,10 +444,14 @@ export class MenuActions {
           void this.ctx.handleStartProcess();
         } else if (key === 'b') {
           e.preventDefault();
-          void this.ctx.core.loadBank().then((bank) => {
-            this.ctx.shell.getBank().setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
-            this.ctx.shell.getBank().toggle();
-          });
+          if (e.shiftKey) {
+            this.ctx.openBatchModal?.();
+          } else {
+            void this.ctx.core.loadBank().then((bank) => {
+              this.ctx.shell.getBank().setBank(bank, this.ctx.session?.processConfig.modelNumber ?? null);
+              this.ctx.shell.getBank().toggle();
+            });
+          }
         } else if (key === 'l') {
           e.preventDefault();
           this.ctx.shell.getTelemetry().toggle();

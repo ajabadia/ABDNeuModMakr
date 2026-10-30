@@ -511,6 +511,16 @@ export class WebAudioPipeline implements CoreService {
       const trimmed = changes.modelName.replace(/[\r\n\t]/g, '').slice(0, maxLen);
       cfg.modelName = trimmed.length > 0 ? trimmed : 'UNTITLED';
     }
+    if (changes.expandedName !== undefined) {
+      const trimmed = changes.expandedName.replace(/[\r\n\t]/g, '').trim();
+      cfg.expandedName = trimmed.length > 0 ? trimmed : 'UNTITLED';
+    }
+    if (changes.extendedMetadata !== undefined) {
+      cfg.extendedMetadata = {
+        ...(cfg.extendedMetadata ?? {}),
+        ...changes.extendedMetadata,
+      };
+    }
     if (changes.complexity !== undefined) {
       cfg.complexity = clamp(Math.round(changes.complexity), 1, 10);
     }
@@ -526,6 +536,12 @@ export class WebAudioPipeline implements CoreService {
     if (changes.workingMode !== undefined) {
       const prevMode = cfg.workingMode ?? 'classic';
       cfg.workingMode = changes.workingMode;
+      if (!cfg.expandedName || cfg.expandedName.trim().length === 0) {
+        cfg.expandedName = cfg.modelName || 'UNTITLED';
+      }
+      if (!cfg.modelName || cfg.modelName.trim().length === 0) {
+        cfg.modelName = (cfg.expandedName || 'UNTITLED').slice(0, 11);
+      }
       if (changes.workingMode === 'extended') {
         if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
           this.session.extendedRegions = syncExtendedRegionsFromClassicZones(
@@ -1544,6 +1560,8 @@ export class WebAudioPipeline implements CoreService {
     const derived = deriveModelNameFromSample(sampleFilename, maxLen);
     if (derived) {
       this.session.processConfig.modelName = derived;
+      const baseClean = sampleFilename.replace(/\.[^/.]+$/, '').trim();
+      this.session.processConfig.expandedName = baseClean || derived;
       if (DEFAULT_MODEL_NAMES.has(this.session.name.trim())) {
         this.session.name = derived;
       }
@@ -2470,6 +2488,12 @@ export class WebAudioPipeline implements CoreService {
 
     const maxLen = this.session.processConfig.targetFormat === 'modern-neural' ? 32 : 11;
     this.session.processConfig.modelName = imported.presetName.slice(0, maxLen) || imported.modelName;
+    this.session.processConfig.expandedName = imported.presetName || imported.modelName;
+    if (!this.session.processConfig.extendedMetadata) {
+      this.session.processConfig.extendedMetadata = {};
+    }
+    this.session.processConfig.extendedMetadata.sourceFormat = imported.sourceFormat;
+    this.session.processConfig.extendedMetadata.sourcePresetName = imported.presetName;
     this.session.processConfig.parameterSet = imported.suggestedParameterSet;
 
     this.ensureZoneDemoBuffers(this.session.zones);
@@ -2751,41 +2775,73 @@ export class WebAudioPipeline implements CoreService {
 
   // ── Phase 8: Master Wave Standard (24-bit / 96 kHz), Short-Loop Expansion & Surround ──
 
-  public getZoneSampleFormatInfo(zoneId?: string): {
+  public getZoneSampleFormatInfo(
+    zoneId?: string,
+    regionId?: string
+  ): {
     sampleName: string;
     sampleRate: number;
     bitsPerSample: number;
     numChannels: number;
     durationSec: number;
+    totalFrames: number;
+    byteSize: number;
     loopStart: number;
     loopEnd: number;
   } | null {
     if (!this.session) return null;
-    const zone =
-      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : null) ??
-      this.session.zones[0];
-    if (!zone || !zone.sampleLow) return null;
-    const buf = this.sampleBuffers.get(zone.sampleLow);
+    const isClassic = (this.session.processConfig.workingMode ?? 'classic') === 'classic';
+    const extRegions = this.session.extendedRegions ?? [];
+
+    let targetZone = zoneId ? this.session.zones.find((z) => z.id === zoneId) : undefined;
+    let targetReg =
+      !isClassic && extRegions.length > 0
+        ? (regionId
+            ? extRegions.find((r) => r.id === regionId)
+            : undefined)
+        : undefined;
+
+    if (!targetReg && regionId) {
+      targetReg = extRegions.find((r) => r.id === regionId);
+    }
+    if (!targetZone && targetReg) {
+      targetZone = this.session.zones.find(
+        (z) =>
+          targetReg!.id.includes(z.id) ||
+          (targetReg!.sampleName && (z.sampleLow === targetReg!.sampleName || z.sampleHigh === targetReg!.sampleName)) ||
+          (targetReg!.lowKey === z.lowKey && targetReg!.highKey === z.highKey)
+      );
+    }
+    if (!targetZone) {
+      targetZone = this.session.zones[0];
+    }
+    if (!targetZone && !targetReg) return null;
+
+    const sampleName =
+      (isClassic ? targetZone?.sampleLow : (targetReg?.sampleName || targetZone?.sampleLow)) ??
+      targetZone?.sampleLow;
+    if (!sampleName) return null;
+
+    const buf = this.sampleBuffers.get(sampleName);
     if (!buf) return null;
     try {
       const dec = decodeWav(buf);
-      const reg = this.session.extendedRegions?.find(
-        (r) => r.sampleName === zone.sampleLow || r.id === `ext-${zone.id}-low`
-      );
       const loopStart =
-        reg && reg.loopEnd > reg.loopStart
-          ? reg.loopStart
+        targetReg && targetReg.loopEnd > targetReg.loopStart
+          ? targetReg.loopStart
           : (dec.instrument?.loopStart ?? 0);
       const loopEnd =
-        reg && reg.loopEnd > reg.loopStart
-          ? reg.loopEnd
+        targetReg && targetReg.loopEnd > targetReg.loopStart
+          ? targetReg.loopEnd
           : (dec.instrument?.loopEnd ?? 0);
       return {
-        sampleName: zone.sampleLow,
+        sampleName,
         sampleRate: dec.sampleRate,
         bitsPerSample: dec.bitsPerSample,
         numChannels: dec.numChannels,
         durationSec: Number(dec.durationSec.toFixed(3)),
+        totalFrames: dec.mono.length,
+        byteSize: buf.byteLength,
         loopStart,
         loopEnd,
       };
@@ -3349,6 +3405,8 @@ export class WebAudioPipeline implements CoreService {
       hasExplicitLoopPoints,
       sampleName: effectiveSampleName ?? 'Demo_Sample.wav',
       sampleRate: decoded.sampleRate,
+      bitsPerSample: decoded.bitsPerSample,
+      byteSize: raw?.byteLength ?? 0,
       numChannels: decoded.numChannels,
       totalFrames,
       durationSec: decoded.durationSec,

@@ -46,6 +46,29 @@ import type {
 
 const STORAGE_BANK_KEY = 'abd_neumodmakr_bank_v1';
 
+/** S4: allowlist para covers persistidos — frena `javascript:` y SVG con script. */
+export function isSafeCoverDataUrl(v: unknown): v is string {
+  return (
+    typeof v === 'string' &&
+    (v.startsWith('data:image/webp;base64,') || v.startsWith('data:image/png;base64,')) &&
+    v.length <= 700_000
+  );
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** S4: `localStorage` es entrada no confiable — valida antes de hidratar el bank. */
+function isSafeBankRecord(m: unknown): m is GeneratedModel {
+  if (!isRecord(m)) return false;
+  if (typeof m['slot'] !== 'number' || !Number.isInteger(m['slot']) || (m['slot'] as number) < 0 || (m['slot'] as number) > 511) return false;
+  if (typeof m['name'] !== 'string' || (m['name'] as string).trim().length === 0 || (m['name'] as string).length > 64) return false;
+  if (/[<>]/.test(m['name'] as string)) return false;
+  if ('coverWebpDataUrl' in m && m['coverWebpDataUrl'] !== undefined && !isSafeCoverDataUrl(m['coverWebpDataUrl'])) return false;
+  return true;
+}
+
 export interface MapScriptVersion {
   major: number;
   minor: number;
@@ -859,9 +882,10 @@ export class BankService {
     try {
       const rawBank = localStorage.getItem(STORAGE_BANK_KEY);
       if (rawBank) {
-        const parsedBank = JSON.parse(rawBank) as GeneratedModel[];
+        const parsedBank = JSON.parse(rawBank) as unknown;
         if (Array.isArray(parsedBank) && parsedBank.length > 0) {
-          this.generatedModels = parsedBank;
+          const clean = parsedBank.filter((m) => isSafeBankRecord(m));
+          if (clean.length > 0) this.generatedModels = clean;
         }
       }
     } catch {
