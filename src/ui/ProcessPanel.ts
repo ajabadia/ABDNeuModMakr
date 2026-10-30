@@ -236,7 +236,7 @@ export class ProcessPanel {
     const badge = this.container.querySelector('#panel-ai-badge');
     if (badge) {
       badge.className = `ai-status-badge ${isAi ? 'badge-ai-active' : 'badge-ai-off'}`;
-      badge.textContent = isAi ? '✨ IA ACTIVA' : '⚙️ 100% DSP';
+      badge.innerHTML = isAi ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`;
     }
     const btnDsp = this.container.querySelector('#btn-panel-ai-dsp');
     const btnAi = this.container.querySelector('#btn-panel-ai-modal');
@@ -374,7 +374,7 @@ export class ProcessPanel {
           <div class="form-group cover-artwork-group" id="cover-artwork-dropzone" title="Drag &amp; drop an image (PNG, JPG, WEBP, AVIF, SVG) or click to set the Extended Model Cover Artwork (auto-converted to 512x512 .webp in Layer 05)">
             <div class="label-with-val">
               <label>MODEL COVER ARTWORK (.WEBP)</label>
-              <span class="val-pill ${cov ? 'is-ready-pill' : ''}">${isConv ? 'CONVERTING TO .WEBP...' : cov ? `✓ WEBP • ${cov.width}×${cov.height} • ${kb} KB` : 'EXTENDED ONLY'}</span>
+              <span class="val-pill ${cov ? 'is-ready-pill' : ''}">${isConv ? 'CONVERTING TO .WEBP...' : cov ? `WEBP • ${cov.width}×${cov.height} • ${kb} KB` : 'EXTENDED ONLY'}</span>
             </div>
             <div class="cover-artwork-card ${cov ? 'has-cover' : ''} ${isConv ? 'is-converting' : ''}">
               <div class="cover-artwork-thumb ${cov ? 'has-cover' : ''}" id="btn-pick-cover-thumb" title="${isConv ? 'Converting image...' : cov ? 'Click to view large preview (512×512)' : 'Click to upload image'}">
@@ -389,7 +389,7 @@ export class ProcessPanel {
               </div>
               <div class="cover-artwork-meta">
                 <span class="cover-artwork-title">${isConv ? `Converting "${this.convertingCoverFileName || 'image'}" to .webp...` : cov ? `${cov.originalName || 'cover.webp'} → cover.webp` : 'Drop or Pick Cover Image'}</span>
-                <span class="cover-artwork-sub">${isConv ? 'Center-cropping & encoding 512×512 RIFF WEBP...' : cov ? `✓ Converted 512×512 WebP (${kb} KB) • 05_extended_model/cover.webp` : 'Converts JPG / PNG / SVG / WEBP to 512×512 .webp'}</span>
+                <span class="cover-artwork-sub">${isConv ? 'Center-cropping & encoding 512×512 RIFF WEBP...' : cov ? `Converted 512×512 WebP (${kb} KB) • 05_extended_model/cover.webp` : 'Converts JPG / PNG / SVG / WEBP to 512×512 .webp'}</span>
                 <div class="cover-artwork-actions">
                   ${
                     cov && !isConv
@@ -574,7 +574,7 @@ export class ProcessPanel {
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
               <label title="Conmuta entre procesamiento 100% Algorítmico (DSP Local) y Asistencia por Modelos de IA (AudioSR, Demucs, Outpainting)">ASISTENCIA POR IA</label>
               <span class="ai-status-badge ${this.currentConfig.aiConfig?.enabled ? 'badge-ai-active' : 'badge-ai-off'}" id="panel-ai-badge">
-                ${this.currentConfig.aiConfig?.enabled ? '✨ IA ACTIVA' : '⚙️ 100% DSP'}
+                ${this.currentConfig.aiConfig?.enabled ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`}
               </span>
             </div>
             <div class="working-mode-buttons-grid" role="radiogroup" aria-label="Asistencia por IA">
@@ -584,7 +584,7 @@ export class ProcessPanel {
                 id="btn-panel-ai-dsp"
                 title="100% Algorítmico: Ejecuta todas las etapas con DSP matemático determinista en WebAudio"
               >
-                ⚙️ DSP Puro
+                ${ICONS.cpu} DSP Puro
               </button>
               <button
                 type="button"
@@ -592,7 +592,7 @@ export class ProcessPanel {
                 id="btn-panel-ai-modal"
                 title="Abrir matriz modular de Asistencia por IA (AudioSR, Demucs, Outpainting) o perfiles rápidos"
               >
-                ✨ Configurar IA...
+                ${ICONS.ai} Configurar IA...
               </button>
             </div>
           </div>

@@ -20,7 +20,7 @@
  *
  * Structure:
  *   tokens.css          -- 120+ design tokens
- *   themes/*.css        -- per-instrument themes (5 available)
+ *   themes/*.css        -- per-instrument themes
  *   components/*.css    -- reusable UI components (8 files)
  */
 @import './tokens.css';
@@ -32,6 +32,10 @@
 @import './themes/juno.css';
 @import './themes/audiolab.css';
 @import './themes/audiolab-light.css';
+@import './themes/neuron-light.css';
+@import './themes/neuron-dark.css';
+@import './themes/virus-snow.css';
+@import './themes/virus-snow-dark.css';
 @import './components/panels.css';
 @import './components/buttons.css';
 @import './components/controls.css';

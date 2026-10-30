@@ -87,10 +87,10 @@ export class AiEngineModal {
         <!-- Header -->
         <div class="modal-header ai-modal-header">
           <div class="modal-title">
-            <span class="modal-icon">${ICONS.cpu}</span>
+            <span class="modal-icon">${ICONS.ai}</span>
             <span>MOTOR DE PROCESADO: DSP VS. ASISTENCIA IA</span>
             <span class="panel-badge ${cfg.enabled ? 'badge-ai-on' : 'badge-muted'}" id="ai-active-badge">
-              ${cfg.enabled ? `✨ IA: ${activeAiCount}/5 ETAPAS` : '⚙️ DSP PURO (IA OFF)'}
+              ${cfg.enabled ? `IA: ${activeAiCount}/5 ETAPAS` : 'DSP PURO (IA OFF)'}
             </span>
           </div>
           <button type="button" class="btn btn-close-modal" id="btn-close-ai-modal" title="Close (Esc)">
@@ -114,13 +114,13 @@ export class AiEngineModal {
           <div class="ai-presets-group">
             <span class="presets-label">Perfiles Rápidos:</span>
             <button type="button" class="btn btn-sm btn-preset" id="btn-preset-all-dsp" title="Todo por algoritmos matemáticos clásicos (rápido y determinista)">
-              ⚙️ 100% DSP
+              ${ICONS.cpu} 100% DSP
             </button>
             <button type="button" class="btn btn-sm btn-preset btn-preset-highlight" id="btn-preset-hybrid" title="Mezcla óptima recomendada (Super-res DSP + Separación y Outpainting IA)">
-              ⚡ Híbrido Óptimo
+              ${ICONS.zap} Híbrido Óptimo
             </button>
-            <button type="button" class="btn btn-sm btn-preset" id="btn-preset-all-ai" title="Todas las etapas asistidas por modelos de IA">
-              ✨ Máxima Calidad IA
+            <button type="button" class="btn btn-sm btn-preset btn-preset-ai" id="btn-preset-all-ai" title="Todas las etapas asistidas por modelos de IA">
+              ${ICONS.ai} Máxima Calidad IA
             </button>
           </div>
         </div>
@@ -141,21 +141,21 @@ export class AiEngineModal {
                 <label class="stage-opt ${cfg.masterWave === 'dsp' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-master-wave" value="dsp" ${cfg.masterWave === 'dsp' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>⚙️ Algorítmico (DSP)</strong>
+                    <strong>${ICONS.cpu} Algorítmico (DSP)</strong>
                     <small>Sinc polifásico determinista + saturador de armónicos. Cero alucinaciones, fase lineal.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.masterWave === 'ai' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-master-wave" value="ai" ${cfg.masterWave === 'ai' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✨ Modelo IA (AudioSR)</strong>
+                    <strong>${ICONS.ai} Modelo IA (AudioSR)</strong>
                     <small>Reconstrucción por difusión latente de aire y brillo (>20 kHz) en grabaciones limitadas.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.masterWave === 'bypass' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-master-wave" value="bypass" ${cfg.masterWave === 'bypass' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✋ Original / Bypass</strong>
+                    <strong>${ICONS.bypass} Original / Bypass</strong>
                     <small>Conservar la frecuencia de muestreo y bits originales sin procesar.</small>
                   </span>
                 </label>
@@ -175,21 +175,21 @@ export class AiEngineModal {
                 <label class="stage-opt ${cfg.separation === 'dsp' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-separation" value="dsp" ${cfg.separation === 'dsp' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>⚙️ Algorítmico (HPSS)</strong>
+                    <strong>${ICONS.cpu} Algorítmico (HPSS)</strong>
                     <small>Filtros de mediana espectral STFT (Harmonic/Percussive Source Separation).</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.separation === 'ai' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-separation" value="ai" ${cfg.separation === 'ai' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✨ Modelo IA (HTDemucs)</strong>
+                    <strong>${ICONS.ai} Modelo IA (HTDemucs)</strong>
                     <small>Separación quirúrgica de fuentes neuronales para aislar el golpe del sostenido.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.separation === 'bypass' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-separation" value="bypass" ${cfg.separation === 'bypass' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✋ Directo 1:1</strong>
+                    <strong>${ICONS.bypass} Directo 1:1</strong>
                     <small>Misma señal para Scape y Sphere sin separar componentes.</small>
                   </span>
                 </label>
@@ -209,21 +209,21 @@ export class AiEngineModal {
                 <label class="stage-opt ${cfg.loopExpansion === 'dsp' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-loop" value="dsp" ${cfg.loopExpansion === 'dsp' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>⚙️ Algorítmico (NCC + Zero-Crossing)</strong>
+                    <strong>${ICONS.cpu} Algorítmico (NCC + Zero-Crossing)</strong>
                     <small>Empalme geométrico exacto de cruces por cero sin alterar la muestra.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.loopExpansion === 'ai' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-loop" value="ai" ${cfg.loopExpansion === 'ai' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✨ Audio Outpainting IA</strong>
+                    <strong>${ICONS.ai} Audio Outpainting IA</strong>
                     <small>Genera 4-6 segundos de evolución orgánica natural sin ciclos idénticos repetitivos.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.loopExpansion === 'manual' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-loop" value="manual" ${cfg.loopExpansion === 'manual' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✋ Puntos Manuales</strong>
+                    <strong>${ICONS.bypass} Puntos Manuales</strong>
                     <small>Respetar fielmente los puntos de loop fijados por el usuario en el editor.</small>
                   </span>
                 </label>
@@ -243,21 +243,21 @@ export class AiEngineModal {
                 <label class="stage-opt ${cfg.classifier === 'dsp' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-classifier" value="dsp" ${cfg.classifier === 'dsp' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>⚙️ Algorítmico Heurístico</strong>
+                    <strong>${ICONS.cpu} Algorítmico Heurístico</strong>
                     <small>Cálculo de centroide espectral, ataque temporal y distribución de armónicos.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.classifier === 'ai' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-classifier" value="ai" ${cfg.classifier === 'ai' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✨ Clasificador Neuronal</strong>
+                    <strong>${ICONS.ai} Clasificador Neuronal</strong>
                     <small>Reconocimiento profundo de tímbrica y género de instrumento por embeddings de audio.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.classifier === 'manual' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-classifier" value="manual" ${cfg.classifier === 'manual' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✋ Selección Manual</strong>
+                    <strong>${ICONS.bypass} Selección Manual</strong>
                     <small>Elegir manualmente el Parameter Set 0..9 en el panel principal.</small>
                   </span>
                 </label>
@@ -277,21 +277,21 @@ export class AiEngineModal {
                 <label class="stage-opt ${cfg.denoise === 'dsp' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-denoise" value="dsp" ${cfg.denoise === 'dsp' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>⚙️ Algorítmico (Puerta Multibanda)</strong>
+                    <strong>${ICONS.cpu} Algorítmico (Puerta Multibanda)</strong>
                     <small>Atenuación espectral por bandas según umbral de suelo de ruido estático.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.denoise === 'ai' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-denoise" value="ai" ${cfg.denoise === 'ai' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✨ Denoise IA (DeepFilter)</strong>
+                    <strong>${ICONS.ai} Denoise IA (DeepFilter)</strong>
                     <small>Supresión neuronal de ruido conservando micro-armónicos y resonancias sutiles.</small>
                   </span>
                 </label>
                 <label class="stage-opt ${cfg.denoise === 'bypass' ? 'is-selected' : ''}">
                   <input type="radio" name="opt-denoise" value="bypass" ${cfg.denoise === 'bypass' ? 'checked' : ''} />
                   <span class="opt-body">
-                    <strong>✋ Desactivado / Crudo</strong>
+                    <strong>${ICONS.bypass} Desactivado / Crudo</strong>
                     <small>Preservar la grabación tal como está sin ningún filtrado de ruido.</small>
                   </span>
                 </label>
@@ -459,8 +459,8 @@ export class AiEngineModal {
       const activeAiCount = this.countActiveAiStages();
       badge.className = `panel-badge ${this.currentConfig.enabled ? 'badge-ai-on' : 'badge-muted'}`;
       badge.textContent = this.currentConfig.enabled
-        ? `✨ IA: ${activeAiCount}/5 ETAPAS`
-        : '⚙️ DSP PURO (IA OFF)';
+        ? `IA: ${activeAiCount}/5 ETAPAS`
+        : 'DSP PURO (IA OFF)';
     }
   }
 

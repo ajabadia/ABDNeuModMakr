@@ -45,7 +45,7 @@ export class PwaManager {
       this.deferredPrompt = null;
       this.isStandalone = true;
       this.notifyInstallable(false);
-      console.log('✅ NEURON MODELmaker successfully installed as desktop PWA.');
+      console.log('[PWA] NEURON MODELmaker successfully installed as desktop PWA.');
     });
   }
 

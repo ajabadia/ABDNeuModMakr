@@ -60,7 +60,7 @@ export class AppNavbar {
   private undoBtn: HTMLButtonElement | null = null;
   private redoBtn: HTMLButtonElement | null = null;
   private docModalEl: HTMLElement | null = null;
-  private currentTheme = 'ms2000';
+  private currentTheme = 'neuron-light';
   private currentTargetFormat: TargetFormat = 'dual';
   private currentWorkingMode: WorkingMode = 'classic';
 
@@ -72,7 +72,7 @@ export class AppNavbar {
   public mount(
     initialSession: Session,
     initialCoverage: string[],
-    initialTheme = 'ms2000'
+    initialTheme = 'neuron-light'
   ): void {
     this.currentTheme = initialTheme;
     this.currentTargetFormat = initialSession.processConfig.targetFormat ?? 'dual';
@@ -166,11 +166,15 @@ export class AppNavbar {
             id: 405,
             label: 'Color Theme',
             submenu: [
-              { id: 406, label: 'MS2000 Dark Cyan', action: 'selectTheme', value: 'ms2000' },
-              { id: 407, label: 'AudioLab Dark', action: 'selectTheme', value: 'audiolab' },
-              { id: 408, label: 'AudioLab Light', action: 'selectTheme', value: 'audiolab-light' },
-              { id: 409, label: 'Advanced Studio', action: 'selectTheme', value: 'advanced' },
-              { id: 410, label: 'CZ-101 Vintage', action: 'selectTheme', value: 'cz101' },
+              { id: 406, label: 'Hartmann Neuron Light (Default)', action: 'selectTheme', value: 'neuron-light' },
+              { id: 407, label: 'Hartmann Neuron Dark', action: 'selectTheme', value: 'neuron-dark' },
+              { id: 408, label: 'Access Virus Snow Light', action: 'selectTheme', value: 'virus-snow' },
+              { id: 409, label: 'Access Virus Snow Dark', action: 'selectTheme', value: 'virus-snow-dark' },
+              { id: 410, label: 'AudioLab Dark', action: 'selectTheme', value: 'audiolab' },
+              { id: 411, label: 'AudioLab Light', action: 'selectTheme', value: 'audiolab-light' },
+              { id: 412, label: 'MS2000 Dark Cyan', action: 'selectTheme', value: 'ms2000' },
+              { id: 413, label: 'Advanced Studio', action: 'selectTheme', value: 'advanced' },
+              { id: 414, label: 'CZ-101 Vintage', action: 'selectTheme', value: 'cz101' },
             ],
           },
         ],
@@ -201,9 +205,9 @@ export class AppNavbar {
         <span class="hud-coverage-text">${initialCoverage.length === 0 ? '128/128 MIDI KEYS OK' : `${initialCoverage.length} GAPS DETECTED`}</span>
       </div>
       <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Asistencia por IA vs. Motor Algorítmico DSP. Haz clic para abrir el configurador de IA.">
-        <span class="hud-ai-dot"></span>
-        <span class="hud-ai-text" id="hud-ai-text">🪄 MODO IA: OFF</span>
-        <span class="hud-ai-chevron">⚙️</span>
+        <span class="hud-ai-icon">${ICONS.ai}</span>
+        <span class="hud-ai-text" id="hud-ai-text">MODO IA: OFF (DSP)</span>
+        <span class="hud-ai-chevron">${ICONS.settings}</span>
       </div>
     `;
 
@@ -344,7 +348,7 @@ export class AppNavbar {
     const enabled = aiConfig?.enabled ?? false;
     if (!enabled) {
       this.aiPillElement.className = 'hud-pill hud-ai-pill is-ai-off';
-      this.aiTextElement.textContent = '🪄 MODO IA: OFF';
+      this.aiTextElement.textContent = 'MODO IA: OFF (DSP)';
       this.aiPillElement.title = 'Modo 100% Algorítmico (DSP Puro). Haz clic para abrir el configurador y activar Asistencia por IA.';
       return;
     }
@@ -359,7 +363,7 @@ export class AppNavbar {
     const isAllAi = count === 5;
     const bridgeMark = isBridgeConnected ? ' (Bridge Conectado)' : ' (Bridge Offline - Fallback DSP)';
     this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
-    this.aiTextElement.textContent = isAllAi ? '✨ MODO IA: 5/5 ACTIVA' : `⚡ MODO IA: ${count}/5 HÍBRIDO`;
+    this.aiTextElement.textContent = isAllAi ? 'MODO IA: 5/5 ACTIVA' : `MODO IA: ${count}/5 HÍBRIDO`;
     this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas${bridgeMark}. Haz clic para abrir la matriz modular.`;
   }
 

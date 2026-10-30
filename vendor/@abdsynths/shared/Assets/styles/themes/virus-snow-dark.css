@@ -1,0 +1,56 @@
+/* Access Virus Snow -- Polar Navy & Fluorescent Cyan (Dark Theme) */
+/* Dark studio variant with glowing ice-cyan fluorescent displays */
+[data-theme="virus-snow-dark"], body.skin-virus-snow-dark, body.theme-virus-snow-dark {
+  --color-bg-base:                #070d16;
+  --color-panel-bg:               #0e1726;
+  --color-panel-surface:          #142136;
+  --color-panel-surface-elevated: #1b2c48;
+  --navbar-bg:                    #0e1726;
+  --navbar-shadow:                0 2px 10px rgba(0, 0, 0, 0.50);
+  --color-panel-border:           rgba(56, 189, 248, 0.18);
+  --color-panel-border-strong:    rgba(56, 189, 248, 0.42);
+  --color-panel-border-dim:       rgba(56, 189, 248, 0.08);
+  --shadow-card:                  0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-card-hover:            0 6px 20px rgba(0, 0, 0, 0.50);
+
+  /* Signature Fluorescent Ice Cyan Accents */
+  --color-accent:                 #00e5ff;
+  --color-accent-rgb:             0, 229, 255;
+  --color-accent-hover:           #38d3ff;
+  --color-accent-active:          #00b8d4;
+  --color-accent-dim:             rgba(0, 229, 255, 0.16);
+
+  --color-success:                #00e676;
+  --color-success-rgb:            0, 230, 118;
+  --color-warning:                #ffb142;
+  --color-warning-rgb:            255, 177, 66;
+  --color-danger:                 #ff5252;
+  --color-danger-rgb:             255, 82, 82;
+  --color-info:                   #00e5ff;
+  --color-info-rgb:               0, 229, 255;
+
+  /* Typography */
+  --color-text-main:              #f0f9ff;
+  --color-text-muted:             #7dd3fc;
+  --color-text-dim:               #38bdf8;
+
+  /* LCD / Telemetry */
+  --color-lcd-bg:                 #040a12;
+  --color-lcd-text:               #00e5ff;
+  --color-lcd-border:             rgba(0, 229, 255, 0.40);
+
+  /* Scrollbars */
+  --color-scrollbar-thumb:        #1e324f;
+  --color-scrollbar-thumb-hover:  #29446b;
+  --color-scrollbar-thumb-active: #00e5ff;
+  --color-scrollbar-track:        #070d16;
+
+  /* Trajectory Stick 2D */
+  --color-stick-pad-bg:           #0a121e;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #152336 0%, #070d16 100%);
+  --color-stick-pad-border:       rgba(0, 229, 255, 0.22);
+  --color-stick-pad-shadow:       inset 0 2px 8px rgba(0, 0, 0, 0.70);
+  --color-stick-crosshair:        rgba(0, 229, 255, 0.25);
+  --color-stick-ring:             rgba(0, 229, 255, 0.22);
+  --color-stick-pole-text:        #7dd3fc;
+}

@@ -1294,10 +1294,10 @@ export class ZoneInspector {
             </button>
             <label class="loop-ed-field" title="Select Auto-Loop Algorithm">
               <select id="sel-drawer-loop-algo" class="loop-ed-select">
-                <option value="pitch_periodic" ${this.drawerLoopSelectedAlgo === 'pitch_periodic' ? 'selected' : ''}>⚡ F0 Period-Lock</option>
-                <option value="ncc_zc" ${this.drawerLoopSelectedAlgo === 'ncc_zc' ? 'selected' : ''}>⚡ NCC Zero-Crossing</option>
-                <option value="min_seam_energy" ${this.drawerLoopSelectedAlgo === 'min_seam_energy' ? 'selected' : ''}>⚡ Min Seam Discontinuity</option>
-                <option value="equal_power_xfade" ${this.drawerLoopSelectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>⚡ Equal-Power X-Fade</option>
+                <option value="pitch_periodic" ${this.drawerLoopSelectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock</option>
+                <option value="ncc_zc" ${this.drawerLoopSelectedAlgo === 'ncc_zc' ? 'selected' : ''}>NCC Zero-Crossing</option>
+                <option value="min_seam_energy" ${this.drawerLoopSelectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Min Seam Discontinuity</option>
+                <option value="equal_power_xfade" ${this.drawerLoopSelectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power X-Fade</option>
               </select>
             </label>
             <button type="button" class="btn-overlay-toggle is-action-accent" id="btn-drawer-loop-autofind" title="Automatically find optimal click-free loop points using the selected algorithm">

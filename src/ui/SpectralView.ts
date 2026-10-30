@@ -1036,10 +1036,10 @@ export class SpectralView {
         </button>
         <label class="loop-ed-field" title="Auto-Loop algorithm">
           <select id="sel-loop-ed-algo" class="loop-ed-select">
-            <option value="pitch_periodic" ${this.loopSelectedAlgo === 'pitch_periodic' ? 'selected' : ''}>⚡ F0 Period-Lock</option>
-            <option value="ncc_zc" ${this.loopSelectedAlgo === 'ncc_zc' ? 'selected' : ''}>⚡ NCC Zero-Crossing</option>
-            <option value="min_seam_energy" ${this.loopSelectedAlgo === 'min_seam_energy' ? 'selected' : ''}>⚡ Min Seam Discontinuity</option>
-            <option value="equal_power_xfade" ${this.loopSelectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>⚡ Equal-Power X-Fade</option>
+            <option value="pitch_periodic" ${this.loopSelectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock</option>
+            <option value="ncc_zc" ${this.loopSelectedAlgo === 'ncc_zc' ? 'selected' : ''}>NCC Zero-Crossing</option>
+            <option value="min_seam_energy" ${this.loopSelectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Min Seam Discontinuity</option>
+            <option value="equal_power_xfade" ${this.loopSelectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power X-Fade</option>
           </select>
         </label>
         <button type="button" class="btn-overlay-toggle is-action-accent" id="btn-loop-ed-autofind" title="Automatically find optimal click-free loop points using selected algorithm">

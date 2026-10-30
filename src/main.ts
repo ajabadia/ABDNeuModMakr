@@ -109,7 +109,17 @@ class App {
   }
 
   // Themes
-  private themes = ['ms2000', 'audiolab', 'audiolab-light', 'advanced', 'cz101'];
+  private themes = [
+    'neuron-light',
+    'neuron-dark',
+    'virus-snow',
+    'virus-snow-dark',
+    'audiolab',
+    'audiolab-light',
+    'ms2000',
+    'advanced',
+    'cz101',
+  ];
   private currentThemeIndex = 0;
   private isSpectralVisible = false;
 
@@ -666,7 +676,11 @@ class App {
       onClose: () => this.navbar.setProcessing(false)
     });
 
-    this.navbar.mount(this.session!, this.core.validateCoverage());
+    this.navbar.mount(
+      this.session!,
+      this.core.validateCoverage(),
+      this.themes[this.currentThemeIndex]
+    );
     this.menus.bindKeyboardShortcuts();
     this.imports.bindGlobalDragAndDrop();
     this.menus.bindUnsavedChangesGuard();

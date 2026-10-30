@@ -1,0 +1,56 @@
+/* Hartmann Neuron Hardware -- Champagne Aluminum & Amber Neon (Light Theme) */
+/* Inspired by the Axel Hartmann Neuron Synthesizer (2002) physical hardware */
+[data-theme="neuron-light"], [data-theme="neuron"], body.skin-neuron-light, body.theme-neuron-light {
+  --color-bg-base:                #dedad3;
+  --color-panel-bg:               #ebe7df;
+  --color-panel-surface:          #f6f4ee;
+  --color-panel-surface-elevated: #ffffff;
+  --navbar-bg:                    #ebe7df;
+  --navbar-shadow:                0 1px 3px rgba(35, 30, 24, 0.10);
+  --color-panel-border:           rgba(45, 38, 30, 0.15);
+  --color-panel-border-strong:    rgba(45, 38, 30, 0.30);
+  --color-panel-border-dim:       rgba(45, 38, 30, 0.08);
+  --shadow-card:                  0 4px 16px rgba(35, 30, 24, 0.07);
+  --shadow-card-hover:            0 6px 20px rgba(35, 30, 24, 0.12);
+
+  /* Signature Hartmann Amber-Orange Accents (Axel Hartmann illuminated encoders) */
+  --color-accent:                 #d95300;
+  --color-accent-rgb:             217, 83, 0;
+  --color-accent-hover:           #ea580c;
+  --color-accent-active:          #b44200;
+  --color-accent-dim:             rgba(217, 83, 0, 0.12);
+
+  --color-success:                #15803d;
+  --color-success-rgb:            21, 128, 61;
+  --color-warning:                #d97706;
+  --color-warning-rgb:            217, 119, 6;
+  --color-danger:                 #dc2626;
+  --color-danger-rgb:             220, 38, 38;
+  --color-info:                   #0284c7;
+  --color-info-rgb:               2, 132, 199;
+
+  /* Typography (High contrast charcoal on warm champagne alloy) */
+  --color-text-main:              #1c1917;
+  --color-text-muted:             #57534e;
+  --color-text-dim:               #78716c;
+
+  /* LCD / Telemetry (Authentic Hartmann dark bezel with glowing amber VFD/LCD text) */
+  --color-lcd-bg:                 #181512;
+  --color-lcd-text:               #ff9d00;
+  --color-lcd-border:             rgba(255, 157, 0, 0.40);
+
+  /* Scrollbars */
+  --color-scrollbar-thumb:        #c8c2b5;
+  --color-scrollbar-thumb-hover:  #a8a192;
+  --color-scrollbar-thumb-active: #78716c;
+  --color-scrollbar-track:        #ebe7df;
+
+  /* Trajectory Stick 2D (Illuminated Orange Ring Vector Pad) */
+  --color-stick-pad-bg:           #dedad3;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #f6f4ee 0%, #d4cfc4 100%);
+  --color-stick-pad-border:       rgba(45, 38, 30, 0.22);
+  --color-stick-pad-shadow:       inset 0 2px 6px rgba(35, 30, 24, 0.14);
+  --color-stick-crosshair:        rgba(217, 83, 0, 0.35);
+  --color-stick-ring:             rgba(217, 83, 0, 0.30);
+  --color-stick-pole-text:        #44403c;
+}

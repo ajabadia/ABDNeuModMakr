@@ -1,0 +1,56 @@
+/* Access Virus Snow -- Polar White Anodized & Cyan (Light Theme) */
+/* Inspired by the Access Virus TI Snow hardware synthesizer */
+[data-theme="virus-snow"], [data-theme="virus-snow-light"], body.skin-virus-snow, body.theme-virus-snow {
+  --color-bg-base:                #e7ecf1;
+  --color-panel-bg:               #f5f8fa;
+  --color-panel-surface:          #ffffff;
+  --color-panel-surface-elevated: #ffffff;
+  --navbar-bg:                    #f5f8fa;
+  --navbar-shadow:                0 1px 3px rgba(15, 23, 42, 0.08);
+  --color-panel-border:           rgba(15, 23, 42, 0.12);
+  --color-panel-border-strong:    rgba(0, 145, 181, 0.35);
+  --color-panel-border-dim:       rgba(15, 23, 42, 0.06);
+  --shadow-card:                  0 4px 16px rgba(15, 23, 42, 0.06);
+  --shadow-card-hover:            0 6px 20px rgba(15, 23, 42, 0.10);
+
+  /* Signature Access Virus TI Polar Cyan Accents (WCAG AA compliant >= 4.5:1 on white) */
+  --color-accent:                 #0088a8;
+  --color-accent-rgb:             0, 136, 168;
+  --color-accent-hover:           #00a0c6;
+  --color-accent-active:          #006e88;
+  --color-accent-dim:             rgba(0, 136, 168, 0.12);
+
+  --color-success:                #059669;
+  --color-success-rgb:            5, 150, 105;
+  --color-warning:                #d97706;
+  --color-warning-rgb:            217, 119, 6;
+  --color-danger:                 #e11d48;
+  --color-danger-rgb:             225, 29, 72;
+  --color-info:                   #0284c7;
+  --color-info-rgb:               2, 132, 199;
+
+  /* Typography */
+  --color-text-main:              #0f172a;
+  --color-text-muted:             #475569;
+  --color-text-dim:               #64748b;
+
+  /* LCD / Telemetry (Signature Virus Snow Ice-Cyan Display) */
+  --color-lcd-bg:                 #071924;
+  --color-lcd-text:               #38bdf8;
+  --color-lcd-border:             rgba(56, 189, 248, 0.35);
+
+  /* Scrollbars */
+  --color-scrollbar-thumb:        #cbd5e1;
+  --color-scrollbar-thumb-hover:  #94a3b8;
+  --color-scrollbar-thumb-active: #64748b;
+  --color-scrollbar-track:        #f5f8fa;
+
+  /* Trajectory Stick 2D */
+  --color-stick-pad-bg:           #e8eff5;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #ffffff 0%, #cbdbe8 100%);
+  --color-stick-pad-border:       rgba(15, 23, 42, 0.20);
+  --color-stick-pad-shadow:       inset 0 2px 6px rgba(15, 23, 42, 0.12);
+  --color-stick-crosshair:        rgba(0, 136, 168, 0.28);
+  --color-stick-ring:             rgba(0, 136, 168, 0.24);
+  --color-stick-pole-text:        #334155;
+}

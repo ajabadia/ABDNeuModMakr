@@ -167,7 +167,7 @@ export class BridgeModal {
             <span class="status-indicator-dot dot-online"></span>
             <strong>Bridge Online — ${caps?.app ?? 'ABDNeuModMakr-Bridge'} v${caps?.version ?? '1.0'}</strong>
           </div>
-          <span class="bridge-latency-tag">⚡ ${status.latencyMs ?? 0} ms</span>
+          <span class="bridge-latency-tag">${status.latencyMs ?? 0} ms</span>
         </div>
         
         <div class="status-grid">
@@ -181,19 +181,19 @@ export class BridgeModal {
           </div>
           <div class="status-cell">
             <span class="cell-label">NumPy:</span>
-            <span class="cell-val ${libs?.numpy ? 'text-success' : 'text-muted'}">${libs?.numpy ? '✔ Available' : '✘ Not installed'}</span>
+            <span class="cell-val ${libs?.numpy ? 'text-success' : 'text-muted'}">${libs?.numpy ? 'Available' : 'Not installed'}</span>
           </div>
           <div class="status-cell">
             <span class="cell-label">SoundFile:</span>
-            <span class="cell-val ${libs?.soundfile ? 'text-success' : 'text-muted'}">${libs?.soundfile ? '✔ Available' : '✘ Not installed'}</span>
+            <span class="cell-val ${libs?.soundfile ? 'text-success' : 'text-muted'}">${libs?.soundfile ? 'Available' : 'Not installed'}</span>
           </div>
           <div class="status-cell">
             <span class="cell-label">SciPy:</span>
-            <span class="cell-val ${libs?.scipy ? 'text-success' : 'text-muted'}">${libs?.scipy ? '✔ Available' : '✘ Not installed'}</span>
+            <span class="cell-val ${libs?.scipy ? 'text-success' : 'text-muted'}">${libs?.scipy ? 'Available' : 'Not installed'}</span>
           </div>
           <div class="status-cell">
             <span class="cell-label">PyTorch / CUDA:</span>
-            <span class="cell-val ${libs?.torch ? 'text-success' : 'text-muted'}">${libs?.torch ? (hasGpu ? '✔ CUDA Enabled' : '✔ CPU Only') : '✘ Not installed'}</span>
+            <span class="cell-val ${libs?.torch ? 'text-success' : 'text-muted'}">${libs?.torch ? (hasGpu ? 'CUDA Enabled' : 'CPU Only') : 'Not installed'}</span>
           </div>
         </div>
 
