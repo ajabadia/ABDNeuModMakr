@@ -348,6 +348,11 @@
   - Selección de resolución y sample rate de audio (conservar original o remuestrear a 44.1k/48k/96k).
   - Normalización opcional y retención de metadatos/licencia.
   - Opciones de estructura de carpetas (monolítico incrustado vs parche con subcarpeta `Samples/`).
+- [ ] **Compuerta de Preflight y Notificación de Incompatibilidades Técnicas**:
+  - Si el formato de destino seleccionado no admite algún parámetro de la sesión actual (por ejemplo: resolución > 16-bit en SF2, curvas DAHDSR no lineales, más de 2 capas de velocidad en hardware clásico Neuron, bucles complejos con micro-crossfades, sample rates no soportados o configuraciones surround):
+    - El conversor calcula el ajuste al valor admitido más próximo (clamp o interpolación matemática).
+    - **Aviso previo interactivo al usuario**: Se despliega una ventana de inspección preflight que lista detalladamente qué parámetros serán adaptados y a qué valores.
+    - El usuario tiene la potestad de **Parar / Cancelar** para ajustar manualmente los parámetros en el editor o **Aceptar y Exportar** con los ajustes automáticos propuestos.
 
 ### 16.2 Formatos de Destino Soportados (Muestras Originales Intactas)
 *Nota*: La exportación opera exclusivamente sobre la materia prima original (muestras WAV/AIFF directas, zonas `lowKey..highKey`, `lowVel..highVel`, `rootKey`, afinación, volumen, paneo y rangos de loop `L-START`/`L-END`), **sin pasar por los transformadores espectrales Scape/Sphere de Neuron**.
@@ -428,5 +433,34 @@
   - Reproducción de bucles continuos y ping-pong perfeccionados con el editor de loops y lupa de cruce por cero de NeuModMakr.
   - Interpolación polifónica sinc de alta calidad sin artefactos de aliasing.
 - **Capas Híbridas Rompler + Resíntesis Neuronal**: Posibilidad de apilar o hacer morphing entre una capa de audio muestreado crudo (ataque rápido y natural) y una capa aditiva de resíntesis neuronal Hartmann (cuerpo mutante y modelado espectral continuo).
+
+---
+
+## Fase 20 — Autocarátula Asistida por IA (Model Cover Artwork Generator) [PLANIFICADA]
+
+**Objetivo**: Generar automáticamente portadas y carátulas de alta estética para modelos sonoros (`cover.webp` en la capa `05_extended_model` de la Cápsula del Tiempo) asistidas por IA, basadas en la identidad tímbrica, nombre extendido, autor y metadatos acústicos del instrumento.
+
+### 20.1 Estrategia de Inferencia: Local (WebGPU) vs Cloud API (BYOK)
+- **Evaluación de Factibilidad Local (In-Browser / WebGPU / ONNX)**:
+  - Investigar si es viable ejecutar en el navegador un micromodelo generativo de imagen ligero (e.g. SD-Turbo, LCM-LoRA o micro-difusor ONNX vía Transformers.js con WebGPU) que ofrezca un estándar de calidad artística aceptable sin saturar la memoria del navegador.
+  - **Criterio estricto de calidad y estabilidad**: Si la huella de memoria supera cotas razonables (>1.5 GB VRAM/RAM) o el rendimiento degrada la experiencia del usuario, la generación de imágenes quedará reservada **exclusivamente al modo Cloud API (BYOK)** para evitar bloqueos y garantizar un resultado profesional.
+- **Generación mediante Cloud API (BYOK - Claves Privadas de Usuario)**:
+  - Operación con privacidad absoluta y coste de servidor 0 para la plataforma (el usuario utiliza su propia clave de API almacenada localmente).
+  - **Ampliación de Proveedores Cloud BYOK en Settings**:
+    - **OpenAI (ChatGPT / Codex / DALL-E 3)**: Generación directa de arte conceptual de alta definición mediante la API de DALL-E 3 / GPT-4o.
+    - **Anthropic Claude API**: Orquestación y enriquecimiento contextual: diseño de prompts visuales hiper-evocadores a partir de las características espectrales y metadatos del sintetizador.
+    - **Google Gemini (AI Studio)**: Generación y razonamiento multimodal de alta fidelidad con Imagen 3 / Gemini.
+    - **Replicate & Hugging Face**: Soporte para checkpoints punteros de código abierto (FLUX.1-schnell, SDXL Lightning, etc.).
+
+### 20.2 Flujo de Usuario y Optimización de Activos
+1. **Disparador en Interfaz**: Botón interactivo `[ 🪄 Generar Carátula con IA ]` situado en el panel de portada de `ProcessPanel.ts` (habilitado cuando el usuario dispone de una API Key configurada o modelo disponible).
+2. **Asistente de Prompting Acústico**:
+   - Construcción automática de una descripción artística a partir de `expandedName`, `category`, etiquetas tímbricas (ej. "Warm Brass", "Metallic Pad", "Organic Woodwind") y descriptores espectrales.
+   - Campo para que el usuario introduzca retoques o elija estilos artísticos sugeridos (Cyberpunk Synth, 80s Hardware Retro, Acuarela Orgánica, Vectorial Minimalista, Studio Hi-Fi).
+3. **Conversión y Almacenamiento**:
+   - Descarga o generación del bitmap resultante.
+   - Recorte centrado automático (aspect ratio 1:1) y compresión en cliente a formato `.webp` optimizado (512x512 / 1024x1024).
+   - Inserción directa en la Cápsula del Tiempo (`05_extended_model/cover.webp`) y previsualización inmediata en el inspector y las tarjetas de la librería.
+
 
 

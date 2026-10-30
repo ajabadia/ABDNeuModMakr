@@ -248,18 +248,24 @@ export class SettingsModal {
           <div class="ai-subtabs-nav">
             <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'web' ? 'is-active' : ''}" data-ai-subtab="web">
               <span class="subtab-icon">${ICONS.cpu}</span>
-              <span class="subtab-title">Built-in Web Engine</span>
-              <span class="subtab-tag">In-Browser (100% Free)</span>
+              <div class="subtab-text">
+                <span class="subtab-title">Built-in Web Engine</span>
+                <span class="subtab-tag">In-Browser (100% Free)</span>
+              </div>
             </button>
             <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'bridge' ? 'is-active' : ''}" data-ai-subtab="bridge">
               <span class="subtab-icon">${ICONS.database}</span>
-              <span class="subtab-title">Companion Bridge</span>
-              <span class="subtab-tag">Local GPU (VRAM)</span>
+              <div class="subtab-text">
+                <span class="subtab-title">Companion Bridge</span>
+                <span class="subtab-tag">Local GPU (VRAM)</span>
+              </div>
             </button>
             <button type="button" class="ai-subtab-btn ${this.activeAiSubTab === 'cloud' ? 'is-active' : ''}" data-ai-subtab="cloud">
               <span class="subtab-icon">${ICONS.cloud}</span>
-              <span class="subtab-title">Cloud AI (BYOK)</span>
-              <span class="subtab-tag">Private User Keys</span>
+              <div class="subtab-text">
+                <span class="subtab-title">Cloud AI (BYOK)</span>
+                <span class="subtab-tag">Private User Keys</span>
+              </div>
             </button>
           </div>
         `
