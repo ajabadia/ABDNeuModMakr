@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@abdsynths/midi-keyb": "file:./vendor/@abdsynths/midi-keyb",
-    "@abdsynths/shared": "file:./vendor/@abdsynths/shared"
+    "@abdsynths/shared": "file:./vendor/@abdsynths/shared",
+    "onnxruntime-web": "^1.31.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -5,6 +5,7 @@
 
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
+import { cloudByokClient } from '../core/ai/CloudByokClient';
 import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
 export interface NavbarHandlers {
@@ -395,10 +396,19 @@ export class AppNavbar {
     if (aiConfig?.denoise === 'ai') count++;
 
     const isAllAi = count === 5;
-    const bridgeMark = isBridgeConnected ? ' (Bridge Conectado)' : ' (Bridge Offline - Fallback DSP)';
+    const byok = cloudByokClient.getConfig();
+    const isCloudByok = byok.enabled && cloudByokClient.hasValidKey();
+    const providerLabel = isBridgeConnected
+      ? 'GPU LOCAL'
+      : isCloudByok
+        ? 'CLOUD BYOK'
+        : 'WEBGPU';
+
     this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
-    this.aiTextElement.textContent = isAllAi ? 'MODO IA: 5/5 ACTIVA' : `MODO IA: ${count}/5 HÍBRIDO`;
-    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas${bridgeMark}. Haz clic para abrir la matriz modular.`;
+    this.aiTextElement.textContent = isAllAi
+      ? `MODO IA: ${providerLabel} (5/5)`
+      : `MODO IA: ${providerLabel} (${count}/5)`;
+    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas [${providerLabel}]. Haz clic para abrir la matriz modular.`;
   }
 
 

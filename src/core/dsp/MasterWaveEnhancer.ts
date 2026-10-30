@@ -256,7 +256,8 @@ export function expandShortLoopAndRelocate(
   sampleRate: number,
   loopStart: number,
   loopEnd: number,
-  minLoopDurationSec = 4.0
+  minLoopDurationSec = 4.0,
+  sustainWindowHint?: { loopStart: number; loopEnd: number }
 ): {
   channels: Float32Array[];
   loopStart: number;
@@ -277,11 +278,17 @@ export function expandShortLoopAndRelocate(
   }
 
   // If no valid loop was provided, establish a natural sustain loop across 25%..92% of the sample
+  // or use the Neural Stationarity Window if provided by WebNeuralEngine
   let validStart = clamp(Math.round(loopStart), 0, origLen - 2);
   let validEnd = clamp(Math.round(loopEnd), 0, origLen - 1);
   if (validEnd <= validStart + 64) {
-    validStart = Math.floor(origLen * 0.25);
-    validEnd = Math.floor(origLen * 0.92);
+    if (sustainWindowHint && sustainWindowHint.loopEnd > sustainWindowHint.loopStart + 64) {
+      validStart = clamp(sustainWindowHint.loopStart, 0, origLen - 2);
+      validEnd = clamp(sustainWindowHint.loopEnd, validStart + 32, origLen - 1);
+    } else {
+      validStart = Math.floor(origLen * 0.25);
+      validEnd = Math.floor(origLen * 0.92);
+    }
   }
 
   // First snap the source loop to optimal zero crossings
@@ -600,6 +607,7 @@ export async function promoteBufferToMasterWave(
     loopStart?: number;
     loopEnd?: number;
     loopMode?: AiffInstrumentInfo['loopMode'];
+    sustainWindowHint?: { loopStart: number; loopEnd: number };
   }
 ): Promise<{
   wav24Buffer: ArrayBuffer;
@@ -632,7 +640,8 @@ export async function promoteBufferToMasterWave(
     origRate,
     origLoopStart,
     origLoopEnd,
-    cfg.minLoopDurationSec
+    cfg.minLoopDurationSec,
+    loopMeta?.sustainWindowHint
   );
 
   let workingChannels = loopStage.channels;

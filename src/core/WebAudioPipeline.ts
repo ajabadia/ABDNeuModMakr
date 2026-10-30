@@ -114,6 +114,7 @@ import {
   persistSessionToLocalStorage,
   restoreSessionFromLocalStorage,
 } from './sessionPersistence.ts';
+import { webNeuralEngine } from './ai/WebNeuralEngine.ts';
 import { AudioPreviewService } from './audioPreview.ts';
 import { BankService, BankLoadError, buildBankLoadPlan } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
@@ -2854,6 +2855,22 @@ export class WebAudioPipeline implements CoreService {
           },
         };
       } else {
+        let sustainHint: { loopStart: number; loopEnd: number } | undefined;
+        const aiCfg = this.session.processConfig.aiConfig;
+        if (aiCfg?.enabled && aiCfg.loopExpansion === 'ai') {
+          try {
+            const dec = decodeWav(rawBuf);
+            if (dec.channels.length > 0) {
+              const sustainRes = await webNeuralEngine.findSustainWindow(dec.channels[0], dec.sampleRate);
+              if (sustainRes && sustainRes.loopEnd > sustainRes.loopStart + 64) {
+                sustainHint = { loopStart: sustainRes.loopStart, loopEnd: sustainRes.loopEnd };
+              }
+            }
+          } catch {
+            // safe fallback
+          }
+        }
+
         promoted = await promoteBufferToMasterWave(
           rawBuf,
           originSampleName,
@@ -2864,6 +2881,7 @@ export class WebAudioPipeline implements CoreService {
             detuneCents: zone.detune,
             loopStart: matchReg?.loopStart,
             loopEnd: matchReg?.loopEnd,
+            sustainWindowHint: sustainHint,
             loopMode:
               matchReg?.loopMode === 'ping_pong' || matchReg?.loopMode === 'loop_backward'
                 ? 'loop_continuous'

@@ -41,6 +41,7 @@ export interface MenuContext {
   openBridgeModal?: () => void;
   toggleAiAssistance?: () => void;
   selectThemeFamily?: (family: string) => void;
+  cycleThemeFamily?: () => void;
   setThemeMode?: (mode: 'light' | 'dark') => void;
   toggleThemeMode?: () => void;
 }
@@ -288,6 +289,10 @@ export class MenuActions {
         this.ctx.shell.getTelemetry().addLog(`Theme switched to: ${theme}`);
       },
       onToggleTheme: () => {
+        if (this.ctx.cycleThemeFamily) {
+          this.ctx.cycleThemeFamily();
+          return;
+        }
         this.ctx.themeIndex = (this.ctx.themeIndex + 1) % this.ctx.themes.length;
         const next = this.ctx.themes[this.ctx.themeIndex];
         document.documentElement.setAttribute('data-theme', next);

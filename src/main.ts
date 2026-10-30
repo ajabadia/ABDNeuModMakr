@@ -106,15 +106,43 @@ class App {
       openBridgeModal: () => self.bridgeModal.open(),
       toggleAiAssistance: () => self.handleToggleAiAssistance(),
       selectThemeFamily: (family: string) => self.setThemeFamily(family),
+      cycleThemeFamily: () => self.cycleThemeFamily(),
       setThemeMode: (mode: 'light' | 'dark') => self.setThemeMode(mode),
       toggleThemeMode: () => self.toggleThemeMode(),
     });
   }
 
-  // Hardware Theme Families and Appearance Mode
+  // Hardware Theme Families and Appearance Mode (Default: Hartmann Neuron Claro)
   private themeFamilies = ['neuron', 'virus-snow', 'audiolab', 'ms2000', 'advanced', 'cz101'] as const;
   private currentFamilyIndex = 0; // 'neuron'
   private currentThemeMode: 'light' | 'dark' = 'light';
+
+  private loadThemePreferences(): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const savedFamily = localStorage.getItem('nmm_theme_family');
+      if (savedFamily) {
+        const idx = (this.themeFamilies as readonly string[]).indexOf(savedFamily);
+        if (idx >= 0) this.currentFamilyIndex = idx;
+      }
+      const savedMode = localStorage.getItem('nmm_theme_mode');
+      if (savedMode === 'light' || savedMode === 'dark') {
+        this.currentThemeMode = savedMode;
+      }
+    } catch {
+      // safe fallback
+    }
+  }
+
+  private saveThemePreferences(): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem('nmm_theme_family', this.themeFamilies[this.currentFamilyIndex]);
+      localStorage.setItem('nmm_theme_mode', this.currentThemeMode);
+    } catch {
+      // ignore
+    }
+  }
 
   public resolveActiveTheme(): string {
     const family = this.themeFamilies[this.currentFamilyIndex];
@@ -151,6 +179,7 @@ class App {
   }
 
   private applyTheme(): void {
+    this.saveThemePreferences();
     const theme = this.resolveActiveTheme();
     document.documentElement.setAttribute('data-theme', theme);
     this.navbar?.setThemeState({
@@ -178,6 +207,7 @@ class App {
   private isSpectralVisible = false;
 
   public async init(): Promise<void> {
+    this.loadThemePreferences();
     document.documentElement.setAttribute('data-theme', this.resolveActiveTheme());
 
     await this.core.init();
