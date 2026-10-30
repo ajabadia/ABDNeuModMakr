@@ -105,10 +105,64 @@ class App {
       openAiEngineModal: () => self.aiEngineModal.open(self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
       openBridgeModal: () => self.bridgeModal.open(),
       toggleAiAssistance: () => self.handleToggleAiAssistance(),
+      selectThemeFamily: (family: string) => self.setThemeFamily(family),
+      setThemeMode: (mode: 'light' | 'dark') => self.setThemeMode(mode),
+      toggleThemeMode: () => self.toggleThemeMode(),
     });
   }
 
-  // Themes
+  // Hardware Theme Families and Appearance Mode
+  private themeFamilies = ['neuron', 'virus-snow', 'audiolab', 'ms2000', 'advanced', 'cz101'] as const;
+  private currentFamilyIndex = 0; // 'neuron'
+  private currentThemeMode: 'light' | 'dark' = 'light';
+
+  public resolveActiveTheme(): string {
+    const family = this.themeFamilies[this.currentFamilyIndex];
+    if (family === 'neuron') return this.currentThemeMode === 'light' ? 'neuron-light' : 'neuron-dark';
+    if (family === 'virus-snow') return this.currentThemeMode === 'light' ? 'virus-snow' : 'virus-snow-dark';
+    if (family === 'audiolab') return this.currentThemeMode === 'light' ? 'audiolab-light' : 'audiolab';
+    if (family === 'ms2000') return 'ms2000';
+    if (family === 'advanced') return 'advanced';
+    if (family === 'cz101') return 'cz101';
+    return 'neuron-light';
+  }
+
+  public setThemeFamily(family: string): void {
+    const idx = (this.themeFamilies as readonly string[]).indexOf(family);
+    if (idx >= 0) {
+      this.currentFamilyIndex = idx;
+      this.applyTheme();
+    }
+  }
+
+  public setThemeMode(mode: 'light' | 'dark'): void {
+    this.currentThemeMode = mode;
+    this.applyTheme();
+  }
+
+  public toggleThemeMode(): void {
+    this.currentThemeMode = this.currentThemeMode === 'light' ? 'dark' : 'light';
+    this.applyTheme();
+  }
+
+  public cycleThemeFamily(): void {
+    this.currentFamilyIndex = (this.currentFamilyIndex + 1) % this.themeFamilies.length;
+    this.applyTheme();
+  }
+
+  private applyTheme(): void {
+    const theme = this.resolveActiveTheme();
+    document.documentElement.setAttribute('data-theme', theme);
+    this.navbar?.setThemeState({
+      theme,
+      family: this.themeFamilies[this.currentFamilyIndex],
+      mode: this.currentThemeMode,
+    });
+    this.spectralView?.refreshTheme();
+    this.telemetryDrawer?.addLog(`Theme: ${this.themeFamilies[this.currentFamilyIndex]} (${this.currentThemeMode.toUpperCase()}) -> ${theme}`);
+  }
+
+  // Themes legacy list for index-based consumers
   private themes = [
     'neuron-light',
     'neuron-dark',
@@ -124,7 +178,7 @@ class App {
   private isSpectralVisible = false;
 
   public async init(): Promise<void> {
-    document.documentElement.setAttribute('data-theme', this.themes[this.currentThemeIndex]);
+    document.documentElement.setAttribute('data-theme', this.resolveActiveTheme());
 
     await this.core.init();
     this.session = this.core.getSession();
@@ -679,8 +733,13 @@ class App {
     this.navbar.mount(
       this.session!,
       this.core.validateCoverage(),
-      this.themes[this.currentThemeIndex]
+      this.resolveActiveTheme()
     );
+    this.navbar.setThemeState({
+      theme: this.resolveActiveTheme(),
+      family: this.themeFamilies[this.currentFamilyIndex],
+      mode: this.currentThemeMode,
+    });
     this.menus.bindKeyboardShortcuts();
     this.imports.bindGlobalDragAndDrop();
     this.menus.bindUnsavedChangesGuard();

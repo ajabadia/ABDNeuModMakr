@@ -40,6 +40,9 @@ export interface MenuContext {
   openAiEngineModal?: () => void;
   openBridgeModal?: () => void;
   toggleAiAssistance?: () => void;
+  selectThemeFamily?: (family: string) => void;
+  setThemeMode?: (mode: 'light' | 'dark') => void;
+  toggleThemeMode?: () => void;
 }
 
 export class MenuActions {
@@ -291,7 +294,10 @@ export class MenuActions {
         this.ctx.shell.getNavbar().setTheme(next);
         this.ctx.shell.getSpectralView()?.refreshTheme();
         this.ctx.shell.getTelemetry().addLog(`Theme switched to: ${next}`);
-      }
+      },
+      onSelectThemeFamily: (family: string) => this.ctx.selectThemeFamily?.(family),
+      onSetThemeMode: (mode: 'light' | 'dark') => this.ctx.setThemeMode?.(mode),
+      onToggleThemeMode: () => this.ctx.toggleThemeMode?.(),
     };
   }
 

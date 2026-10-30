@@ -44,6 +44,9 @@ export interface NavbarHandlers {
   onOpenAudit?: () => void;
   onSelectTheme: (theme: string) => void;
   onToggleTheme: () => void;
+  onSelectThemeFamily?: (family: string) => void;
+  onSetThemeMode?: (mode: 'light' | 'dark') => void;
+  onToggleThemeMode?: () => void;
 }
 
 export class AppNavbar {
@@ -60,7 +63,10 @@ export class AppNavbar {
   private undoBtn: HTMLButtonElement | null = null;
   private redoBtn: HTMLButtonElement | null = null;
   private docModalEl: HTMLElement | null = null;
+  private themeModeBtn: HTMLButtonElement | null = null;
   private currentTheme = 'neuron-light';
+  private currentThemeFamily = 'neuron';
+  private currentThemeMode: 'light' | 'dark' = 'light';
   private currentTargetFormat: TargetFormat = 'dual';
   private currentWorkingMode: WorkingMode = 'classic';
 
@@ -164,17 +170,24 @@ export class AppNavbar {
           { separator: true },
           {
             id: 405,
-            label: 'Color Theme',
+            label: 'Hardware Skin',
             submenu: [
-              { id: 406, label: 'Hartmann Neuron Light (Default)', action: 'selectTheme', value: 'neuron-light' },
-              { id: 407, label: 'Hartmann Neuron Dark', action: 'selectTheme', value: 'neuron-dark' },
-              { id: 408, label: 'Access Virus Snow Light', action: 'selectTheme', value: 'virus-snow' },
-              { id: 409, label: 'Access Virus Snow Dark', action: 'selectTheme', value: 'virus-snow-dark' },
-              { id: 410, label: 'AudioLab Dark', action: 'selectTheme', value: 'audiolab' },
-              { id: 411, label: 'AudioLab Light', action: 'selectTheme', value: 'audiolab-light' },
-              { id: 412, label: 'MS2000 Dark Cyan', action: 'selectTheme', value: 'ms2000' },
-              { id: 413, label: 'Advanced Studio', action: 'selectTheme', value: 'advanced' },
-              { id: 414, label: 'CZ-101 Vintage', action: 'selectTheme', value: 'cz101' },
+              { id: 406, label: 'Hartmann Neuron (2002)', action: 'selectThemeFamily', value: 'neuron' },
+              { id: 407, label: 'Access Virus Snow (2008)', action: 'selectThemeFamily', value: 'virus-snow' },
+              { id: 408, label: 'AudioLab Precision', action: 'selectThemeFamily', value: 'audiolab' },
+              { id: 409, label: 'Korg MS2000', action: 'selectThemeFamily', value: 'ms2000' },
+              { id: 410, label: 'Hartmann Advanced', action: 'selectThemeFamily', value: 'advanced' },
+              { id: 411, label: 'Casio CZ-101', action: 'selectThemeFamily', value: 'cz101' },
+            ],
+          },
+          {
+            id: 412,
+            label: 'Appearance Mode',
+            submenu: [
+              { id: 413, label: 'Light Mode', action: 'setThemeMode', value: 'light' },
+              { id: 414, label: 'Dark Mode', action: 'setThemeMode', value: 'dark' },
+              { separator: true },
+              { id: 415, label: 'Toggle Light / Dark', action: 'toggleThemeMode' },
             ],
           },
         ],
@@ -230,7 +243,10 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
         ${ICONS.terminal}
       </button>
-      <button type="button" class="btn btn-hud-icon btn-theme-toggle" id="nav-btn-theme" title="Cycle Color Theme">
+      <button type="button" class="btn btn-hud-icon btn-theme-mode-toggle" id="nav-btn-theme-mode" title="${this.currentThemeMode === 'light' ? 'Cambiar a Modo Oscuro' : 'Cambiar a Modo Claro'}">
+        <span class="theme-mode-icon">${this.currentThemeMode === 'light' ? ICONS.moon : ICONS.sun}</span>
+      </button>
+      <button type="button" class="btn btn-hud-icon btn-theme-toggle" id="nav-btn-theme" title="Siguiente sintetizador / skin">
         <span class="theme-icon">${ICONS.palette}</span>
       </button>
     `;
@@ -246,6 +262,8 @@ export class AppNavbar {
         setWorkingMode: 'classic',
         setTargetFormat: this.currentTargetFormat,
         selectTheme: this.currentTheme,
+        selectThemeFamily: this.currentThemeFamily,
+        setThemeMode: this.currentThemeMode,
       },
       aboutDialog: {
         appName: 'NEURON MODELmaker',
@@ -299,6 +317,10 @@ export class AppNavbar {
     rightSlot.querySelector('#nav-btn-spectral')?.addEventListener('click', () => this.handlers.onToggleSpectral());
     rightSlot.querySelector('#nav-btn-bank')?.addEventListener('click', () => this.handlers.onToggleBank());
     rightSlot.querySelector('#nav-btn-logs')?.addEventListener('click', () => this.handlers.onToggleLogs());
+    this.themeModeBtn = rightSlot.querySelector('#nav-btn-theme-mode');
+    this.themeModeBtn?.addEventListener('click', () => {
+      this.handlers.onToggleThemeMode?.();
+    });
     rightSlot.querySelector('#nav-btn-theme')?.addEventListener('click', () => this.handlers.onToggleTheme());
   }
 
@@ -309,6 +331,18 @@ export class AppNavbar {
 
   public setTheme(theme: string): void {
     this.currentTheme = theme;
+    this.syncActiveMenuChecks();
+  }
+
+  public setThemeState(state: { theme: string; family: string; mode: 'light' | 'dark' }): void {
+    this.currentTheme = state.theme;
+    this.currentThemeFamily = state.family;
+    this.currentThemeMode = state.mode;
+    if (this.themeModeBtn) {
+      const isLight = state.mode === 'light';
+      this.themeModeBtn.title = isLight ? 'Cambiar a Modo Oscuro' : 'Cambiar a Modo Claro';
+      this.themeModeBtn.innerHTML = `<span class="theme-mode-icon">${isLight ? ICONS.moon : ICONS.sun}</span>`;
+    }
     this.syncActiveMenuChecks();
   }
 
@@ -373,6 +407,8 @@ export class AppNavbar {
       setWorkingMode: this.currentWorkingMode,
       setTargetFormat: this.currentTargetFormat,
       selectTheme: this.currentTheme,
+      selectThemeFamily: this.currentThemeFamily,
+      setThemeMode: this.currentThemeMode,
     });
   }
 
@@ -510,6 +546,17 @@ export class AppNavbar {
         }
         break;
       case 'toggleTheme': this.handlers.onToggleTheme(); break;
+      case 'selectThemeFamily':
+        if (typeof value === 'string' && value.length > 0) {
+          this.handlers.onSelectThemeFamily?.(value);
+        }
+        break;
+      case 'setThemeMode':
+        if (value === 'light' || value === 'dark') {
+          this.handlers.onSetThemeMode?.(value);
+        }
+        break;
+      case 'toggleThemeMode': this.handlers.onToggleThemeMode?.(); break;
       case 'openAiEngineModal': this.handlers.onOpenAiEngineModal?.(); break;
       case 'openBridgeModal': this.handlers.onOpenBridgeModal?.(); break;
       case 'manual': this.showDocModal('manual'); break;
