@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "2.0",
+  "id": "yamaha_dx7ii",
+  "aliases": [
+    "yamaha-dx7ii"
+  ],
+  "displayName": "Yamaha DX7II (FD/D)",
+  "description": "Second Generation 6-Operator FM Synthesizer with Dual/Split Performance Modes, Fractional Scaling, and Clean 16-Bit Stereo DAC",
+  "deviceType": "AUTOMATED_SYSEX",
+  "brand": "Yamaha",
+  "brandLogo": "brands/yamaha-logo.svg",
+  "modelImage": "models/yamaha-dx7.png",
+  "midiIdentification": {
+    "manufacturer": "Yamaha",
+    "manufacturerIdHex": "43",
+    "model": "DX7II",
+    "modelIdHex": "01",
+    "sysexHeaderHex": "43 00 01",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "DX7II",
+      "DX7-II",
+      "DX7 2",
+      "DX7FD",
+      "Yamaha DX7II"
+    ]
+  },
+  "functions": [
+    {
+      "id": "dual_voice_fm_engine",
+      "name": "Dual Voice FM Engine (Voice A + B)",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On -> Entrada MIDI DX7II",
+        "responseInput": "Stereo Output (A/B) -> Entradas Audio 1 y 2",
+        "notes": "Arquitectura de doble voz en capas o división con desafinación estéreo y paneo dinámico."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Performance Mode",
+          "type": "RotarySwitch",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "50",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0,
+          "unit": "Mode",
+          "options": [
+            "Single",
+            "Dual (Layer)",
+            "Split"
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Voice A/B Detune",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "51",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.2,
+          "unit": "Cents"
+        }
+      ]
+    },
+    {
+      "id": "fractional_scaling_vced",
+      "name": "Fractional Key Scaling & Pitch EG",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "captureMode": "ADAPTIVE_ENVELOPE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On -> Entrada MIDI DX7II",
+        "responseInput": "Audio Output -> Entrada Audio 1 (L)",
+        "notes": "Curvas microtonales y escalado fraccional de 3 partes por octava."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Pitch EG Rate 1",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "30",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.9,
+          "unit": "0-99"
+        },
+        {
+          "index": 2,
+          "name": "Pitch EG Level 1",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "31",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "0-99"
+        }
+      ]
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 64,
+    "banksCount": 2,
+    "programsPerBank": 32,
+    "patchDataSize": 155,
+    "patchNameMaxLength": 10,
+    "categories": [
+      "Piano",
+      "Brass",
+      "Strings",
+      "Bass",
+      "Lead",
+      "Guitar",
+      "Perc",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [],
+    "sysexProtocol": {
+      "manufacturerIdHex": "43",
+      "modelIdByteHex": "01",
+      "checksumAlgorithm": "SUM_7BIT",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 5000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "10"
+    }
+  }
+}

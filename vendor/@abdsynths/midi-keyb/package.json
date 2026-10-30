@@ -1,0 +1,34 @@
+{
+  "name": "@abdsynths/midi-keyb",
+  "version": "0.2.1",
+  "description": "MIDI-responsive virtual keyboard with pitch/mod wheels, octave LEDs, QWERTY, touch, LED animations, and host-driven feedback (wheels + note visuals) — shared across all ABDSynths projects",
+  "type": "module",
+  "main": "src/keyboard.js",
+  "style": "src/keyboard.css",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./src/keyboard.js",
+    "./keyboard.css": "./src/keyboard.css"
+  },
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "dependencies": {
+    "@abdsynths/shared": "file:../shared"
+  },
+  "keywords": [
+    "synth",
+    "keyboard",
+    "piano",
+    "keybed",
+    "midi",
+    "pitch-wheel",
+    "mod-wheel",
+    "abdsynths"
+  ],
+  "author": "ajabadia",
+  "license": "UNLICENSED"
+}

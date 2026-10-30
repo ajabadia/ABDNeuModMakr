@@ -1,0 +1,128 @@
+{
+  "schemaVersion": "2.0",
+  "id": "korg_prophecy",
+  "aliases": [
+    "korg-prophecy"
+  ],
+  "displayName": "Korg Prophecy (MOSS DSP)",
+  "description": "Solo Synthesizer with Multi-Oscillator Synthesis System (MOSS DSP), Physical Modeling (Brass/Reed/Pluck), and Dual Multi-Mode Filters",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Korg",
+  "brandLogo": "brands/korg-logo.svg",
+  "modelImage": "models/korg-prophecy.png",
+  "midiIdentification": {
+    "manufacturer": "Korg",
+    "manufacturerIdHex": "42",
+    "model": "Prophecy",
+    "modelIdHex": "5A",
+    "sysexHeaderHex": "42 30 5A",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "Prophecy",
+      "KORG Prophecy"
+    ]
+  },
+  "functions": [
+    {
+      "id": "dual_multimode_filter",
+      "name": "Dual Multi-Mode Resonant Filter (LPF/HPF/BPF/BRF)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In (o MIDI Note-On C3)",
+        "responseInput": "Line Out (L/Mono) -> Entrada Audio 1 (L)",
+        "notes": "Filtro dual configurable en serie o paralelo con saturación analógica modelada."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Filter 1 Cutoff",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 74,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.7,
+          "unit": "0-127"
+        },
+        {
+          "index": 2,
+          "name": "Filter 1 Resonance",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 71,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.25,
+          "unit": "0-127"
+        },
+        {
+          "index": 3,
+          "name": "Filter 2 Cutoff",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 75,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "0-127"
+        }
+      ]
+    },
+    {
+      "id": "waveshaper_nonlinear",
+      "name": "Nonlinear WaveShaper / Distortion Unit",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In",
+        "responseInput": "Line Out (L) -> Entrada Audio 1 (L)",
+        "notes": "Etapa de distorsión armónica con tablas de conformación senoidales y saturación asimétrica."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "WaveShape Depth",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 79,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "0-127"
+        }
+      ]
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 2,
+    "programsPerBank": 64,
+    "patchDataSize": 535,
+    "patchNameMaxLength": 16,
+    "categories": [
+      "Solo",
+      "Bass",
+      "Lead",
+      "Brass",
+      "Reed",
+      "Strings",
+      "Bell",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [],
+    "sysexProtocol": {
+      "manufacturerIdHex": "42",
+      "modelIdByteHex": "41",
+      "checksumAlgorithm": "NONE",
+      "encoding": "7_TO_8_BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 5000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "41"
+    }
+  }
+}

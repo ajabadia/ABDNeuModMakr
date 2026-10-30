@@ -1,0 +1,190 @@
+/**
+ * @abdsynths/shared — Components/I18n/locales/es.js
+ * Diccionario Común Canónico en Español (ES) para la Suite ABDSynths.
+ *
+ * Reglas:
+ * - Los acrónimos universales de síntesis y letras sueltas (A, D, S, R, LFO,
+ *   CUTOFF, RESO, VCO, DCO, VCF, VCA, HPF, LPF, BPF, Scape, Sphere, Blender,
+ *   Slicer, MIDI, CC, NRPN, SysEx, PWM, FM, AM, Hz, dB, ms) NO se traducen.
+ * - Toda clave definida aquí coincide 1:1 con SHARED_EN.
+ */
+
+export const SHARED_ES = {
+  common: {
+    close: 'Cerrar',
+    save: 'Guardar',
+    cancel: 'Cancelar',
+    load: 'Cargar',
+    export: 'Exportar',
+    import: 'Importar',
+    reset: 'Restablecer',
+    resetAll: 'Restablecer Todo',
+    search: 'Buscar...',
+    all: 'TODOS',
+    min: 'Mín',
+    max: 'Máx',
+    default: 'Por defecto',
+    enabled: 'Activado',
+    disabled: 'Desactivado',
+    status: 'Estado',
+    ready: 'Listo',
+    active: 'Activo',
+    none: 'Ninguno',
+    bytes: 'bytes',
+    modified: 'MODIFICADOS',
+    valuesUnit: 'valores',
+    clear: 'Limpiar',
+    apply: 'Aplicar',
+    discard: 'Descartar',
+    confirm: 'Confirmar',
+    abort: 'Cancelar',
+    edit: 'Editar',
+  },
+
+  navbar: {
+    // Standard Menu Bar Headers
+    menuFile: 'Archivo',
+    menuEdit: 'Edición',
+    menuMode: 'Modo',
+    menuView: 'Ver',
+    menuHelp: 'Ayuda',
+
+    // Standard File Menu Items
+    loadBank: 'Cargar Banco (.json)...',
+    saveBank: 'Guardar Banco (.json)...',
+    loadPreset: 'Cargar Preset de Sonido...',
+    savePreset: 'Guardar Preset de Sonido Como...',
+    initBank: 'Iniciar Banco (Restablecer Fábrica)',
+    initPreset: 'Iniciar Sonido (Restablecer Fábrica)',
+
+    // Standard Edit Menu Items
+    undo: 'Deshacer',
+    redo: 'Rehacer',
+    bankBrowser: 'Navegador de Bancos...',
+    randomize: 'Aleatorizar Sonido',
+    matrixMod: 'Matriz de Modulación...',
+    midiLearn: 'Matriz de Mapeo MIDI Learn y CC...',
+    hardwareSysEx: 'Volcados SysEx Hardware e Inspector en Vivo...',
+    dspCalibration: 'Calibración DSP y Números Mágicos...',
+    effectsRack: 'Rack de Efectos...',
+    globalSettings: 'Ajustes Globales del Sintetizador...',
+
+    // Standard View Menu Items
+    zoom: 'Escala (Zoom)',
+    zoom100: '100% (Normal)',
+    zoom125: '125% (Mediano)',
+    zoom150: '150% (Grande)',
+    colorTheme: 'Tema de Color',
+    language: 'Idioma',
+    langEn: 'English (EN)',
+    langEs: 'Español (ES)',
+
+    // Standard Help Menu Items
+    manual: 'Documentación / Guía de Arquitectura...',
+    checkForUpdates: 'Buscar Actualizaciones...',
+    about: 'Acerca de...',
+
+    // Common HUD & Badges
+    presetPillTitle: 'Preset Activo (Clic para abrir el Navegador de Bancos)',
+    presetLabel: 'PRESET:',
+    voicesTitle: 'Voces polifónicas activas',
+    voicesLabel: 'VOCES:',
+    cpuTitle: 'Carga de CPU del DSP de Audio',
+    btnMatrixTitle: 'Matriz de Modulación (Ctrl+M)',
+    btnMidiTitle: 'Matriz de Mapeo MIDI Learn y CC/NRPN (Ctrl+L)',
+    btnSysExTitle: 'Volcados SysEx Hardware e Inspector en Vivo (Ctrl+.)',
+    btnCalibTitle: 'Calibración DSP y Números Mágicos (Ctrl+;)',
+    btnEffectsTitle: 'Rack de Efectos (Ctrl+F)',
+    btnBankTitle: 'Navegador de Bancos (Ctrl+B)',
+    btnSettingsTitle: 'Ajustes Globales y Preferencias (Ctrl+,)',
+    btnThemeTitle: 'Alternar Tema de Color',
+    btnLangTitle: 'Cambiar Idioma (EN / ES)',
+
+    // Common Quick Action Button Short Labels
+    matrix: 'Matriz',
+    midi: 'MIDI',
+    sysex: 'SysEx',
+    calib: 'Calib',
+    effects: 'Efectos',
+    bank: 'Banco',
+    settings: 'Ajustes',
+
+    // Common About Dialog
+    aboutAuthor: 'ABDSynths',
+    aboutCopyright: '© 2026 ABDSynths',
+  },
+
+  settings: {
+    drawerTitle: 'AJUSTES DEL SINTETIZADOR',
+    polyphonyCard: 'POLIFONÍA Y APERTURA ESTÉREO',
+    numVoicesLabel: 'Voces',
+    soundPanLabel: 'Panorama',
+    panKeyTrackLabel: 'Panorama por Teclado',
+    controllersCard: 'CONTROLADORES Y RANGO DE PITCH BEND',
+    pitchBendRangeLabel: 'Rango PB',
+    footswitchLabel: 'Destino del Pedal Footswitch',
+    uiThemeCard: 'INTERFAZ DE USUARIO Y ESCALA',
+    themeLabel: 'Tema de Color',
+    zoomLabel: 'Nivel de Escala (Zoom)',
+  },
+
+  calibration: {
+    drawerTitle: 'CALIBRACIÓN DSP Y NÚMEROS MÁGICOS',
+    searchPlaceholder: 'Buscar número mágico por nombre, ID, descripción o referencia C++...',
+    modifiedBtn: 'MODIFICADOS',
+    modifiedBtnTitle: 'Mostrar solo parámetros con valores diferentes al original de fábrica',
+    loadJsonBtn: 'CARGAR JSON',
+    loadJsonTitle: 'Cargar configuración de calibración desde un archivo JSON',
+    exportJsonBtn: 'EXPORTAR JSON',
+    exportJsonTitle: 'Exportar todos los valores actuales de calibración a un archivo JSON',
+    resetAllBtn: 'RESTABLECER TODO',
+    resetAllTitle: 'Restaurar todos los números mágicos a sus constantes originales de fábrica',
+    allTab: 'TODOS',
+    valuesUnit: 'valores',
+    modShort: 'mod',
+    resetGroupBtn: 'Restablecer Grupo',
+    resetGroupTitle: 'Restaurar todos los valores de la categoría a valores de fábrica',
+    resetSingleTitle: 'Restaurar al valor de fábrica',
+    sliderDblClickTitle: 'Doble clic para restaurar al valor de fábrica',
+    defaultTickTitle: 'Valor original de fábrica:',
+    sourceRefTitle: 'Referencia en código C++ / binario',
+    minLabel: 'Mín',
+    maxLabel: 'Máx',
+  },
+
+  hardwareDumps: {
+    drawerTitle: 'VOLCADOS SYSEX HARDWARE E INSPECTOR EN VIVO',
+    connectionCard: 'PUERTO MIDI Y ESTADO DE CONEXIÓN',
+    portStatusConnected: 'Conectado',
+    portStatusDisconnected: 'Desconectado',
+    dumpTypeTitle: 'SELECTOR DE TIPO DE VOLCADO',
+    actionRequestDump: 'Solicitar Volcado al Hardware',
+    actionSendDump: 'Enviar Sonido Actual al Hardware',
+    actionLoadSyx: 'Cargar Archivo .syx...',
+    actionExportSyx: 'Exportar Archivo .syx...',
+    actionApplyToSynth: 'Aplicar Parámetros al Sintetizador',
+    inspectorTitle: 'INSPECTOR SYSEX EN VIVO',
+    diffTitle: 'COMPARACIÓN A/B SYSEX Y MUTACIONES',
+    activityLogTitle: 'REGISTRO DE ACTIVIDAD',
+    clearLogBtn: 'Limpiar Registro',
+    waitingData: 'Esperando transmisión SysEx...',
+  },
+
+  midiLearn: {
+    drawerTitle: 'MATRIZ DE MAPEO MIDI LEARN Y CC',
+    learnPrompt: 'Esperando mensaje MIDI CC desde el controlador...',
+    clearAll: 'Limpiar Todos los Mapeos',
+    learnReplace: 'Aprender MIDI (Reemplazar)...',
+    learnAdd: 'Añadir Otro Controlador (N:1)...',
+    unbindTarget: 'Eliminar Mapeo MIDI',
+    openMatrix: 'Abrir Matriz de Mapeo MIDI...',
+    exportMappings: 'Exportar Mapa MIDI (.json)',
+    importMappings: 'Importar Mapa MIDI (.json)',
+    channel: 'Canal',
+    source: 'Fuente',
+    target: 'Parámetro Destino',
+    range: 'Rango (Mín..Máx)',
+    curve: 'Curva',
+    invert: 'Invertir',
+  },
+};

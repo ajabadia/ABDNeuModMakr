@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "1.0",
+  "id": "neuronik",
+  "displayName": "NEURONiK (ABDNeural)",
+  "description": "Matriz propia, sin compromiso de hardware. Su tabla es ademas el FORMATO DE PRESET: los choices guardan indice, asi que solo se appendea al final (insertar en medio re-mapea los presets guardados). perNote y replaces sacan del switch de 31 casos la politica que tenia escondida.",
+  "authority": "design",
+  "slots": 4,
+  "sources": [
+    {
+      "label": "Off",
+      "category": "none",
+      "perNote": false
+    },
+    {
+      "label": "LFO 1",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO 2",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "Pitch Bend",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Mod Wheel",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Aftertouch",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "ENV 1",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "ENV 2",
+      "category": "envelope",
+      "perNote": true
+    }
+  ],
+  "replacesNote": "`replaces` es exactamente `envAssign` en el motor: la envolvente PISA el factor de routing en vez de sumarse encima. Los destinos 12..16 dejaron de publicarlo el 2026-09-29: son acumuladores a cero, la envolvente los MODULA y no los pisa, y por eso van con `perNote: true` y `replaces: false`. Los unicos que reemplazan son el 1 (ENV 1 -> VCA) y el 10 (ENV 2 -> cutoff), donde la envolvente ES la senal.",
+  "destinations": [
+    {
+      "label": "Off",
+      "parameterId": null
+    },
+    {
+      "label": "Osc Level",
+      "parameterId": "oscLevel",
+      "perNote": true,
+      "replaces": true
+    },
+    {
+      "label": "Inharmonicity",
+      "parameterId": "oscInharmonicity"
+    },
+    {
+      "label": "Roughness",
+      "parameterId": "oscRoughness"
+    },
+    {
+      "label": "Morph X",
+      "parameterId": "morphX"
+    },
+    {
+      "label": "Morph Y",
+      "parameterId": "morphY"
+    },
+    {
+      "label": "Amp Attack",
+      "parameterId": "envAttack"
+    },
+    {
+      "label": "Amp Decay",
+      "parameterId": "envDecay"
+    },
+    {
+      "label": "Amp Sustain",
+      "parameterId": "envSustain"
+    },
+    {
+      "label": "Amp Release",
+      "parameterId": "envRelease"
+    },
+    {
+      "label": "Filter Cutoff",
+      "parameterId": "filterCutoff",
+      "perNote": true,
+      "replaces": true
+    },
+    {
+      "label": "Filter Res",
+      "parameterId": "filterRes"
+    },
+    {
+      "label": "Filter Env Amt",
+      "parameterId": null,
+      "perNote": true,
+      "replaces": false
+    },
+    {
+      "label": "Flt Attack",
+      "parameterId": "filterAttack",
+      "perNote": true,
+      "replaces": false
+    },
+    {
+      "label": "Flt Decay",
+      "parameterId": "filterDecay",
+      "perNote": true,
+      "replaces": false
+    },
+    {
+      "label": "Flt Sustain",
+      "parameterId": "filterSustain",
+      "perNote": true,
+      "replaces": false
+    },
+    {
+      "label": "Flt Release",
+      "parameterId": "filterRelease",
+      "perNote": true,
+      "replaces": false
+    },
+    {
+      "label": "Saturation",
+      "parameterId": "fx1Param1"
+    },
+    {
+      "label": "Delay Time",
+      "parameterId": "fxDelayTime"
+    },
+    {
+      "label": "Delay FB",
+      "parameterId": "fxDelayFeedback"
+    },
+    {
+      "label": "Odd/Even Bal",
+      "parameterId": "resonatorParity"
+    },
+    {
+      "label": "Spectral Shift",
+      "parameterId": "resonatorShift"
+    },
+    {
+      "label": "Harm Roll-off",
+      "parameterId": "resonatorRolloff"
+    },
+    {
+      "label": "Excite Noise",
+      "parameterId": "oscExciteNoise"
+    },
+    {
+      "label": "Excite Color",
+      "parameterId": "excitationColor"
+    },
+    {
+      "label": "Impulse Mix",
+      "parameterId": "impulseMix"
+    },
+    {
+      "label": "Res Bank Res",
+      "parameterId": "resonatorRes"
+    },
+    {
+      "label": "Unison Detune",
+      "parameterId": "unisonDetune"
+    },
+    {
+      "label": "Morph Z",
+      "parameterId": "morphZ"
+    },
+    {
+      "label": "Morph Z 2",
+      "parameterId": "morphZ2"
+    },
+    {
+      "label": "Morph Z 3",
+      "parameterId": "morphZ3"
+    }
+  ],
+  "provenance": {
+    "source": "Source/State/ModDestinationTable.h (kModDestinationTable) y el switch de NeuronikEngine::applyModulation",
+    "sourceFiles": [
+      "ABDNeural/Source/State/ModDestinationTable.h",
+      "ABDNeural/Source/State/ParameterDefinitions.h"
+    ],
+    "verifiedAt": "2026-09-29"
+  },
+  "generatedBy": "scripts/generate_modulation_contracts.py"
+}

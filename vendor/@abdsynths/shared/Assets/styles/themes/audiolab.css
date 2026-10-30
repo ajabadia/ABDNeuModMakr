@@ -1,0 +1,35 @@
+/* ABDAudioLab -- Scientific Dark / Nordic Theme */
+[data-theme="audiolab"], [data-theme="dark"], body.skin-audiolab, body.theme-dark, body.theme-audiolab {
+  --color-bg-base:             #070a0e;
+  --color-panel-bg:            #0b1118;
+  --color-panel-surface:       #121a24;
+  --color-panel-surface-elevated: #1a2636;
+  --color-panel-border:        rgba(255, 255, 255, 0.09);
+  --color-panel-border-strong: rgba(255, 255, 255, 0.18);
+  --color-panel-border-dim:    rgba(255, 255, 255, 0.05);
+  --shadow-card:               0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover:         0 6px 20px rgba(0, 0, 0, 0.35);
+  --color-accent:        #00e676;
+  --color-accent-rgb:    0, 230, 118;
+  --color-accent-hover:  #33eb91;
+  --color-accent-active: #00b85c;
+  --color-accent-dim:    rgba(0, 230, 118, 0.15);
+  --color-success:       #00e676;
+  --color-success-rgb:   0, 230, 118;
+  --color-warning:       #ffb142;
+  --color-warning-rgb:   255, 177, 66;
+  --color-danger:        #ff5252;
+  --color-danger-rgb:    255, 82, 82;
+  --color-info:          #00c3ff;
+  --color-info-rgb:      0, 195, 255;
+  --color-text-main:  #e8fff0;
+  --color-text-muted: #7eb5a0;
+  --color-text-dim:   #4a8a6a;
+  --color-lcd-bg:     #09140e;
+  --color-lcd-text:   #00e676;
+  --color-lcd-border: rgba(0, 230, 118, 0.3);
+  --color-scrollbar-thumb:        #1a3028;
+  --color-scrollbar-thumb-hover:  #254a3a;
+  --color-scrollbar-thumb-active: #30604c;
+  --color-scrollbar-track:        #060a08;
+}

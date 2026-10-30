@@ -1,0 +1,25 @@
+﻿/* Casio CZ-101 -- Vintage Red & Slate Theme */
+[data-theme="cz101"], body.skin-cz101 {
+  --color-bg-base:             #141416;
+  --color-panel-bg:            #1c1d22;
+  --color-panel-surface:       #262830;
+  --color-panel-surface-elevated: #323540;
+  --color-panel-border:        rgba(255, 68, 68, 0.3);
+  --color-panel-border-strong: rgba(255, 68, 68, 0.5);
+  --color-panel-border-dim:    rgba(255, 68, 68, 0.12);
+  --color-accent:        #ff3b30;
+  --color-accent-rgb:    255, 59, 48;
+  --color-accent-hover:  #ff6259;
+  --color-accent-active: #cc2e25;
+  --color-accent-dim:    rgba(255, 59, 48, 0.15);
+  --color-text-main:  #f5f0ee;
+  --color-text-muted: #b5a8a0;
+  --color-text-dim:   #7a6e66;
+  --color-lcd-bg:     #2a382b;
+  --color-lcd-text:   #8bf29e;
+  --color-lcd-border: rgba(139, 242, 158, 0.3);
+  --color-scrollbar-thumb:        #3a3540;
+  --color-scrollbar-thumb-hover:  #504a55;
+  --color-scrollbar-thumb-active: #665e68;
+  --color-scrollbar-track:        #121214;
+}

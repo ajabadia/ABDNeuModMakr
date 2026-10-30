@@ -1,0 +1,66 @@
+﻿/**
+ * ABD Keyboard Component Tokens (Adapter)
+ * Maps the ABD MidiKeyboard module token set (--kbd-*) onto the ABD shared
+ * host tokens (--color-*, --font-*) where a semantic match exists; key 3D
+ * shades and transient FX colors stay stable module defaults. Load AFTER the
+ * module's keyboard.css so the mapping wins by source order; the module keeps
+ * its own inline fallbacks for standalone contexts. Fallback values mirror
+ * the module's own defaults so host-cascade and standalone render the same.
+ * Runtime state the component writes per key (--kbd-pressure, --kbd-mw-pressure,
+ * --kbd-pb-offset, --kbd-velocity, --kbd-dirt-color, --kbd-dirt-start) is NOT
+ * themable and intentionally stays out. Hosts may override any --kbd-* token
+ * in their own cascade.
+ */
+:root {
+  --kbd-bg: var(--color-panel-bg, #080808);
+  --kbd-border: var(--color-panel-border, #1a1a1a);
+  --kbd-white-top: #fdfcf8;
+  --kbd-white-base: #ffffff;
+  --kbd-white-bottom: #f5f2ea;
+  --kbd-ivory-top: var(--kbd-white-top, #fdfcf8);
+  --kbd-ivory-base: var(--kbd-white-base, #ffffff);
+  --kbd-ivory-bottom: var(--kbd-white-bottom, #f5f2ea);
+  --kbd-black-top: #2f2f35;
+  --kbd-black-base: #1c1c22;
+  --kbd-black-bottom: #0c0c10;
+  --kbd-active-bg: var(--color-accent, #00ccff);
+  --kbd-led-color: var(--color-accent, #00ccff);
+  --kbd-sweep-color: var(--color-accent, #00ccff);
+  --kbd-chord-color: var(--color-warning, #ffaa00);
+  --kbd-chord-playing-color: var(--color-success, #00ff88);
+  --kbd-panic-color: var(--color-danger, #ff2233);
+  --kbd-wheel-label-color: var(--color-text-muted, #7e9bb5);
+  --kbd-wheel-value-color: var(--color-accent, #00ccff);
+  --kbd-font: var(--font-lcd, 'Courier New', monospace);
+}
+
+/* ─── Keybed Layout Contracts (Shared single-source) ─── */
+#piano-keyboard {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+  contain: layout style;
+}
+
+.kbd-piano-keys {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+}
+
+.kbd-keys-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+}

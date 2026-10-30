@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "2.0",
+  "id": "abd_sm002",
+  "aliases": [
+    "abd-sm002"
+  ],
+  "displayName": "ABD MS2000 (SM002)",
+  "description": "ABDSynths software synth of the ABDMS2000 host. Reuses the MS2000 patch format (rawData is an MS2000-style SysEx frame) so it can open hardware MS2000/microKORG banks, but is a local edit target: no physical MIDI port, so MIDI auto-detection and hardware routing are disabled (isSoftsynth).",
+  "deviceType": "MOCK_DSP",
+  "brand": "ABDSynths",
+  "brandLogo": "brands/korg-logo.svg",
+  "modelImage": "models/korg-ms2000.webp",
+  "isSoftsynth": true,
+  "midiIdentification": {
+    "manufacturer": "ABDSynths",
+    "manufacturerIdHex": "7D",
+    "model": "SM002",
+    "modelIdHex": "0A",
+    "sysexHeaderHex": "7D 0A",
+    "portNameMatches": []
+  },
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 8,
+    "programsPerBank": 16,
+    "patchDataSize": 384,
+    "patchNameMaxLength": 12,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Motion",
+      "Arp",
+      "Split",
+      "Bell",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "korg-ms2000",
+      "korg-microkorg"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "7D",
+      "modelIdByteHex": "0A",
+      "programDumpCommandHex": "40",
+      "programRequestCommandHex": "10",
+      "allDumpCommandHex": "4C",
+      "allRequestCommandHex": "0E",
+      "paramChangeCommandHex": "41",
+      "ackCommandHex": "23",
+      "nackCommandHex": "24",
+      "checksumAlgorithm": "NONE",
+      "encoding": "7_TO_8_BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "0A"
+    }
+  }
+}

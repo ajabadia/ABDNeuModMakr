@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "2.0",
+  "id": "behringer_modular_140",
+  "displayName": "Behringer System 100 140 Dual Envelope / LFO",
+  "description": "Dual Analog ADSR Envelope Generator & Multi-Wave LFO",
+  "deviceType": "MANUAL_EURORACK",
+  "brand": "Behringer",
+  "brandLogo": "brands/behringer-logo.svg",
+  "modelImage": "models/behringer-modular-140.webp",
+  "midiIdentification": {
+    "manufacturer": "Behringer",
+    "model": "System100_140",
+    "autoDetectSysEx": ""
+  },
+  "functions": [
+    {
+      "id": "envelope_1",
+      "name": "Envelope Generator 1 (ADSR)",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Entrada GATE IN (Envolvente 1)",
+        "responseInput": "Salida ENV 1 OUT (Jack 1, 2 o 3) -> Entrada Audio 1 (L)",
+        "notes": "La tarjeta inyecta un pulso Gate de +5V. También puede usar el botón rojo MANUAL GATE."
+      },
+      "controls": [
+        { "index": 1, "name": "Attack Time (A)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.2, "unit": "0-10" },
+        { "index": 2, "name": "Decay Time (D)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "0-10" },
+        { "index": 3, "name": "Sustain Level (S)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.7, "unit": "0-10" },
+        { "index": 4, "name": "Release Time (R)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.4, "unit": "0-10" }
+      ]
+    },
+    {
+      "id": "envelope_2",
+      "name": "Envelope Generator 2 (ADSR)",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Entrada GATE IN (Envolvente 2)",
+        "responseInput": "Salida ENV 2 OUT (Jack 1, 2 o 3) -> Entrada Audio 1 (L)",
+        "notes": "Segunda envolvente independiente con idéntica topología analógica."
+      },
+      "controls": [
+        { "index": 1, "name": "Attack Time (A)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.2, "unit": "0-10" },
+        { "index": 2, "name": "Decay Time (D)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "0-10" },
+        { "index": 3, "name": "Sustain Level (S)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.7, "unit": "0-10" },
+        { "index": 4, "name": "Release Time (R)", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.4, "unit": "0-10" }
+      ]
+    },
+    {
+      "id": "lfo",
+      "name": "Low Frequency Oscillator (LFO)",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SILENT_CAPTURE",
+      "routingGuide": {
+        "stimulusOutput": "Ninguna requerida (oscilador autónomo) o Salida 1 a FREQ CV IN",
+        "responseInput": "Salida LFO OUT -> Entrada Audio 1 (L)",
+        "notes": "Ajuste el conmutador OUTPUT LEVEL en x1 y elija la forma de onda en el conmutador rotatorio."
+      },
+      "controls": [
+        { "index": 1, "name": "Frequency Slider", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "0-10" },
+        { "index": 2, "name": "Delay Slider", "type": "Slider", "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.0, "unit": "0-10" },
+        { "index": 3, "name": "Freq Range Switch", "type": "Switch", "defaultVal": 1.0, "options": ["Low", "Mid", "High"] },
+        { "index": 4, "name": "Waveform Selector", "type": "RotarySwitch", "defaultVal": 0.0, "options": ["Sine", "Triangle", "Pulse", "Sawtooth"] }
+      ]
+    }
+  ]
+}

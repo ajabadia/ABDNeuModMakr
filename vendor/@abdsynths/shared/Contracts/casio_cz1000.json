@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "2.0",
+  "id": "casio_cz1000",
+  "aliases": [
+    "casio-cz1000"
+  ],
+  "displayName": "Casio CZ-1000 (Phase Distortion)",
+  "description": "Keyboard variant of the CZ-101 with identical Phase Distortion engine and 128-byte patch format. SSOT: Source/Contracts/Models/casio-cz.ts (self-filtered compatibleModels).",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Casio",
+  "brandLogo": "brands/casio-logo.svg",
+  "modelImage": "models/casio-cz1000.webp",
+  "midiIdentification": {
+    "manufacturer": "Casio",
+    "manufacturerIdHex": "44",
+    "model": "CZ-1000",
+    "modelIdHex": "70",
+    "sysexHeaderHex": "44 00 00 70",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "CZ-1000",
+      "CZ1000",
+      "CZ 1000",
+      "Casio CZ"
+    ]
+  },
+  "bankManagement": {
+    "bankCapacity": 16,
+    "banksCount": 1,
+    "programsPerBank": 16,
+    "patchDataSize": 128,
+    "patchNameMaxLength": 0,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "FX",
+      "Keys",
+      "Perc",
+      "Synth",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "LETTER_NUMBER",
+    "compatibleModels": [
+      "casio-cz101",
+      "casio-cz5000",
+      "casio-cz1"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "44",
+      "dumpCommandHex": "10",
+      "requestCommandHex": "30",
+      "modelIdByteHex": "13",
+      "checksumAlgorithm": "SUM_7BIT",
+      "encoding": "NIBBLE_LOW_FIRST",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 30,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "10"
+    }
+  }
+}

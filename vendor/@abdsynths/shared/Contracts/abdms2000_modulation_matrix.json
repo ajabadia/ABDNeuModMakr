@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "1.0",
+  "id": "abdms2000",
+  "displayName": "Korg MS-2000 (ABDMS2000)",
+  "description": "Virtual Patch del MS-2000: 4 buses, 8 fuentes y 8 destinos, en el orden de su SysEx. El motor evalua la matriz dos veces por muestra (una previa, porque el LFO2 se puede modular a si mismo).",
+  "authority": "hardware",
+  "slots": 4,
+  "sources": [
+    {
+      "label": "EG1",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "EG2",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "LFO1",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO2",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "Velocity",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "KbdTrack",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "PitchBend",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "ModWheel",
+      "category": "performance",
+      "perNote": false
+    }
+  ],
+  "destinations": [
+    {
+      "label": "Pitch",
+      "perNote": true
+    },
+    {
+      "label": "OSC2 Pitch",
+      "perNote": true
+    },
+    {
+      "label": "OSC1 Ctrl1",
+      "perNote": true
+    },
+    {
+      "label": "Noise Level",
+      "perNote": true
+    },
+    {
+      "label": "Cutoff",
+      "perNote": true
+    },
+    {
+      "label": "Amp",
+      "perNote": true
+    },
+    {
+      "label": "Pan",
+      "perNote": true
+    },
+    {
+      "label": "LFO2 Freq",
+      "perNote": true
+    }
+  ],
+  "provenance": {
+    "source": "Source/DSP/Modulation/VirtualPatchMatrix.h",
+    "sourceFiles": [
+      "ABDMS2000/Source/DSP/Modulation/VirtualPatchMatrix.h"
+    ],
+    "verifiedAt": "2026-09-28"
+  },
+  "generatedBy": "scripts/generate_modulation_contracts.py"
+}

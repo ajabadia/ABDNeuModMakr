@@ -1,0 +1,394 @@
+/**
+ * ABD Unified Design Tokens
+ * =========================
+ * Single source of truth for all ABDSynths plugins, WebUIs, and standalone tools.
+ * Inherited across ABDMS2000, ABDCZ101, ABDEep, ABDJUNiO601, ABDAudioLab, ABDScope, ABDMIDIKeyb.
+ *
+ * Sections:
+ *   1. Surfaces & Backgrounds  (4 depth levels)
+ *   2. Borders                  (3 strength levels)
+ *   3. Accent & Interactive States
+ *   4. Typography               (colors + 8 size scale)
+ *   5. Spacing                  (11-step scale)
+ *   6. Transitions & Animation
+ *   7. LCD, LEDs & Indicators
+ *   8. Radii & Geometry
+ *   9. Shadows & Elevations     (4 levels)
+ *  10. Scrollbars               (thumb, track, hover, active)
+ *  11. Z-Index Scale
+ *  12. Layout Constants
+ */
+
+/* Font loading is the HOST's business (offline WebView2 builds must not pull
+   remote CSS): declare the stack locally instead of @import-ing Google Fonts. */
+
+/* Host declares fonts locally without binary bundling */
+
+:root {
+  /* =========================================================================
+     1. Surfaces & Backgrounds (4 depth levels)
+     ========================================================================= */
+  --color-bg-base:             #0a0e14;   /* Canvas, deepest background */
+  --color-panel-bg:            #0f1620;   /* Cards, panels, sidebars */
+  --color-panel-surface:       #151f2e;   /* Nested panels, module bodies */
+  --color-panel-surface-elevated: #1c2a3d; /* Modals, popovers, tooltips */
+  --color-bg-elev:            #161b22;   /* Widget-internal elevated bg (widgets.css) */
+
+  /* =========================================================================
+     2. Borders (3 strength levels)
+     ========================================================================= */
+  --color-panel-border:        rgba(0, 195, 255, 0.2);   /* Default subtle border */
+  --color-panel-border-strong: rgba(0, 195, 255, 0.45);  /* Focused / emphasized */
+  --color-panel-border-dim:    rgba(0, 195, 255, 0.1);   /* Barely-visible separators */
+  --color-border:              #2c3542;   /* Widget-internal grid/divider line (widgets.css) */
+
+  /* =========================================================================
+     3. Accent & Interactive States
+     ========================================================================= */
+  
+  /* =========================================================================
+     Trajectory Stick 2D (Default Dark / Sunk Well)
+     ========================================================================= */
+  --color-stick-pad-bg:           #0d1017;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #151921 0%, #0d1017 100%);
+  --color-stick-pad-border:       var(--color-panel-border, #333a47);
+  --color-stick-pad-shadow:       inset 0 2px 8px rgba(0, 0, 0, 0.7);
+  --color-stick-crosshair:        rgba(255, 255, 255, 0.08);
+  --color-stick-ring:             rgba(255, 255, 255, 0.08);
+  --color-stick-pole-text:        var(--color-text-muted, #94a3b8);
+  --color-accent:        #00c3ff;
+  --color-accent-rgb:    0, 195, 255;
+  --color-accent-hover:  #38d3ff;
+  --color-accent-active: #0099cc;
+  --color-accent-dim:    rgba(0, 195, 255, 0.15);
+
+  /* Modulation ring (telemetry): how a mod route sums onto a parameter.
+     Native twin: ThemeManager modulationRing. */
+  --color-mod-ring:      var(--color-accent);
+
+  /* =========================================================================
+     4. Typography — Colors (3 emphasis levels)
+        Text sizes are defined further down.
+     ========================================================================= */
+  --color-text-main:   #f0f7ff;  /* Primary headings, active labels */
+  --color-text-muted:  #7e9bb5;  /* Body text, descriptions */
+  --color-text-dim:    #4a637a;  /* Secondary info, placeholders */
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', 'Courier New', monospace;
+  --font-lcd:  'Courier New', 'Roboto Mono', monospace;
+
+  /* =========================================================================
+     Text Size Scale (8 levels)
+     ========================================================================= */
+  --text-2xs:  7px;   /* Tiny labels, badge text */
+  --text-xs:   8px;   /* Small labels, btn-xs */
+  --text-sm:   9px;   /* Detail text, select options */
+  --text-md:   10px;  /* Buttons, module headers */
+  --text-base: 11px;  /* Nav items, panel titles */
+  --text-lg:   12px;  /* Emphasized body, inputs */
+  --text-xl:   13px;  /* Section titles, LCD readouts */
+  --text-2xl:  18px;  /* Large displays, close buttons */
+
+  /* =========================================================================
+     5. Spacing (11-step scale)
+     ========================================================================= */
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  6px;
+  --space-4:  8px;
+  --space-5:  10px;
+  --space-6:  12px;
+  --space-8:  16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-15: 30px;
+  --space-20: 40px;
+
+  /* =========================================================================
+     6. Transitions & Animation
+     ========================================================================= */
+  --transition-fast:   0.15s ease;
+  --transition-normal: 0.2s  ease;
+  --transition-slow:   0.35s ease;
+  --transition-spring: 0.3s  cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* =========================================================================
+     7. LCD, LEDs & Indicators
+     ========================================================================= */
+  --color-lcd-bg:     #102216;
+  --color-lcd-text:   #44ff77;
+  --color-lcd-border: rgba(68, 255, 119, 0.3);
+
+  --color-led-active: #ff3344;
+  --color-led-glow:   rgba(255, 51, 68, 0.6);
+
+  --color-warning:     #ffaa00;
+  --color-warning-rgb: 255, 170, 0;
+  --color-danger:      #ff3344;
+  --color-danger-rgb:  255, 51, 68;
+  --color-success:     #00e676;
+  --color-success-rgb: 0, 230, 118;
+
+  /* Category colors (Harmonious Hartmann & Synthesis Palette) */
+  --color-cat-0: var(--color-text-muted);
+  --color-cat-1: #20c997;
+  --color-cat-2: #6bcb77;
+  --color-cat-3: #ff922b;
+  --color-cat-4: #4d96ff;
+  --color-cat-5: #ffd93d;
+  --color-cat-6: #cc5de8;
+  --color-cat-7: var(--color-accent);
+  --color-cat-8: #748ffc;
+  --color-cat-9: #ff6b9d;
+
+  /* =========================================================================
+     8. Radii & Geometry
+     ========================================================================= */
+  --radius-sm:      2px;
+  --radius-md:      4px;
+  --radius-lg:      8px;
+  --radius-panel:   4px;
+  --radius-chassis: 6px;
+
+  /* =========================================================================
+     9. Shadows & Elevations (4 levels)
+     ========================================================================= */
+  --shadow-elevation-1: 0  2px  6px rgba(0, 0, 0, 0.5);
+  --shadow-elevation-2: 0  8px 24px rgba(0, 0, 0, 0.65);
+  --shadow-elevation-3: 0 16px 36px rgba(0, 0, 0, 0.85);
+  --shadow-inset-bevel: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+
+  /* =========================================================================
+     10. Scrollbars
+     ========================================================================= */
+  --color-scrollbar-thumb:        var(--color-panel-surface);
+  --color-scrollbar-thumb-hover:  var(--color-accent);
+  --color-scrollbar-thumb-active: var(--color-accent);
+  --color-scrollbar-track:        var(--color-bg-base);
+  --scrollbar-width:              6px;
+  --scrollbar-thumb-radius:       3px;
+
+  /* Global theme-aware scrollbars using --color-* tokens */
+  ::-webkit-scrollbar {
+    width: var(--scrollbar-width);
+    height: var(--scrollbar-width);
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-scrollbar-track);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar-thumb);
+    border: 1px solid var(--color-panel-border);
+    border-radius: var(--scrollbar-thumb-radius);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-scrollbar-thumb-hover);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--color-scrollbar-thumb-active);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-panel-border) var(--color-bg-base);
+  }
+
+  /* =========================================================================
+     11. Z-Index Scale
+     ========================================================================= */
+  --z-base:     1;
+  --z-panel:    10;
+  --z-navbar:   30;
+  --z-dropdown: 50;
+  --z-modal:    100;
+  --z-overlay:  500;
+  --z-toast:    900;
+
+  /* =========================================================================
+     12. Layout Constants
+     ========================================================================= */
+  --navbar-height:       44px;
+  --module-header-height: 28px;
+  --panel-gap:           var(--space-4);
+}
+
+
+/* =========================================================================
+   TEMA CLARO — [data-theme="light"]  (disenado 2026-09-20)
+   =========================================================================
+   Misma familia azul que el tema oscuro, adaptada a superficies claras.
+   Activacion: atributo data-theme="light" en <html> (convencion MS2000)
+   o en <body> (convencion del demo) — el bloque aplica donde este el
+   atributo y hereda hacia abajo.
+
+   Solo define COLOR y SOMBRAS: tamanos, espaciados, fuentes, radios,
+   transiciones y z-index son de tema y se heredan del :root — el test de
+   contrato (tests/tokens.test.js) vigila ambas direcciones.
+
+   Ratios WCAG medidos sobre panel-bg/surface: text-main 15.7-16.5,
+   text-muted 6.9-7.3, accent 5.4-5.7 como texto y 5.7 el blanco sobre
+   accent; text-dim 3.9-4.1 (marcadores); estados 4.0-4.9. LCD SIN CAMBIO:
+   es autoiluminado como el hardware (verde sobre oscuro, 12.5).
+
+   El fondo tintable (.abd-theme-bg) NO necesita nada aqui: su tinte por
+   defecto es var(--color-bg-base) y backgrounds.css re-resuelve el tinte
+   en el elemento tematizado ([data-theme]).
+   ========================================================================= */
+
+[data-theme="light"] {
+  /* 1. Superficies (la profundidad se invierte: elevado = mas claro) */
+  --color-bg-base:               #e8ecf1;
+  --color-panel-bg:              #f7f9fc;
+  --color-panel-surface:         #ffffff;
+  --color-panel-surface-elevated: #ffffff;
+  --color-bg-elev:               #ffffff;
+
+  /* 2. Bordes (misma familia azul, alpha pensada para claro) */
+  --color-panel-border:        rgba(0, 96, 170, 0.28);
+  --color-panel-border-strong: rgba(0, 96, 170, 0.55);
+  --color-panel-border-dim:    rgba(0, 96, 170, 0.14);
+  --color-border:              #c6d2de;
+
+  /* 3. Acento (azul profundo: 5.4-5.7 como texto; hover >= 3.9) */
+  --color-accent:        #0069b8;
+  --color-accent-rgb:    0, 105, 184;
+  --color-accent-hover:  #0080dc;
+  --color-accent-active: #00528f;
+  --color-accent-dim:    rgba(0, 105, 184, 0.12);
+
+  /* Anillo de modulacion: mas profundo que el accent claro, para leerse sobre
+     superficie clara (mismo rol que modulationRing en el tema nativo). */
+  --color-mod-ring:      #6b21a8;
+
+  /* 4. Texto (3 niveles de enfasis) */
+  --color-text-main:   #14202b;
+  --color-text-muted:  #47586a;
+  --color-text-dim:    #6d7f90;
+
+  /* 7. LCD (autoiluminado: identico al oscuro), LEDs y estados */
+  --color-lcd-bg:     #102216;
+  --color-lcd-text:   #44ff77;
+  --color-lcd-border: rgba(68, 255, 119, 0.3);
+
+  --color-led-active: #d92638;
+  --color-led-glow:   rgba(217, 38, 56, 0.45);
+
+  --color-warning:     #b26a00;
+  --color-warning-rgb: 178, 106, 0;
+  --color-danger:      #d92638;
+  --color-danger-rgb:  217, 38, 56;
+  --color-success:     #0a8f4c;
+  --color-success-rgb: 10, 143, 76;
+
+  --color-cat-0: var(--color-text-muted);
+  --color-cat-1: #0ca678;
+  --color-cat-2: #2f9e44;
+  --color-cat-3: #d9480f;
+  --color-cat-4: #1971c2;
+  --color-cat-5: #e67700;
+  --color-cat-6: #9c36b5;
+  --color-cat-7: var(--color-accent);
+  --color-cat-8: #4263eb;
+  --color-cat-9: #d6336c;
+
+  /* 9. Sombras (mas suaves que en oscuro) */
+  --shadow-elevation-1: 0  2px  6px rgba(22, 40, 60, 0.14);
+  --shadow-elevation-2: 0  8px 24px rgba(22, 40, 60, 0.18);
+  --shadow-elevation-3: 0 16px 36px rgba(22, 40, 60, 0.22);
+  --shadow-inset-bevel: inset 0 1px 1px rgba(255, 255, 255, 0.65);
+
+  /* 10. Scrollbars: mismas referencias, resueltas con los valores claros */
+  --color-scrollbar-thumb:        var(--color-panel-surface);
+  --color-scrollbar-thumb-hover:  var(--color-accent);
+  --color-scrollbar-thumb-active: var(--color-accent);
+  --color-scrollbar-track:        var(--color-bg-base);
+}
+
+/* =========================================================================
+   TEMA AUDIOLAB LIGHT — [data-theme="audiolab-light"]
+   =========================================================================
+   Tema "Técnica Refinada" para ABDAudioLab — familia verde (Sonarworks / Audio Precision)
+   Activación: atributo data-theme="audiolab-light" en <html> o <body>.
+
+   Solo define COLOR y SOMBRAS: tamaños, espaciados, fuentes, radios,
+   transiciones y z-index se heredan del :root.
+
+   Acento verde: --color-accent #00a86b (5.4-5.7 como texto; hover >= 3.9)
+   Estados semánticos usan verde para success, ámbar para warning, rojo para danger.
+   ========================================================================= */
+
+[data-theme="audiolab-light"] {
+  /* 1. Superficies (la profundidad se invierte: elevado = más claro) */
+  --color-bg-base:                #f8f9fa;
+  --color-panel-bg:               #ffffff;
+  --color-panel-surface:          #f8fafc;
+  --color-panel-surface-elevated: #ffffff;
+  --color-bg-elev:                #ffffff;
+  --navbar-bg:                    #ffffff;
+  --navbar-shadow:                0 1px 3px rgba(15, 23, 42, 0.08);
+
+  /* 2. Bordes (familia slate, alpha pensada para claro) */
+  --color-panel-border:           rgba(15, 23, 42, 0.12);
+  --color-panel-border-strong:    rgba(15, 23, 42, 0.28);
+  --color-panel-border-dim:       rgba(15, 23, 42, 0.06);
+  --color-border:                 #c6d2de;
+
+  /* 3. Acento (verde profundo: Sonarworks / Audio Precision) */
+  --color-accent:                 #00a86b;
+  --color-accent-rgb:             0, 168, 107;
+  --color-accent-hover:           #008f5a;
+  --color-accent-active:          #007a4d;
+  --color-accent-dim:             rgba(0, 168, 107, 0.12);
+
+  /* Estados semánticos */
+  --color-success:                #00a86b;
+  --color-success-rgb:            0, 168, 107;
+  --color-warning:                #e65100;
+  --color-warning-rgb:            230, 81, 0;
+  --color-danger:                 #d32f2f;
+  --color-danger-rgb:             211, 47, 47;
+
+  /* 4. Texto (3 niveles de énfasis) */
+  --color-text-main:              #1a1d20;
+  --color-text-muted:             #6c757d;
+  --color-text-dim:               #94a3b8;
+
+  /* 7. LCD (autoiluminado: idéntico al oscuro), LEDs y estados */
+  --color-lcd-bg:                 #e2e8f0;
+  --color-lcd-text:               #1a1d20;
+  --color-lcd-border:             rgba(15, 23, 42, 0.18);
+
+  --color-led-active:             #d92638;
+  --color-led-glow:               rgba(217, 38, 56, 0.45);
+
+  /* 9. Sombras (más suaves que en oscuro) */
+  --shadow-elevation-1: 0  2px  6px rgba(22, 40, 60, 0.14);
+  --shadow-elevation-2: 0  8px 24px rgba(22, 40, 60, 0.18);
+  --shadow-elevation-3: 0 16px 36px rgba(22, 40, 60, 0.22);
+  --shadow-inset-bevel: inset 0 1px 1px rgba(255, 255, 255, 0.65);
+
+  /* 10. Scrollbars (6px pill) */
+  --color-scrollbar-thumb:        #cbd5e1;
+  --color-scrollbar-thumb-hover:  #94a3b8;
+  --color-scrollbar-thumb-active: #64748b;
+  --color-scrollbar-track:        #f1f5f9;
+}
+
+/* Cable colors for Studio Topology (global tokens) */
+:root {
+  --color-cable-audio-out: #f59e0b;
+  --color-cable-audio-in:  var(--color-accent);
+  --color-cable-midi-out:  #a855f7;
+  --color-cable-midi-in:   #06b6d4;
+
+  /* VU Meter gradient */
+  --color-vu-gradient: linear-gradient(to top, var(--color-success) 0%, var(--color-warning) 75%, var(--color-danger) 100%);
+}
+
+/* Dark theme cable overrides */
+[data-theme="audiolab"] {
+  --color-cable-audio-out: #f59e0b;
+  --color-cable-audio-in:  var(--color-accent);
+  --color-cable-midi-out:  #c084fc;
+  --color-cable-midi-in:   #22d3ee;
+}

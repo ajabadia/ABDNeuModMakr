@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdaudiolab.com/schemas/hardware_profile.schema.json",
+  "title": "HardwareProfileContract",
+  "description": "Esquema de validación estricto para perfiles declarativos de hardware en ABDAudioLab.",
+  "type": "object",
+  "required": [
+    "id",
+    "displayName"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": [
+        "1.0",
+        "2.0"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "aliases": {
+      "type": "array",
+      "description": "Identificadores alternativos históricos o de otros subsistemas (p. ej. kebab-case de ABDBankManager). El id canónico es el campo `id`; los consumidores que reciban un alias deben resolverlo al canónico antes de persistir datos nuevos.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_-]+$"
+      },
+      "uniqueItems": true
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string"
+    },
+    "status": {
+      "description": "Estado editorial del contrato. `quarantined` significa que se sabe dudoso: no es que este roto, es que su contenido no es el que dice su cabecera, y NADIE debe presentarlo como hardware real hasta que se decida cual de las dos listas es la buena. El registro de C++ lo lee y no lo carga, asi que un contrato en cuarentena no aparece en el cajon de hardware.",
+      "type": "string",
+      "enum": [
+        "quarantined"
+      ]
+    },
+    "statusReason": {
+      "description": "Por que esta en cuarentena, escrito en el propio dato. Va aqui y no solo en el inventario de tests porque el contrato viaja: quien se lo lleva, incluido el snapshot versionado del laboratorio, se lleva el motivo con el.",
+      "type": "string",
+      "minLength": 1
+    },
+    "deviceType": {
+      "type": "string",
+      "enum": [
+        "AUTOMATED_MIDI_CC",
+        "AUTOMATED_NRPN",
+        "AUTOMATED_SYSEX",
+        "MANUAL_EURORACK",
+        "MANUAL_PROMPT",
+        "ANALOGUE_PEDAL",
+        "MOCK_DSP"
+      ]
+    },
+    "category": {
+      "type": "string"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "brandLogo": {
+      "type": "string"
+    },
+    "modelImage": {
+      "type": "string"
+    },
+    "theme": {
+      "type": "string"
+    },
+    "midiIdentification": {
+      "type": "object",
+      "properties": {
+        "manufacturer": {
+          "type": "string"
+        },
+        "manufacturerIdHex": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "modelIdHex": {
+          "type": "string"
+        },
+        "familyIdHex": {
+          "type": "string"
+        },
+        "sysexHeaderHex": {
+          "type": "string"
+        },
+        "autoDetectSysEx": {
+          "type": "string"
+        },
+        "portNameMatches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "preCalibrationSetup": {
+          "$ref": "#/$defs/setupActionArray"
+        },
+        "preSessionSetup": {
+          "$ref": "#/$defs/setupActionArray"
+        },
+        "postSessionTeardown": {
+          "$ref": "#/$defs/setupActionArray"
+        }
+      },
+      "additionalProperties": false
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 2
+          },
+          "blockType": {
+            "type": "string",
+            "enum": [
+              "SpectrumFilter",
+              "TimeDynamic",
+              "WaveShaper",
+              "CyclicModulator",
+              "AmplitudeGain",
+              "WienerHammerstein",
+              "NeuralCalibration"
+            ]
+          },
+          "suggestedStimulus": {
+            "type": "string"
+          },
+          "captureMode": {
+            "type": "string",
+            "enum": [
+              "FIXED_TIME",
+              "ADAPTIVE_ENVELOPE",
+              "INTEGRATED_TAIL"
+            ]
+          },
+          "defaultBurstDurationSec": {
+            "type": "number",
+            "minimum": 0.05,
+            "maximum": 60
+          },
+          "maxTimeoutSec": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 300
+          },
+          "silenceThresholdDb": {
+            "type": "number",
+            "maximum": 0,
+            "minimum": -120
+          },
+          "routingGuide": {
+            "type": "object",
+            "properties": {
+              "stimulusOutput": {
+                "type": "string"
+              },
+              "responseInput": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "controlMethod": {
+                  "type": "string",
+                  "enum": [
+                    "MANUAL",
+                    "MIDI_CC",
+                    "NRPN",
+                    "SYSEX"
+                  ]
+                },
+                "cc": {
+                  "type": "integer",
+                  "minimum": -1,
+                  "maximum": 127
+                },
+                "midiCC": {
+                  "type": "integer",
+                  "minimum": -1,
+                  "maximum": 127
+                },
+                "nrpn": {
+                  "type": "integer",
+                  "minimum": -1,
+                  "maximum": 16383
+                },
+                "sysexAddress": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "minVal": {
+                  "type": "number",
+                  "description": "Valor minimo del control. Contrapartida de `min`."
+                },
+                "maxVal": {
+                  "type": "number",
+                  "description": "Valor maximo del control. Contrapartida de `max`."
+                },
+                "defaultVal": {
+                  "type": "number",
+                  "description": "Valor por defecto del control. Contrapartida de `default`."
+                },
+                "ccNumber": {
+                  "type": "integer",
+                  "minimum": -1,
+                  "maximum": 127,
+                  "description": "Numero de CC. Contrapartida de `cc`. El -1 es el \"no hay CC\", igual que en `cc`."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "measurementRecipe": {
+            "type": "object",
+            "description": "Receta de medicion: como se deja el instrumento en las condiciones justas antes de medir. Sin ella, `functions[]` dice que se puede medir pero no como, y la calibracion que sale depende de quien la escribio.",
+            "required": [
+              "recipeType",
+              "description"
+            ],
+            "properties": {
+              "recipeType": {
+                "type": "string",
+                "description": "Tipo de excitacion. NO es un enum cerrado a proposito: hay tres en uso (INTERNAL_NOISE_EXCITATION, LEGATO_PITCH_SWEEP, DIRECT_AUDIO_IN) y es una lista que se abre, no un conjunto que se pueda contar."
+              },
+              "description": {
+                "type": "string",
+                "minLength": 3,
+                "description": "Que deja puesto el instrumento, en palabras."
+              },
+              "setupActions": {
+                "$ref": "#/$defs/setupActionArray",
+                "description": "Los mismos pasos que usa `lifecycle`."
+              },
+              "excitationNotes": {
+                "type": "array",
+                "description": "Notas a tocar, si la excitacion es por nota. Vacio si no hace falta.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "noteNumber"
+                  ],
+                  "properties": {
+                    "noteNumber": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 127
+                    },
+                    "velocity": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 127
+                    },
+                    "startDelayMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "durationMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "isLegato": {
+                      "type": "boolean",
+                      "description": "true si se toca sin soltar la anterior."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "postSettlingDelayMs": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Espera DESPUES del ultimo paso, para que elDSP se asiente antes de medir."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "default": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bankManagement": {
+      "type": "object",
+      "description": "Especificacion declarativa para gestion de librerias, volcados SysEx y bancos de patches en ABDBankManager.",
+      "required": [
+        "bankCapacity",
+        "banksCount",
+        "programsPerBank"
+      ],
+      "properties": {
+        "bankCapacity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "banksCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "programsPerBank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "patchDataSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "patchNameMaxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "defaultCategory": {
+          "type": "string"
+        },
+        "addressingFormat": {
+          "type": "string",
+          "enum": [
+            "LETTER_NUMBER",
+            "NUMBER",
+            "BANK_PATCH",
+            "PRESET_ONLY"
+          ]
+        },
+        "compatibleModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sysexProtocol": {
+          "type": "object",
+          "properties": {
+            "manufacturerIdHex": {
+              "type": "string"
+            },
+            "dumpCommandHex": {
+              "type": "string"
+            },
+            "requestCommandHex": {
+              "type": "string"
+            },
+            "checksumAlgorithm": {
+              "type": "string",
+              "enum": [
+                "SUM_7BIT",
+                "ROLAND_7BIT",
+                "NONE",
+                "CUSTOM"
+              ]
+            },
+            "encoding": {
+              "type": "string",
+              "enum": [
+                "RAW_7BIT",
+                "NIBBLE_LOW_FIRST",
+                "NIBBLE_HIGH_FIRST",
+                "7_TO_8_BIT"
+              ]
+            },
+            "modelIdByteHex": {
+              "type": "string",
+              "description": "Byte de modelo dentro del mensaje SysEx (tras F0 + manufacturerId) para desambiguar modelos del mismo fabricante. Ej.: MS2000/microKORG = 58, Prophecy = 41."
+            },
+            "modelIdByteMultiHex": {
+              "type": "string",
+              "description": "Bytes adicionales esperados inmediatamente después de modelIdByteHex (secuencia de identidad multi-byte)."
+            },
+            "paramChangeCommandHex": {
+              "type": "string",
+              "description": "Comando de cambio de parámetro en tiempo real (p. ej. Korg 41)."
+            },
+            "allDumpCommandHex": {
+              "type": "string",
+              "description": "Comando de volcado completo (All Data Dump, p. ej. Korg 4C)."
+            },
+            "allRequestCommandHex": {
+              "type": "string",
+              "description": "Comando de petición de volcado completo (p. ej. Korg 0E)."
+            },
+            "supportsEditBuffer": {
+              "type": "boolean",
+              "description": "El modelo admite volcado/audición de edit buffer sin sobrescribir memoria de programa."
+            },
+            "interMessageDelayMs": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Retardo mínimo entre mensajes SysEx consecutivos (ms)."
+            },
+            "dumpTimeoutMs": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Timeout de espera de respuesta a un volcado (ms)."
+            },
+            "maxSysExMessageSize": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Tamaño máximo de mensaje SysEx antes de fragmentar volcados masivos (bytes)."
+            },
+            "midiDefaultChannel": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16,
+              "description": "Canal MIDI por defecto para volcados SysEx."
+            },
+            "midiDefaultDeviceIdHex": {
+              "type": "string",
+              "description": "Device ID por defecto para cabeceras SysEx (hex, p. ej. 18 en Roland Juno-106)."
+            },
+            "portNameMatches": {
+              "type": "array",
+              "description": "Patrones de nombre de puerto MIDI para auto-detección heurística.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "isSoftsynth": {
+      "type": "boolean",
+      "description": "true si esto emula hardware en software en lugar de describir una maquina fisica. Existe porque `deviceType` no tiene ningun valor de software: sin este campo, un perfil emulado y uno real son indistinguibles para quien lo lee."
+    }
+  },
+  "additionalProperties": false,
+  "x-cuarentena": {
+    "$comment": "QUE CAMPOS LLEVAN UNA REGLA DE CUARENTENA, y a que campo va su motivo. El VALOR que retiene NO se escribe aqui: se lee del enum del campo declarado, que es lo unico que puede cambiarlo sin que a nadie se le pase por alto. Es una lista y no un objeto unico para que anadir una segunda regla sea anadir una entrada, no cambiar la forma de lo que ya habia.",
+    "reglas": [
+      {
+        "campo": "status",
+        "motivo": "statusReason"
+      }
+    ]
+  },
+  "$defs": {
+    "setupActionArray": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 3
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "MIDI_CC",
+              "NRPN",
+              "SYSEX_RAW",
+              "MANUAL_PROMPT"
+            ]
+          },
+          "channel": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "controlNumber": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 16383
+          },
+          "cc": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 127
+          },
+          "nrpn": {
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 16383
+          },
+          "normalizedValue": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sysexHexPayload": {
+            "type": "string",
+            "pattern": "^([0-9A-Fa-f]{2}\\s*)*$"
+          },
+          "sysexHex": {
+            "type": "string"
+          },
+          "settlingDelayMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

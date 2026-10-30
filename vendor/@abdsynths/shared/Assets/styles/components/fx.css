@@ -1,0 +1,193 @@
+/* =============================================================
+   fx.css — temas y chasis de los modulos de efecto del rack FX
+   =============================================================
+   Contrapartida en CSS de components/fxTheme.js. Ahi estan los
+   MISMOS cinco tokens por familia, con valores literales de
+   reserva; aqui esta el aspecto de verdad.
+
+   La duplicacion es deliberada y esta vigilada: tests/fxTheme.test.js
+   falla si una familia aparece en el registry y no en este fichero, o
+   al reves, o si los dos declaran tokens distintos. Sin ese test,
+   "esta en los dos sitios" seria una intencion y no un hecho.
+
+   Tema por FAMILIA, no por efecto: hay 57 ids de efecto y once
+   familias, y once temas que se distinguen valen mas que 57 que no.
+   Un efecto nuevo hereda el de su familia sin tocar nada.
+
+   Uso desde un sintetizador: se pone el atributo y el modulo toma
+   el tema de su familia.
+
+       <div class="fx-module" data-fx-theme="tape"> ... </div>
+
+   Y adaptar el tema al sintetizador es redefinir tokens, no editar
+   esta hoja (que es compartida y se sobreescribe en cascada):
+
+       .fx-module[data-fx-theme='reverb'] { --fx-accent: #ff2d95; }
+   ============================================================= */
+
+/* ── chasis comun a todos los modulos de efecto ─────────────────────────── */
+
+.fx-module {
+    --fx-bg: var(--color-panel-surface, #151f2e);
+    --fx-border: var(--color-panel-border-dim, rgba(0, 195, 255, 0.1));
+    --fx-text: var(--color-text-main, #f0f7ff);
+    --fx-accent: var(--color-accent, #00c3ff);
+    --fx-glow: var(--color-accent-dim, rgba(0, 195, 255, 0.15));
+
+    background: var(--fx-bg);
+    border: 1px solid var(--fx-border);
+    border-radius: var(--radius-panel, 4px);
+    color: var(--fx-text);
+    font-size: var(--text-md, 10px);
+    box-shadow: var(--shadow-elevation-1, 0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+/* La cabecera lleva el acento de la familia: es lo unico que cambia de
+   color entre temas, y es lo que hace identificable el efecto de un
+   vistazo sin leer el nombre. */
+.fx-module__header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+    background: var(--fx-glow);
+    border-bottom: 1px solid var(--fx-border);
+    color: var(--fx-text);
+    font-size: var(--text-sm, 9px);
+    font-weight: bold;
+}
+
+.fx-module__title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fx-module__led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--fx-border);
+    box-shadow: none;
+}
+
+.fx-module[data-active='true'] .fx-module__led {
+    background: var(--fx-accent);
+    box-shadow: 0 0 4px var(--fx-glow);
+}
+
+/* El foco usa el acento de la familia, no el del sintetizador: un modulo
+   que esta siendo editado tiene que decir de que modulo se trata. */
+.fx-module:focus-within,
+.fx-module:focus {
+    outline: 1px solid var(--fx-accent);
+    outline-offset: 1px;
+}
+
+.fx-module__body {
+    padding: 4px;
+}
+
+.fx-module__params {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 4px;
+}
+
+/* ── temas por familia ──────────────────────────────────────────────────── */
+
+.fx-module[data-fx-theme='reverb'] {
+    --fx-bg: #101c28;
+    --fx-border: #1d3a4d;
+    --fx-text: #d8ecf7;
+    --fx-accent: #5ad1e6;
+    --fx-glow: rgba(90, 209, 230, 0.18);
+}
+
+.fx-module[data-fx-theme='delay'] {
+    --fx-bg: #141c2b;
+    --fx-border: #243a55;
+    --fx-text: #dce7f5;
+    --fx-accent: #7aa2f7;
+    --fx-glow: rgba(122, 162, 247, 0.18);
+}
+
+.fx-module[data-fx-theme='tape'] {
+    --fx-bg: #241a12;
+    --fx-border: #4a3524;
+    --fx-text: #f0e0cc;
+    --fx-accent: #e0a458;
+    --fx-glow: rgba(224, 164, 88, 0.2);
+}
+
+.fx-module[data-fx-theme='chorus'] {
+    --fx-bg: #1a1630;
+    --fx-border: #312a55;
+    --fx-text: #e2dcf7;
+    --fx-accent: #a78bfa;
+    --fx-glow: rgba(167, 139, 250, 0.18);
+}
+
+.fx-module[data-fx-theme='modulation'] {
+    --fx-bg: #2a1430;
+    --fx-border: #48235a;
+    --fx-text: #f3ddf7;
+    --fx-accent: #e879f9;
+    --fx-glow: rgba(232, 121, 249, 0.18);
+}
+
+.fx-module[data-fx-theme='filter'] {
+    --fx-bg: #12242a;
+    --fx-border: #1f424b;
+    --fx-text: #d6f0f2;
+    --fx-accent: #4fd1c5;
+    --fx-glow: rgba(79, 209, 197, 0.18);
+}
+
+.fx-module[data-fx-theme='dynamics'] {
+    --fx-bg: #20261a;
+    --fx-border: #3a452c;
+    --fx-text: #e6f0d8;
+    --fx-accent: #a3d977;
+    --fx-glow: rgba(163, 217, 119, 0.18);
+}
+
+.fx-module[data-fx-theme='distortion'] {
+    --fx-bg: #2b1414;
+    --fx-border: #532424;
+    --fx-text: #f7dcdc;
+    --fx-accent: #ff6b6b;
+    --fx-glow: rgba(255, 107, 107, 0.2);
+}
+
+.fx-module[data-fx-theme='pitch'] {
+    --fx-bg: #26142b;
+    --fx-border: #45234e;
+    --fx-text: #f2dcf7;
+    --fx-accent: #c792ea;
+    --fx-glow: rgba(199, 146, 234, 0.18);
+}
+
+.fx-module[data-fx-theme='space'] {
+    --fx-bg: #0b1a24;
+    --fx-border: #14384a;
+    --fx-text: #cfeaf5;
+    --fx-accent: #26c6da;
+    --fx-glow: rgba(38, 198, 218, 0.22);
+}
+
+/* El bypass no se pinta: un modulo apagado que se distingue a la primera es
+   media batalla ganada, y ademas evita el parpadeo cuando se conmuta. */
+.fx-module[data-fx-theme='bypass'] {
+    --fx-bg: var(--color-panel-bg, #0f1620);
+    --fx-border: var(--color-panel-border-dim, rgba(0, 195, 255, 0.1));
+    --fx-text: var(--color-text-dim, #4a637a);
+    --fx-accent: var(--color-text-dim, #4a637a);
+    --fx-glow: transparent;
+}
+
+.fx-module[data-fx-theme='bypass'] .fx-module__body {
+    opacity: 0.45;
+}

@@ -1,0 +1,64 @@
+{
+  "name": "@abdsynths/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Núcleo universal transversal para la suite ABDSynths: C++, contratos, componentes WebUI y assets.",
+  "exports": {
+    "./styles": "./Assets/styles/index.css",
+    "./styles/*": "./Assets/styles/*",
+    "./themes/*": "./Assets/styles/themes/*",
+    "./contracts/*": "./Contracts/*",
+    "./components": "./Components/index.js",
+    "./components/bank/bankShell.js": {
+      "types": "./Components/bank/bankShell.d.ts",
+      "default": "./Components/bank/bankShell.js"
+    },
+    "./components/bank/bankCard.js": {
+      "types": "./Components/bank/bankCard.d.ts",
+      "default": "./Components/bank/bankCard.js"
+    },
+    "./components/bank/bankChips.js": {
+      "types": "./Components/bank/bankChips.d.ts",
+      "default": "./Components/bank/bankChips.js"
+    },
+    "./components/bank/bankCategories.js": {
+      "types": "./Components/bank/bankCategories.d.ts",
+      "default": "./Components/bank/bankCategories.js"
+    },
+    "./components/pillSelector.js": {
+      "types": "./Components/pillSelector.d.ts",
+      "default": "./Components/pillSelector.js"
+    },
+    "./components/midiLearn.js": {
+      "types": "./Components/midiLearn.d.ts",
+      "default": "./Components/midiLearn.js"
+    },
+    "./components/i18n.js": {
+      "types": "./Components/i18n.d.ts",
+      "default": "./Components/i18n.js"
+    },
+    "./i18n": {
+      "types": "./Components/i18n.d.ts",
+      "default": "./Components/i18n.js"
+    },
+    "./components/*": "./Components/*",
+    "./icons/*": "./Assets/icons/*",
+    "./assets/*": "./Assets/*",
+    "./utils": "./Utils/index.js",
+    "./utils/*": "./Utils/*",
+    "./visualizers/*": "./Code/visualizers/*",
+    "./formats/neuron": "./Code/NeuronFormats/index.ts",
+    "./formats/neuron/*": "./Code/NeuronFormats/*",
+    "./dsp/neuron-analysis": "./Code/DspCore/NeuronAnalysis/index.ts",
+    "./dsp/neuron-analysis/*": "./Code/DspCore/NeuronAnalysis/*"
+  },
+  "files": [
+    "Code",
+    "Contracts",
+    "Components",
+    "Assets",
+    "Utils",
+    "docs"
+  ]
+}

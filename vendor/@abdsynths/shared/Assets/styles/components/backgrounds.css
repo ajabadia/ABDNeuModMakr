@@ -1,0 +1,84 @@
+/**
+ * Fondos de lienzo tintables por tema
+ * ===================================
+ *
+ * El fondo genérico de la suite (`bg_neutral.png`, gris medio-acromático,
+ * luminancia 63-178 con media ~106) NO lleva el color encima: el color lo pone
+ * el TEMA y la textura lo modula. Así un mismo PNG se ve antracita, rojo
+ * intenso, azul eléctrico, tierra o gris claro según `--abd-bg-tint`.
+ *
+ * Ficheros: `bg_neutral.png` (2.8 MB) es el MASTER bit-exacto; `bg_neutral.webp`
+ * (1.9 MB) es la variante FULL-BLEED (una imagen que cubre el lienzo, `cover`,
+ * sin repetir). `bg_tile512.webp` (341 KB) es el TILE seamless por defecto: un
+ * recorte 512x512 del master hecho continuo en sus bordes (feather espejo de
+ * 64 px) y codificado SIN perdida — cero banding por construccion. Metricas
+ * (STYLES_GUIDE): costura del repeat 0.000 (relativa al gradiente interior),
+ * 267 escalones/MP frente a 866 del master y 1909 del full-bleed q90; el std
+ * por ventanas de 512 (14.95) replica el del master (mediana 15.16), de modo
+ * que el ojo no percibe menos grano. Repetido `repeat` cubre cualquier
+ * resolucion con ~5.6x menos bytes, que es lo que pesa en un binario de plugin
+ * (BinaryData). La version con perdida a pantalla completa se descarto con
+ * metricas: en el grano fino cuantiza en mesetas a cualquier calidad.
+ *
+ * Uso en un synthe:
+ *
+ *   <body class="abd-theme-bg"> ... </body>
+ *
+ * Y en el bloque del tema (o inline) se tinta sin tocar el asset:
+ *
+ *   [data-theme="antracita"] { --abd-bg-tint: #1a1d21; }
+ *   [data-theme="rojo"]      { --abd-bg-tint: #b3121f; }
+ *
+ * Mezcla: `soft-light` a propósito. El PNG es gris MEDIO (media ~106/255):
+ * con `multiply` todo tema oscuro se hundiría a negro y un tema claro no
+ * existiría; con `luminosity` la luminancia del gris congelaría la del tema.
+ * `soft-light` conserva el tono y la luminancia del tema y deja que la textura
+ * module. Un tema que quiera más textura puede subir contraste con
+ * `--abd-bg-blend: overlay` o usar `--abd-bg-image` con otro PNG/WebP (ojo:
+ * una URL sobrescrita se resuelve relativa al CSS que la SOBRESCRIBE, no a
+ * esta hoja — el patrón de skins-junio).
+ *
+ * Peso: el PNG es 2.8 MB (1672x941, 24-bit). Si algún día pesa en el bundle,
+ * su conversión a WebP/JPEG sería otro fichero con OTRO nombre canónico — este
+ * es el máster.
+ */
+
+:root {
+  /* Asset por defecto de la suite: el TILE seamless (341 KB, lossless).
+     Una URL sobrescrita por un tema se resuelve relativa a SU css. */
+  --abd-bg-image: url('../../assets/backgrounds/bg_tile512.webp');
+
+  /* El tinte: por defecto el color base del tema activo; cada tema lo fija. */
+  --abd-bg-tint: var(--color-bg-base, #11161d);
+
+  /* Modo de mezcla textura↔tinte; `soft-light` es el neutro de la suite. */
+  --abd-bg-blend: soft-light;
+}
+
+.abd-theme-bg {
+  background-color: var(--abd-bg-tint);
+  background-image: var(--abd-bg-image);
+  background-blend-mode: var(--abd-bg-blend);
+  background-size: 512px 512px;   /* tamano natural del tile: 1 px = 1 px */
+  background-position: top left;
+  background-repeat: repeat;
+}
+
+/* Variante FULL-BLEED opt-in: el master entero con `cover`, sin repetir. Para
+   lienzos que quieren la composicion original completa a cambio de ~1.9 MB
+   embebidos. Misma mezcla y tinte que el tile. */
+.abd-theme-bg--full {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Re-resolucion del tinte en el elemento tematizado: si la pagina pone el
+   data-theme en <body> (demo) en vez de en <html> (MS2000), el tinte por
+   defecto de :root se resolvio en <html> con el color base oscuro. Con esta
+   regla, el elemento tematizado re-resuelve el tinte con SU color base, asi
+   el fondo tintable sigue al tema en las dos convenciones. */
+[data-theme] {
+  --abd-bg-tint: var(--color-bg-base, #11161d);
+}
+

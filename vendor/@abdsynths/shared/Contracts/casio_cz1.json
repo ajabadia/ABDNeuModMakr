@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "2.0",
+  "id": "casio_cz1",
+  "aliases": [
+    "casio-cz1"
+  ],
+  "displayName": "Casio CZ-1 (Phase Distortion)",
+  "description": "Flagship CZ with velocity/aftertouch and 4 banks x 64 patches (288-byte patch data). Same Phase Distortion engine. SSOT: Source/Contracts/Models/casio-cz.ts (bankCapacity 64, banksCount 4, patchDataSize 288, legacy byte 0x15).",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Casio",
+  "brandLogo": "brands/casio-logo.svg",
+  "modelImage": "models/casio-cz1.webp",
+  "midiIdentification": {
+    "manufacturer": "Casio",
+    "manufacturerIdHex": "44",
+    "model": "CZ-1",
+    "modelIdHex": "70",
+    "sysexHeaderHex": "44 00 00 70",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "CZ-1",
+      "CZ1",
+      "CZ 1",
+      "Casio CZ"
+    ]
+  },
+  "bankManagement": {
+    "bankCapacity": 64,
+    "banksCount": 4,
+    "programsPerBank": 16,
+    "patchDataSize": 288,
+    "patchNameMaxLength": 0,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "FX",
+      "Keys",
+      "Perc",
+      "Synth",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "LETTER_NUMBER",
+    "compatibleModels": [
+      "casio-cz101",
+      "casio-cz1000",
+      "casio-cz5000"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "44",
+      "dumpCommandHex": "10",
+      "requestCommandHex": "30",
+      "modelIdByteHex": "15",
+      "checksumAlgorithm": "SUM_7BIT",
+      "encoding": "NIBBLE_LOW_FIRST",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 30,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "10"
+    }
+  }
+}

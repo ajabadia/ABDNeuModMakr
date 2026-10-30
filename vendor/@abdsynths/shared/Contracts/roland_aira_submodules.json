@@ -1,0 +1,1076 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_aira_submodules",
+  "displayName": "Roland AIRA Modular (31 Universal Submodules)",
+  "description": "Universal 31-Submodule DSP Engine shared across Bitrazer, Torcido, Demora & Scooper",
+  "status": "quarantined",
+  "statusReason": "De 31 bloques, solo 7 casan por nombre con los 31 modulos del patch_spec; los otros 24 de cada lado no coinciden. Medido por scripts/medir-cruce-aira.mjs",
+  "deviceType": "AUTOMATED_SYSEX",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "models/roland-airamodular.webp",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "model": "AIRA Modular Engine",
+    "autoDetectSysEx": "F0 7E 10 06 01 F7"
+  },
+  "functions": [
+    {
+      "id": "filter_24db",
+      "name": "01. Ladder Low-Pass Filter (-24dB/Oct)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro paso bajo analógico virtual de 4 polos con resonancia autoscilante."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Cutoff Frequency",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Resonance Amount",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "Q"
+        }
+      ],
+      "measurementRecipe": {
+        "recipeType": "DIRECT_AUDIO_IN",
+        "description": "Entrada directa de audio loopback hacia submódulo de filtro 24dB con saturación no-lineal desactivada",
+        "setupActions": [
+          {
+            "description": "Reset resonance to unity Q",
+            "method": "MIDI_CC",
+            "cc": 12,
+            "value": 0.0,
+            "settlingDelayMs": 20
+          }
+        ],
+        "excitationNotes": [],
+        "postSettlingDelayMs": 50
+      }
+    },
+    {
+      "id": "filter_18db",
+      "name": "02. Resonant Filter (-18dB/Oct)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro estilo TB-303 con pendiente ácida de 3 polos."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Cutoff Frequency",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Resonance Amount",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "Q"
+        }
+      ]
+    },
+    {
+      "id": "filter_12db_hpf",
+      "name": "03. High-Pass Filter (-12dB/Oct)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro paso alto de 2 polos para corte de graves y limpieza espectral."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Cutoff Frequency",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.2,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Resonance Amount",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "Q"
+        }
+      ]
+    },
+    {
+      "id": "filter_bpf",
+      "name": "04. Band-Pass Filter (BPF)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro paso banda con resonancia central sintonizable."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Center Frequency",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Bandwidth (Q)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "Q"
+        }
+      ]
+    },
+    {
+      "id": "formant_filter",
+      "name": "05. Formant Vocal Filter",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro resonador de formantes vocales (A-E-I-O-U)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Vowel Morph",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Morph"
+        },
+        {
+          "index": 2,
+          "name": "Formant Shift",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Semi"
+        }
+      ]
+    },
+    {
+      "id": "svf_filter",
+      "name": "06. State Variable Filter (SVF Multi-Mode)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Filtro multimodo continuo (LPF -> BPF -> HPF -> Notch)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Cutoff Frequency",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Mode Morph",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "Mode"
+        },
+        {
+          "index": 3,
+          "name": "Resonance (Q)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "Q"
+        }
+      ]
+    },
+    {
+      "id": "tube_clip",
+      "name": "07. Vacuum Tube Warmth & Clipper",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Emulación no lineal de válvula termoiónica triodo/péntodo."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Drive Gain",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Bias / Warmth",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "overdrive",
+      "name": "08. Soft Overdrive & Asymmetric Saturator",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Saturación asimétrica cálida con respuesta armónica de 2º orden."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Drive Level",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Tone / Tilt",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        }
+      ]
+    },
+    {
+      "id": "distortion_hard",
+      "name": "09. Hard Diode Clipper & Distortion",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Recorte abrupto por diodos opuestos con compresión extrema."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Gain / Distortion",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.6,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Clip Threshold",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "V"
+        }
+      ]
+    },
+    {
+      "id": "bit_crusher",
+      "name": "10. Lo-Fi Bit Crusher & Downsampler",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Reducción de resolución de bits (1-16 bits) y submuestreo analógico."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Bit Depth",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.8,
+          "unit": "Bits"
+        },
+        {
+          "index": 2,
+          "name": "Sample Rate Decimate",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.9,
+          "unit": "kHz"
+        }
+      ]
+    },
+    {
+      "id": "fuzz_germanium",
+      "name": "11. Germanium Transistor Fuzz",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Fuzz clásico de transistores de germanio con caída de polarización térmica."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Fuzz Intensity",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.7,
+          "unit": "%"
+        },
+        {
+          "index": 2,
+          "name": "Bias Voltage",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "V"
+        }
+      ]
+    },
+    {
+      "id": "adsr_envelope",
+      "name": "12. ADSR Envelope Generator",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Gate / Remote CV In",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Generador de envolvente de 4 etapas analógico virtual."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Attack Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.2,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Decay Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "ms"
+        },
+        {
+          "index": 3,
+          "name": "Sustain Level",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.7,
+          "unit": "Level"
+        },
+        {
+          "index": 4,
+          "name": "Release Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "id": "ar_envelope",
+      "name": "13. AR Attack-Release Envelope",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Gate In",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Generador de envolventes de percusión y transitorios rápidos."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Attack Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.1,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Release Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "id": "lfo_modulator",
+      "name": "14. Multi-Wave LFO Modulator",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Ninguna requerida (Oscilador autónomo)",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "LFO con formas Sinusoidal, Triangular, Cuadrada, Diente de Sierra y Random S&H."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "LFO Rate / Speed",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Waveform Select",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "Wave"
+        }
+      ]
+    },
+    {
+      "id": "dual_lfo",
+      "name": "15. Dual Cross-Modulated LFO",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Ninguna requerida",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Dos LFOs independientes con modulación cruzada de frecuencia y fase."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "LFO 1 Rate",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "LFO 2 Rate",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.7,
+          "unit": "Hz"
+        },
+        {
+          "index": 3,
+          "name": "Cross Mod Depth",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.2,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "short_delay",
+      "name": "16. Short Space Delay / Echo",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Línea de retardo corta para efectos de slapback y comb filter."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Delay Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Feedback",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "long_tape_delay",
+      "name": "17. Analogue Tape Delay & Wow/Flutter",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Eco de cinta analógica con amortiguación de agudos y modulación mecánica."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Tape Speed / Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Feedback Repeats",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "%"
+        },
+        {
+          "index": 3,
+          "name": "Tape Age / Damping",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "Hz"
+        }
+      ]
+    },
+    {
+      "id": "chorus_ensemble",
+      "name": "18. Stereo BBD Chorus / Ensemble",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Chorus espacial estilo Juno BBD con modulación analógica cuadraturada."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Chorus Rate",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Chorus Depth",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.6,
+          "unit": "ms"
+        },
+        {
+          "index": 3,
+          "name": "Dry/Wet Mix",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "flanger_bbd",
+      "name": "19. Resonant BBD Flanger",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Flanger resonador BBD con peine espectral dinámico."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Speed",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.2,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Manual Delay",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "ms"
+        },
+        {
+          "index": 3,
+          "name": "Regeneration (Resonance)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.7,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "phaser_4stage",
+      "name": "20. 4-Stage Analog Phaser",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Desfasador de 4 etapas todo-paso (all-pass filters) en cascada."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "LFO Speed",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Sweep Range",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.7,
+          "unit": "%"
+        },
+        {
+          "index": 3,
+          "name": "Feedback",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "ring_modulator",
+      "name": "21. Ring Modulator & Four-Quadrant Multiplier",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Carrier / Input",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Multiplicador de 4 cuadrantes para sonoridades metálicas e inarmónicas."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Internal Carrier Freq",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Modulation Mix",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 1.0,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "compressor",
+      "name": "22. Dynamic Compressor / Limiter",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Compresor de dinámica feed-forward con control de codo (knee)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Threshold",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Ratio",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": ":1"
+        },
+        {
+          "index": 3,
+          "name": "Attack Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.2,
+          "unit": "ms"
+        },
+        {
+          "index": 4,
+          "name": "Release Time",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "id": "noise_generator",
+      "name": "23. Multi-Color Noise Generator",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "SILENT_CAPTURE",
+      "routingGuide": {
+        "stimulusOutput": "Ninguna requerida",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Generador de ruido Blanco, Rosa (1/f) y Marrón (Brownian)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Noise Color Morph",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Color"
+        },
+        {
+          "index": 2,
+          "name": "Output Level",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.8,
+          "unit": "dB"
+        }
+      ]
+    },
+    {
+      "id": "sample_and_hold",
+      "name": "24. Sample & Hold (S&H) Circuit",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Clock / Sample Trigger",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Muestreo y retención analógico para voltajes y texturas aleatorias acompasadas."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Clock Rate",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "Glide / Slew",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "id": "slew_limiter",
+      "name": "25. Slew Limiter / Portamento Glide",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Signal In",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Limitador de velocidad de pendiente para transiciones suaves de voltaje y audio."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Rise Time (Slew Up)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Fall Time (Slew Down)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.3,
+          "unit": "ms"
+        }
+      ]
+    },
+    {
+      "id": "vca_linear_exp",
+      "name": "26. Linear / Exponential VCA",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Amplificador controlado por voltaje con conmutación lineal/exponencial."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Gain / Initial Level",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.8,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Response Curve (Lin/Exp)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Curve"
+        }
+      ]
+    },
+    {
+      "id": "mixer_4ch",
+      "name": "27. 4-Channel DC-Coupled Audio/CV Mixer",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Channel 1 In",
+        "responseInput": "Hardware Mix Out -> Entrada Audio 1 (L)",
+        "notes": "Sumador analógico de 4 canales acoplado en continua."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Channel 1 Gain",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.8,
+          "unit": "dB"
+        },
+        {
+          "index": 2,
+          "name": "Master Output Trim",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.8,
+          "unit": "dB"
+        }
+      ]
+    },
+    {
+      "id": "stereo_panner",
+      "name": "28. Stereo Constant-Power Panner",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_TONE",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Input L",
+        "responseInput": "Hardware Output L -> Entrada Audio 1 (L)",
+        "notes": "Panorama estéreo con ley de potencia constante (-3dB al centro)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Pan Position (L-R)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Pan"
+        },
+        {
+          "index": 2,
+          "name": "Auto-Pan LFO Depth",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.0,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "phase_inverter",
+      "name": "29. Phase Inverter & Polarizer",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In",
+        "responseInput": "Hardware Audio Out -> Entrada Audio 1 (L)",
+        "notes": "Inversor y atenuador bipolar (+1.0 a -1.0x)."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Scale / Inversion (-1 to +1)",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Gain"
+        }
+      ]
+    },
+    {
+      "id": "pitch_transposer",
+      "name": "30. Octave Shifter & Pitch Transposer",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In",
+        "responseInput": "Hardware Audio Out -> Entrada Audio 1 (L)",
+        "notes": "Transpositor de octavas con seguimiento de tono analógico."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Interval Transpose",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Semi"
+        },
+        {
+          "index": 2,
+          "name": "Direct / Shifted Mix",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "%"
+        }
+      ]
+    },
+    {
+      "id": "custom_waveshaper",
+      "name": "31. Non-Linear Polynomial Waveshaper",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Audio In L",
+        "responseInput": "Hardware Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Generador de distorsión armónica por polinomios de Chebyshev de orden superior."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Polynomial Order / Drive",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Drive"
+        },
+        {
+          "index": 2,
+          "name": "Even/Odd Harmonic Balance",
+          "type": "Knob",
+          "minVal": 0.0,
+          "maxVal": 1.0,
+          "defaultVal": 0.5,
+          "unit": "Balance"
+        }
+      ]
+    }
+  ]
+}

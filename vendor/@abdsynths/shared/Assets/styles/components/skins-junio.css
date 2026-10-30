@@ -1,0 +1,128 @@
+/*
+ * Skins for the ABDSharedAssets control family: 'ms2000' (vector rim/cap/dot)
+ * and 'junio' (photographic filmstrip PNG). Theming via tokens, fallbacks keep
+ * them usable standalone.
+ */
+
+/* ── ms2000 (vector, extracted from ABDMS2000 WebUI rotaryKnob) ────────────── */
+
+.abd-ms2000-knob { display: block; }
+
+.abd-ms2000-knob__rim {
+    fill: var(--color-panel-surface-elevated, #1c2a3d);
+    stroke: var(--color-panel-border, rgba(0, 195, 255, 0.2));
+    stroke-width: 1.5;
+}
+
+.abd-ms2000-knob__cap {
+    fill: var(--color-panel-surface, #151f2e);
+    stroke: var(--color-panel-border-dim, rgba(0, 195, 255, 0.1));
+}
+
+.abd-ms2000-knob__tick {
+    fill: var(--color-accent, #00c3ff);
+}
+
+.abd-ms2000-knob__dot {
+    fill: var(--color-text-muted, #7e9bb5);
+}
+
+/* Modulation ring: own outer radius (the rim owns 23), double stroke like the
+   native LookAndFeel, themed with --color-mod-ring. */
+.abd-ms2000-knob__mod-halo,
+.abd-ms2000-knob__mod-ring {
+    fill: none;
+    stroke: var(--color-mod-ring, var(--color-accent, #00c3ff));
+    stroke-linecap: round;
+}
+
+.abd-ms2000-knob__mod-halo { stroke-width: 3; opacity: 0.4; }
+.abd-ms2000-knob__mod-ring { stroke-width: 1.5; }
+
+/* ── junio: photographic sprites (extracted from ABDJUNiO601 assets) ───────── */
+
+/* The skin uses EXACT class names from ABDJUNiO601:
+   .abd-knob-ring  - the filmstrip element with knob graphic + radial marks (FIXED)
+   .knob           - the white marker line child that rotates
+   .v-slider       - the visual track with slot.png background (has white position lines)
+   .track          - inner track element with 8px top/bottom padding
+   .handle         - the cap that moves with top style
+   .v-slider-mini  - horizontal variant
+*/
+
+.abd-knob-ring {
+    width: var(--abd-knob-size, 64px);
+    height: var(--abd-knob-size, 64px);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    /* NO transform on the filmstrip itself — it's FIXED with graphics + radial marks */
+}
+
+.abd-knob-ring .knob {
+    position: absolute;
+    width: 2px;
+    height: 6px;
+    background: var(--color-text-main, #f0f7ff);
+    left: 50%;
+    top: 17px;
+    transform: translateX(-50%);
+    transform-origin: center 13px;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+    border-radius: 1px;
+}
+
+/* ── junio slider: .v-slider (slot bg with white lines) > .track (inner) > .handle (cap) ── */
+
+.v-slider {
+    position: relative;
+    width: 32px;
+    height: var(--abd-slider-length, 160px);
+    background: url('../../assets/junio/slider_slot.png') no-repeat center center;
+    background-size: contain;
+    cursor: ns-resize;
+}
+
+.v-slider-mini {
+    width: var(--abd-slider-length, 160px);
+    height: 32px;
+    cursor: ew-resize;
+}
+
+.v-slider .track {
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    width: 4px;
+    left: 14px;
+    background: transparent;
+}
+
+.v-slider .handle {
+    position: absolute;
+    width: 32px;
+    height: 16px;
+    left: 0;
+    background: url('../../assets/junio/slider_cap.png') no-repeat center center;
+    background-size: contain;
+    pointer-events: none;
+}
+
+.v-slider-mini .track {
+    left: 8px;
+    right: 8px;
+    top: 0;
+    bottom: 0;
+    width: auto;
+    height: 4px;
+}
+
+.v-slider-mini .handle {
+    width: 16px;
+    height: 32px;
+    top: 0;
+    left: 0;
+}

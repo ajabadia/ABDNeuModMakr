@@ -1,0 +1,26 @@
+/* ABD Advanced / Cyberpunk -- Magenta & Void Theme */
+[data-theme="advanced"], body.skin-advanced,
+[data-theme="cyberpunk"], body.skin-cyberpunk {
+  --color-bg-base:             #08080c;
+  --color-panel-bg:            #101018;
+  --color-panel-surface:       #181824;
+  --color-panel-surface-elevated: #202030;
+  --color-panel-border:        rgba(255, 0, 127, 0.28);
+  --color-panel-border-strong: rgba(255, 0, 127, 0.5);
+  --color-panel-border-dim:    rgba(255, 0, 127, 0.12);
+  --color-accent:        #ff007f;
+  --color-accent-rgb:    255, 0, 127;
+  --color-accent-hover:  #ff3399;
+  --color-accent-active: #cc0066;
+  --color-accent-dim:    rgba(255, 0, 127, 0.15);
+  --color-text-main:  #ffffff;
+  --color-text-muted: #8c8ca0;
+  --color-text-dim:   #5a5a6e;
+  --color-lcd-bg:     #0d1117;
+  --color-lcd-text:   #00ffff;
+  --color-lcd-border: rgba(0, 255, 255, 0.3);
+  --color-scrollbar-thumb:        #282036;
+  --color-scrollbar-thumb-hover:  #3a3050;
+  --color-scrollbar-thumb-active: #4c4066;
+  --color-scrollbar-track:        #050508;
+}

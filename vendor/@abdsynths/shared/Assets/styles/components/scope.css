@@ -1,0 +1,29 @@
+﻿/**
+ * ABD Scope Component Tokens (Adapter)
+ * Maps the full ABD Scope module token set (--scope-*) onto the ABD shared
+ * host tokens (--color-*, --font-*). Load AFTER the module's scope.css so the
+ * mapping wins by source order; the module keeps its own canonical fallbacks
+ * for standalone/non-host contexts. Fallback values below mirror the module's
+ * :root defaults so host-cascade and standalone render identically.
+ * Module-owned look tokens (secondary trace channel, spectrum, grid, header
+ * bg) stay stable; hosts may override any --scope-* in their own cascade.
+ */
+:root {
+  --scope-bg: var(--color-panel-bg, #080c14);
+  --scope-surface: var(--color-panel-surface, #0f1622);
+  --scope-surface-elevated: var(--color-panel-surface-elevated, #162234);
+  --scope-border: var(--color-panel-border, rgba(0, 195, 255, 0.25));
+  --scope-border-strong: var(--color-panel-border-strong, rgba(0, 195, 255, 0.5));
+  --scope-accent: var(--color-accent, #00c3ff);
+  --scope-accent-hover: var(--color-accent-hover, #38d3ff);
+  --scope-trace-l: var(--color-accent, #00c3ff);
+  --scope-trace-r: #ff007f;
+  --scope-spectrum: #00e676;
+  --scope-grid: rgba(255, 255, 255, 0.07);
+  --scope-grid-center: rgba(255, 255, 255, 0.12);
+  --scope-header-bg: rgba(0, 0, 0, 0.6);
+  --scope-text-main: var(--color-text-main, #e8f4fc);
+  --scope-text-muted: var(--color-text-muted, #7e9bb5);
+  --scope-font: var(--font-lcd, 'Courier New', 'Roboto Mono', monospace);
+  --scope-font-lcd: var(--scope-font, 'Courier New', 'Roboto Mono', monospace);
+}

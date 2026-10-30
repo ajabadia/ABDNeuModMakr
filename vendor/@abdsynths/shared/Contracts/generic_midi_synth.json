@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "2.0",
+  "id": "generic_midi_synth",
+  "displayName": "Generic MIDI Synthesizer (CC & NRPN)",
+  "description": "Standard Hardware Synth with Continuous Controller (CC) and 14-bit NRPN Automation",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Generic MIDI",
+  "brandLogo": "",
+  "modelImage": "",
+  "midiIdentification": {
+    "manufacturer": "General MIDI",
+    "model": "Generic CC/NRPN Synth",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7"
+  },
+  "functions": [
+    {
+      "id": "filter_section",
+      "name": "Resonant Low-Pass Filter (VCF)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Synth External Audio In",
+        "responseInput": "Synth Main Out L -> Entrada Audio 1 (L)",
+        "notes": "Control automatizado mediante mensajes estándar MIDI CC y NRPN de alta resolución."
+      },
+      "controls": [
+        { "index": 1, "name": "VCF Cutoff", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 74, "nrpn": 288, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "Hz" },
+        { "index": 2, "name": "VCF Resonance", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 71, "nrpn": 289, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.0, "unit": "Q" }
+      ]
+    },
+    {
+      "id": "envelope_section",
+      "name": "Amplifier Envelope (VCA)",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On / Gate Trigger (Channel 1)",
+        "responseInput": "Synth Audio Out L -> Entrada Audio 1 (L)",
+        "notes": "Prueba de tiempos de ataque y liberación del envolvente VCA."
+      },
+      "controls": [
+        { "index": 1, "name": "VCA Attack Time", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 73, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.1, "unit": "ms" },
+        { "index": 2, "name": "VCA Release Time", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 72, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.3, "unit": "ms" }
+      ]
+    }
+  ]
+}

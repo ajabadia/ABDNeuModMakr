@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_juno6",
+  "aliases": [
+    "roland-juno6"
+  ],
+  "displayName": "Roland Juno-6",
+  "description": "Juno-106 engine without patch memory (no MIDI over SysEx bank dumps). Same 18-byte tone format for parity tooling. SSOT: Source/Contracts/Models/roland-juno.ts (legacy byte 0x3C).",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "models/roland-juno-6.webp",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "Juno-6",
+    "modelIdHex": "3C",
+    "sysexHeaderHex": "41 3C",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "Juno-6",
+      "Juno 6",
+      "Juno6",
+      "Juno"
+    ]
+  },
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 2,
+    "programsPerBank": 64,
+    "patchDataSize": 18,
+    "patchNameMaxLength": 0,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Strings",
+      "Brass",
+      "FX",
+      "Organ",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "roland-juno106",
+      "roland-juno60",
+      "roland-hs60"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "41",
+      "modelIdByteHex": "3C",
+      "checksumAlgorithm": "ROLAND_7BIT",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "18"
+    }
+  }
+}

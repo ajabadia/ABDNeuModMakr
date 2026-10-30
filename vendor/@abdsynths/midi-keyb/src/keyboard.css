@@ -1,0 +1,714 @@
+/* ══════════════════════════════════════════════════════════════
+   ABD Unified Keyboard CSS
+   Best-of-breed from ABDMS2000, ABDEep, ABDCZ101
+   ══════════════════════════════════════════════════════════════
+   Theme tokens:
+     --kbd-bg, --kbd-border
+     --kbd-white-top/base/bottom, --kbd-black-top/base/bottom
+     --kbd-active-bg, --kbd-led-color, --kbd-sweep-color, --kbd-panic-color
+     --kbd-font, --kbd-wheel-label-color, --kbd-wheel-value-color
+   HOST CONTRACT: la franja del host lleva el teclado con altura DEFINIDA
+   (p.ej. height: 155px). WebView2 no resuelve height:100% a traves de una
+   cadena de estiramientos: sin altura definida las teclas colapsan
+   (leccion NEURONiK 8.3). Ver README 'Important Layout & Container Contract'.
+   ══════════════════════════════════════════════════════════════ */
+
+
+/* Shared reusable components (single source - ABDSharedAssets).
+   Octave/panic/sustain/sostenuto/soft buttons + pitch/mod wheels
+   live in the shared package; the keybed below stays local. */
+@import '@abdsynths/shared/styles/components/wheels.css';
+@import '@abdsynths/shared/styles/components/kbd-buttons.css';
+/* ── Piano Container ── */
+#piano-keyboard {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  position: relative;
+  contain: layout style;
+}
+
+.keyboard-container {
+  transition: height 0.28s cubic-bezier(0.16, 1, 0.3, 1), padding 0.28s ease;
+  will-change: height;
+}
+
+.keyboard-container.collapsed {
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 4px 12px !important;
+}
+
+.keyboard-container.collapsed .wheels-block,
+.keyboard-container.collapsed .kbd-octave-controls {
+  display: none !important;
+}
+
+.kbd-piano-keys {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  background: var(--kbd-bg, #080808);
+  border-radius: 0 0 5px 5px;
+  overflow: visible;
+  position: relative;
+  border: 1px solid var(--kbd-border, #1a1a1a);
+  border-top: none;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.7);
+  will-change: contents;
+}
+
+/* ─── Keybed Flex Wrapper (Root fix: prevents keys from collapsing into vertical stack) ─── */
+.kbd-keys-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+/* Shadow gradient over keys for depth (from ABDEep) */
+.kbd-piano-keys::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WHITE KEYS — with ivory texture support (ABDEep)
+   ══════════════════════════════════════════════════════════════ */
+.kbd-white-key {
+  flex: 1;
+  background: linear-gradient(to bottom,
+    var(--kbd-ivory-top, var(--kbd-white-top, #fdfcf8)) 0%,
+    var(--kbd-ivory-base, var(--kbd-white-base, #ffffff)) 40%,
+    var(--kbd-ivory-bottom, var(--kbd-white-bottom, #f5f2ea)) 82%,
+    #e9e4d8 96%,
+    #dfd9cb 100%
+  );
+  border: 1px solid #b2aea4;
+  border-top: none;
+  border-right: 1px solid #848074;
+  cursor: pointer;
+  position: relative;
+  border-radius: 0 0 4px 4px;
+  user-select: none;
+  overflow: visible !important;
+  box-shadow:
+    -1px 0 0 #f0ece2,
+    1px 0 0 #928e82,
+    inset 0 -3px 4px rgba(110, 95, 75, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    0 5px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.04s ease, background 0.04s ease, box-shadow 0.04s ease;
+  z-index: 10;
+  will-change: transform;
+}
+
+.kbd-white-key:last-child {
+  border-right: 1px solid #b2aea4;
+}
+
+.kbd-white-key:hover {
+  background: linear-gradient(to bottom, #f4f8fc 0%, #ffffff 40%, #e6f0fa 82%, #d6e5f2 100%);
+}
+
+/* Active (note pressed) — velocity-sensitive coloring from ABDEep */
+.kbd-white-key.active {
+  transform: translateY(3px);
+  /* velocity influences color: higher velocity = more blue tint */
+  background: color-mix(in srgb,
+    #b8cad8,
+    #e8d4b8 calc(var(--kbd-velocity, 0.8) * 100%)
+  );
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* LED glow strip on top of active white key */
+.kbd-white-key.active::before,
+.kbd-white-key.kbd-led-sweep::before,
+.kbd-white-key.kbd-led-panic::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  z-index: 15;
+  animation: kbdKeyGlow 0.22s ease-out;
+}
+
+.kbd-white-key.active::before {
+  background: var(--kbd-led-color, var(--color-accent, #00ccff));
+  box-shadow: 0 0 14px 4px var(--kbd-led-color, var(--color-accent, #00ccff));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   BLACK KEYS
+   ══════════════════════════════════════════════════════════════ */
+.kbd-black-key {
+  position: absolute;
+  top: 0;
+  right: -60%;
+  width: 120%;
+  height: 64%;
+  background: linear-gradient(to bottom,
+    var(--kbd-black-top, #2f2f35) 0%,
+    var(--kbd-black-base, #1c1c22) 38%,
+    var(--kbd-black-bottom, #0c0c10) 85%,
+    #141418 100%
+  );
+  border: 1px solid #060608;
+  border-top: 1px solid #484852;
+  z-index: 30;
+  cursor: pointer;
+  border-radius: 0 0 3px 3px;
+  box-shadow:
+    -1px 0 2px rgba(0, 0, 0, 0.6),
+    1px 0 2px rgba(0, 0, 0, 0.6),
+    0 5px 7px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.6);
+  user-select: none;
+  transition: transform 0.04s ease, background 0.04s ease, box-shadow 0.04s ease;
+  will-change: transform;
+}
+
+.kbd-black-key:hover {
+  background: linear-gradient(to bottom, #404048 0%, #26262e 38%, #121216 100%);
+}
+
+.kbd-black-key.active {
+  transform: translateY(2px);
+  background: color-mix(in srgb,
+    #121518,
+    #22160e calc(var(--kbd-velocity, 0.8) * 100%)
+  );
+  border-color: #030303;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* LED glow strip on active black key */
+.kbd-black-key.active::before,
+.kbd-black-key.kbd-led-sweep::before,
+.kbd-black-key.kbd-led-panic::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 35;
+  animation: kbdKeyGlow 0.22s ease-out;
+}
+
+.kbd-black-key.active::before {
+  background: var(--kbd-led-color, var(--color-accent, #00ccff));
+  box-shadow: 0 0 12px 3px var(--kbd-led-color, var(--color-accent, #00ccff));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PRESSURE DISPLAY (from ABDEep keyboard_pressure.js)
+   Aftertouch + ModWheel + PitchBend visual on pushed keys
+   ══════════════════════════════════════════════════════════════ */
+
+/* White key: velocity base + AT orange + MW blue */
+.kbd-white-key.active.kbd-pressured {
+  transition: background 0.04s, box-shadow 0.04s, transform 0.04s;
+  background: color-mix(in srgb,
+    color-mix(in srgb,
+      color-mix(in srgb, #b8cad8, #e8d4b8 calc(var(--kbd-velocity, 0.8) * 100%)),
+      #ff6633 calc(var(--kbd-pressure, 0) * 100%)
+    ),
+    #3399ff calc(var(--kbd-mw-pressure, 0) * 70%)
+  );
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.2),
+    0 0 calc(6px * var(--kbd-pressure, 0)) rgba(255, 102, 51, calc(0.6 * var(--kbd-pressure, 0))),
+    0 0 calc(8px * var(--kbd-mw-pressure, 0)) rgba(51, 153, 255, calc(0.5 * var(--kbd-mw-pressure, 0)));
+  transform: translateY(calc(3px + 2px * var(--kbd-pressure, 0)));
+}
+
+/* Black key: velocity base + AT deep red + MW blue */
+.kbd-black-key.active.kbd-pressured {
+  transition: background 0.04s, box-shadow 0.04s, transform 0.04s;
+  background: color-mix(in srgb,
+    color-mix(in srgb,
+      color-mix(in srgb, #0a0f14, #1a1008 calc(var(--kbd-velocity, 0.8) * 100%)),
+      #cc3300 calc(var(--kbd-pressure, 0) * 100%)
+    ),
+    #2266aa calc(var(--kbd-mw-pressure, 0) * 60%)
+  );
+  box-shadow:
+    -1px 0 1px rgba(0, 0, 0, 0.5),
+    1px 0 1px rgba(0, 0, 0, 0.5),
+    0 4px 4px rgba(0, 0, 0, 0.6),
+    0 0 calc(4px * var(--kbd-pressure, 0)) rgba(204, 51, 0, calc(0.5 * var(--kbd-pressure, 0))),
+    0 0 calc(6px * var(--kbd-mw-pressure, 0)) rgba(51, 153, 255, calc(0.4 * var(--kbd-mw-pressure, 0)));
+}
+
+/* ── Pressure release animation ── */
+.kbd-white-key.kbd-pressure-release,
+.kbd-black-key.kbd-pressure-release {
+  transition: background 0.35s ease-out, box-shadow 0.35s ease-out, transform 0.35s ease-out !important;
+}
+.kbd-white-key.kbd-pressure-release {
+  background: #b8cad8;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.2);
+  transform: translateY(3px);
+}
+.kbd-black-key.kbd-pressure-release {
+  background: #0a0f14;
+  box-shadow: none;
+  transform: translateY(2px);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PITCH-BEND DISPLACEMENT (from ABDEep)
+   Keys shift horizontally when pitch bending
+   ══════════════════════════════════════════════════════════════ */
+.kbd-white-key.active.kbd-pitch-bent {
+  transform: translateY(3px) translateX(var(--kbd-pb-offset, 0px));
+}
+.kbd-black-key.active.kbd-pitch-bent {
+  transform: translateY(2px) translateX(var(--kbd-pb-offset, 0px));
+}
+.kbd-white-key.active.kbd-pitch-bent.kbd-pressured {
+  transform: translateY(calc(3px + 2px * var(--kbd-pressure, 0))) translateX(var(--kbd-pb-offset, 0px));
+}
+.kbd-black-key.active.kbd-pitch-bent.kbd-pressured {
+  transform: translateY(2px) translateX(var(--kbd-pb-offset, 0px));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   VINTAGE WEAR STAINS (from ABDCZ101 keyboard.js)
+   Deterministic per-key stains for aged look
+   ══════════════════════════════════════════════════════════════ */
+.kbd-white-key::after,
+.kbd-black-key::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+/* Hand oil / yellowing — heavier towards base */
+.kbd-white-key.kbd-stain-yellow::after {
+  opacity: 0.6;
+  background:
+    radial-gradient(ellipse 75% 45% at 50% 90%, rgba(166, 124, 42, 0.6), transparent 70%),
+    radial-gradient(ellipse 45% 30% at 28% 30%, rgba(190, 150, 70, 0.4), transparent 70%);
+}
+
+/* Dark scuff marks from playing */
+.kbd-white-key.kbd-stain-scuff::after {
+  opacity: 0.5;
+  background:
+    radial-gradient(ellipse 32% 22% at 64% 38%, rgba(60, 48, 30, 0.55), transparent 70%),
+    radial-gradient(ellipse 24% 16% at 38% 58%, rgba(70, 55, 35, 0.4), transparent 70%);
+}
+
+/* Chipped edge ding */
+.kbd-white-key.kbd-stain-ding::after {
+  opacity: 0.55;
+  background:
+    linear-gradient(160deg, transparent 38%, rgba(90, 70, 40, 0.5) 41%, rgba(90, 70, 40, 0.18) 44%, transparent 47%),
+    radial-gradient(ellipse 14% 9% at 80% 10%, rgba(45, 36, 22, 0.5), transparent 70%);
+}
+
+/* Worn black key — dulled sheen */
+.kbd-black-key.kbd-stain-worn::after {
+  opacity: 0.5;
+  background:
+    radial-gradient(ellipse 55% 30% at 32% 58%, rgba(130, 112, 84, 0.4), transparent 70%),
+    radial-gradient(ellipse 45% 20% at 68% 28%, rgba(110, 96, 74, 0.3), transparent 70%);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LED SWEEP + PANIC ANIMATIONS
+   ══════════════════════════════════════════════════════════════ */
+.kbd-white-key.kbd-led-sweep::before,
+.kbd-black-key.kbd-led-sweep::before {
+  background: var(--kbd-sweep-color, var(--color-accent, #00ccff)) !important;
+  box-shadow: 0 0 16px 4px var(--kbd-sweep-color, var(--color-accent, #00ccff)) !important;
+}
+
+.kbd-white-key.kbd-led-panic::before,
+.kbd-black-key.kbd-led-panic::before {
+  background: var(--kbd-panic-color, #ff2233) !important;
+  box-shadow: 0 0 18px 6px var(--kbd-panic-color, #ff2233) !important;
+}
+
+@keyframes kbdKeyGlow {
+  0% { opacity: 0; transform: scaleY(0.4); }
+  50% { opacity: 1; transform: scaleY(1); }
+  100% { opacity: 0; transform: scaleY(0.6); }
+}
+
+/* GPU-accelerated animation layers */
+.kbd-white-key.active::before,
+.kbd-black-key.active::before,
+.kbd-white-key.kbd-led-sweep::before,
+.kbd-black-key.kbd-led-sweep::before,
+.kbd-white-key.kbd-led-panic::before,
+.kbd-black-key.kbd-led-panic::before {
+  will-change: opacity, transform;
+  transform: translateZ(0);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   SCALE FILTER — dimming for out-of-scale keys
+   ══════════════════════════════════════════════════════════════ */
+.kbd-white-key.kbd-scale-out,
+.kbd-black-key.kbd-scale-out {
+  opacity: 0.35;
+  filter: grayscale(0.6);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+.kbd-white-key.kbd-scale-in,
+.kbd-black-key.kbd-scale-in {
+  opacity: 1;
+  filter: none;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHORD MEMORY — visual feedback
+   ══════════════════════════════════════════════════════════════ */
+.kbd-chord-saved {
+  --kbd-led-color: var(--kbd-chord-color, #ffaa00);
+}
+.kbd-chord-saved::before {
+  background: var(--kbd-led-color);
+  opacity: 0.35;
+}
+.kbd-chord-playing {
+  --kbd-led-color: var(--kbd-chord-playing-color, #00ff88);
+}
+.kbd-chord-playing::before {
+  background: var(--kbd-led-color);
+  opacity: 0.6;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ACCESSIBILITY
+   Screen reader support, focus indicators, keyboard navigation
+   ══════════════════════════════════════════════════════════════ */
+
+/* Screen reader only — offscreen but announced by screen readers */
+.kbd-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus indicator for keyboard-navigable keys */
+.kbd-white-key:focus-visible,
+.kbd-black-key:focus-visible {
+  outline: 3px solid var(--kbd-led-color, var(--color-accent, #00ccff));
+  outline-offset: 2px;
+  z-index: 50;
+}
+
+/* Focus indicator for buttons (panic, sustain, octave) */
+.kbd-panic-btn:focus-visible,
+.kbd-sustain-btn:focus-visible,
+.kbd-octave-btn:focus-visible {
+  outline: 3px solid var(--kbd-led-color, var(--color-accent, #00ccff));
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COLLAPSE / EXPAND BUTTON
+   Chevron button to collapse keyboard downward
+   ══════════════════════════════════════════════════════════════ */
+.kbd-collapse-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  min-height: 80px;
+  margin: 0 0 0 2px;
+  background: linear-gradient(to bottom, #1e1e22 0%, #141418 100%);
+  border: 1px solid #333;
+  border-radius: 0 0 5px 5px;
+  border-top: none;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.6), 0 2px 4px rgba(0,0,0,0.4);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kbd-collapse-btn:hover {
+  background: linear-gradient(to bottom, #28282e 0%, #1a1a1e 100%);
+  border-color: #555;
+}
+
+.kbd-collapse-btn:active {
+  background: linear-gradient(to bottom, #121214 0%, #0c0c0e 100%);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+}
+
+.kbd-collapse-chevron {
+  font-size: 14px;
+  color: #888;
+  line-height: 1;
+  transition: color 0.15s ease, transform 0.25s ease;
+}
+
+.kbd-collapse-btn:hover .kbd-collapse-chevron {
+  color: #00ccff;
+}
+
+/* Collapsed state: hide keys, show thin bar */
+.kbd-piano-keys.kbd-collapsed .kbd-white-key,
+.kbd-piano-keys.kbd-collapsed .kbd-black-key {
+  height: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: height 0.3s ease, opacity 0.2s ease, min-height 0.3s ease;
+}
+
+.kbd-piano-keys.kbd-collapsed {
+  height: 28px !important;
+  min-height: 28px !important;
+  overflow: hidden !important;
+  transition: height 0.3s ease;
+  will-change: height;
+}
+
+.kbd-piano-keys.kbd-collapsed::after {
+  display: none;
+}
+
+
+
+/* Expanded state: animate keys back */
+.kbd-piano-keys:not(.kbd-collapsed) .kbd-white-key,
+.kbd-piano-keys:not(.kbd-collapsed) .kbd-black-key {
+  transition: height 0.3s ease, opacity 0.2s ease 0.1s;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .kbd-white-key,
+  .kbd-black-key,
+  .kbd-panic-led,
+  .kbd-sustain-led,
+  .kbd-octave-led {
+    transition: none !important;
+  }
+  .kbd-white-key.active::before,
+  .kbd-black-key.active::before,
+  .kbd-white-key.kbd-led-sweep::before,
+  .kbd-black-key.kbd-led-sweep::before,
+  .kbd-white-key.kbd-led-panic::before,
+  .kbd-black-key.kbd-led-panic::before {
+    animation: none !important;
+  }
+}
+
+
+/* Right cheek utility controls (Sustain & Panic) */
+.kbd-utility-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  background: var(--color-panel-surface, #121a24);
+  border: 1px solid var(--color-panel-border, rgba(0, 230, 118, 0.25));
+  border-radius: 5px;
+  padding: 6px;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.4);
+  flex-shrink: 0;
+}
+
+.kbd-utility-btn {
+  min-width: 44px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UX2.4 — QWERTY KEY LABELS, LATCHED / SUSTAINED / RETRIG VISUALS
+   ══════════════════════════════════════════════════════════════ */
+
+.kbd-qwerty-label {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--kbd-font, 'Share Tech Mono', monospace);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+  user-select: none;
+  padding: 1px 3px;
+  border-radius: 2px;
+  opacity: 0.52;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  z-index: 20;
+}
+
+.kbd-white-key > .kbd-qwerty-label {
+  color: #5a564c;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.kbd-black-key > .kbd-qwerty-label {
+  bottom: 4px;
+  font-size: 8px;
+  color: #a8b0bc;
+  background: rgba(255, 255, 255, 0.07);
+  z-index: 36;
+}
+
+.kbd-white-key:hover > .kbd-qwerty-label,
+.kbd-black-key:hover > .kbd-qwerty-label,
+.kbd-white-key.active > .kbd-qwerty-label,
+.kbd-black-key.active > .kbd-qwerty-label {
+  opacity: 0.88;
+}
+
+.kbd-hide-qwerty-labels .kbd-qwerty-label,
+.kbd-piano-keys.kbd-collapsed .kbd-qwerty-label {
+  display: none !important;
+}
+
+/* Latched key (HOLD mode or Shift+Click / Right-Click) */
+.kbd-white-key.kbd-latched::before,
+.kbd-black-key.kbd-latched::before {
+  background: var(--kbd-latch-color, #00d4ff) !important;
+  box-shadow: 0 0 14px 4px var(--kbd-latch-color, #00d4ff), 0 0 4px 1px #ffffff !important;
+  height: 5px;
+}
+
+.kbd-white-key.kbd-latched {
+  box-shadow:
+    inset 0 2px 6px rgba(0, 180, 255, 0.35),
+    inset 0 -2px 0 var(--kbd-latch-color, #00d4ff);
+}
+
+.kbd-black-key.kbd-latched {
+  border-bottom: 2px solid var(--kbd-latch-color, #00d4ff);
+}
+
+/* Sustained key (held by CC#64 after physical release) */
+.kbd-white-key.kbd-sustained::before,
+.kbd-black-key.kbd-sustained::before {
+  background: var(--kbd-sustain-color, #33cc55) !important;
+  box-shadow: 0 0 12px 3px var(--kbd-sustain-color, #33cc55) !important;
+}
+
+/* Retrig gate-off phase: briefly dim key depression between attacks */
+.kbd-white-key.kbd-retrig-gate-off {
+  transform: translateY(1px);
+  opacity: 0.86;
+}
+
+.kbd-black-key.kbd-retrig-gate-off {
+  transform: translateY(0px);
+  opacity: 0.86;
+}
+
+.kbd-white-key.kbd-retrig-gate-off::before,
+.kbd-black-key.kbd-retrig-gate-off::before {
+  opacity: 0.25;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MULTIZONE SUPPORT (Sample / Synth Mapping)
+   ══════════════════════════════════════════════════════════════ */
+
+/* In-zone key subtle tint */
+.kbd-white-key.kbd-in-zone {
+  background: linear-gradient(180deg, #f3f5f8 0%, #e2e8f0 100%);
+}
+
+.kbd-black-key.kbd-in-zone {
+  background: linear-gradient(180deg, #252930 0%, #17191d 100%);
+}
+
+/* Active zone highlight: illuminated accent line & soft tint */
+.kbd-white-key.kbd-in-active-zone {
+  background: linear-gradient(180deg, #f7fdff 0%, #d8eef8 100%) !important;
+  box-shadow: inset 0 -3px 0 var(--kbd-zone-color, #00c8ff);
+}
+
+.kbd-black-key.kbd-in-active-zone {
+  background: linear-gradient(180deg, #1c2c36 0%, #121d24 100%) !important;
+  box-shadow: inset 0 -3px 0 var(--kbd-zone-color, #00c8ff);
+}
+
+/* Zone boundaries */
+.kbd-white-key.kbd-zone-boundary-low,
+.kbd-black-key.kbd-zone-boundary-low {
+  border-left: 2px solid var(--kbd-zone-color, #00c8ff) !important;
+}
+
+.kbd-white-key.kbd-zone-boundary-high,
+.kbd-black-key.kbd-zone-boundary-high {
+  border-right: 2px solid var(--kbd-zone-color, #00c8ff) !important;
+}
+
+/* Root key marker: illuminated dot at bottom of key */
+.kbd-zone-root {
+  position: relative;
+}
+
+.kbd-white-key.kbd-zone-root::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kbd-zone-color, #00c8ff);
+  box-shadow: 0 0 8px var(--kbd-zone-color, #00c8ff), 0 0 2px #ffffff;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.kbd-black-key.kbd-zone-root::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--kbd-zone-color, #00c8ff);
+  box-shadow: 0 0 8px var(--kbd-zone-color, #00c8ff), 0 0 2px #ffffff;
+  pointer-events: none;
+  z-index: 5;
+}
+

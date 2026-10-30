@@ -1,0 +1,159 @@
+/**
+ * ABD Panels & Layout
+ * ===================
+ * Chassis, panels, modules, and module headers.
+ * Source: ABDEep base.css (most mature pattern).
+ */
+
+.chassis {
+  background: radial-gradient(ellipse at center, var(--color-panel-surface) 0%, var(--color-panel-bg) 100%);
+  border: 3px solid var(--color-panel-border-strong);
+  border-radius: var(--radius-chassis);
+  box-shadow: var(--shadow-elevation-2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  gap: var(--panel-gap);
+}
+
+.panel-row {
+  display: flex;
+  flex-direction: row;
+  gap: var(--panel-gap);
+  min-height: 0;
+}
+
+.panel-elevated {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-elevation-1);
+}
+
+/* Canonical Card & Box Architecture */
+.card,
+.panel-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: var(--shadow-card, 0 4px 16px rgba(0, 0, 0, 0.25));
+  transition: border-color var(--transition-fast, 0.15s ease),
+              box-shadow var(--transition-fast, 0.15s ease),
+              transform var(--transition-fast, 0.15s ease);
+  box-sizing: border-box;
+}
+
+.card:hover,
+.panel-card:hover {
+  border-color: var(--color-panel-border-strong);
+  box-shadow: var(--shadow-card-hover, 0 6px 20px rgba(0, 0, 0, 0.35));
+}
+
+.card.active,
+.panel-card.active,
+.card.selected,
+.panel-card.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent), var(--shadow-card);
+}
+
+.module {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.module-header {
+  font-size: var(--text-md);
+  font-weight: 900;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  letter-spacing: 1.5px;
+  border-bottom: 1.5px solid var(--color-panel-border);
+  background: transparent;
+  padding: 0 0 var(--space-1) 0;
+  margin-bottom: var(--space-3);
+  border-radius: 0;
+}
+
+.module-header--accent {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.module-header--muted {
+  color: var(--color-text-muted);
+  border-bottom-color: var(--color-panel-border-dim);
+}
+
+.panel-divider {
+  height: 1px;
+  background: var(--color-panel-border-dim);
+  border: none;
+  margin: var(--space-3) 0;
+}
+
+/* Canonical Card with Decorative Art Pattern */
+.card-with-art {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+
+.card-art-cover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.card-art-cover.align-left {
+  left: 0;
+  justify-content: flex-start;
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 60%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 60%, rgba(0, 0, 0, 0) 100%);
+}
+
+.card-art-cover.align-right {
+  right: 0;
+  justify-content: flex-end;
+  mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 60%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 60%, rgba(0, 0, 0, 0) 100%);
+}
+
+.card-art-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: none !important;
+}
+
+.card-art-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+}
+

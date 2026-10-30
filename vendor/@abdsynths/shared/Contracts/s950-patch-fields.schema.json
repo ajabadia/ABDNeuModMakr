@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdaudiolab.com/schemas/s950-patch-fields.schema.json",
+  "title": "S950PatchFieldsContract",
+  "description": "Esquema del catalogo de patches del Akai S950: los 38 campos de un keygroup y los 18 trims de Perform, con su byte, su rango de panel, como se codifica el byte y el nombre que ve la persona. El GENERADO sale de ABDSharedCode/SynthCore/S950PatchFields.h, que es la fuente autoritativa y la que consulta el importador; este contrato existe para que un panel en JavaScript pinte los mismos nombres y los mismos rangos que aplica el motor, no para ser editado a mano. Se escribe en un subconjunto DELIBERADAMENTE plano (type, required, properties, enum, pattern, minimum/maximum, minLength/maxLength, items, uniqueItems, additionalProperties) porque es el unico que entiende el validador de tests/helpers/validateSchema.js, sin dependencia nueva. Si algun dia hace falta mas, se anade el soporte al validador ANTES que la palabra al esquema: un esquema con cosas que nadie ejecuta es peor que no tener esquema, porque parece que avisa.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "id",
+    "title",
+    "description",
+    "generatedFrom",
+    "sourceOfTruth",
+    "encodingNotes",
+    "rangeNotes",
+    "geometry",
+    "fields",
+    "performTrims",
+    "outputPorts"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "enum": [
+        "./s950-patch-fields.schema.json"
+      ],
+      "description": "Ruta RELATIVA al propio esquema, que es lo que hace que este contrato lo declare. Va con enum de un solo valor y no como decoracion: es el unico campo del fichero que puede decir 'este contrato se valida contra esto', y un `$schema` que apunte a otro sitio se equivoca en silencio."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Identificador del catalogo ('s950-patch-fields'). Acepta el guion porque ESTE id lo lleva."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string",
+      "minLength": 2
+    },
+    "generatedFrom": {
+      "type": "string",
+      "minLength": 2,
+      "description": "Ruta, desde la raiz del monorepo, del codigo del que sale el contrato. Sin este campo el contrato es una lista escrita a mano, y las copias se separan sin ruido: alguien anade un campo al motor, el panel sigue enseñando 38, y el desfase se descubre cuando un patch importado suena raro."
+    },
+    "sourceOfTruth": {
+      "type": "string",
+      "minLength": 2,
+      "description": "El fichero autoritativo, que es el C++ del que se GENERA este contrato. Va aparte de `generatedFrom` porque los dos se desfasan por motivos distintos: `generatedFrom` es de donde salio esta copia, `sourceOfTruth` es quien manda si alguien los cambia."
+    },
+    "encodingNotes": {
+      "type": "array",
+      "description": "Las cuatro codificaciones de byte y lo que pasa si se ignoran. Viven en el contrato y no en una wiki porque son las que se vuelven a pisar: el 0xFF del puerto es el 0 del panel, y los cuatro flags comparten byte.",
+      "items": {
+        "type": "string",
+        "minLength": 2
+      }
+    },
+    "rangeNotes": {
+      "type": "array",
+      "description": "Los rangos que NO son 0..99, y por que. El 0..99 es lo que imprime el panel, no lo que se guarda, y esa confusion es la que produce un cuarto de tono de error sin ningun fallo.",
+      "items": {
+        "type": "string",
+        "minLength": 2
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "description": "La geometria del registro del keygroup: cuantos bytes, donde empieza cada zona, y las mascaras del byte de flags. Son DATOS de la maquina, y un panel que pinte una zona necesita saber donde acaba la anterior.",
+      "required": [
+        "keygroupRecordSize",
+        "programHeaderSize",
+        "keygroupZoneStride",
+        "keygroupNameOffset",
+        "keygroupNameSize",
+        "keygroupChainOffset",
+        "keygroupVelocityCount",
+        "keygroupMaxZones",
+        "keygroupMaxCount",
+        "keygroupCountOffset",
+        "programNumberOffset",
+        "fileNameSize",
+        "keygroupFlagsByte",
+        "knownFlagsMask",
+        "reservedBitMask"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "keygroupRecordSize": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Bytes por keygroup: 70."
+        },
+        "programHeaderSize": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Bytes de cabecera de un programa: 38. NO son los 60 de cabecera de fichero, que son de los SAMPLES; un programa empieza aqui."
+        },
+        "keygroupZoneStride": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "La zona 2 esta 22 bytes mas alla de la zona 1."
+        },
+        "keygroupNameOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "keygroupNameSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keygroupChainOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Puntero a la zona, al final del registro."
+        },
+        "keygroupVelocityCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "128. Y por eso el switch de velocidad puede valer 128: ninguna velocidad MIDI llega ahi."
+        },
+        "keygroupMaxZones": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Zonas de velocidad, NO capas. Dos zonas no suenan a la vez: son alternativas."
+        },
+        "keygroupMaxCount": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "64 keygroups por programa, que es el limite de la maquina."
+        },
+        "keygroupCountOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "programNumberOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fileNameSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keygroupFlagsByte": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "El byte 18, donde viven los cuatro flags."
+        },
+        "knownFlagsMask": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Los bits del byte 18 que SI se han descifrado: 0x1D."
+        },
+        "reservedBitMask": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Los bits del byte 18 que NO: el 0x02. Se declara para que no se pierda al escribir un flag, y no para poder usarlo."
+        }
+      }
+    },
+    "fields": {
+      "type": "array",
+      "description": "Los 38 campos de un keygroup, en el orden en que se recorre el keygroup. El ORDEN es parte del contrato, porque es el orden en que un panel los va a buscar; el `code` es la clave estable con la que un preset los referencia.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "byteOffset",
+          "lo",
+          "hi",
+          "encoding",
+          "bitMask",
+          "group",
+          "trimId",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$",
+            "description": "Identificador corto y estable. Es la clave con la que un motor, un importador o un preset referencian el campo, asi que forma parte del contrato: renombrarla rompe lo que ya existe."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "El nombre que ve la persona, en ingles como en el panel. Minimo 1 porque un nombre vacio no rompe nada al compilar: rompe el panel, en un sitio donde nadie mira hasta que sale un control sin etiqueta."
+          },
+          "byteOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 69,
+            "description": "Posicion DENTRO del registro de 70 bytes del keygroup, no dentro del fichero. Un keygroup puede partirse entre dos bloques que no son contiguos, asi que un offset absoluto en el fichero seria un numero que miente."
+          },
+          "lo": {
+            "type": "integer",
+            "minimum": -128,
+            "maximum": 255,
+            "description": "Minimo de PANEL, inclusivo. Minimo -128 y no mas porque el byte es con signo de 8 bits: un valor que no cabe no se puede escribir entero, y un truncamiento silencioso es peor que un error."
+          },
+          "hi": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "Maximo de PANEL, inclusivo. Y NO siempre 99: los fines de zona llegan a 255, el switch de velocidad a 128, y los LFO de aftertouch y modwheel solo a 50."
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "Unsigned",
+              "Signed",
+              "Port",
+              "Bit"
+            ],
+            "description": "Como se lee y escribe el byte. No es decorativo: tres de los cuatro NO son 'un byte'. El signo es complemento a dos, el puerto va uno menos que el panel con el 0xFF como el 0, y un flag es un bit suelto."
+          },
+          "bitMask": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "Que bit del byte, y solo para los campos `Bit`. Los cuatro flags comparten el byte 18, y por eso se conservan al escribir: un bit que nadie descifro (0x02) se pierde en la primera escritura si se escribe el byte entero."
+          },
+          "group": {
+            "type": "string",
+            "pattern": "^[A-Z]+$",
+            "description": "En que pestana del panel aparece. Mayusculas porque es como se lee la tabla, y porque un panel agrupa por ahi."
+          },
+          "trimId": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "El trim de Perform que mueve este campo, o cadena vacia si ninguno lo mueve. Un campo con trim vale `valor + trim`, y por eso estan en la misma tabla y no en dos."
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Lo que cuenta la unidad, para quien tenga que explicar el numero."
+          }
+        }
+      }
+    },
+    "performTrims": {
+      "type": "array",
+      "description": "Los offsets de Perform. Un trim se SUMA al valor del keygroup, no lo sustituye: la diferencia se ve al cambiar de patch, porque un offset deja la relacion entre keygroups como el programador la chose.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "fieldCode",
+          "lo",
+          "hi",
+          "bipolar",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "fieldCode": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "El campo del keygroup que mueve, o cadena vacia si mueve algo que no esta en el keygroup. Vacio NO es un olvido: son los controles que la maquina NO tenia, y es la diferencia entre un S950 y un S950 con resonancia."
+          },
+          "lo": {
+            "type": "integer",
+            "minimum": -99,
+            "maximum": 0
+          },
+          "hi": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99
+          },
+          "bipolar": {
+            "type": "boolean",
+            "description": "Si el offset suma y resta. Los que solo suman son PROFUNDIDADES, y una profundidad negativa no es 'un poco menos', es nada."
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          }
+        }
+      }
+    },
+    "outputPorts": {
+      "type": "array",
+      "description": "Las once salidas, en el orden del panel: ALL, los ocho MONO, LEFT y RIGHT. El `name` va TAL CUAL lo pone la maquina; la tipografia la pone quien pinta, porque un contrato que maqueta se queda viejo el dia que el panel cambie su estilo.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "panelValue",
+          "code",
+          "name",
+          "left",
+          "right"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "panelValue": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Clave estable: 'all', 'mono1'..'mono8', 'left', 'right'."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10
+          },
+          "left": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "right": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

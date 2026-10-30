@@ -1,0 +1,139 @@
+/*
+ * EnvelopePad — la curva ADSR compartida (components/envelopePad.js).
+ * ============================================================================
+ * Tema SOLO por custom properties de tokens.css, como el resto de la familia.
+ * Defaults heredados del tema de origen de la vista (--color-accent y
+ * --color-lcd-text), para que un host sin tokens siga viendo la curva de
+ * siempre.
+ *
+ * El SVG se estira a su contenedor (preserveAspectRatio="none"); el trazo no
+ * se deforma gracias a vector-effect: non-scaling-stroke.
+ */
+
+.abd-envpad {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.abd-envpad__label {
+  font-size: var(--text-2xs, 8px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #7e9bb5);
+}
+
+.abd-envpad__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* El SVG: dentro del stage en el CONTROL, hijo directo en la VISTA de
+   fabrica — el descendant lo cubre en los dos casos. */
+.abd-envpad svg {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+  display: block;
+}
+
+/* La curva: trazo de acento, relleno al 18% — los valores de la vista de
+   origen, ahora en tokens para que cada synth le ponga SU color. */
+.abd-envpad__line {
+  fill: none;
+  stroke: var(--abd-envelope-line, var(--color-accent, #00c3ff));
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.abd-envpad__area {
+  fill: var(--abd-envelope-area, color-mix(in srgb, var(--color-accent, #00c3ff) 18%, transparent));
+  stroke: none;
+}
+
+/*
+ * AGUJA de nivel (telemetria en vivo): la senal que la envolvente esta
+ * sacando AHORA, como una linea a lo ancho de la curva. Autoiluminada como
+ * el LCD: no cambia con el tema, para que la senal se lea igual en oscuro y
+ * en claro. Oculta (opacity 0) por debajo del suelo de silencio —
+ * data-visible lo conmuta el control.
+ */
+.abd-envpad__needle {
+  fill: none;
+  stroke: var(--abd-envelope-needle, var(--color-lcd-text, #44ff77));
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0;
+  transition: opacity 120ms linear;
+  vector-effect: non-scaling-stroke;
+}
+
+.abd-envpad__needle[data-visible="true"] {
+  opacity: 0.9;
+}
+
+/* La lectura A/D/S/R bajo el dibujo (showValues). */
+.abd-envpad__values {
+  font-size: var(--text-2xs, 8px);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim, #4a637a);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Caption de la vista de fabrica (createEnvelopeCurve). */
+.abd-envpad__caption {
+  font-size: var(--text-2xs, 8px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #7e9bb5);
+  text-align: center;
+}
+
+/* --- modo editable: las TRES ASAS ---------------------------------------- */
+
+/*
+ * Un asa es un cuadrado de 9 px (el del editor de origen), centrado en su
+ * punto de la curva con translate(-50%, -50%): las coordenadas que escribe
+ * el control son el CENTRO del asa. Hit-test generoso: el ::after agranda la
+ * zona de agarre a 16 px sin pintar nada.
+ */
+.abd-envpad__handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  background: var(--abd-envelope-handle, var(--color-accent, #00c3ff));
+  border: 1px solid var(--color-panel-bg, #0f1620);
+  cursor: grab;
+  touch-action: none;
+}
+
+.abd-envpad__handle::after {
+  content: "";
+  position: absolute;
+  inset: -4px;   /* 9 + 8 = 17 px de zona de agarre */
+}
+
+.abd-envpad__handle:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 2px;
+}
+
+.abd-envpad__handle--active {
+  background: var(--abd-envelope-handle-active, color-mix(in srgb, var(--color-warning, #e88c28) 85%, white));
+  cursor: grabbing;
+}
+
+/* En la vista pura no hay asas que mostrar, por si el host las deja montadas. */
+.abd-envpad--view .abd-envpad__handle {
+  display: none;
+}

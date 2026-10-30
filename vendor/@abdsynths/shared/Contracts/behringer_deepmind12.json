@@ -1,0 +1,316 @@
+{
+  "schemaVersion": "2.0",
+  "id": "behringer_deepmind12",
+  "aliases": [
+    "behringer-deepmind12"
+  ],
+  "displayName": "Behringer DeepMind 12 / 12D",
+  "description": "12-Voice Analog Polysynth with 2 DCOs, switchable 2/4-pole Resonant Low-Pass VCF, HPF with Bass Boost, and 3 ADSR Envelopes",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Behringer",
+  "brandLogo": "brands/behringer-logo.svg",
+  "modelImage": "models/behringer-deepmind12.png",
+  "midiIdentification": {
+    "manufacturer": "Behringer",
+    "manufacturerIdHex": "00 20 32",
+    "model": "DeepMind 12",
+    "modelIdHex": "20",
+    "sysexHeaderHex": "00 20 32 20",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "DeepMind 12",
+      "DeepMind12",
+      "DEEPMIND 12D",
+      "DEEPMIND12D",
+      "DM12",
+      "DM12D",
+      "DeepMind"
+    ]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      {
+        "description": "All Sound Off",
+        "method": "MIDI_CC",
+        "cc": 120,
+        "value": 0,
+        "settlingDelayMs": 30
+      },
+      {
+        "description": "Reset All Controllers",
+        "method": "MIDI_CC",
+        "cc": 121,
+        "value": 0,
+        "settlingDelayMs": 30
+      },
+      {
+        "description": "Modulation Wheel Zero",
+        "method": "MIDI_CC",
+        "cc": 1,
+        "value": 0,
+        "settlingDelayMs": 30
+      },
+      {
+        "description": "Bypass FX (Dry Mode)",
+        "method": "MIDI_CC",
+        "cc": 82,
+        "value": 0,
+        "settlingDelayMs": 50
+      }
+    ]
+  },
+  "functions": [
+    {
+      "id": "analog_vcf_filter",
+      "name": "Analog 2-Pole / 4-Pole Resonant Low-Pass VCF",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In (o MIDI Note On C3)",
+        "responseInput": "Stereo Out (L/R) -> Entradas Audio 1 y 2",
+        "notes": "Filtro analógico de estado variable discreto con modos conmutables 12dB (2-Pole) y 24dB (4-Pole) y realce de graves."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "VCF Cutoff Frequency",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 74,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.65,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "VCF Resonance (Q)",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 71,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.3,
+          "unit": "0-128"
+        },
+        {
+          "index": 3,
+          "name": "VCF Slope (2-Pole / 4-Pole)",
+          "type": "RotarySwitch",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 80,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 1,
+          "unit": "Slope",
+          "options": [
+            "2-Pole (12dB/oct)",
+            "4-Pole (24dB/oct)"
+          ]
+        },
+        {
+          "index": 4,
+          "name": "VCF Bass Boost",
+          "type": "RotarySwitch",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 81,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0,
+          "unit": "Boost",
+          "options": [
+            "Off",
+            "On"
+          ]
+        }
+      ],
+      "measurementRecipe": {
+        "recipeType": "INTERNAL_NOISE_EXCITATION",
+        "description": "Aislamiento de Filtro VCF: Osciladores en silencio, ruido blanco activo, efectos apagados y modulaciones a cero",
+        "setupActions": [
+          {
+            "description": "DCO 1 Saw Level Zero",
+            "method": "MIDI_CC",
+            "cc": 12,
+            "value": 0,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "DCO 1 Pulse Level Zero",
+            "method": "MIDI_CC",
+            "cc": 13,
+            "value": 0,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "DCO 2 Level Zero",
+            "method": "MIDI_CC",
+            "cc": 17,
+            "value": 0,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "Noise Generator Level 100%",
+            "method": "MIDI_CC",
+            "cc": 22,
+            "value": 1,
+            "settlingDelayMs": 30
+          },
+          {
+            "description": "VCF LFO Mod Depth Zero",
+            "method": "MIDI_CC",
+            "cc": 73,
+            "value": 0,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "VCF Env Mod Depth Zero",
+            "method": "MIDI_CC",
+            "cc": 72,
+            "value": 0,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "FX Bypass",
+            "method": "MIDI_CC",
+            "cc": 82,
+            "value": 0,
+            "settlingDelayMs": 50
+          }
+        ],
+        "excitationNotes": [
+          {
+            "noteNumber": 60,
+            "velocity": 100,
+            "startDelayMs": 0,
+            "durationMs": 0,
+            "isLegato": true
+          }
+        ],
+        "postSettlingDelayMs": 100
+      }
+    },
+    {
+      "id": "vcf_adsr_envelope",
+      "name": "VCF Filter ADSR Envelope Generator",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "captureMode": "ADAPTIVE_ENVELOPE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On -> Entrada MIDI DeepMind",
+        "responseInput": "Audio Out -> Entrada Audio 1 (L)",
+        "notes": "Generador de envolvente analógica rápida con curvas de respuesta configurables."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Attack Time (A)",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 26,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.1,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Decay Time (D)",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 27,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "ms"
+        },
+        {
+          "index": 3,
+          "name": "Sustain Level (S)",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 28,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.7,
+          "unit": "0-128"
+        },
+        {
+          "index": 4,
+          "name": "Release Time (R)",
+          "type": "Slider",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 29,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        }
+      ],
+      "measurementRecipe": {
+        "recipeType": "LEGATO_PITCH_SWEEP",
+        "description": "Disparo de envolvente VCF por Gate/NoteOn con sostenimiento constante",
+        "setupActions": [
+          {
+            "description": "VCF Cutoff to Baseline",
+            "method": "MIDI_CC",
+            "cc": 74,
+            "value": 0.2,
+            "settlingDelayMs": 20
+          },
+          {
+            "description": "VCF Env Mod to 100%",
+            "method": "MIDI_CC",
+            "cc": 72,
+            "value": 1,
+            "settlingDelayMs": 20
+          }
+        ],
+        "excitationNotes": [
+          {
+            "noteNumber": 60,
+            "velocity": 100,
+            "startDelayMs": 0,
+            "durationMs": 1500,
+            "isLegato": false
+          }
+        ],
+        "postSettlingDelayMs": 80
+      }
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 1024,
+    "banksCount": 8,
+    "programsPerBank": 128,
+    "patchDataSize": 242,
+    "patchNameMaxLength": 16,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Strings",
+      "Brass",
+      "FX",
+      "Keys",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "behringer-deepmind6",
+      "behringer-deepmind12d"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "002032",
+      "modelIdByteHex": "20",
+      "checksumAlgorithm": "NONE",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 5000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "00"
+    }
+  }
+}

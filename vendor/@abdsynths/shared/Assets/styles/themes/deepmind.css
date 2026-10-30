@@ -1,0 +1,25 @@
+﻿/* Behringer DeepMind 12 -- Amber & Charcoal Theme */
+[data-theme="deepmind"], body.skin-deepmind {
+  --color-bg-base:             #101012;
+  --color-panel-bg:            #18181c;
+  --color-panel-surface:       #222228;
+  --color-panel-surface-elevated: #2e2e36;
+  --color-panel-border:        rgba(255, 149, 0, 0.28);
+  --color-panel-border-strong: rgba(255, 149, 0, 0.5);
+  --color-panel-border-dim:    rgba(255, 149, 0, 0.1);
+  --color-accent:        #ff9500;
+  --color-accent-rgb:    255, 149, 0;
+  --color-accent-hover:  #ffaa33;
+  --color-accent-active: #cc7700;
+  --color-accent-dim:    rgba(255, 149, 0, 0.15);
+  --color-text-main:  #f5f5f0;
+  --color-text-muted: #b5b0a0;
+  --color-text-dim:   #7a7566;
+  --color-lcd-bg:     #181c20;
+  --color-lcd-text:   #ffaa33;
+  --color-lcd-border: rgba(255, 170, 51, 0.3);
+  --color-scrollbar-thumb:        #3a3530;
+  --color-scrollbar-thumb-hover:  #504a40;
+  --color-scrollbar-thumb-active: #665e50;
+  --color-scrollbar-track:        #0e0e10;
+}

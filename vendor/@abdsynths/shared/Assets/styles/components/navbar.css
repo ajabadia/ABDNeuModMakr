@@ -1,0 +1,335 @@
+/* ==========================================================================
+   ABD Navbar & Menu System
+   Top navigation bar with backdrop blur, menu bar, and dropdown cascades
+   ========================================================================== */
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--navbar-height, 44px);
+  background: var(--navbar-bg, var(--color-panel-bg));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-panel-border);
+  box-shadow: var(--navbar-shadow, 0 4px 18px rgba(0, 0, 0, 0.6));
+  padding: 0 var(--space-4, 8px);
+  flex-shrink: 0;
+  z-index: var(--z-navbar, 30);
+  position: relative;
+  font-family: var(--font-sans, sans-serif);
+  user-select: none;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4, 8px);
+  min-width: 0;
+}
+
+.nav-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3, 6px);
+  flex: 1;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 6px);
+  flex-shrink: 0;
+}
+
+/* Marca / Brand */
+.nav-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 4px);
+  margin-right: var(--space-2, 4px);
+}
+
+.brand-title {
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.8px;
+  color: var(--color-accent, #00c3ff);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brand-subtitle {
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-muted, #7e9bb5);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Modos de Operación clásicos / tabs */
+.mode-selector {
+  display: flex;
+  background: var(--color-bg-base, #0a0e14);
+  padding: 2px;
+  border-radius: var(--radius-md, 4px);
+  border: 1px solid var(--color-panel-border, rgba(0, 195, 255, 0.2));
+}
+
+.mode-tab {
+  padding: 4px 14px;
+  font-size: var(--text-base, 11px);
+  font-weight: 600;
+  border-radius: var(--radius-sm, 2px);
+  color: var(--color-text-muted, #7e9bb5);
+  transition: all var(--transition-normal, 0.2s ease);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mode-tab.active {
+  background: var(--color-accent, #00c3ff);
+  color: #000;
+  box-shadow: 0 0 10px rgba(var(--color-accent-rgb, 0, 195, 255), 0.4);
+}
+
+/* ─── Menu Bar & Triggers ─── */
+.nav-menu-bar,
+.menu-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+}
+
+.nav-menu-trigger,
+.menu-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-main, #f0f7ff);
+  font-family: inherit;
+  font-size: var(--text-base, 11px);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 2px);
+  cursor: pointer;
+  transition: background var(--transition-fast, 0.15s ease), color var(--transition-fast, 0.15s ease), border-color var(--transition-fast, 0.15s ease);
+}
+
+.nav-menu-trigger:hover,
+.nav-menu-trigger.active,
+.menu-trigger:hover,
+.menu-trigger.active {
+  background: var(--color-accent-dim, rgba(0, 195, 255, 0.15));
+  color: var(--color-accent, #00c3ff);
+  border-color: var(--color-panel-border, rgba(0, 195, 255, 0.2));
+}
+
+/* ─── Dropdowns & Cascades ─── */
+.nav-dropdown,
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  min-width: 220px;
+  background: var(--color-panel-surface-elevated, #1c2a3d);
+  border: 1px solid var(--color-panel-border-strong, rgba(0, 195, 255, 0.45));
+  border-radius: var(--radius-md, 4px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 16px rgba(var(--color-accent-rgb, 0, 195, 255), 0.1);
+  padding: 4px;
+  z-index: var(--z-dropdown, 50);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: navFadeIn 0.12s cubic-bezier(0, 0, 0.2, 1);
+}
+
+.nav-dropdown[hidden],
+.menu-dropdown[hidden] {
+  display: none !important;
+}
+
+@keyframes navFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ─── Menu Items ─── */
+.nav-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm, 2px);
+  color: var(--color-text-main, #f0f7ff);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-base, 11px);
+  transition: background var(--transition-fast, 0.15s ease), color var(--transition-fast, 0.15s ease);
+  position: relative;
+  box-sizing: border-box;
+}
+
+.nav-item:hover,
+.nav-item:focus-visible {
+  background: var(--color-accent-dim, rgba(0, 195, 255, 0.15));
+  color: var(--color-accent, #00c3ff);
+  outline: none;
+}
+
+.nav-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.nav-item-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nav-check {
+  display: inline-block;
+  width: 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-accent, #00c3ff);
+}
+
+.nav-check-spacer {
+  display: inline-block;
+  width: 14px;
+}
+
+.nav-separator {
+  height: 1px;
+  background: var(--color-panel-border, rgba(0, 195, 255, 0.2));
+  margin: 4px 6px;
+}
+
+.nav-arrow {
+  color: var(--color-text-muted, #7e9bb5);
+  font-size: 10px;
+  margin-left: var(--space-4, 8px);
+}
+
+.nav-kbd {
+  font-family: var(--font-lcd, monospace);
+  font-size: var(--text-2xs, 7px);
+  color: var(--color-text-muted, #7e9bb5);
+  border: 1px solid var(--color-panel-border, rgba(0, 195, 255, 0.2));
+  border-radius: var(--radius-sm, 2px);
+  padding: 1px 5px;
+  background: var(--color-bg-base, #0a0e14);
+  margin-left: var(--space-4, 8px);
+}
+
+/* ─── Submenus ─── */
+.nav-has-sub {
+  position: relative;
+}
+
+.nav-has-sub:hover > .nav-submenu,
+.nav-has-sub:focus-within > .nav-submenu {
+  display: block;
+}
+
+.nav-submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% - 2px);
+  top: -4px;
+  min-width: 190px;
+  background: var(--color-panel-surface-elevated, #1c2a3d);
+  border: 1px solid var(--color-panel-border-strong, rgba(0, 195, 255, 0.45));
+  border-radius: var(--radius-md, 4px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 16px rgba(var(--color-accent-rgb, 0, 195, 255), 0.1);
+  padding: 4px;
+  z-index: calc(var(--z-dropdown, 50) + 10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: navFadeIn 0.12s cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* ==========================================================================
+   Light Mode Theme Overrides (SoundID Reference Ergonomics / WCAG AA)
+   ========================================================================== */
+[data-theme="audiolab-light"] .navbar,
+[data-theme="light"] .navbar,
+body.skin-audiolab-light .navbar,
+body.theme-light .navbar,
+body.theme-audiolab-light .navbar {
+  --navbar-bg: #ffffff;
+  --navbar-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid var(--color-panel-border, rgba(15, 23, 42, 0.12));
+}
+
+[data-theme="audiolab-light"] .nav-menu-trigger,
+[data-theme="audiolab-light"] .menu-trigger,
+[data-theme="light"] .nav-menu-trigger,
+[data-theme="light"] .menu-trigger,
+body.skin-audiolab-light .nav-menu-trigger,
+body.theme-light .nav-menu-trigger,
+body.theme-audiolab-light .nav-menu-trigger {
+  color: var(--color-text-main, #1a1d20);
+  font-weight: 600;
+}
+
+[data-theme="audiolab-light"] .nav-menu-trigger:hover,
+[data-theme="audiolab-light"] .nav-menu-trigger.active,
+[data-theme="audiolab-light"] .menu-trigger:hover,
+[data-theme="audiolab-light"] .menu-trigger.active,
+[data-theme="light"] .nav-menu-trigger:hover,
+[data-theme="light"] .nav-menu-trigger.active,
+body.skin-audiolab-light .nav-menu-trigger:hover {
+  background: var(--color-accent-dim, rgba(0, 122, 77, 0.10));
+  color: var(--color-accent, #007a4d);
+  border-color: var(--color-panel-border, rgba(15, 23, 42, 0.15));
+}
+
+[data-theme="audiolab-light"] .nav-dropdown,
+[data-theme="audiolab-light"] .menu-dropdown,
+[data-theme="audiolab-light"] .nav-submenu,
+[data-theme="light"] .nav-dropdown,
+[data-theme="light"] .menu-dropdown,
+[data-theme="light"] .nav-submenu,
+body.skin-audiolab-light .nav-dropdown,
+body.theme-audiolab-light .nav-dropdown {
+  background: var(--color-panel-surface-elevated, #ffffff);
+  border: 1px solid var(--color-panel-border-strong, rgba(15, 23, 42, 0.16));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="audiolab-light"] .nav-item,
+[data-theme="light"] .nav-item,
+body.skin-audiolab-light .nav-item,
+body.theme-audiolab-light .nav-item {
+  color: var(--color-text-main, #1a1d20);
+}
+
+[data-theme="audiolab-light"] .nav-item:hover,
+[data-theme="audiolab-light"] .nav-item:focus-visible,
+[data-theme="light"] .nav-item:hover,
+body.skin-audiolab-light .nav-item:hover {
+  background: var(--color-accent-dim, rgba(0, 122, 77, 0.10));
+  color: var(--color-accent, #007a4d);
+}
+
+[data-theme="audiolab-light"] .nav-kbd,
+[data-theme="light"] .nav-kbd {
+  background: var(--color-panel-surface, #f8fafc);
+  color: var(--color-text-muted, #475569);
+  border-color: var(--color-panel-border, rgba(15, 23, 42, 0.12));
+}
+

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "2.0",
+  "id": "behringer_deepmind12d",
+  "aliases": [
+    "behringer-deepmind12d"
+  ],
+  "displayName": "Behringer DeepMind 12D",
+  "description": "Desktop module version of the DeepMind 12. Shares the exact same SysEx format: manufacturer 00 20 32, model ID 0x20, 7-to-8 packing, 242-byte patch data. SSOT: Source/Contracts/Models/behringer-dm12d.ts.",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Behringer",
+  "brandLogo": "brands/behringer-logo.svg",
+  "modelImage": "models/behringer-deepmind12d.webp",
+  "midiIdentification": {
+    "manufacturer": "Behringer",
+    "manufacturerIdHex": "00 20 32",
+    "model": "DeepMind 12D",
+    "modelIdHex": "20",
+    "sysexHeaderHex": "00 20 32 20",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "DeepMind 12D",
+      "DeepMind12D",
+      "DM12D",
+      "DM 12D"
+    ]
+  },
+  "bankManagement": {
+    "bankCapacity": 1024,
+    "banksCount": 8,
+    "programsPerBank": 128,
+    "patchDataSize": 242,
+    "patchNameMaxLength": 16,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Strings",
+      "Brass",
+      "FX",
+      "Keys",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "behringer-deepmind12",
+      "behringer-deepmind6"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "002032",
+      "modelIdByteHex": "20",
+      "checksumAlgorithm": "NONE",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 5000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "00"
+    }
+  }
+}

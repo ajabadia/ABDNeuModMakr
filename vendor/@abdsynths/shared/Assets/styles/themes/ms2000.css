@@ -1,0 +1,25 @@
+﻿/* Korg MS2000 & microKORG -- Teal Heritage Theme */
+[data-theme="ms2000"], body.skin-ms2000 {
+  --color-bg-base:             #0a1118;
+  --color-panel-bg:            #102130;
+  --color-panel-surface:       #172d42;
+  --color-panel-surface-elevated: #1e3b56;
+  --color-panel-border:        rgba(0, 195, 255, 0.25);
+  --color-panel-border-strong: rgba(0, 195, 255, 0.5);
+  --color-panel-border-dim:    rgba(0, 195, 255, 0.12);
+  --color-accent:        #00c3ff;
+  --color-accent-rgb:    0, 195, 255;
+  --color-accent-hover:  #38d3ff;
+  --color-accent-active: #0099cc;
+  --color-accent-dim:    rgba(0, 195, 255, 0.15);
+  --color-text-main:  #e8f4ff;
+  --color-text-muted: #7eb5d5;
+  --color-text-dim:   #4a7a9a;
+  --color-lcd-bg:     #1c3322;
+  --color-lcd-text:   #54ff72;
+  --color-lcd-border: rgba(84, 255, 114, 0.3);
+  --color-scrollbar-thumb:        #1e4a6a;
+  --color-scrollbar-thumb-hover:  #2a6090;
+  --color-scrollbar-thumb-active: #3580b8;
+  --color-scrollbar-track:        #081420;
+}

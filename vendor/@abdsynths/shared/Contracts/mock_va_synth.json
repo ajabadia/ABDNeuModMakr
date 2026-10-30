@@ -1,0 +1,18 @@
+{
+  "id": "mock_va_synth",
+  "displayName": "Mock Virtual-Analog DSP (Self-Test)",
+  "description": "Internal Zero-Allocation DSP Simulation for Calibration and Validation",
+  "category": "MOCK_DSP",
+  "brand": "ABDSynths",
+  "brandLogo": "brands/placeholder-manufacturer.svg",
+  "modelImage": "models/placeholder-synth.svg",
+  "midiIdentification": {
+    "manufacturer": "ABDSynths",
+    "model": "MockDSP_VA",
+    "autoDetectSysEx": ""
+  },
+  "parameters": [
+    { "index": 1, "name": "Cutoff", "type": "Normalized", "default": 0.5 },
+    { "index": 2, "name": "Resonance", "type": "Normalized", "default": 0.0 }
+  ]
+}

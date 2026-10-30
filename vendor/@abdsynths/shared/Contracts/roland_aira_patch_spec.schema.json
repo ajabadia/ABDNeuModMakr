@@ -1,0 +1,614 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "roland_aira_patch_spec.schema.json",
+  "title": "AIRA Modular: patch spec (indice de hardware)",
+  "description": "El INDICE del AIRA Modular: quien es cada maquina, como se le habla por SysEx, donde vive cada parametro y que cables hay. Es el fichero que dice COMO se programa, y por eso tiene forma distinta de un perfil: los `id` de los modulos son indices, no controles, y las direcciones van en hexadecimal separado por espacios porque son bytes de SysEx, no numeros.\n\nNo se confusione con `roland_aira_submodules.json`, que esta en CUARENTENA: aquel trae otro catalogo de 31 bloques. Este trae los 31 de verdad.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "displayName",
+    "deviceType",
+    "brand",
+    "midiIdentification",
+    "devices",
+    "protocol",
+    "mainModule",
+    "slots",
+    "submodules",
+    "patching"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "deviceType": {
+      "type": "string",
+      "enum": [
+        "AUTOMATED_SYSEX"
+      ]
+    },
+    "brand": {
+      "type": "string"
+    },
+    "brandLogo": {
+      "type": "string"
+    },
+    "modelImage": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "midiIdentification": {
+      "$ref": "#/$defs/midiIdentity"
+    },
+    "devices": {
+      "$ref": "#/$defs/devices"
+    },
+    "protocol": {
+      "$ref": "#/$defs/protocol"
+    },
+    "mainModule": {
+      "$ref": "#/$defs/mainModule"
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/slot"
+      },
+      "minItems": 1
+    },
+    "submodules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/submodule"
+      },
+      "minItems": 1
+    },
+    "patching": {
+      "$ref": "#/$defs/patching"
+    }
+  },
+  "$defs": {
+    "hexByte": {
+      "type": "string",
+      "pattern": "^[0-9A-F]{2}$"
+    },
+    "hexAddress": {
+      "type": "string",
+      "pattern": "^[0-9A-F]{2}( [0-9A-F]{2})*$"
+    },
+    "byteOSimbolo": {
+      "type": "string",
+      "pattern": "^(<[^>]+>|[0-9A-Fa-f]{2}|[a-z]{2})$"
+    },
+    "byteDeMascara": {
+      "type": "string",
+      "pattern": "^[a-f]$"
+    },
+    "hexAddressConHueco": {
+      "type": "string",
+      "pattern": "^(<[^>]+>|[0-9A-F]{2})( (<[^>]+>|[0-9A-F]{2}))*$"
+    },
+    "midiIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manufacturer",
+        "manufacturerIdHex",
+        "deviceIdHex",
+        "modelIdBytes",
+        "universalIdentityRequest"
+      ],
+      "properties": {
+        "manufacturer": {
+          "type": "string"
+        },
+        "manufacturerIdHex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "deviceIdHex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "modelIdBytes": {
+          "$ref": "#/$defs/hexAddressConHueco"
+        },
+        "universalIdentityRequest": {
+          "$ref": "#/$defs/hexAddress"
+        }
+      }
+    },
+    "submodule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "typeIdHex",
+        "id",
+        "name",
+        "params",
+        "ins",
+        "outs"
+      ],
+      "properties": {
+        "typeIdHex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inferred": {
+          "type": "boolean"
+        },
+        "params": {
+          "$ref": "#/$defs/jackLabels4"
+        },
+        "ins": {
+          "$ref": "#/$defs/jackLabels4"
+        },
+        "outs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/etiquetaONulo"
+          },
+          "maxItems": 2
+        }
+      }
+    },
+    "jackLabels4": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/etiquetaONulo"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "etiquetaONulo": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "devices": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bitrazer",
+        "torcido",
+        "demora",
+        "scooper"
+      ],
+      "properties": {
+        "bitrazer": {
+          "$ref": "#/$defs/device"
+        },
+        "torcido": {
+          "$ref": "#/$defs/device"
+        },
+        "demora": {
+          "$ref": "#/$defs/device"
+        },
+        "scooper": {
+          "$ref": "#/$defs/device"
+        },
+        "_note": {
+          "type": "string"
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modelIdHex",
+        "displayName",
+        "mainParameters"
+      ],
+      "properties": {
+        "modelIdHex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainParameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rq1",
+        "dt1",
+        "checksum"
+      ],
+      "properties": {
+        "rq1": {
+          "$ref": "#/$defs/mensajeSysEx"
+        },
+        "dt1": {
+          "$ref": "#/$defs/mensajeSysEx"
+        },
+        "checksum": {
+          "$ref": "#/$defs/checksum"
+        }
+      }
+    },
+    "mensajeSysEx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "bytes",
+        "addressBytes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "addressBytes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/byteOSimbolo"
+          },
+          "minItems": 1
+        },
+        "sizeBytes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/byteOSimbolo"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "scope",
+        "formula"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "formula": {
+          "type": "string"
+        }
+      }
+    },
+    "mainModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addressBase",
+        "parameterCount",
+        "parameters",
+        "parameterNamesByDevice"
+      ],
+      "properties": {
+        "addressBase": {
+          "$ref": "#/$defs/hexAddress"
+        },
+        "parameterCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parametroDireccionado"
+          },
+          "minItems": 1
+        },
+        "parameterNamesByDevice": {
+          "$ref": "#/$defs/parameterNamesByDevice"
+        }
+      }
+    },
+    "parameterNamesByDevice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bitrazer",
+        "torcido",
+        "demora",
+        "scooper"
+      ],
+      "properties": {
+        "bitrazer": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "torcido": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "demora": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "scooper": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "parametroDireccionado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "addressHex",
+        "name"
+      ],
+      "properties": {
+        "addressHex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "typeAddress",
+        "paramAddresses"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "typeAddress": {
+          "$ref": "#/$defs/hexAddress"
+        },
+        "paramAddresses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hexAddress"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "patching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connect",
+        "sources",
+        "destinations",
+        "cableCondition"
+      ],
+      "properties": {
+        "connect": {
+          "$ref": "#/$defs/conectar"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/extremo"
+          },
+          "minItems": 1
+        },
+        "destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/extremo"
+          },
+          "minItems": 1
+        },
+        "cableCondition": {
+          "$ref": "#/$defs/cableCondition"
+        }
+      }
+    },
+    "conectar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "address",
+        "valueConnected",
+        "valueDisconnected"
+      ],
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/hexAddressConHueco"
+        },
+        "valueConnected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "valueDisconnected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      }
+    },
+    "extremo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hex",
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "hex": {
+          "$ref": "#/$defs/hexByte"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "hardware_input",
+            "hardware_output",
+            "hardware_knob",
+            "main_out",
+            "main_in",
+            "sub_out",
+            "sub_in"
+          ]
+        },
+        "slot": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "out": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "in": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
+    },
+    "cableCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "addressBase",
+        "bytesPerSource",
+        "sourceConditionBlocks"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "addressBase": {
+          "$ref": "#/$defs/hexAddress"
+        },
+        "bytesPerSource": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bitmask": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bitDeDestino"
+          },
+          "minItems": 1
+        },
+        "sourceConditionBlocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bloqueDeCondicion"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "bitDeDestino": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "byte",
+        "bit",
+        "destination"
+      ],
+      "properties": {
+        "byte": {
+          "$ref": "#/$defs/byteDeMascara"
+        },
+        "bit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
+        },
+        "destination": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "bloqueDeCondicion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "baseHex"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseHex": {
+          "$ref": "#/$defs/hexByte"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,150 @@
+/* ==========================================================================
+   BankManagerModal.css
+   Universal Container for Embedding Full ABD Bank Manager WebUI
+   ========================================================================== */
+
+@import './bank-manager.css';
+
+.abdbank-modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 8, 14, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5vh 1.5vw;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.abdbank-modal-overlay.is-active {
+  display: flex;
+  opacity: 1;
+  visibility: visible;
+}
+
+.abdbank-modal-overlay[hidden] {
+  display: none !important;
+}
+
+/* Real modal dialog: fills (almost) the whole window with a thin border,
+   so it reads as a maximized dialog over the synth — no host UI peeking
+   through at the edges. */
+.abdbank-modal-container {
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-base, #0d1117);
+  border: 1px solid var(--color-panel-border, #30363d);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Dialog title bar (makes the modal read as a modal, not a page swap) */
+.abdbank-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: var(--color-panel-surface, #172d42);
+  border-bottom: 1px solid var(--color-panel-border, #30363d);
+}
+
+.abdbank-modal-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.abdbank-modal-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--color-accent, #00c3ff);
+  white-space: nowrap;
+}
+
+.abdbank-modal-subtitle {
+  font-size: 10px;
+  color: var(--color-text-muted, #8b98a5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.abdbank-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: transparent;
+  min-height: 0;
+}
+
+.abdbank-embedded-content {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.abdbank-shell {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary, var(--color-bg-base, #0d1117));
+  color: var(--text-primary, var(--color-text-main, #c9d1d9));
+}
+
+.abdbank-close-floating-btn {
+  flex-shrink: 0;
+  background: rgba(16, 27, 34, 0.85);
+  border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.2));
+  color: var(--color-text-main, #fff);
+  font-size: 18px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.abdbank-close-floating-btn:hover {
+  background: var(--color-accent, #00d4ff);
+  color: #000;
+  border-color: var(--color-accent, #00d4ff);
+}
+
+/* Small screens: keep the modal a modal, never full-bleed */
+@media (max-width: 720px), (max-height: 480px) {
+  .abdbank-modal-overlay {
+    padding: 1vh 0.75vw;
+  }
+
+  .abdbank-modal-subtitle {
+    display: none;
+  }
+}

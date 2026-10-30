@@ -1,0 +1,738 @@
+{
+  "$schema": "./s950-patch-fields.schema.json",
+  "id": "s950-patch-fields",
+  "title": "Catalogo de patches del Akai S950",
+  "description": "Los 38 campos de un keygroup del S950 y los 18 trims de Perform, con su byte, su rango de panel, como se codifica el byte y el nombre que ve la persona. GENERADO desde SynthCore/S950PatchFields.h, que es la fuente autoritativa y la que consulta el importador. Editar el C++ y regenerar; editar este fichero a mano es un cambio que se pierde en el siguiente generate.",
+  "generatedFrom": "ABDSharedCode/SynthCore/S950PatchFields.h",
+  "sourceOfTruth": "ABDSharedCode/SynthCore/S950PatchFields.h",
+  "encodingNotes": [
+    "Unsigned: el byte tal cual.",
+    "Signed: complemento a dos de 8 bits. El byte 0x80 es -128, no 128.",
+    "Port: el panel 0..10 se guarda UNO MENOS, y el 0xFF del disco es el 0 del panel (\"todos\"). Leido como uint8 seria 255, que no es una salida.",
+    "Bit: un bit suelto. Los cuatro flags comparten el byte 18, asi que cambiar uno es lectura-modificacion-escritura del byte, no escribirlo entero: si no, se pierden los otros tres y el bit reservado 0x02."
+  ],
+  "rangeNotes": [
+    "El 0..99 es lo que IMPRIME el panel, no lo que se guarda. softFine y loudFine van 0..255 porque son el byte bajo de un offset de altura de 16 bits con signo, en dieciseiseavos de semitono; recortarlos a 99 es un cuarto de tono de error que no da ningun fallo.",
+    "velocitySwitch va 1..128, y el 128 significa \"no hay segunda zona\": una velocidad MIDI llega a 127, asi que ese valor puede ser ese y solo ese.",
+    "lfoAftertouch y lfoModwheel van 0..50, que es donde llega la maquina.",
+    "Un trim no tiene por que alcanzar los dos extremos del campo que mueve. vcfAmount lleva +-50 sobre un campo que recorre 100, y es una decision medida: el amount es el mismo valor en todos los keygroups de todos los programas, asi que no hay reparto que un offset tenga que preservar."
+  ],
+  "geometry": {
+    "keygroupRecordSize": 70,
+    "programHeaderSize": 38,
+    "keygroupZoneStride": 22,
+    "keygroupNameOffset": 24,
+    "keygroupNameSize": 10,
+    "keygroupChainOffset": 68,
+    "keygroupVelocityCount": 128,
+    "keygroupMaxZones": 2,
+    "keygroupMaxCount": 64,
+    "keygroupCountOffset": 23,
+    "programNumberOffset": 26,
+    "fileNameSize": 10,
+    "keygroupFlagsByte": 18,
+    "knownFlagsMask": 29,
+    "reservedBitMask": 226
+  },
+  "fields": [
+    {
+      "code": "lowKey",
+      "name": "Low key",
+      "byteOffset": 0,
+      "lo": 0,
+      "hi": 127,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "KEYS",
+      "trimId": "",
+      "unit": "nota MIDI"
+    },
+    {
+      "code": "highKey",
+      "name": "High key",
+      "byteOffset": 1,
+      "lo": 0,
+      "hi": 127,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "KEYS",
+      "trimId": "",
+      "unit": "nota MIDI"
+    },
+    {
+      "code": "velocitySwitch",
+      "name": "Velocity switch",
+      "byteOffset": 2,
+      "lo": 1,
+      "hi": 128,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "nota MIDI"
+    },
+    {
+      "code": "vcaAttack",
+      "name": "VCA attack",
+      "byteOffset": 3,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcaAttack",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcaDecay",
+      "name": "VCA decay",
+      "byteOffset": 4,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcaDecay",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcaSustain",
+      "name": "VCA sustain",
+      "byteOffset": 5,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcaSustain",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcaRelease",
+      "name": "VCA release",
+      "byteOffset": 6,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcaRelease",
+      "unit": "0..99"
+    },
+    {
+      "code": "velToFilter",
+      "name": "Velocity to filter",
+      "byteOffset": 7,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "velToFilter",
+      "unit": "0..99"
+    },
+    {
+      "code": "keyToFilter",
+      "name": "Key to filter",
+      "byteOffset": 8,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "FILTER",
+      "trimId": "",
+      "unit": "0..99"
+    },
+    {
+      "code": "velToAttack",
+      "name": "Velocity to attack",
+      "byteOffset": 9,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "0..99"
+    },
+    {
+      "code": "velToRelease",
+      "name": "Velocity to release",
+      "byteOffset": 10,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "-50..+50"
+    },
+    {
+      "code": "velToLoudness",
+      "name": "Velocity to loudness",
+      "byteOffset": 11,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "velToLoudness",
+      "unit": "0..99"
+    },
+    {
+      "code": "warpVelocity",
+      "name": "Warp velocity",
+      "byteOffset": 12,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "0..99"
+    },
+    {
+      "code": "warpDepth",
+      "name": "Warp depth",
+      "byteOffset": 13,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "semitonos"
+    },
+    {
+      "code": "warpTime",
+      "name": "Warp time",
+      "byteOffset": 14,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "0..99"
+    },
+    {
+      "code": "lfoDelay",
+      "name": "LFO delay",
+      "byteOffset": 15,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "LFO",
+      "trimId": "lfoDelay",
+      "unit": "0..99"
+    },
+    {
+      "code": "lfoRate",
+      "name": "LFO rate",
+      "byteOffset": 16,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "LFO",
+      "trimId": "lfoRate",
+      "unit": "0..99"
+    },
+    {
+      "code": "lfoDepth",
+      "name": "LFO depth",
+      "byteOffset": 17,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "LFO",
+      "trimId": "lfoDepth",
+      "unit": "0..99"
+    },
+    {
+      "code": "lfoAftertouch",
+      "name": "LFO from aftertouch",
+      "byteOffset": 21,
+      "lo": 0,
+      "hi": 50,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "LFO",
+      "trimId": "",
+      "unit": "0..50"
+    },
+    {
+      "code": "lfoModwheel",
+      "name": "LFO from modwheel",
+      "byteOffset": 22,
+      "lo": 0,
+      "hi": 50,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "LFO",
+      "trimId": "",
+      "unit": "0..50"
+    },
+    {
+      "code": "outputPort",
+      "name": "Output",
+      "byteOffset": 19,
+      "lo": 0,
+      "hi": 10,
+      "encoding": "Port",
+      "bitMask": 0,
+      "group": "KEYS",
+      "trimId": "",
+      "unit": "puerto"
+    },
+    {
+      "code": "vcfAmount",
+      "name": "VCF amount",
+      "byteOffset": 23,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "FILTER",
+      "trimId": "vcfAmount",
+      "unit": "-50..+50"
+    },
+    {
+      "code": "vcfAttack",
+      "name": "VCF attack",
+      "byteOffset": 34,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcfAttack",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcfDecay",
+      "name": "VCF decay",
+      "byteOffset": 35,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcfDecay",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcfSustain",
+      "name": "VCF sustain",
+      "byteOffset": 36,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcfSustain",
+      "unit": "0..99"
+    },
+    {
+      "code": "vcfRelease",
+      "name": "VCF release",
+      "byteOffset": 37,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "ENVELOPES",
+      "trimId": "vcfRelease",
+      "unit": "0..99"
+    },
+    {
+      "code": "softFine",
+      "name": "Soft fine",
+      "byteOffset": 42,
+      "lo": 0,
+      "hi": 255,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "1/16 semitono"
+    },
+    {
+      "code": "softTranspose",
+      "name": "Soft transpose",
+      "byteOffset": 43,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "semitonos"
+    },
+    {
+      "code": "softFilter",
+      "name": "Soft filter",
+      "byteOffset": 44,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "FILTER",
+      "trimId": "vcfCutoff",
+      "unit": "0..99"
+    },
+    {
+      "code": "softLoudness",
+      "name": "Soft loudness",
+      "byteOffset": 45,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "-50..+50"
+    },
+    {
+      "code": "loudFine",
+      "name": "Loud fine",
+      "byteOffset": 64,
+      "lo": 0,
+      "hi": 255,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "1/16 semitono"
+    },
+    {
+      "code": "loudTranspose",
+      "name": "Loud transpose",
+      "byteOffset": 65,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "semitonos"
+    },
+    {
+      "code": "loudFilter",
+      "name": "Loud filter",
+      "byteOffset": 66,
+      "lo": 0,
+      "hi": 99,
+      "encoding": "Unsigned",
+      "bitMask": 0,
+      "group": "FILTER",
+      "trimId": "vcfCutoff",
+      "unit": "0..99"
+    },
+    {
+      "code": "loudLoudness",
+      "name": "Loud loudness",
+      "byteOffset": 67,
+      "lo": -50,
+      "hi": 50,
+      "encoding": "Signed",
+      "bitMask": 0,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "-50..+50"
+    },
+    {
+      "code": "constantPitch",
+      "name": "Constant pitch",
+      "byteOffset": 18,
+      "lo": 0,
+      "hi": 1,
+      "encoding": "Bit",
+      "bitMask": 1,
+      "group": "TUNING",
+      "trimId": "",
+      "unit": "si/no"
+    },
+    {
+      "code": "lfoDesync",
+      "name": "LFO desync",
+      "byteOffset": 18,
+      "lo": 0,
+      "hi": 1,
+      "encoding": "Bit",
+      "bitMask": 4,
+      "group": "LFO",
+      "trimId": "",
+      "unit": "si/no"
+    },
+    {
+      "code": "oneShot",
+      "name": "One shot",
+      "byteOffset": 18,
+      "lo": 0,
+      "hi": 1,
+      "encoding": "Bit",
+      "bitMask": 8,
+      "group": "KEYS",
+      "trimId": "",
+      "unit": "si/no"
+    },
+    {
+      "code": "velocityReleaseOn",
+      "name": "Velocity release on",
+      "byteOffset": 18,
+      "lo": 0,
+      "hi": 1,
+      "encoding": "Bit",
+      "bitMask": 16,
+      "group": "VELOCITY",
+      "trimId": "",
+      "unit": "si/no"
+    }
+  ],
+  "performTrims": [
+    {
+      "code": "vcfCutoff",
+      "name": "VCF Filter",
+      "fieldCode": "softFilter",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcfAmount",
+      "name": "VCF Amnt",
+      "fieldCode": "vcfAmount",
+      "lo": -50,
+      "hi": 50,
+      "bipolar": true,
+      "unit": "-50..+50"
+    },
+    {
+      "code": "vcaAttack",
+      "name": "VCA Attack",
+      "fieldCode": "vcaAttack",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcaDecay",
+      "name": "VCA Decay",
+      "fieldCode": "vcaDecay",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcaSustain",
+      "name": "VCA Sustain",
+      "fieldCode": "vcaSustain",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcaRelease",
+      "name": "VCA Release",
+      "fieldCode": "vcaRelease",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcfAttack",
+      "name": "VCF Attack",
+      "fieldCode": "vcfAttack",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcfDecay",
+      "name": "VCF Decay",
+      "fieldCode": "vcfDecay",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcfSustain",
+      "name": "VCF Sustain",
+      "fieldCode": "vcfSustain",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "vcfRelease",
+      "name": "VCF Release",
+      "fieldCode": "vcfRelease",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "lfoRate",
+      "name": "LFO Rate",
+      "fieldCode": "lfoRate",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "lfoDelay",
+      "name": "LFO Delay",
+      "fieldCode": "lfoDelay",
+      "lo": -99,
+      "hi": 99,
+      "bipolar": true,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "lfoDepth",
+      "name": "LFO Pitch Depth",
+      "fieldCode": "lfoDepth",
+      "lo": 0,
+      "hi": 99,
+      "bipolar": false,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "velToFilter",
+      "name": "Vel Freq",
+      "fieldCode": "velToFilter",
+      "lo": 0,
+      "hi": 99,
+      "bipolar": false,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "velToLoudness",
+      "name": "Vel Loudness",
+      "fieldCode": "velToLoudness",
+      "lo": 0,
+      "hi": 99,
+      "bipolar": false,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "lfoToFilter",
+      "name": "LFO Filter Depth",
+      "fieldCode": "",
+      "lo": 0,
+      "hi": 99,
+      "bipolar": false,
+      "unit": "0..99 del panel"
+    },
+    {
+      "code": "resonance",
+      "name": "Resonance",
+      "fieldCode": "",
+      "lo": 0,
+      "hi": 99,
+      "bipolar": false,
+      "unit": "0..99"
+    },
+    {
+      "code": "lfoShape",
+      "name": "LFO Shape",
+      "fieldCode": "",
+      "lo": 0,
+      "hi": 3,
+      "bipolar": false,
+      "unit": "indice"
+    }
+  ],
+  "outputPorts": [
+    {
+      "panelValue": 0,
+      "code": "all",
+      "name": "ALL",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 1,
+      "code": "mono1",
+      "name": "MONO1",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 2,
+      "code": "mono2",
+      "name": "MONO2",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 3,
+      "code": "mono3",
+      "name": "MONO3",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 4,
+      "code": "mono4",
+      "name": "MONO4",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 5,
+      "code": "mono5",
+      "name": "MONO5",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 6,
+      "code": "mono6",
+      "name": "MONO6",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 7,
+      "code": "mono7",
+      "name": "MONO7",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 8,
+      "code": "mono8",
+      "name": "MONO8",
+      "left": 1.0,
+      "right": 1.0
+    },
+    {
+      "panelValue": 9,
+      "code": "left",
+      "name": "LEFT",
+      "left": 1.0,
+      "right": 0.0
+    },
+    {
+      "panelValue": 10,
+      "code": "right",
+      "name": "RIGHT",
+      "left": 0.0,
+      "right": 1.0
+    }
+  ]
+}

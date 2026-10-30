@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdaudiolab.com/schemas/fx-effects.schema.json",
+  "title": "FxEffectsContract",
+  "description": "Esquema del catalogo de efectos del rack FX compartido: QUE efectos existen, con que motor se instancia y a que familia (y por tanto a que tema) pertenece. A diferencia de la tabla de modulacion, aqui el ORDEN de los arrays NO es el contrato: lo es el `id`, y ese lo fija el motor. Por eso `effects` puede reordenarse para leerlo por familia sin romper nada. Este esquema se escribe en un subconjunto DELIBERADAMENTE plano (type, required, properties, enum, pattern, minimum/maximum, minLength/maxLength, items, uniqueItems, additionalProperties) porque es el unico que entiende el validador de tests/helpers/validateSchema.js, sin dependencia nueva. Si algun dia hace falta mas (una referencia cruzada, un condicional), se anade el soporte al validador ANTES que la palabra al esquema: un esquema con cosas que nadie ejecuta es peor que no tener esquema, porque parece que avisa.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "id",
+    "families",
+    "effects"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "enum": [
+        "./fx-effects.schema.json"
+      ],
+      "description": "Ruta RELATIVA al propio esquema, que es lo que hace que este contrato lo declare. Va con enum de un solo valor y no como decoracion: es el unico campo del fichero que puede decir 'este contrato se valida contra esto', y un `$schema` que apunte a otro sitio se equivoca en silencio."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Identificador del catalogo ('fx-effects'). Acepta el guion porque ESTE id lo lleva, a diferencia de los de la tabla de modulacion."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "description": "Las advertencias conocidas del catalogo (desfases con arrays viejos, codigo muerto en el motor). Viven en el contrato y no en un chat porque son las que se vuelven a pisar.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "families": {
+      "type": "array",
+      "description": "Las familias, que son lo que agrupa para el TEMA (styles/components/fx.css) y para el desplegable. Deliberadamente pocas: un tema por familia y no por efecto.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "description": "Identificador de la familia. Es lo que va en `data-fx-theme` y lo que resuelve fxTheme.js."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40,
+            "description": "Lo que se lee en el desplegable. Distinto del id a proposito: el id es para la maquina y no cambia con la traduccion."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "effects": {
+      "type": "array",
+      "description": "Los efectos. REORDENABLE: lo que guarda el preset es el `id`, no la posicion. Un hueco en el rango de ids NO es un error del esquema (lo decide el motor, no este fichero); lo que no puede pasar es un id repetido, y eso lo vigila un test, no el esquema.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "engine",
+          "variant",
+          "family",
+          "params"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "El id que habla el motor: 0 es bypass y los siguientes son efectos. SIN MAXIMO A DECHA, y es a proposito: el rango lo fija la fabrica de la que sale la tabla, y un techo escrito aqui seria una segunda version de la verdad que se queda vieja en silencio. Hoy el mas alto es 56.",
+            "$comment": "Sin `maximum` no se puede escribir 'el id mas alto que existe'. Un parametro del APVTS es de 8 bits y ahi si pondriamos 255, pero este id no es un parametro del APVTS: es el indice del motor."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "El nombre que ve el usuario. Vive aqui y no en la UI: hay tres WebUI y un registro de temas, y cuatro listas de nombres son cuatro listas que se separan."
+          },
+          "engine": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+            "description": "La clase que se instancia. null SOLO en el bypass, que no instancia nada. Junto con `variant` es lo que describe el motor de verdad: varios ids son variantes del mismo efecto con otra constante."
+          },
+          "variant": {
+            "type": [
+              "integer",
+              "string",
+              "null"
+            ],
+            "description": "La constante que distingue dos ids del mismo motor. Tres formas y las tres son reales: el entero que repite el id (el caso normal), null cuando la clase no tiene variantes, y texto ('dual', 'vintage') cuando la variante se nombra en vez de numerarse.",
+            "$comment": "Se admite `string` porque normalizar esas dos filas a un entero habria perdido el nombre que el motor ya usa, y renombrarlas habria roto el catalogo de ABDEep."
+          },
+          "family": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "description": "La familia, que decide el TEMA. NO es un enum de las 11 de `families`: repetir la lista aqui seria una segunda fuente de verdad, y la que se separa es justo la que nadie nota. JSON Schema plano no puede decir 'uno de los ids del array de al lado', asi que esa regla la cumple un test (tests/fxEffectsContract.test.js), que ademas puede decir QUE fila no cuadra."
+          },
+          "params": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cuantos controles ACEPTA el motor, no los que se pintan: el motor acepta mas parametros de los que la UI enseña, y por eso la columna se llama params y no controls. SIN MAXIMO A DECHA por la misma razon que `id`: el techo lo pone el motor. Hoy el mas ancho es 12.",
+            "$comment": "Que 0 sea valido es lo que hace legal la fila de bypass. Y 0 para un efecto que no es bypass NO lo detecta este esquema: lo detecta el test que compara contra la fabrica."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

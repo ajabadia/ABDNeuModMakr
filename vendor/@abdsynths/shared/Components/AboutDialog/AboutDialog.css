@@ -1,0 +1,380 @@
+/**
+ * @file AboutDialog.css
+ * @brief Estilos universales para el diálogo "About..." de la suite ABDSynths.
+ */
+
+.abd-about-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal, 100);
+  padding: var(--space-4, 8px);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--transition-fast, 0.15s) ease, visibility var(--transition-fast, 0.15s) ease;
+}
+
+.abd-about-overlay.active,
+.abd-about-overlay.is-active,
+.modal-overlay.active.abd-about-overlay,
+.modal-overlay.is-active.abd-about-overlay {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+.abd-about-overlay[hidden],
+.abd-about-overlay.hidden {
+  display: none !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.abd-about-box {
+  background: var(--color-panel-surface-elevated, #1c2a3d);
+  border: 1px solid var(--color-panel-border-strong, rgba(0, 195, 255, 0.45));
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--space-8, 16px) var(--space-10, 20px) var(--space-8, 16px);
+  max-width: 440px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 20px rgba(var(--color-accent-rgb, 0, 195, 255), 0.15);
+  animation: abdAboutPop 0.2s cubic-bezier(0, 0, 0.2, 1);
+  color: var(--color-text-main, #f0f7ff);
+  font-family: var(--font-sans, sans-serif);
+  position: relative;
+}
+
+@keyframes abdAboutPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.abd-about-title {
+  color: var(--color-accent, #00c3ff);
+  font-size: var(--text-2xl, 18px);
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  margin: 0 0 var(--space-2, 4px);
+  text-transform: uppercase;
+}
+
+.abd-about-sub {
+  color: var(--color-text-muted, #7e9bb5);
+  font-size: var(--text-base, 11px);
+  font-weight: 500;
+  margin: 0 0 var(--space-4, 8px);
+  letter-spacing: 0.5px;
+}
+
+.abd-about-desc {
+  color: var(--color-text-main, #f0f7ff);
+  font-size: var(--text-sm, 9px);
+  line-height: 1.5;
+  margin: 0 0 var(--space-3, 6px);
+  opacity: 0.9;
+}
+
+.abd-about-build {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs, 8px);
+  color: var(--color-text-dim, #4a637a);
+  margin: 0 0 var(--space-4, 8px);
+  letter-spacing: 0.5px;
+}
+
+/* Sección de Auto-Update */
+.abd-about-update-section {
+  margin: var(--space-4, 8px) 0 var(--space-6, 12px);
+  padding: var(--space-3, 6px) var(--space-4, 8px);
+  background: var(--color-bg-base, #0a0e14);
+  border: 1px solid var(--color-panel-border, rgba(0, 195, 255, 0.2));
+  border-radius: var(--radius-md, 4px);
+  text-align: left;
+}
+
+.about-update-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 6px);
+}
+
+.about-update-label {
+  font-size: var(--text-xs, 8px);
+  color: var(--color-text-muted, #7e9bb5);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.abd-about-version {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-base, 11px);
+  font-weight: 700;
+  color: var(--color-accent, #00c3ff);
+}
+
+.abd-btn-check-updates {
+  font-size: var(--text-xs, 8px);
+  padding: 4px 10px;
+  cursor: pointer;
+  min-height: auto;
+}
+
+.abd-about-status {
+  margin-top: var(--space-2, 4px);
+  font-size: var(--text-xs, 8px);
+  min-height: 1.2rem;
+  color: var(--color-text-muted, #7e9bb5);
+  transition: color var(--transition-fast, 0.15s) ease;
+}
+
+.abd-about-status.success {
+  color: var(--color-success, #00e676);
+  font-weight: 600;
+}
+
+.abd-about-status.warning {
+  color: var(--color-warning, #ffaa00);
+  font-weight: 600;
+}
+
+.abd-about-status.error {
+  color: var(--color-danger, #ff3344);
+  font-weight: 600;
+}
+
+.abd-about-action {
+  margin-top: var(--space-3, 6px);
+  text-align: center;
+}
+
+.abd-about-action[hidden] {
+  display: none !important;
+}
+
+.btn-update-avail {
+  display: inline-block;
+  background: linear-gradient(135deg, #11998e, #38ef7d) !important;
+  color: #000 !important;
+  font-weight: 800;
+  text-decoration: none;
+  font-size: var(--text-xs, 8px);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm, 2px);
+  box-shadow: 0 0 14px rgba(56, 239, 125, 0.4);
+  cursor: pointer;
+  transition: transform var(--transition-fast, 0.15s) ease, box-shadow var(--transition-fast, 0.15s) ease;
+}
+
+.btn-update-avail:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(56, 239, 125, 0.6);
+}
+
+.abd-btn-about-close {
+  width: 100%;
+  margin-top: var(--space-2, 4px);
+  font-size: var(--text-md, 10px);
+  letter-spacing: 1px;
+}
+
+/* ========================================================================== */
+/* Split Card Layout (Estilo SoundId / ABDAudioLab Native Splash)              */
+/* ========================================================================== */
+.abd-about-split {
+  max-width: 660px;
+  width: 95%;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  overflow: hidden;
+  text-align: left !important;
+  border-radius: var(--radius-lg, 10px) !important;
+  background: var(--color-panel-bg, #0b1118) !important;
+  border: 1px solid var(--color-panel-border-strong, rgba(0, 230, 118, 0.35)) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 24px rgba(var(--color-accent-rgb, 0, 230, 118), 0.12) !important;
+}
+
+.abd-about-media {
+  position: relative;
+  width: 44%;
+  min-height: 340px;
+  background: #000;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.abd-about-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.abd-btn-about-close-icon {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+
+.abd-btn-about-close-icon:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.08);
+}
+
+.abd-about-content {
+  width: 56%;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.abd-about-category {
+  color: var(--color-accent, #00e676);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.abd-about-split .abd-about-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--color-text-main, #ffffff);
+  margin: 0 0 4px 0;
+  text-transform: none;
+}
+
+.abd-about-split .abd-about-sub {
+  font-size: 12px;
+  color: var(--color-text-muted, #94a3b8);
+  margin: 0 0 14px 0;
+  line-height: 1.4;
+}
+
+.abd-about-version-line {
+  font-size: 11px;
+  font-family: var(--font-sans, sans-serif);
+  color: var(--color-text-muted, #94a3b8);
+  margin: 0 0 12px 0;
+}
+
+.abd-about-details {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--color-text-dim, #64748b);
+  margin: 0 0 10px 0;
+}
+
+.abd-about-copyright {
+  font-size: 10px;
+  color: var(--color-text-dim, #64748b);
+  margin: 0 0 20px 0;
+}
+
+.abd-about-footer-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: auto;
+}
+
+.abd-about-footer-row .abd-btn-check-updates {
+  background: var(--color-panel-surface-elevated, #16202c);
+  border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.15));
+  color: var(--color-text-main, #f0f7ff);
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.abd-about-footer-row .abd-btn-check-updates:hover {
+  border-color: var(--color-accent, #00e676);
+  color: var(--color-accent, #00e676);
+}
+
+.abd-about-footer-row .abd-about-status {
+  font-size: 11px;
+  color: var(--color-text-muted, #94a3b8);
+  margin: 0;
+}
+
+/* Light Mode Overrides for About Dialog */
+[data-theme="audiolab-light"] .abd-about-split,
+[data-theme="light"] .abd-about-split,
+body.skin-audiolab-light .abd-about-split,
+body.theme-light .abd-about-split {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2), 0 0 10px rgba(0, 122, 77, 0.08) !important;
+}
+
+[data-theme="audiolab-light"] .abd-about-box,
+[data-theme="light"] .abd-about-box,
+body.skin-audiolab-light .abd-about-box,
+body.theme-light .abd-about-box {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+  color: #1a1d20;
+}
+
+[data-theme="audiolab-light"] .abd-about-split .abd-about-title,
+[data-theme="light"] .abd-about-split .abd-about-title {
+  color: #0f172a;
+}
+
+[data-theme="audiolab-light"] .abd-about-category,
+[data-theme="light"] .abd-about-category {
+  color: #007a4d;
+}
+
+[data-theme="audiolab-light"] .abd-about-footer-row .abd-btn-check-updates,
+[data-theme="light"] .abd-about-footer-row .abd-btn-check-updates {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.16);
+  color: #0f172a;
+}
+
+[data-theme="audiolab-light"] .abd-about-footer-row .abd-btn-check-updates:hover,
+[data-theme="light"] .abd-about-footer-row .abd-btn-check-updates:hover {
+  background: #f1f5f9;
+  border-color: #007a4d;
+  color: #007a4d;
+}
+

@@ -18,6 +18,7 @@ const TEST_FILES = [
   'phase4_spectral.test.ts',
   'phase5_ux.test.ts',
   'phase6_units.test.ts',
+  'noteMapping.test.ts',
 ];
 
 async function runTestFile(file: string): Promise<boolean> {

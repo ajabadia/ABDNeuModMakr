@@ -1,0 +1,161 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_aira_torcido",
+  "aliases": [
+    "roland-aira-torcido"
+  ],
+  "displayName": "Roland AIRA Torcido Modular (SysEx)",
+  "description": "Analogue-style Distortion & Overdrive Processor",
+  "deviceType": "AUTOMATED_SYSEX",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "models/roland-torcido.webp",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "Torcido",
+    "modelIdHex": "17",
+    "sysexHeaderHex": "41 10 00 00 00 17",
+    "autoDetectSysEx": "F0 7E 10 06 01 F7",
+    "portNameMatches": [
+      "TORCIDO",
+      "Torcido",
+      "AIRA"
+    ]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      {
+        "description": "Reset Dry/Wet to 100% Processed",
+        "method": "MIDI_CC",
+        "cc": 15,
+        "value": 1,
+        "settlingDelayMs": 30
+      },
+      {
+        "description": "Reset Master Volume to Unity (0.75)",
+        "method": "MIDI_CC",
+        "cc": 16,
+        "value": 0.75,
+        "settlingDelayMs": 30
+      }
+    ]
+  },
+  "functions": [
+    {
+      "id": "distortion_main",
+      "name": "Classic Distortion & Overdrive",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Hardware Input L",
+        "responseInput": "Hardware Output L -> Entrada Audio 1 (L)",
+        "notes": "Muestreo del circuito de distorsión no-lineal y calidez analógica."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Distortion (GRF 1)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 01",
+          "cc": 11,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "Drive"
+        },
+        {
+          "index": 2,
+          "name": "Tone Control (GRF 2)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 02",
+          "cc": 12,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "Hz"
+        },
+        {
+          "index": 3,
+          "name": "Warmth Bass (GRF 3)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 03",
+          "cc": 13,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "dB"
+        },
+        {
+          "index": 4,
+          "name": "Low-Pass Filter (GRF 4)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 04",
+          "cc": 14,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 1,
+          "unit": "Hz"
+        },
+        {
+          "index": 5,
+          "name": "Dry/Wet (GRF 5)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 05",
+          "cc": 15,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 1,
+          "unit": "%"
+        },
+        {
+          "index": 6,
+          "name": "Master Volume (GRF 6)",
+          "type": "Knob",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "10 00 00 06",
+          "cc": 16,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.75,
+          "unit": "dB"
+        }
+      ]
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 1,
+    "banksCount": 1,
+    "programsPerBank": 1,
+    "patchDataSize": 302,
+    "patchNameMaxLength": 0,
+    "categories": [
+      "Distortion",
+      "Overdrive",
+      "Custom"
+    ],
+    "defaultCategory": "Custom",
+    "addressingFormat": "PRESET_ONLY",
+    "compatibleModels": [
+      "roland-aira-bitrazer",
+      "roland-aira-demora",
+      "roland-aira-scooper"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "41",
+      "modelIdByteHex": "16",
+      "modelIdByteMultiHex": "00 00 00",
+      "checksumAlgorithm": "ROLAND_7BIT",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": true,
+      "interMessageDelayMs": 50,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "10"
+    }
+  }
+}

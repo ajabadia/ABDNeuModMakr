@@ -1,0 +1,405 @@
+/**
+ * LiveSysExInspector — Estilos del inspector SysEx reactivo universal
+ * ====================================================================
+ * Utiliza tokens y variables del sistema de diseño compartido de ABD.
+ */
+
+.sysex-inspector {
+  --sysex-bg: var(--color-surface-elevated, #10131a);
+  --sysex-header-bg: linear-gradient(180deg, #181d29 0%, #12151f 100%);
+  --sysex-border: var(--color-border, rgba(0, 210, 255, 0.22));
+  --sysex-text: #e2e8f0;
+  --sysex-text-muted: #718096;
+  --sysex-accent: var(--color-accent, #00d2ff);
+  --sysex-highlight: #00ffaa;
+  --sysex-diff: #f59e0b;
+  --sysex-sof: #38bdf8;
+  --sysex-eof: #f87171;
+  --sysex-mfg: #a78bfa;
+
+  display: flex;
+  flex-direction: column;
+  background: var(--sysex-bg);
+  border: 1px solid var(--sysex-border);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--sysex-border);
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--sysex-text);
+  overflow: hidden;
+  user-select: none;
+  font-size: 13px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.sysex-inspector.is-hidden {
+  display: none !important;
+}
+
+/* Modo flotante / desacoplable */
+.sysex-inspector--floating {
+  position: fixed;
+  top: 75px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  max-height: 82vh;
+  resize: both;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 210, 255, 0.4);
+  backdrop-filter: blur(12px);
+}
+
+/* Modo desacoplado en ventana externa independiente (multimonitor) */
+.sysex-inspector--detached {
+  position: static !important;
+  width: 100% !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+  resize: none !important;
+}
+
+.sysex-inspector--detached .sysex-inspector__header {
+  cursor: default !important;
+}
+
+.sysex-inspector--detached .sysex-inspector__body {
+  flex: 1 1 auto;
+  max-height: none;
+  overflow: auto;
+}
+
+/* Barra de herramientas superior / Header */
+.sysex-inspector__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--sysex-header-bg);
+  border-bottom: 1px solid var(--sysex-border);
+  cursor: default;
+}
+
+.sysex-inspector--floating .sysex-inspector__header {
+  cursor: grab;
+}
+
+.sysex-inspector--floating .sysex-inspector__header:active {
+  cursor: grabbing;
+}
+
+.sysex-inspector__title-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sysex-inspector__tag {
+  display: inline-block;
+  padding: 2px 5px;
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.35);
+  border-radius: 3px;
+  color: var(--sysex-accent);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.sysex-inspector__title {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #f1f5f9;
+}
+
+.sysex-inspector__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.sysex-inspector__badge--live {
+  position: relative;
+  padding-left: 14px;
+  background: rgba(0, 255, 170, 0.12);
+  color: var(--sysex-highlight);
+  border: 1px solid rgba(0, 255, 170, 0.35);
+}
+
+.sysex-inspector__badge--live::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--sysex-highlight);
+  box-shadow: 0 0 6px var(--sysex-highlight);
+  animation: sysex-blink 1.4s infinite ease-in-out;
+}
+
+@keyframes sysex-blink {
+  0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); }
+  50% { opacity: 0.3; transform: translateY(-50%) scale(0.7); }
+}
+
+.sysex-inspector__badge--diff {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--sysex-diff);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.sysex-inspector__badge--size {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sysex-text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Acciones en la barra superior */
+.sysex-inspector__actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sysex-inspector__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: var(--sysex-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sysex-inspector__btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--sysex-accent);
+  color: #fff;
+  box-shadow: 0 0 6px rgba(0, 210, 255, 0.25);
+}
+
+.sysex-inspector__btn:active {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(1px);
+}
+
+.sysex-inspector__btn--active {
+  background: rgba(0, 210, 255, 0.2);
+  border-color: var(--sysex-accent);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(0, 210, 255, 0.35);
+}
+
+.sysex-inspector__btn--icon {
+  padding: 4px 7px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sysex-inspector__btn--popout:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: #38bdf8 !important;
+  color: #38bdf8 !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4) !important;
+}
+
+.sysex-inspector__btn--close:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: var(--sysex-eof) !important;
+  color: #fca5a5 !important;
+}
+
+/* Desglose semántico de cabecera */
+.sysex-inspector__meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px;
+  background: #0b0e14;
+  border-bottom: 1px solid var(--sysex-border);
+  font-size: 11px;
+  font-family: 'Share Tech Mono', 'JetBrains Mono', monospace;
+}
+
+.sysex-inspector__meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sysex-inspector__meta-label {
+  color: var(--sysex-text-muted);
+}
+
+.sysex-inspector__meta-val {
+  color: var(--sysex-accent);
+  font-weight: bold;
+}
+
+/* Área de contenido principal / Scroll */
+.sysex-inspector__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 10px;
+  background: #07090e;
+  font-family: 'Share Tech Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Rejilla Hexadecimal */
+.sysex-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sysex-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.sysex-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sysex-offset {
+  color: #64748b;
+  padding: 2px 10px 2px 2px;
+  font-size: 11px;
+  text-align: right;
+  width: 48px;
+  user-select: none;
+  opacity: 0.8;
+}
+
+.sysex-hex-col {
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.sysex-ascii-col {
+  padding: 2px 10px;
+  color: #94a3b8;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: pre;
+  font-size: 11px;
+  letter-spacing: 1px;
+  user-select: text;
+}
+
+/* Celdas individuales de bytes */
+.sysex-byte {
+  display: inline-block;
+  width: 23px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  margin: 0 1.5px;
+  border-radius: 3px;
+  color: #cbd5e1;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, color 0.3s ease, transform 0.15s ease;
+  user-select: text;
+}
+
+.sysex-byte:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+/* Bytes especiales de protocolo */
+.sysex-byte--sof {
+  color: var(--sysex-sof);
+  font-weight: bold;
+}
+
+.sysex-byte--eof {
+  color: var(--sysex-eof);
+  font-weight: bold;
+}
+
+.sysex-byte--mfg {
+  color: var(--sysex-mfg);
+  font-weight: bold;
+}
+
+/* Animación de mutación en vivo */
+.sysex-byte--mutated {
+  background-color: var(--sysex-highlight) !important;
+  color: #050b14 !important;
+  font-weight: bold;
+  box-shadow: 0 0 8px rgba(0, 255, 170, 0.8);
+  animation: sysex-pulse 0.8s ease-out forwards;
+}
+
+@keyframes sysex-pulse {
+  0% {
+    background-color: var(--sysex-highlight);
+    color: #050b14;
+    transform: scale(1.1);
+  }
+  100% {
+    background-color: rgba(0, 255, 170, 0.12);
+    color: var(--sysex-highlight);
+    transform: scale(1);
+  }
+}
+
+/* Diferencia en modo Diff A/B */
+.sysex-byte--diff {
+  background-color: rgba(245, 158, 11, 0.25);
+  color: var(--sysex-diff);
+  font-weight: bold;
+  border-bottom: 2px solid var(--sysex-diff);
+}
+
+/* Barra de estado inferior */
+.sysex-inspector__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--sysex-header-bg);
+  border-top: 1px solid var(--sysex-border);
+  font-size: 11px;
+  color: var(--sysex-text-muted);
+}
+
+.sysex-inspector__feedback {
+  color: var(--sysex-highlight);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.sysex-inspector__feedback--visible {
+  opacity: 1;
+}

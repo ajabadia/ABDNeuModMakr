@@ -1,0 +1,25 @@
+﻿/* Roland Juno-106 -- Multi-Color Heritage Theme */
+[data-theme="juno"], body.skin-juno {
+  --color-bg-base:             #121418;
+  --color-panel-bg:            #1b1e24;
+  --color-panel-surface:       #242932;
+  --color-panel-surface-elevated: #303744;
+  --color-panel-border:        rgba(255, 255, 255, 0.15);
+  --color-panel-border-strong: rgba(255, 255, 255, 0.25);
+  --color-panel-border-dim:    rgba(255, 255, 255, 0.07);
+  --color-accent:        #ff2d55;
+  --color-accent-rgb:    255, 45, 85;
+  --color-accent-hover:  #ff5477;
+  --color-accent-active: #cc2444;
+  --color-accent-dim:    rgba(255, 45, 85, 0.15);
+  --color-text-main:  #f0f2f5;
+  --color-text-muted: #a0a8b5;
+  --color-text-dim:   #666e7a;
+  --color-lcd-bg:     #12161c;
+  --color-lcd-text:   #30d158;
+  --color-lcd-border: rgba(48, 209, 88, 0.3);
+  --color-scrollbar-thumb:        #2e3340;
+  --color-scrollbar-thumb-hover:  #40455a;
+  --color-scrollbar-thumb-active: #555a70;
+  --color-scrollbar-track:        #10121a;
+}

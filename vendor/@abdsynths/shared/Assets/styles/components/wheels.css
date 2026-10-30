@@ -1,0 +1,26 @@
+/* ABD Wheels — reusable filmstrip modulation wheels (PITCH / MOD).
+   Themed via --kbd-* / --color-* tokens with standalone fallbacks.
+   Consumed by ABDSharedCode/MidiKeyboard and available to other projects. */
+
+.kbd-wheel-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.kbd-wheel-label {
+  font-size: var(--kbd-font-size, 9px);
+  font-weight: 700;
+  color: var(--kbd-wheel-label-color, var(--color-text-muted, #888));
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.kbd-wheel-value {
+  font-size: var(--kbd-font-size, 9px);
+  font-family: var(--kbd-font, var(--font-lcd, monospace));
+  color: var(--kbd-wheel-value-color, var(--color-accent, #00ccff));
+  margin-top: 4px;
+  min-width: 22px;
+  text-align: center;
+}

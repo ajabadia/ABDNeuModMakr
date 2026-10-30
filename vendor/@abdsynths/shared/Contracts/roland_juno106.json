@@ -1,0 +1,203 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_juno106",
+  "aliases": [
+    "roland-juno106"
+  ],
+  "displayName": "Roland Juno-106 / Juno-60",
+  "description": "6-Voice Polyphonic Synthesizer with IR3109 OTA Resonant Low-Pass VCF and Analog Stereo BBD Chorus",
+  "deviceType": "AUTOMATED_SYSEX",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "models/roland-juno-106.png",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "Juno-106",
+    "modelIdHex": "32",
+    "familyIdHex": "32 00",
+    "sysexHeaderHex": "41 32",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "Juno-106",
+      "Juno 106",
+      "Juno60",
+      "Juno-60",
+      "JUNIO601",
+      "JU-06",
+      "JU-06A",
+      "Juno"
+    ]
+  },
+  "functions": [
+    {
+      "id": "ir3109_vcf_filter",
+      "name": "IR3109 24dB/oct Resonant VCF (OTA Filter)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In (o oscilador DCO Saw)",
+        "responseInput": "Salida Mono/Stereo Out -> Entrada Audio 1 (L)",
+        "notes": "Filtro pasa bajos analógico legendario de 4 polos en cascada con realimentación resonante."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "VCF Cutoff Frequency",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "21",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.6,
+          "unit": "Hz"
+        },
+        {
+          "index": 2,
+          "name": "VCF Resonance (Q)",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "22",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.3,
+          "unit": "0-127"
+        },
+        {
+          "index": 3,
+          "name": "ENV Mod Intensity",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "23",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0,
+          "unit": "0-127"
+        }
+      ]
+    },
+    {
+      "id": "analog_bbd_chorus",
+      "name": "Analog Stereo BBD Chorus (MN3009)",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SINE_1KHZ",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In (o tono puro)",
+        "responseInput": "Stereo Out (L/R) -> Entradas Audio 1 y 2",
+        "notes": "Efecto de chorus icónico mediante líneas de retardo Bucket Brigade duales desfasadas."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Chorus Mode",
+          "type": "RotarySwitch",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "2F",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "Mode",
+          "options": [
+            "Off",
+            "Chorus I (Slow)",
+            "Chorus II (Fast)",
+            "Chorus I+II (Rotary)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vca_adsr_envelope",
+      "name": "VCA ADSR Envelope Generator",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "captureMode": "ADAPTIVE_ENVELOPE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On -> Entrada MIDI Juno",
+        "responseInput": "Audio Out -> Entrada Audio 1 (L)",
+        "notes": "Generador de envolvente analógica rápida controlada por microprocesador 8051."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Attack Time (A)",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "28",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.1,
+          "unit": "ms"
+        },
+        {
+          "index": 2,
+          "name": "Decay Time (D)",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "29",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.5,
+          "unit": "ms"
+        },
+        {
+          "index": 3,
+          "name": "Sustain Level (S)",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "2A",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.7,
+          "unit": "0-127"
+        },
+        {
+          "index": 4,
+          "name": "Release Time (R)",
+          "type": "Slider",
+          "controlMethod": "SYSEX",
+          "sysexAddress": "2B",
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.4,
+          "unit": "ms"
+        }
+      ]
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 2,
+    "programsPerBank": 64,
+    "patchDataSize": 18,
+    "patchNameMaxLength": 0,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Strings",
+      "Brass",
+      "FX",
+      "Organ",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "roland-juno60",
+      "roland-juno6",
+      "roland-hs60"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "41",
+      "modelIdByteHex": "18",
+      "checksumAlgorithm": "ROLAND_7BIT",
+      "encoding": "RAW_7BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "18"
+    }
+  }
+}

@@ -1,0 +1,547 @@
+{
+  "schemaVersion": "1.0",
+  "id": "abdeep",
+  "displayName": "Behringer DeepMind 12 (ABDEep)",
+  "description": "Matriz de 8 buses del DeepMind 12. Los indices son indices de BYTE (93-116 de la trama SysEx) y su orden es el del manual: no se puede reordenar sin romper la compatibilidad de patches. Los destinos 74-128 los ejerce el hardware pero no hay evidencia de su etiqueta, asi que se declaran como \"Dest N\" a proposito (una etiqueta honesta vale mas que una inventada).",
+  "authority": "hardware",
+  "byteRange": {
+    "firstByte": 93,
+    "bytesPerSlot": 3,
+    "sourceMax": 22,
+    "destinationMax": 129,
+    "depthIsBipolar": true,
+    "measuredSourceMax": 19,
+    "measuredDestinationMax": 129
+  },
+  "slots": 8,
+  "sources": [
+    {
+      "label": "None",
+      "category": "none",
+      "perNote": false
+    },
+    {
+      "label": "Pitch Bend",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Mod Wheel",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Foot Ctrl",
+      "category": "pedal",
+      "perNote": false
+    },
+    {
+      "label": "BreathCtrl",
+      "category": "pedal",
+      "perNote": false
+    },
+    {
+      "label": "Pressure",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Expression",
+      "category": "pedal",
+      "perNote": false
+    },
+    {
+      "label": "LFO 1",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO 2",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "Env 1",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "Env 2",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "Env 3",
+      "category": "envelope",
+      "perNote": true
+    },
+    {
+      "label": "Note Num",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Note Vel",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Note Off Vel",
+      "category": "performance",
+      "perNote": false
+    },
+    {
+      "label": "Ctrl Seq",
+      "category": "other",
+      "perNote": false
+    },
+    {
+      "label": "LFO 1 (Uni)",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO 2 (Uni)",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO 1 (Fade)",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "LFO 2 (Fade)",
+      "category": "lfo",
+      "perNote": false
+    },
+    {
+      "label": "Voice Num",
+      "category": "voice",
+      "perNote": false
+    },
+    {
+      "label": "Uni Voice",
+      "category": "voice",
+      "perNote": false
+    },
+    {
+      "label": "CC X (115)",
+      "category": "other",
+      "perNote": false
+    },
+    {
+      "label": "CC Y (116)",
+      "category": "other",
+      "perNote": false
+    },
+    {
+      "label": "CC Z (117)",
+      "category": "other",
+      "perNote": false
+    }
+  ],
+  "destinations": [
+    {
+      "label": "None"
+    },
+    {
+      "label": "LFO1 Rate"
+    },
+    {
+      "label": "LFO1 Delay"
+    },
+    {
+      "label": "LFO1 Slew"
+    },
+    {
+      "label": "LFO1 Shape"
+    },
+    {
+      "label": "LFO2 Rate"
+    },
+    {
+      "label": "LFO2 Delay"
+    },
+    {
+      "label": "LFO2 Slew"
+    },
+    {
+      "label": "LFO2 Shape"
+    },
+    {
+      "label": "OSC 1+2 Pitch"
+    },
+    {
+      "label": "OSC 1+2 Fine"
+    },
+    {
+      "label": "OSC 1 Pitch"
+    },
+    {
+      "label": "OSC 1 Fine"
+    },
+    {
+      "label": "OSC 2 Pitch"
+    },
+    {
+      "label": "OSC 2 Fine"
+    },
+    {
+      "label": "OSC 1 PM Dep"
+    },
+    {
+      "label": "PWM Depth"
+    },
+    {
+      "label": "TMod Depth"
+    },
+    {
+      "label": "OSC 2 PM Dep"
+    },
+    {
+      "label": "Porta Time"
+    },
+    {
+      "label": "VCF Freq"
+    },
+    {
+      "label": "VCF Res"
+    },
+    {
+      "label": "VCF Env"
+    },
+    {
+      "label": "VCF LFO"
+    },
+    {
+      "label": "Env Rates"
+    },
+    {
+      "label": "All Attack"
+    },
+    {
+      "label": "All Decay"
+    },
+    {
+      "label": "All Sus"
+    },
+    {
+      "label": "All Rel"
+    },
+    {
+      "label": "Env1 Rates"
+    },
+    {
+      "label": "Env2 Rates"
+    },
+    {
+      "label": "Env3 Rates"
+    },
+    {
+      "label": "Env1 Curves"
+    },
+    {
+      "label": "Env2 Curves"
+    },
+    {
+      "label": "Env3 Curves"
+    },
+    {
+      "label": "Env1 Attack"
+    },
+    {
+      "label": "Env1 Decay"
+    },
+    {
+      "label": "Env1 Sus"
+    },
+    {
+      "label": "Env1 Rel"
+    },
+    {
+      "label": "Env1 AttCur"
+    },
+    {
+      "label": "Env1 DcyCur"
+    },
+    {
+      "label": "Env1 SusCur"
+    },
+    {
+      "label": "Env1 RelCur"
+    },
+    {
+      "label": "Env2 Attack"
+    },
+    {
+      "label": "Env2 Decay"
+    },
+    {
+      "label": "Env2 Sus"
+    },
+    {
+      "label": "Env2 Rel"
+    },
+    {
+      "label": "Env2 AttCur"
+    },
+    {
+      "label": "Env2 DcyCur"
+    },
+    {
+      "label": "Env2 SusCur"
+    },
+    {
+      "label": "Env2 RelCur"
+    },
+    {
+      "label": "Env3 Attack"
+    },
+    {
+      "label": "Env3 Decay"
+    },
+    {
+      "label": "Env3 Sus"
+    },
+    {
+      "label": "Env3 Rel"
+    },
+    {
+      "label": "Env3 AttCur"
+    },
+    {
+      "label": "Env3 DcyCur"
+    },
+    {
+      "label": "Env3 SusCur"
+    },
+    {
+      "label": "Env3 RelCur"
+    },
+    {
+      "label": "VCA All"
+    },
+    {
+      "label": "VCA Active"
+    },
+    {
+      "label": "VCA EnvDep"
+    },
+    {
+      "label": "Pan Spread"
+    },
+    {
+      "label": "VCA Pan"
+    },
+    {
+      "label": "OSC2 Lvl"
+    },
+    {
+      "label": "Noise Lvl"
+    },
+    {
+      "label": "HP Freq"
+    },
+    {
+      "label": "Uni Detune"
+    },
+    {
+      "label": "OSC Drift"
+    },
+    {
+      "label": "Param Drift"
+    },
+    {
+      "label": "Drift Rate"
+    },
+    {
+      "label": "Arp Gate"
+    },
+    {
+      "label": "Seq Slew"
+    },
+    {
+      "label": "Dest 73"
+    },
+    {
+      "label": "Dest 74"
+    },
+    {
+      "label": "Dest 75"
+    },
+    {
+      "label": "Dest 76"
+    },
+    {
+      "label": "Dest 77"
+    },
+    {
+      "label": "Dest 78"
+    },
+    {
+      "label": "Dest 79"
+    },
+    {
+      "label": "Dest 80"
+    },
+    {
+      "label": "Dest 81"
+    },
+    {
+      "label": "Dest 82"
+    },
+    {
+      "label": "Dest 83"
+    },
+    {
+      "label": "Dest 84"
+    },
+    {
+      "label": "Dest 85"
+    },
+    {
+      "label": "Dest 86"
+    },
+    {
+      "label": "Dest 87"
+    },
+    {
+      "label": "Dest 88"
+    },
+    {
+      "label": "Dest 89"
+    },
+    {
+      "label": "Dest 90"
+    },
+    {
+      "label": "Dest 91"
+    },
+    {
+      "label": "Dest 92"
+    },
+    {
+      "label": "Dest 93"
+    },
+    {
+      "label": "Dest 94"
+    },
+    {
+      "label": "Dest 95"
+    },
+    {
+      "label": "Dest 96"
+    },
+    {
+      "label": "Dest 97"
+    },
+    {
+      "label": "Dest 98"
+    },
+    {
+      "label": "Dest 99"
+    },
+    {
+      "label": "Dest 100"
+    },
+    {
+      "label": "Dest 101"
+    },
+    {
+      "label": "Dest 102"
+    },
+    {
+      "label": "Dest 103"
+    },
+    {
+      "label": "Dest 104"
+    },
+    {
+      "label": "Dest 105"
+    },
+    {
+      "label": "Dest 106"
+    },
+    {
+      "label": "Dest 107"
+    },
+    {
+      "label": "Dest 108"
+    },
+    {
+      "label": "Dest 109"
+    },
+    {
+      "label": "Dest 110"
+    },
+    {
+      "label": "Dest 111"
+    },
+    {
+      "label": "Dest 112"
+    },
+    {
+      "label": "Dest 113"
+    },
+    {
+      "label": "Dest 114"
+    },
+    {
+      "label": "Dest 115"
+    },
+    {
+      "label": "Dest 116"
+    },
+    {
+      "label": "Dest 117"
+    },
+    {
+      "label": "Dest 118"
+    },
+    {
+      "label": "Dest 119"
+    },
+    {
+      "label": "Dest 120"
+    },
+    {
+      "label": "Dest 121"
+    },
+    {
+      "label": "Dest 122"
+    },
+    {
+      "label": "Dest 123"
+    },
+    {
+      "label": "Dest 124"
+    },
+    {
+      "label": "Dest 125"
+    },
+    {
+      "label": "Dest 126"
+    },
+    {
+      "label": "Dest 127"
+    },
+    {
+      "label": "Dest 128"
+    },
+    {
+      "label": "Fx 1 Level"
+    }
+  ],
+  "provenance": {
+    "source": "WebUI/resources/md/deepmind_fx_modmatrix.md (manual) + docs/sysex_format.md (rango de byte) + medicion de la Fase 0",
+    "sourceFiles": [
+      "ABDEep/WebUI/resources/md/deepmind_fx_modmatrix.md",
+      "ABDEep/docs/sysex_format.md",
+      "ABDEep/WebUI/js/modmatrix_data.js"
+    ],
+    "measuredFrom": "ABDEep/resources/hardware_dumps/2026-08-10 (1024 presets de fabrica, 8192 slots)",
+    "verifiedAt": "2026-09-28"
+  },
+  "generatedBy": "scripts/generate_modulation_contracts.py"
+}

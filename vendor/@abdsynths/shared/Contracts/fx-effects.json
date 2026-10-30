@@ -1,0 +1,103 @@
+{
+  "$schema": "./fx-effects.schema.json",
+  "id": "fx-effects",
+  "title": "Catalogo de efectos del rack FX compartido",
+  "description": "Fuente unica de verdad de QUE efectos existen y como se agrupan. La consumen la WebUI de ABDEep, la de ABDNeural y el registro de temas (components/fxTheme.js), de modo que el catalogo no se vuelva a escribir a mano en tres sitios. La tabla sale de la fabrica de ABDEep (Source/DSP/FX/FXSlot_Factory.cpp), que es la parte autoritativa. Los nombres viven aqui y no en la UI.",
+  "notes": [
+    "El id es el que habla el motor: 0 es bypass y los ids 1..60 son efectos. El rango lo fija el motor, no este fichero (que por eso no lo repite).",
+    "`engine` + `variant` juntos describen la clase que se instancia. Varios ids son VARIANTES del mismo motor con otra constante, y por ahi la tabla se parece a la politica inyectada de ABDSharedCode/DspEffects/EffectPolicy.h vista desde el lado de la interfaz. Anadir una variante nueva es una fila mas, no un motor mas.",
+    "`family` es la que agrupa para el TEMA (styles/components/fx.css). Deliberadamente son pocas: un tema por familia y no por efecto, porque 57 temas no los diferencia nadie y, si no los diferencia el usuario, son 57 formas de no tener tema.",
+    "`params` es el numero de controles que ACEPTA el motor, no el numero que se pinta. El motor acepta mas parametros de los que la UI enseña, y por eso la columna se llama params y no controls.",
+    "AVISO CONOCIDO 1: la lista de nombres que tenia ABDEep en WebUI/js/effects_data.js (FX_TYPE_NAMES) NO esta alineada con estos ids: enumera diez variantes de reverb seguidas en 1..10, mientras que la fabrica las reparte entre 1..6 y 22, 26..28. Usar el array antiguo reintroduce el desfase, asi que el nombre sale de aqui.",
+    "LOS IDS 57..59 Y EL 60 LOS PRODUCE OTRO MOTOR. Son las primeras filas que NO salen de la fabrica: salen de `ABDSharedCode/DspEffects` (FxDefaultCatalogue.h), que es la unica implementacion que existe de esos motores, y por eso en ellas `engine` es el nombre de la clase real (Reverb, Saturation, SchroederReverb, ShelfFilter) en vez de una clase de la fabrica de ABDEep. En esas cuatro filas `params` cuenta los mandos del motor compartido; en el resto, los de la implementacion de ABDEep. Es el mismo descuido que el de los NOMBRES: una tabla compartida describe el vocabulario, no la implementacion de cada producto. Ese desajuste es justo por lo que este fichero NO declara de donde sale: un campo que apuntase solo a la fabrica haria que alguien de confianza regenerase desde ahi y borrase cuatro efectos sin avisar. El matiz vive aqui y no en un campo que mentiria a medias. La 60 (la repisa, `ShelfFilter`) se anadio el 2026-09-29 porque el modulo compartido migro la repisa del ecualizador del ABDMS2000 y el catalogo de NEURONiK (ocho filas) se quedo con seis: la tabla de identidades de ABDNeural devolvia fila nula para todas, y el desplegable de efecto se quedaba en 'Bypass'. El phaser no hizo falta fila nueva: el 9 ya es 'Stereo Phaser' con `engine` `Phaser`, que es la misma clase.",
+    "AVISO CONOCIDO 2: FXSimpleComp existe como clase (12 parametros, se llama 'Fair Comp') pero la fabrica NO la instancia: el id 31 va a FXFairComp. Es codigo muerto en el motor. No se anade aqui, y por eso las 61 filas de `effects` son los ids 0..60 TODOS, sin huecos."
+  ],
+  "families": [
+    { "id": "bypass",     "label": "Bypass" },
+    { "id": "reverb",     "label": "Reverb" },
+    { "id": "delay",      "label": "Delay" },
+    { "id": "tape",       "label": "Tape" },
+    { "id": "chorus",     "label": "Chorus" },
+    { "id": "modulation", "label": "Modulation" },
+    { "id": "filter",     "label": "Filter" },
+    { "id": "dynamics",   "label": "Dynamics" },
+    { "id": "distortion", "label": "Distortion" },
+    { "id": "pitch",      "label": "Pitch" },
+    { "id": "space",      "label": "Space" }
+  ],
+  "effects": [
+    { "id": 0,  "name": "Bypass",             "engine": null,                  "variant": null,      "family": "bypass",     "params": 0 },
+
+    { "id": 1,  "name": "Hall",               "engine": "SimpleReverb",         "variant": 1,         "family": "reverb",     "params": 12 },
+    { "id": 2,  "name": "Plate",              "engine": "SimpleReverb",         "variant": 2,         "family": "reverb",     "params": 12 },
+    { "id": 3,  "name": "Rich Plate",         "engine": "SimpleReverb",         "variant": 3,         "family": "reverb",     "params": 12 },
+    { "id": 4,  "name": "Ambience",           "engine": "SimpleReverb",         "variant": 4,         "family": "reverb",     "params": 10 },
+    { "id": 5,  "name": "Gated",              "engine": "SimpleReverb",         "variant": 5,         "family": "reverb",     "params": 10 },
+    { "id": 6,  "name": "Reverse",            "engine": "SimpleReverb",         "variant": 6,         "family": "reverb",     "params": 9 },
+    { "id": 22, "name": "Deep Verb",          "engine": "SimpleReverb",         "variant": 22,        "family": "reverb",     "params": 5 },
+    { "id": 26, "name": "Chamber",            "engine": "SimpleReverb",         "variant": 26,        "family": "reverb",     "params": 12 },
+    { "id": 27, "name": "Room",               "engine": "SimpleReverb",         "variant": 27,        "family": "reverb",     "params": 12 },
+    { "id": 28, "name": "Vintage",            "engine": "SimpleReverb",         "variant": 28,        "family": "reverb",     "params": 12 },
+
+    { "id": 23, "name": "Flang Verb",         "engine": "HybridReverb",         "variant": 23,        "family": "reverb",     "params": 12 },
+    { "id": 24, "name": "Chorus Verb",        "engine": "HybridReverb",         "variant": 24,        "family": "reverb",     "params": 12 },
+    { "id": 25, "name": "Delay Verb",         "engine": "HybridReverb",         "variant": 25,        "family": "reverb",     "params": 12 },
+    { "id": 52, "name": "FDN Reverb",         "engine": "FDNReverb",            "variant": null,      "family": "reverb",     "params": 5 },
+    { "id": 53, "name": "Zita Reverb",        "engine": "ZitaReverb",           "variant": null,      "family": "reverb",     "params": 5 },
+
+    { "id": 13, "name": "Delay",              "engine": "Delay",                "variant": null,      "family": "delay",      "params": 12 },
+    { "id": 14, "name": "3-Tap Delay",        "engine": "MultiTapDelay",        "variant": 3,         "family": "delay",      "params": 12 },
+    { "id": 15, "name": "4-Tap Delay",        "engine": "MultiTapDelay",        "variant": 4,         "family": "delay",      "params": 12 },
+    { "id": 12, "name": "Mod Delay Verb",     "engine": "ModDelayRev",          "variant": null,      "family": "delay",      "params": 12 },
+    { "id": 21, "name": "T-Ray Delay",        "engine": "TapeDelay",            "variant": null,      "family": "tape",       "params": 5 },
+    { "id": 34, "name": "Decimator Delay",    "engine": "DecimDelay",           "variant": null,      "family": "tape",       "params": 12 },
+    { "id": 40, "name": "Analog Tape Delay",  "engine": "AnalogTapeDelay",      "variant": null,      "family": "tape",       "params": 6 },
+    { "id": 41, "name": "Shimmer Delay",      "engine": "ShimmerDelay",         "variant": null,      "family": "tape",       "params": 5 },
+    { "id": 42, "name": "Granular Delay",     "engine": "GranularDelay",        "variant": null,      "family": "tape",       "params": 5 },
+    { "id": 44, "name": "Ducking Delay",      "engine": "DuckingDelay",         "variant": null,      "family": "tape",       "params": 5 },
+    { "id": 45, "name": "Spectral Delay",     "engine": "SpectralDelay",        "variant": null,      "family": "tape",       "params": 5 },
+
+    { "id": 10, "name": "Stereo Chorus",      "engine": "Chorus",               "variant": null,      "family": "chorus",     "params": 11 },
+    { "id": 17, "name": "Chorus-D",           "engine": "ChorusD",              "variant": null,      "family": "chorus",     "params": 7 },
+    { "id": 36, "name": "BBD Chorus",         "engine": "RolandBBDChorus",      "variant": null,      "family": "chorus",     "params": 4 },
+    { "id": 37, "name": "Solina Ensemble",    "engine": "SolinaEnsemble",       "variant": null,      "family": "chorus",     "params": 5 },
+
+    { "id": 9,  "name": "Stereo Phaser",      "engine": "Phaser",               "variant": null,      "family": "modulation", "params": 12 },
+    { "id": 11, "name": "Stereo Flanger",     "engine": "Flanger",              "variant": null,      "family": "modulation", "params": 12 },
+    { "id": 20, "name": "Auto Pan",           "engine": "AutoPan",              "variant": null,      "family": "modulation", "params": 9 },
+    { "id": 38, "name": "Ring Mod",           "engine": "RingModulator",        "variant": null,      "family": "modulation", "params": 5 },
+
+    { "id": 30, "name": "Midas EQ",           "engine": "MidasEQ",              "variant": null,      "family": "filter",     "params": 11 },
+    { "id": 8,  "name": "Mood Filter",        "engine": "MoodFilter",           "variant": null,      "family": "filter",     "params": 12 },
+    { "id": 47, "name": "Harmonic Reso",      "engine": "Resonator",            "variant": null,      "family": "filter",     "params": 5 },
+    { "id": 48, "name": "Combulator",         "engine": "Combulator",           "variant": null,      "family": "filter",     "params": 5 },
+
+    { "id": 31, "name": "Fair Comp",          "engine": "FairComp",             "variant": null,      "family": "dynamics",   "params": 12 },
+    { "id": 33, "name": "Noise Gate",         "engine": "NoiseGate",            "variant": null,      "family": "dynamics",   "params": 8 },
+
+    { "id": 32, "name": "Multi-Band Dist",    "engine": "MultiBandDist",        "variant": null,      "family": "distortion", "params": 12 },
+    { "id": 50, "name": "Oversampled Dist",   "engine": "OversamplingDistortion", "variant": null,     "family": "distortion", "params": 5 },
+    { "id": 51, "name": "Wave Shaper",        "engine": "WaveShaper",           "variant": null,      "family": "distortion", "params": 5 },
+    { "id": 18, "name": "Enhancer",           "engine": "Enhancer",             "variant": null,      "family": "distortion", "params": 9 },
+    { "id": 7,  "name": "Rack Amp",           "engine": "RackAmp",              "variant": null,      "family": "distortion", "params": 9 },
+
+    { "id": 29, "name": "Dual Pitch",         "engine": "PitchShifter",         "variant": "dual",     "family": "pitch",      "params": 12 },
+    { "id": 35, "name": "Vintage Pitch",      "engine": "PitchShifter",         "variant": "vintage",  "family": "pitch",      "params": 12 },
+    { "id": 46, "name": "Frequency Shifter",  "engine": "FrequencyShifter",     "variant": null,      "family": "pitch",      "params": 5 },
+    { "id": 55, "name": "Bonsai",             "engine": "Bonsai",               "variant": null,      "family": "pitch",      "params": 5 },
+
+    { "id": 39, "name": "Space Echo",         "engine": "SpaceEchoRE201",       "variant": null,      "family": "space",      "params": 6 },
+    { "id": 16, "name": "Rotary Speaker",     "engine": "RotarySpeaker",        "variant": null,      "family": "space",      "params": 8 },
+    { "id": 19, "name": "Edison EX1",         "engine": "Edison",               "variant": null,      "family": "space",      "params": 8 },
+    { "id": 43, "name": "Pattern Freeze",     "engine": "PatternFreeze",        "variant": null,      "family": "space",      "params": 4 },
+    { "id": 49, "name": "MB Vocoder",         "engine": "Vocoder",              "variant": null,      "family": "space",      "params": 6 },
+    { "id": 54, "name": "Nimbus",             "engine": "Nimbus",               "variant": null,      "family": "space",      "params": 5 },
+    { "id": 56, "name": "Tree Monster",       "engine": "Treemonster",          "variant": null,      "family": "space",      "params": 5 },
+
+    { "id": 57, "name": "FreeVerb Reverb",    "engine": "Reverb",               "variant": null,      "family": "reverb",     "params": 4 },
+    { "id": 58, "name": "Saturation",         "engine": "Saturation",           "variant": null,      "family": "distortion", "params": 1 },
+    { "id": 59, "name": "Schroeder Reverb",   "engine": "SchroederReverb",      "variant": null,      "family": "reverb",     "params": 4 },
+
+    { "id": 60, "name": "Shelf Filter",       "engine": "ShelfFilter",           "variant": null,      "family": "filter",    "params": 3 }
+  ]
+}

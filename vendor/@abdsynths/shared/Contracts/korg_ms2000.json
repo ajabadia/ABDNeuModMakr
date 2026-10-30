@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "2.0",
+  "id": "korg_ms2000",
+  "aliases": [
+    "korg-ms2000"
+  ],
+  "displayName": "Korg MS2000 / MS2000R",
+  "description": "Analog Modeling Synthesizer with Multi-Mode Resonant Filters, WaveShaper, and 16-Band Vocoder",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Korg",
+  "brandLogo": "brands/korg-logo.svg",
+  "modelImage": "models/korg-ms2000.png",
+  "midiIdentification": {
+    "manufacturer": "Korg",
+    "manufacturerIdHex": "42",
+    "model": "MS2000",
+    "modelIdHex": "58",
+    "sysexHeaderHex": "42 30 58",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "MS2000",
+      "MS2000R",
+      "MS-2000",
+      "ABDMS2000",
+      "microKORG",
+      "KORG MS"
+    ]
+  },
+  "functions": [
+    {
+      "id": "dsp_multimode_filter",
+      "name": "Multi-Mode Resonant Filter (-12dB / -24dB)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In 1/2 MS2000",
+        "responseInput": "Line Out (L/Mono) -> Entrada Audio 1 (L)",
+        "notes": "Filtros modelados digitalmente: LPF 24dB, LPF 12dB, BPF 12dB y HPF 12dB."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Filter Cutoff",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 74,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.7,
+          "unit": "0-127"
+        },
+        {
+          "index": 2,
+          "name": "Filter Resonance",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 71,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.25,
+          "unit": "0-127"
+        },
+        {
+          "index": 3,
+          "name": "Filter Type",
+          "type": "RotarySwitch",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 83,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0,
+          "unit": "Type",
+          "options": [
+            "LPF 24dB",
+            "LPF 12dB",
+            "BPF 12dB",
+            "HPF 12dB"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "osc_waveshaper",
+      "name": "Oscillator WaveShaper Distortion",
+      "blockType": "WaveShaper",
+      "suggestedStimulus": "MULTILEVEL_RAMP",
+      "routingGuide": {
+        "stimulusOutput": "Salida Audio 1 (L) -> Audio In 1 (Ext Signal)",
+        "responseInput": "Line Out (L) -> Entrada Audio 1 (L)",
+        "notes": "Módulo de conformación de onda no lineal que pliega y distorsiona el espectro armónico."
+      },
+      "controls": [
+        {
+          "index": 1,
+          "name": "Drive / Shape Depth",
+          "type": "Knob",
+          "controlMethod": "MIDI_CC",
+          "ccNumber": 79,
+          "minVal": 0,
+          "maxVal": 1,
+          "defaultVal": 0.6,
+          "unit": "0-127"
+        }
+      ]
+    }
+  ],
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 8,
+    "programsPerBank": 16,
+    "patchDataSize": 254,
+    "patchNameMaxLength": 12,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Motion",
+      "Arp",
+      "Split",
+      "Bell",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "korg-microkorg"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "42",
+      "modelIdByteHex": "58",
+      "programDumpCommandHex": "40",
+      "programRequestCommandHex": "10",
+      "programWriteCommandHex": "11",
+      "allDumpCommandHex": "4C",
+      "allRequestCommandHex": "0E",
+      "paramChangeCommandHex": "41",
+      "modeChangeCommandHex": "4E",
+      "ackCommandHex": "23",
+      "nackCommandHex": "24",
+      "checksumAlgorithm": "NONE",
+      "encoding": "7_TO_8_BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "58"
+    }
+  }
+}

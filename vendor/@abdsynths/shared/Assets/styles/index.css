@@ -1,0 +1,53 @@
+/**
+ * ABD Unified Styles Bundle
+ * =========================
+ * Import this file in any synth or tool to load everything at once.
+ *
+ * For selective imports:
+ *   tokens.css                -- design tokens only
+ *   themes/<name>.css         -- one theme
+ *   components/panels.css     -- chassis, panels, modules
+ *   components/buttons.css    -- btn, btn-glow, btn-toggle, led-btn
+ *   components/controls.css   -- sliders, selects, inputs
+ *   components/navbar.css     -- top navigation bar
+ *   components/backgrounds.css -- fondo de lienzo tintable por tema
+ *   components/lcd.css        -- LCD display panels
+ *   components/scope.css      -- oscilloscope display
+ *   components/keyboard.css   -- piano keyboard
+ *   components/fx.css         -- modulos de efecto y sus temas por familia
+ *   components/envelope.css   -- EnvelopePad: curva ADSR compartida
+ *   components/bank.css       -- BankManagerModal: contenedor modal universal
+ *
+ * Structure:
+ *   tokens.css          -- 120+ design tokens
+ *   themes/*.css        -- per-instrument themes (5 available)
+ *   components/*.css    -- reusable UI components (8 files)
+ */
+@import './tokens.css';
+@import './themes/ms2000.css';
+@import './themes/microkorg.css';
+@import './themes/advanced.css';
+@import './themes/cz101.css';
+@import './themes/deepmind.css';
+@import './themes/juno.css';
+@import './themes/audiolab.css';
+@import './themes/audiolab-light.css';
+@import './components/panels.css';
+@import './components/buttons.css';
+@import './components/controls.css';
+@import './components/widgets.css';   /* knob, slider, toggle (JS control family) */
+@import './components/skins-junio.css';  /* junio filmstrip skin assets */
+@import './components/navbar.css';
+@import './components/backgrounds.css';  /* fondo tintable por tema (bg_neutral) */
+@import './components/lcd.css';
+@import './components/scope.css';
+@import './components/keyboard.css';
+@import './components/fx.css';   /* modulos de efecto del rack, temas por familia */
+@import './components/envelope.css';  /* EnvelopePad: curva ADSR compartida */
+@import './components/bank.css';      /* BankManagerModal: contenedor modal universal */
+@import './components/about-dialog.css';        /* AboutDialog: diálogo universal y autoupdater */
+@import './components/modals.css';              /* Modals: arquitectura universal de diálogos y confirmaciones */
+@import './components/pills.css';               /* Unified tokenized pill & chip selectors */
+@import './components/catalog-browser.css';     /* Catalog & Model Browser: navegadores de modelos/tablas de ondas estilo ABDMS2000 */
+@import './components/midi-learn.css';          /* MIDI Learn & CC/NRPN Mapping Matrix (N:M) */
+@import './components/live-sysex-inspector.css'; /* LiveSysExInspector: inspector reactivo de tramas MIDI SysEx */

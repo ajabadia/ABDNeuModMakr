@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "2.0",
+  "id": "korg_microkorg",
+  "aliases": [
+    "korg-microkorg"
+  ],
+  "displayName": "Korg microKORG",
+  "description": "MS2000 engine in compact form with vocoder; identical SysEx patch format (254-byte raw data, 7-to-8 packing). SSOT: Source/Contracts/Models/korg-ms2000.ts.",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Korg",
+  "brandLogo": "brands/korg-logo.svg",
+  "modelImage": "models/korg-microkorg.webp",
+  "midiIdentification": {
+    "manufacturer": "Korg",
+    "manufacturerIdHex": "42",
+    "model": "microKORG",
+    "modelIdHex": "71",
+    "sysexHeaderHex": "42 30 71",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": [
+      "microKORG",
+      "microKORG XL",
+      "microkorg",
+      "MS2000"
+    ]
+  },
+  "bankManagement": {
+    "bankCapacity": 128,
+    "banksCount": 8,
+    "programsPerBank": 16,
+    "patchDataSize": 254,
+    "patchNameMaxLength": 12,
+    "categories": [
+      "Bass",
+      "Lead",
+      "Pad",
+      "Motion",
+      "Arp",
+      "Split",
+      "Bell",
+      "Other"
+    ],
+    "defaultCategory": "Other",
+    "addressingFormat": "BANK_PATCH",
+    "compatibleModels": [
+      "korg-ms2000",
+      "abd-sm002"
+    ],
+    "sysexProtocol": {
+      "manufacturerIdHex": "42",
+      "modelIdByteHex": "71",
+      "programDumpCommandHex": "40",
+      "programRequestCommandHex": "10",
+      "programWriteCommandHex": "11",
+      "allDumpCommandHex": "4C",
+      "allRequestCommandHex": "0E",
+      "paramChangeCommandHex": "41",
+      "modeChangeCommandHex": "4E",
+      "ackCommandHex": "23",
+      "nackCommandHex": "24",
+      "checksumAlgorithm": "NONE",
+      "encoding": "7_TO_8_BIT",
+      "supportsEditBuffer": false,
+      "interMessageDelayMs": 50,
+      "dumpTimeoutMs": 3000,
+      "midiDefaultChannel": 1,
+      "midiDefaultDeviceIdHex": "71"
+    }
+  }
+}

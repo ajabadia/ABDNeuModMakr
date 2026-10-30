@@ -1,0 +1,896 @@
+/**
+ * ABD Catalog & Model Browser
+ * =============================
+ * Universal catalog browser modal styling inspired by ABDMS2000 wavetable browser.
+ * Token-driven, theme-aware, non-atomized:
+ * - Integrates with standard ABDShared modal hierarchy (.modal-card, .modal-header, .modal-title, .modal-footer)
+ * - Category filter chips with live counts powered by semantic category tokens (--color-cat-0..9)
+ * - Dual view modes: Cards Grid (.catalog-grid / .ndb-grid) & Detailed Table (.catalog-table / .neurondb-table)
+ * - Zero hardcoded hex/rgba color literals: 100% tokens.css driven
+ */
+
+/* ── Modal Card Chassis ────────────────────────────────── */
+.neurondb-modal-card,
+.catalog-browser-card {
+  width: min(980px, 94vw);
+  max-width: 980px;
+  height: calc(100vh - 80px);
+  max-height: 740px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevation-3), 0 0 1px var(--color-panel-border);
+  overflow: hidden;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+
+/* ── Modal Header Chrome ───────────────────────────────── */
+.ndb-modal-header,
+.catalog-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-panel-surface-elevated);
+  border-bottom: 1px solid var(--color-panel-border);
+  flex-shrink: 0;
+}
+
+.ndb-header-title,
+.catalog-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.ndb-title-text,
+.catalog-title-text {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--color-text-main);
+}
+
+.ndb-badge,
+.catalog-badge {
+  font-size: var(--text-xs);
+  padding: 2px var(--space-4);
+  border-radius: 10px;
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.ndb-close-btn,
+.catalog-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  font-size: var(--text-2xl);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ndb-close-btn:hover,
+.catalog-close-btn:hover {
+  color: var(--color-danger);
+  background: rgba(var(--color-danger-rgb, 255, 51, 68), 0.15);
+}
+
+/* ── Integrated Search Row ─────────────────────────────── */
+.ndb-search-row,
+.catalog-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-panel-surface);
+  border-bottom: 1px solid var(--color-panel-border);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ndb-search-icon,
+.catalog-search-icon {
+  position: absolute;
+  left: 26px;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-dim);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ndb-search-input,
+.catalog-search-input {
+  width: 100%;
+  padding: var(--space-4) var(--space-6) var(--space-4) 34px;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-main);
+  font-size: var(--text-xl);
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ndb-search-input:focus,
+.catalog-search-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent-dim);
+}
+
+.ndb-search-input::placeholder,
+.catalog-search-input::placeholder {
+  color: var(--color-text-dim);
+}
+
+.ndb-view-toggle,
+.catalog-view-toggle {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--color-bg-base);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-panel-border-dim);
+}
+
+.ndb-view-btn,
+.catalog-view-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.ndb-view-btn.active,
+.ndb-view-btn:hover,
+.catalog-view-btn.active,
+.catalog-view-btn:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+/* ── Category Chips Row ───────────────────────────────── */
+.ndb-chips-row,
+.catalog-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-8);
+  background: var(--color-panel-bg);
+  border-bottom: 1px solid var(--color-panel-border-dim);
+  max-height: 80px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.ndb-chip,
+.catalog-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-5);
+  border-radius: 12px;
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-bg-base);
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.ndb-chip-icon,
+.catalog-chip-icon {
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.75;
+}
+
+.ndb-chip-count,
+.catalog-chip-count {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  opacity: 0.75;
+  background: var(--color-panel-surface);
+  color: var(--color-text-dim);
+  padding: 0 var(--space-2);
+  border-radius: 6px;
+}
+
+.ndb-chip:hover,
+.catalog-chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-main);
+  transform: translateY(-1px);
+}
+
+.ndb-chip.active,
+.catalog-chip.active {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+  border-color: var(--color-accent);
+  font-weight: 700;
+  box-shadow: 0 0 10px var(--color-accent-dim);
+}
+
+.ndb-chip.active .ndb-chip-icon,
+.catalog-chip.active .catalog-chip-icon {
+  opacity: 1;
+}
+
+.ndb-chip.active .ndb-chip-count,
+.catalog-chip.active .catalog-chip-count {
+  background: var(--color-panel-surface-elevated);
+  color: var(--color-text-main);
+  opacity: 1;
+}
+
+/* ── Secondary Filter Toolbar ─────────────────────────── */
+.neurondb-toolbar,
+.catalog-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-8);
+  background: var(--color-panel-surface);
+  border-bottom: 1px solid var(--color-panel-border-dim);
+  flex-shrink: 0;
+}
+
+.neurondb-filter-group,
+.catalog-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.neurondb-filter-label,
+.catalog-filter-label {
+  font-size: var(--text-md);
+  color: var(--color-text-dim);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.neurondb-select-filter,
+.catalog-select-filter {
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-4);
+  color: var(--color-text-main);
+  font-family: inherit;
+  font-size: var(--text-base);
+  outline: none;
+  cursor: pointer;
+  height: 24px;
+  transition: border-color var(--transition-fast);
+}
+
+.neurondb-select-filter:focus,
+.catalog-select-filter:focus {
+  border-color: var(--color-accent);
+}
+
+.neurondb-scan-status,
+.catalog-scan-status {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  color: var(--color-text-dim);
+  white-space: nowrap;
+}
+
+/* ── Content Wrap ─────────────────────────────────────── */
+.ndb-content-wrap,
+.catalog-content-wrap {
+  flex: 1;
+  min-height: 260px;
+  overflow-y: auto;
+  background: var(--color-bg-base);
+  outline: none;
+}
+
+/* ── Grid View ────────────────────────────────────────── */
+.ndb-grid,
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-8);
+  align-content: start;
+}
+
+.ndb-card,
+.catalog-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-chassis);
+  border: 1px solid var(--color-panel-border-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: var(--color-panel-surface);
+  user-select: none;
+}
+
+.ndb-card:hover,
+.catalog-card:hover {
+  border-color: var(--color-panel-border-strong);
+  background: var(--color-panel-surface-elevated);
+  transform: translateY(-1px);
+}
+
+.ndb-card.wt-selected,
+.ndb-card.is-selected,
+.catalog-card.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+  box-shadow: 0 0 12px var(--color-accent-dim);
+}
+
+.ndb-card-icon,
+.catalog-card-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.ndb-card.wt-selected .ndb-card-icon,
+.ndb-card.is-selected .ndb-card-icon,
+.catalog-card.is-selected .catalog-card-icon {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+.ndb-card-info,
+.catalog-card-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+
+.ndb-card-top,
+.catalog-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.ndb-card-slot,
+.catalog-card-slot {
+  font-size: var(--text-md);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.ndb-card-cat,
+.catalog-card-cat {
+  font-size: var(--text-xs);
+  padding: 1px var(--space-3);
+  border-radius: 6px;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.ndb-card-name,
+.catalog-card-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+.ndb-card-meta,
+.catalog-card-meta {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+}
+
+.ndb-card-badge,
+.catalog-card-badge {
+  font-family: var(--font-mono);
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  padding: 0 var(--space-2);
+  border-radius: 3px;
+}
+
+.ndb-card-actions,
+.catalog-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bank-drawer-panel .ndb-grid,
+.bank-drawer-panel .catalog-grid {
+  grid-template-columns: 1fr;
+  padding: var(--space-4);
+  gap: var(--space-3);
+}
+
+.bank-drawer-panel .ndb-card,
+.bank-drawer-panel .catalog-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.bank-drawer-panel .ndb-card-actions,
+.bank-drawer-panel .catalog-card-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.drawer-header-actions,
+.ndb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ndb-empty-action {
+  margin-top: var(--space-3);
+}
+
+/* ── Semantic Category Colors (Tokens) ─────────────────── */
+.cat-0, .cat-neutral { color: var(--color-cat-0); }
+.cat-1 { color: var(--color-cat-1); }
+.cat-2 { color: var(--color-cat-2); }
+.cat-3 { color: var(--color-cat-3); }
+.cat-4 { color: var(--color-cat-4); }
+.cat-5 { color: var(--color-cat-5); }
+.cat-6 { color: var(--color-cat-6); }
+.cat-7 { color: var(--color-cat-7); }
+.cat-8 { color: var(--color-cat-8); }
+.cat-9 { color: var(--color-cat-9); }
+
+.ndb-card-icon.cat-0 { color: var(--color-cat-0); }
+.ndb-card-icon.cat-1 { color: var(--color-cat-1); }
+.ndb-card-icon.cat-2 { color: var(--color-cat-2); }
+.ndb-card-icon.cat-3 { color: var(--color-cat-3); }
+.ndb-card-icon.cat-4 { color: var(--color-cat-4); }
+.ndb-card-icon.cat-5 { color: var(--color-cat-5); }
+.ndb-card-icon.cat-6 { color: var(--color-cat-6); }
+.ndb-card-icon.cat-7 { color: var(--color-cat-7); }
+.ndb-card-icon.cat-8 { color: var(--color-cat-8); }
+.ndb-card-icon.cat-9 { color: var(--color-cat-9); }
+
+.ndb-card-cat.cat-0 { color: var(--color-cat-0); border-color: var(--color-cat-0); }
+.ndb-card-cat.cat-1 { color: var(--color-cat-1); border-color: var(--color-cat-1); }
+.ndb-card-cat.cat-2 { color: var(--color-cat-2); border-color: var(--color-cat-2); }
+.ndb-card-cat.cat-3 { color: var(--color-cat-3); border-color: var(--color-cat-3); }
+.ndb-card-cat.cat-4 { color: var(--color-cat-4); border-color: var(--color-cat-4); }
+.ndb-card-cat.cat-5 { color: var(--color-cat-5); border-color: var(--color-cat-5); }
+.ndb-card-cat.cat-6 { color: var(--color-cat-6); border-color: var(--color-cat-6); }
+.ndb-card-cat.cat-7 { color: var(--color-cat-7); border-color: var(--color-cat-7); }
+.ndb-card-cat.cat-8 { color: var(--color-cat-8); border-color: var(--color-cat-8); }
+.ndb-card-cat.cat-9 { color: var(--color-cat-9); border-color: var(--color-cat-9); }
+
+.ndb-card.cat-0:hover { border-color: var(--color-cat-0); }
+.ndb-card.cat-1:hover { border-color: var(--color-cat-1); }
+.ndb-card.cat-2:hover { border-color: var(--color-cat-2); }
+.ndb-card.cat-3:hover { border-color: var(--color-cat-3); }
+.ndb-card.cat-4:hover { border-color: var(--color-cat-4); }
+.ndb-card.cat-5:hover { border-color: var(--color-cat-5); }
+.ndb-card.cat-6:hover { border-color: var(--color-cat-6); }
+.ndb-card.cat-7:hover { border-color: var(--color-cat-7); }
+.ndb-card.cat-8:hover { border-color: var(--color-cat-8); }
+.ndb-card.cat-9:hover { border-color: var(--color-cat-9); }
+
+.ndb-param-tag,
+.catalog-param-tag {
+  display: inline-block;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-3);
+  font-size: var(--text-base);
+}
+
+/* ── Detailed Table View ──────────────────────────────── */
+.neurondb-table-wrap,
+.catalog-table-wrap {
+  width: 100%;
+}
+
+.neurondb-table,
+.catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--text-lg);
+}
+
+.neurondb-table thead th,
+.catalog-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-panel-surface-elevated);
+  color: var(--color-text-muted);
+  font-weight: 700;
+  text-align: left;
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-panel-border);
+  font-size: var(--text-md);
+  letter-spacing: 0.5px;
+}
+
+.neurondb-table thead th.is-sortable,
+.catalog-table thead th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.neurondb-table thead th.is-sortable:hover,
+.catalog-table thead th.is-sortable:hover {
+  background: var(--color-accent-dim);
+  color: var(--color-accent);
+}
+
+.neurondb-table thead th.is-sorted,
+.catalog-table thead th.is-sorted {
+  color: var(--color-accent);
+}
+
+.sort-indicator {
+  display: inline-block;
+  width: 10px;
+  font-size: var(--text-xs);
+  margin-left: 2px;
+  color: var(--color-accent);
+}
+
+.neurondb-table tbody td,
+.catalog-table tbody td {
+  padding: 5px var(--space-6);
+  border-bottom: 1px solid var(--color-panel-border-dim);
+  color: var(--color-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.neurondb-row,
+.catalog-row {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.neurondb-row:hover,
+.catalog-row:hover {
+  background: var(--color-panel-surface);
+}
+
+.neurondb-row.is-selected,
+.catalog-row.is-selected {
+  background: var(--color-accent-dim);
+}
+
+.col-ndb-slot,
+.col-catalog-slot {
+  width: 68px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.col-ndb-name,
+.col-catalog-name {
+  width: 150px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.col-ndb-zones,
+.col-catalog-zones {
+  width: 165px;
+}
+
+.col-ndb-sources,
+.col-catalog-sources {
+  width: 90px;
+  font-family: var(--font-mono);
+}
+
+.col-ndb-param,
+.col-catalog-param {
+  width: 170px;
+}
+
+.col-ndb-comp,
+.col-catalog-comp {
+  width: 110px;
+  font-family: var(--font-mono);
+}
+
+.col-ndb-action,
+.col-catalog-action {
+  width: 78px;
+  text-align: right;
+}
+
+.ndb-key-span,
+.ndb-dim,
+.catalog-dim {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+}
+
+.neurondb-empty-cell,
+.catalog-empty-cell {
+  text-align: center;
+  padding: var(--space-5);
+  color: var(--color-text-muted);
+}
+
+.neurondb-empty-state,
+.catalog-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 32px var(--space-8);
+  color: var(--color-text-muted);
+}
+
+.neurondb-empty-state .empty-icon,
+.catalog-empty-state .empty-icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  opacity: 0.5;
+  color: var(--color-text-dim);
+}
+
+.neurondb-empty-state .empty-icon svg,
+.catalog-empty-state .empty-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.neurondb-empty-state .empty-msg,
+.catalog-empty-state .empty-msg {
+  font-size: var(--text-xl);
+  color: var(--color-text-muted);
+}
+
+/* ── Selection Footer ─────────────────────────────────── */
+.ndb-footer,
+.catalog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-8);
+  background: var(--color-panel-surface-elevated);
+  border-top: 1px solid var(--color-panel-border);
+  flex-shrink: 0;
+}
+
+.ndb-footer-selection,
+.catalog-footer-selection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-lg);
+  min-width: 0;
+  flex: 1;
+}
+
+.ndb-footer-slot,
+.catalog-footer-slot {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-accent);
+  font-size: var(--text-xl);
+}
+
+.ndb-footer-name,
+.catalog-footer-name {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-main);
+  font-size: var(--text-xl);
+}
+
+.ndb-footer-details,
+.catalog-footer-details {
+  font-size: var(--text-base);
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.neurondb-footer-actions,
+.catalog-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+/* Hosts may serve all actions in the header and keep the footer as a
+   status line only: collapse the empty actions box (no gap left). */
+.neurondb-footer-actions:empty,
+.catalog-footer-actions:empty {
+  display: none;
+}
+
+.ndb-select-btn,
+.catalog-select-btn {
+  background: var(--color-accent);
+  color: var(--color-bg-base) !important;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: none;
+  box-shadow: 0 2px 10px var(--color-accent-dim);
+  transition: all var(--transition-fast);
+}
+
+.ndb-select-btn:hover,
+.catalog-select-btn:hover {
+  background: var(--color-accent-hover);
+  box-shadow: 0 4px 14px var(--color-accent-dim);
+  transform: translateY(-1px);
+}
+
+/* ── Shared category chips (bankChips) ─────────────────────────
+   Compact variant used for the per-category filter rows. Same
+   metrics both hosts previously inlined in their drawers. */
+.ndb-chip.ndb-chip-sm {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+/* ── Shared transient flash (bankShell.flashStatus) ──────────
+   Centered high-contrast pill above the footer: unmissable feedback
+   for actions that change no counters (refresh with identical data).
+   The host shell element is positioned (drawer panel), so this
+   anchors to it. `ok` is a solid accent pill; `working`/`error` keep
+   the elevated surface with a colored treatment. */
+.bank-shell-flash {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space-8) + 56px);
+  transform: translate(-50%, 12px) scale(0.96);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(92%, 560px);
+  padding: var(--space-4) var(--space-6);
+  border-radius: 999px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  z-index: 5;
+}
+
+.bank-shell-flash.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.bank-shell-flash-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.bank-shell-flash-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bank-shell-flash.is-ok {
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  box-shadow: 0 8px 30px var(--color-accent-dim), 0 2px 10px rgba(0, 0, 0, 0.5);
+  color: var(--color-bg-base);
+}
+
+.bank-shell-flash.is-working {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-accent);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  color: var(--color-text-main);
+}
+
+.bank-shell-flash.is-working.is-visible {
+  animation: bank-shell-flash-pulse 1s ease-in-out infinite;
+}
+
+.bank-shell-flash.is-working .bank-shell-flash-icon {
+  animation: bank-shell-flash-spin 1s linear infinite;
+}
+
+.bank-shell-flash.is-error {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-danger);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  color: var(--color-text-main);
+}
+
+.bank-shell-flash.is-error .bank-shell-flash-icon {
+  color: var(--color-danger);
+}
+
+@keyframes bank-shell-flash-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes bank-shell-flash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

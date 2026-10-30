@@ -1,0 +1,291 @@
+/**
+ * ABD Pills & Chip Selectors - Unified Tokenized Architecture
+ * ===========================================================
+ * Single DRY model for pill/chip selectors, category filters, mode tabs,
+ * and option switchers across the entire ABDSynths suite.
+ *
+ * Guarantees visual consistency, shared geometry, and 100% tokenized theming.
+ */
+
+/* ── 1. Pill Group / Chips Row Container ────────────────── */
+.abd-pill-group,
+.abd-pill-row,
+.ndb-chips-row,
+.catalog-chips-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pill-group-gap, var(--space-2, 6px));
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.abd-pill-group--nowrap,
+.ndb-chips-row--nowrap {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.abd-pill-group--dense {
+  gap: 4px;
+}
+
+.abd-pill-group--xs { gap: 3px; }
+.abd-pill-group--sm { gap: 4px; }
+.abd-pill-group--md { gap: var(--space-2, 6px); }
+.abd-pill-group--lg { gap: var(--space-3, 8px); }
+
+/* ── 2. Unified Base Pill Model ──────────────────────────── */
+.abd-pill,
+.abd-chip,
+.ndb-chip,
+.catalog-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pill-gap, 6px);
+  padding: 3px 12px;
+  min-height: 22px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.12));
+  background: var(--color-panel-surface, var(--color-bg-base));
+  color: var(--color-text-muted, #7e9bb5);
+  font-family: inherit;
+  font-size: var(--text-sm, 11px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.25px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+  text-decoration: none;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+
+/* ── 3. Interactive States ───────────────────────────────── */
+.abd-pill:hover:not(:disabled):not(.disabled):not([aria-disabled="true"]),
+.abd-chip:hover:not(:disabled):not(.disabled):not([aria-disabled="true"]),
+.ndb-chip:hover:not(:disabled):not(.disabled):not([aria-disabled="true"]),
+.catalog-chip:hover:not(:disabled):not(.disabled):not([aria-disabled="true"]) {
+  border-color: var(--color-accent);
+  color: var(--color-text-main);
+  transform: translateY(-1px);
+}
+
+.abd-pill:active:not(:disabled):not(.disabled):not([aria-disabled="true"]),
+.ndb-chip:active:not(:disabled):not(.disabled):not([aria-disabled="true"]) {
+  transform: translateY(0);
+}
+
+.abd-pill.active,
+.abd-pill.is-active,
+.abd-chip.active,
+.ndb-chip.active,
+.catalog-chip.active {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+  border-color: var(--color-accent);
+  font-weight: 700;
+  box-shadow: 0 0 10px var(--color-accent-dim, rgba(0, 195, 255, 0.25));
+  transform: none;
+}
+
+/* High contrast active text for light themes (WCAG AA compliant) */
+[data-theme="audiolab-light"] .abd-pill.active,
+[data-theme="audiolab-light"] .abd-pill.is-active,
+[data-theme="audiolab-light"] .abd-chip.active,
+[data-theme="audiolab-light"] .ndb-chip.active,
+[data-theme="audiolab-light"] .catalog-chip.active,
+[data-theme="light"] .abd-pill.active,
+[data-theme="light"] .abd-pill.is-active,
+[data-theme="light"] .abd-chip.active,
+[data-theme="light"] .ndb-chip.active,
+[data-theme="light"] .catalog-chip.active {
+  color: #ffffff !important;
+}
+
+/* Disabled State */
+.abd-pill:disabled,
+.abd-pill.disabled,
+.abd-pill[aria-disabled="true"],
+.ndb-chip:disabled,
+.ndb-chip.disabled,
+.ndb-chip[aria-disabled="true"] {
+  opacity: 0.38 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Focus outline */
+.abd-pill:focus-visible,
+.ndb-chip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* ── 4. Size Scale ───────────────────────────────────────── */
+.abd-pill--xs,
+.ndb-chip.ndb-chip-xs,
+.ndb-chip-xs {
+  padding: 1.5px 7px;
+  min-height: 18px;
+  font-size: 9px;
+  gap: 3px;
+}
+
+.abd-pill--sm,
+.ndb-chip.ndb-chip-sm,
+.ndb-chip-sm {
+  padding: 2.5px 9px;
+  min-height: 20px;
+  font-size: 10px;
+  gap: 4px;
+}
+
+.abd-pill--md,
+.ndb-chip.ndb-chip-md {
+  padding: 3.5px 12px;
+  min-height: 24px;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.abd-pill--lg,
+.ndb-chip.ndb-chip-lg {
+  padding: 5px 16px;
+  min-height: 30px;
+  font-size: 12.5px;
+  gap: 8px;
+}
+
+/* ── 5. Internal Sub-Elements (Icon, Label, Count Badge) ─── */
+.abd-pill__icon,
+.ndb-chip-icon,
+.catalog-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  opacity: 0.8;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.abd-pill.active .abd-pill__icon,
+.ndb-chip.active .ndb-chip-icon,
+.catalog-chip.active .catalog-chip-icon {
+  opacity: 1;
+}
+
+.abd-pill__name,
+.abd-pill__label,
+.ndb-chip-name {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.abd-pill__count,
+.ndb-chip-count,
+.catalog-chip-count {
+  font-size: var(--text-2xs, 9px);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  background: var(--color-panel-surface-elevated, rgba(255, 255, 255, 0.08));
+  color: var(--color-text-dim, inherit);
+  padding: 1px 5px;
+  border-radius: 9999px;
+  line-height: 1.1;
+  margin-left: 2px;
+}
+
+.abd-pill.active .abd-pill__count,
+.ndb-chip.active .ndb-chip-count,
+.catalog-chip.active .catalog-chip-count {
+  background: var(--color-panel-surface-elevated, rgba(0, 0, 0, 0.25));
+  color: var(--color-text-main, #ffffff);
+  opacity: 1;
+}
+
+[data-theme="audiolab-light"] .abd-pill.active .abd-pill__count,
+[data-theme="audiolab-light"] .ndb-chip.active .ndb-chip-count {
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+}
+
+/* ── 6. Category & Color Modifiers ───────────────────────── */
+.abd-pill.cat-0, .ndb-chip.cat-0,
+.abd-pill.cat-neutral, .ndb-chip.cat-neutral { color: var(--color-cat-0); }
+.abd-pill.cat-1, .ndb-chip.cat-1 { color: var(--color-cat-1); }
+.abd-pill.cat-2, .ndb-chip.cat-2 { color: var(--color-cat-2); }
+.abd-pill.cat-3, .ndb-chip.cat-3 { color: var(--color-cat-3); }
+.abd-pill.cat-4, .ndb-chip.cat-4 { color: var(--color-cat-4); }
+.abd-pill.cat-5, .ndb-chip.cat-5 { color: var(--color-cat-5); }
+.abd-pill.cat-6, .ndb-chip.cat-6 { color: var(--color-cat-6); }
+.abd-pill.cat-7, .ndb-chip.cat-7 { color: var(--color-cat-7); }
+.abd-pill.cat-8, .ndb-chip.cat-8 { color: var(--color-cat-8); }
+.abd-pill.cat-9, .ndb-chip.cat-9 { color: var(--color-cat-9); }
+
+.abd-pill.cat-0:hover, .ndb-chip.cat-0:hover { border-color: var(--color-cat-0); }
+.abd-pill.cat-1:hover, .ndb-chip.cat-1:hover { border-color: var(--color-cat-1); }
+.abd-pill.cat-2:hover, .ndb-chip.cat-2:hover { border-color: var(--color-cat-2); }
+.abd-pill.cat-3:hover, .ndb-chip.cat-3:hover { border-color: var(--color-cat-3); }
+.abd-pill.cat-4:hover, .ndb-chip.cat-4:hover { border-color: var(--color-cat-4); }
+.abd-pill.cat-5:hover, .ndb-chip.cat-5:hover { border-color: var(--color-cat-5); }
+.abd-pill.cat-6:hover, .ndb-chip.cat-6:hover { border-color: var(--color-cat-6); }
+.abd-pill.cat-7:hover, .ndb-chip.cat-7:hover { border-color: var(--color-cat-7); }
+.abd-pill.cat-8:hover, .ndb-chip.cat-8:hover { border-color: var(--color-cat-8); }
+.abd-pill.cat-9:hover, .ndb-chip.cat-9:hover { border-color: var(--color-cat-9); }
+
+/* ── 7. Scoped Theme Preview Pills ──────────────────────────
+   Allows theme picker buttons in Settings/NavBar to preview
+   their native colors regardless of the current active theme. */
+.theme-pill-preview[data-theme="ms2000"] {
+  --theme-accent: #00c3ff;
+  --theme-bg: #0d171d;
+  background: var(--theme-bg);
+  border-color: rgba(0, 195, 255, 0.4);
+  color: #e6f6ff;
+}
+.theme-pill-preview[data-theme="audiolab"] {
+  --theme-accent: #38bdf8;
+  --theme-bg: #0f141c;
+  background: var(--theme-bg);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #e2e8f0;
+}
+.theme-pill-preview[data-theme="audiolab-light"] {
+  --theme-accent: #007a4d;
+  --theme-bg: #ffffff;
+  background: var(--theme-bg);
+  border-color: rgba(0, 122, 77, 0.4);
+  color: #0f172a;
+}
+.theme-pill-preview[data-theme="advanced"] {
+  --theme-accent: #ff8c00;
+  --theme-bg: #140e0a;
+  background: var(--theme-bg);
+  border-color: rgba(255, 140, 0, 0.4);
+  color: #ffeedd;
+}
+.theme-pill-preview[data-theme="cz101"] {
+  --theme-accent: #ff3b30;
+  --theme-bg: #141416;
+  background: var(--theme-bg);
+  border-color: rgba(255, 59, 48, 0.4);
+  color: #f5f0ee;
+}
+
+.theme-pill-preview.active {
+  background: var(--theme-accent) !important;
+  border-color: var(--theme-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) !important;
+}

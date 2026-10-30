@@ -1,0 +1,136 @@
+/**
+ * ABD Modals & Dialogs
+ * ====================
+ * Unified modal dialog architecture for ABDSynths and ABDAudioLab.
+ * Token-driven, accessible, theme-aware and responsive.
+ */
+
+/* 1. Modal Overlay Backdrop */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 9999);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast, 0.18s) cubic-bezier(0.16, 1, 0.3, 1),
+              visibility var(--transition-fast, 0.18s) cubic-bezier(0.16, 1, 0.3, 1);
+  padding: var(--space-4, 16px);
+  box-sizing: border-box;
+}
+
+.modal-overlay.active,
+.modal-overlay.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-overlay[hidden],
+.modal-overlay.hidden {
+  display: none !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 2. Modal Window / Card Container */
+.modal-card {
+  position: relative;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow: hidden;
+  transform: scale(0.96) translateY(6px);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.18s ease;
+  opacity: 0;
+}
+
+.modal-overlay.active .modal-card,
+.modal-overlay.is-active .modal-card {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+/* 3. Modal Size Scale */
+.modal-sm { width: 420px; }
+.modal-md { width: 560px; }
+.modal-lg { width: 780px; }
+.modal-xl { width: 960px; }
+.modal-full { width: 96vw; height: 92vh; }
+
+/* 4. Modal Header */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-panel-border);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text-main);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.modal-close-btn:hover {
+  background: var(--color-panel-surface-elevated);
+  border-color: var(--color-panel-border);
+  color: var(--color-text-main);
+}
+
+/* 5. Modal Body */
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  color: var(--color-text-main);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 6. Modal Footer */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-panel-border);
+  background: var(--color-panel-surface);
+  flex-shrink: 0;
+}

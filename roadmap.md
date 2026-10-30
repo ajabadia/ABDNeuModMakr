@@ -267,11 +267,14 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 
 **Objetivo**: Permitir que `ABDNeuModMakr` funcione desplegado en la nube (Vercel / GitHub Pages) de forma 100% autónoma, sin renunciar a la potencia del hardware local cuando esté disponible.
 
-- [ ] **Vendorizado Sincronizado de `@abdsynths/shared` y `@abdsynths/midi-keyb` (`vendor:sync`)**:
-  - Script automatizado que empaqueta/sincroniza los módulos compartidos dentro del propio repositorio de `ABDNeuModMakr` para que GitHub y Vercel puedan compilar el proyecto sin depender de rutas fuera del repositorio, manteniendo la edición en vivo con `ABDShared` durante el desarrollo local.
-- [ ] **Modo 100% Web / Vercel (Client-Side Puro)**:
+- [x] **Vendorizado Sincronizado de `@abdsynths/shared` y `@abdsynths/midi-keyb` (`vendor:sync`)**:
+  - Script automatizado (`scripts/vendorSync.js` y comando `npm run vendor:sync`) que empaqueta y sincroniza los módulos compartidos (`Components`, `Contracts`, `Utils`, `Code/NeuronFormats`, `Assets/styles`, `Assets/themes`, `Assets/icons`, `Assets/fonts`, `@abdsynths/midi-keyb`) en `vendor/@abdsynths/`.
+  - Configuración autocontenida `file:./vendor/@abdsynths/...` en `package.json` para que GitHub y Vercel compilen el proyecto sin depender de rutas externas en disco.
+- [x] **Configuración de Despliegue Vercel SPA (`vercel.json`)**:
+  - Configuración nativa de Vite SPA con enrutamiento limpio, rewrite a `index.html`, inmutabilidad de caché para `/assets/` (1 año) y cabeceras de seguridad (`nosniff`, `DENY`, `strict-origin-when-cross-origin`).
+- [ ] **Modo 100% Web / Vercel (Client-Side Puro — Despliegue en Producción)**:
   - Todo el núcleo TypeScript, Web Workers, importadores `.sf2`/`.sfz`, algoritmos DSP mejorados, resíntesis a 96 kHz y modelos ligeros en **WebGPU / ONNX Runtime Web (`@huggingface/transformers`)** corren directamente en el navegador del usuario.
-  - Desplegable gratuitamente en **Vercel** o **GitHub Pages** como SPA estática (cero coste de servidor).
+  - Conexión de repositorio en dashboard de Vercel y publicación de la URL pública `*.vercel.app`.
 - [ ] **Modo Híbrido con Puente Local ("Local Companion Bridge")**:
   - Aun abriendo la aplicación desde la URL de Vercel (o en `localhost`), la web detecta opcionalmente si hay un micro-servidor local corriendo en la máquina del usuario (`http://127.0.0.1:8389` en Python/FastAPI o C++) con acceso a la GPU local (CUDA/MPS) y al sistema de archivos (`NeuronDB`) para ejecutar modelos de IA pesados (AudioSR, Demucs, entrenamientos de espacio latente) a máxima velocidad.
 

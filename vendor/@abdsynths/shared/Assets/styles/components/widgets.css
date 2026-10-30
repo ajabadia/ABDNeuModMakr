@@ -1,0 +1,1575 @@
+/*
+ * ABDSharedAssets — control family styles (knob, slider, toggle).
+ *
+ * Companion of components/{knob,slider,toggle}.js. Everything is themed through
+ * the global tokens (styles/tokens.css): --color-accent, --color-panel-surface,
+ * --color-text-muted... The literal fallbacks keep the controls usable standalone
+ * (demo pages, tests) without importing the token system.
+ */
+
+/* ── Knob ──────────────────────────────────────────────────────────────────── */
+
+.abd-knob {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-knob__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.abd-knob__dial {
+    position: relative;
+    width: var(--abd-knob-size, 64px);
+    height: var(--abd-knob-size, 64px);
+    cursor: grab;
+    touch-action: none;   /* pointer events own the gesture */
+    outline: none;
+}
+
+.abd-knob__dial:focus-visible {
+    filter: drop-shadow(0 0 4px var(--color-accent, #00c3ff));
+}
+
+.abd-knob__dial:active { cursor: grabbing; }
+
+.abd-knob__svg { width: 100%; height: 100%; }
+
+.abd-knob__track,
+.abd-knob__arc {
+    fill: none;
+    stroke-width: 8;
+    stroke-linecap: round;
+}
+
+.abd-knob__track { stroke: var(--color-panel-surface-elevated, #1c2a3d); }
+
+/* dasharray/offset are set inline by knob.js from the value */
+.abd-knob__arc { stroke: var(--color-accent, #00c3ff); }
+
+/* The REST MARK of a bipolar knob: the dot that says where zero is, so a
+   centred parameter reads as a place and not as a guess. It only exists in the
+   DOM when the knob was born with `bipolar: true` (the vector skin), which is
+   why there is no rule to hide it. It sits in the gap between the pointer tip
+   and the inner edge of the arc, not on the arc itself: painted over the band
+   it would vanish the moment the arc reached zero. Muted text colour, because
+   it is a reference mark and not a value. */
+.abd-knob__rest {
+    fill: var(--color-text-muted, #7e9bb5);
+}
+
+/* Modulation ring (telemetry): double stroke like the native LookAndFeel —
+   wide translucent halo under a thin solid arc. Colour is the theme's
+   --color-mod-ring, falling back to the accent. */
+.abd-knob__mod-halo,
+.abd-knob__mod-ring {
+    fill: none;
+    stroke: var(--color-mod-ring, var(--color-accent, #00c3ff));
+    stroke-linecap: round;
+}
+
+.abd-knob__mod-halo { stroke-width: 8; opacity: 0.4; }
+.abd-knob__mod-ring { stroke-width: 3; }
+
+.abd-knob__pointer {
+    stroke: var(--color-text-main, #f0f7ff);
+    stroke-width: 4;
+    stroke-linecap: round;
+}
+
+.abd-knob__value {
+    position: absolute;
+    inset: auto 0 18% 0;
+    text-align: center;
+    font-size: var(--text-2xs, 7px);
+    color: var(--color-text-dim, #4a637a);
+    pointer-events: none;
+}
+
+/* ── Slider ────────────────────────────────────────────────────────────────── */
+
+.abd-slider {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2, 4px);
+    user-select: none;
+}
+
+.abd-slider__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+}
+
+.abd-slider__track {
+    position: relative;
+    width: var(--abd-slider-length, 160px);
+    height: 14px;
+    background: var(--color-panel-surface-elevated, #1c2a3d);
+    border-radius: 7px;
+    cursor: pointer;
+    touch-action: none;
+    outline: none;
+}
+
+.abd-slider__track:focus-visible {
+    box-shadow: 0 0 0 1px var(--color-accent, #00c3ff);
+}
+
+.abd-slider--vertical { flex-direction: column; }
+.abd-slider--vertical .abd-slider__track {
+    width: 14px;
+    height: var(--abd-slider-length, 160px);
+    border-radius: 7px;
+}
+
+.abd-slider__fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--color-accent-dim, rgba(0, 195, 255, 0.15));
+    border-radius: inherit;
+}
+
+.abd-slider__thumb {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    background: var(--color-text-main, #f0f7ff);
+    border: 2px solid var(--color-accent, #00c3ff);
+    border-radius: 50%;
+    pointer-events: none;   /* the track handles the pointer */
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.abd-slider--vertical .abd-slider__thumb {
+    left: 50%;
+    top: auto;
+    bottom: 0;
+    transform: translate(-50%, 50%);
+}
+
+.abd-slider__value {
+    min-width: 4ch;
+    font-size: var(--text-xs, 8px);
+    color: var(--color-text-dim, #4a637a);
+}
+
+/* ── Toggle ────────────────────────────────────────────────────────────────── */
+
+.abd-toggle {
+    appearance: none;
+    border: 1px solid var(--color-panel-border, rgba(0, 195, 255, 0.2));
+    background: var(--color-panel-surface, #151f2e);
+    color: var(--color-text-muted, #7e9bb5);
+    font-size: var(--text-sm, 9px);
+    padding: var(--space-2, 4px) var(--space-3, 8px);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+}
+
+.abd-toggle::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: var(--space-2, 4px);
+    border-radius: 50%;
+    background: var(--abd-toggle-color, #00c3ff);
+    opacity: 0.25;
+    transition: opacity var(--transition-fast, 0.15s ease),
+                box-shadow var(--transition-fast, 0.15s ease);
+    vertical-align: middle;
+}
+
+.abd-toggle[aria-pressed="true"] {
+    color: var(--color-text-main, #f0f7ff);
+    border-color: var(--color-panel-border-strong, rgba(0, 195, 255, 0.45));
+}
+
+.abd-toggle[aria-pressed="true"]::before {
+    opacity: 1;
+    box-shadow: 0 0 6px 1px var(--abd-toggle-color, #00c3ff);
+}
+
+/* ── Toggle skin: ms2000 (token variant, extracted look of the MS2000 edits) ── */
+
+.abd-toggle--ms2000 {
+    border-radius: 3px;
+    font-family: var(--font-sans, sans-serif);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+/* ── Toggle skin: junio (JUNiO photo sprites, 88x77 PNG on/off per color) ─── */
+
+.abd-toggle--junio {
+    width: 44px;             /* .sq geometry of the original JUNiO buttons */
+    height: 32px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 0;            /* the sprite carries the look; hide the label */
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.abd-toggle--junio::before { content: none; }   /* no CSS LED: the sprite is the LED */
+
+/* ── Hardware Synth Toggle Switch (Switch) ─────────────────────────────── */
+
+.abd-switch {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-switch__label {
+    font-size: var(--text-sm, 9px);
+    font-weight: 600;
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-align: center;
+    max-width: calc(var(--abd-switch-size, 50px) + 16px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.abd-switch__control {
+    width: var(--abd-switch-size, 50px);
+    height: var(--abd-switch-size, 50px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    outline: none;
+    border-radius: 50%;
+    position: relative;
+    transition: transform var(--transition-fast, 0.1s ease);
+}
+
+.abd-switch__control:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-accent, #00c3ff);
+}
+
+.abd-switch__control:active {
+    transform: scale(0.96);
+}
+
+.abd-switch__bezel {
+    width: calc(var(--abd-switch-size, 50px) - 4px);
+    height: calc(var(--abd-switch-size, 50px) - 4px);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, var(--color-panel-surface-elevated, #223447) 0%, var(--color-panel-surface, #151f2e) 60%, #0d141f 100%);
+    border: 1.5px solid var(--color-panel-border, rgba(0, 195, 255, 0.25));
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.12), 0 3px 8px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.abd-switch__led {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #1e2c3a;
+    border: 0.5px solid rgba(0, 0, 0, 0.4);
+    position: absolute;
+    top: 5px;
+    opacity: 0.35;
+    transition: all var(--transition-fast, 0.15s ease);
+}
+
+.abd-switch--active .abd-switch__led {
+    background: var(--color-accent, #00c3ff);
+    opacity: 1;
+    box-shadow: 0 0 6px 1.5px var(--color-accent, #00c3ff);
+}
+
+.abd-switch__slot {
+    width: 14px;
+    height: 24px;
+    background: #090e15;
+    border-radius: 7px;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: visible;
+    margin-top: 4px;
+}
+
+.abd-switch__lever {
+    width: 18px;
+    height: 14px;
+    border-radius: 7px;
+    background: linear-gradient(180deg, #cfd9e3 0%, #7d8e9e 40%, #465564 60%, #9cb0c2 100%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+    border: 1px solid #334150;
+    position: absolute;
+    transform: translateY(5px);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background var(--transition-fast, 0.15s ease);
+}
+
+.abd-switch--active .abd-switch__lever {
+    transform: translateY(-5px);
+    background: linear-gradient(180deg, #ffffff 0%, #a4b8c9 40%, #526678 60%, #b8cde0 100%);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.6), inset 0 1px 1px #fff;
+}
+
+.abd-switch__value {
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    color: var(--color-text-muted, #7e9bb5);
+    letter-spacing: 0.05em;
+    line-height: 12px;
+    min-height: 12px;
+    transition: color var(--transition-fast, 0.15s ease), text-shadow var(--transition-fast, 0.15s ease);
+}
+
+.abd-switch__value.active,
+.abd-switch--active .abd-switch__value {
+    color: var(--color-accent, #00c3ff);
+    text-shadow: 0 0 6px rgba(var(--color-accent-rgb, 0, 195, 255), 0.5);
+}
+
+/* ── Select ────────────────────────────────────────────────────────────────── */
+
+/* The list stays a native <select> (keyboard, screen readers, touch and the
+   WebView2 popup for free); only its box is themed. The arrow is deliberately
+   NOT removed: a list with no affordance is a text field that lies.
+
+   NAME OVERLAP, on purpose and guarded: `styles/components/controls.css` (the
+   CSS-only library, older) already styles a bare `<select class="abd-select">`,
+   and pages load both sheets. So the block itself stays layout-free — stacking
+   a bare select would break it — and the stacked look is opt-in via
+   `--labelled`, which components/select.js adds exactly when it has a label to
+   stack. The FIELD carries its own class, so both looks coexist. */
+
+.abd-select {
+    max-width: 100%;
+}
+
+.abd-select--labelled {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-select__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.abd-select__field {
+    max-width: 100%;
+    padding: 2px var(--space-2, 4px);
+    font: inherit;
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-main, #f0f7ff);
+    background: var(--color-panel-surface-elevated, #1c2a3d);
+    border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.abd-select__field:focus-visible {
+    outline: none;
+    border-color: var(--color-accent, #00c3ff);
+}
+
+/* The current value is an option the UI cannot offer (e.g. host state aimed at
+   another engine). Flagged, never rewritten: see components/select.js. */
+.abd-select[data-divergent="true"] .abd-select__field {
+    border-color: var(--color-warning, #ffb454);
+}
+
+.abd-select[data-divergent="true"] .abd-select__label {
+    color: var(--color-warning, #ffb454);
+}
+
+/* Motivos del veto: ocultos a la vista, vivos en el arbol de accesibilidad.
+ * Viven FUERA del <option> (un nodo oculto dentro del option entraria en su
+ * nombre accesible) y llegan al lector por aria-describedby: el mismo trato que
+ * en Segmented. */
+.abd-select__notes {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.abd-select--ms2000 .abd-select__field,
+.abd-select__field--ms2000 {
+    font-family: var(--font-sans, sans-serif);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-radius: 3px;
+}
+
+/* ── XYPad ─────────────────────────────────────────────────────────────────── */
+
+.abd-xypad
+{
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.abd-xypad__label
+{
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-dim, #8b98a5);
+}
+
+.abd-xypad__pad
+{
+    position: relative;
+    width: var(--abd-xypad-w, 220px);
+    height: var(--abd-xypad-h, 220px);
+    background: var(--color-bg-elev, #161b22);
+    border: 1px solid var(--color-border, #2c3542);
+    border-radius: 10px;
+    touch-action: none;
+    cursor: crosshair;
+    outline: none;
+    overflow: hidden;
+}
+
+.abd-xypad__pad:focus-visible
+{
+    border-color: var(--color-accent, #4aa3ff);
+    box-shadow: 0 0 0 2px var(--color-accent-dim, rgba(74, 163, 255, 0.35));
+}
+
+/* Grid: subtle thirds lines. */
+.abd-xypad__grid
+{
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--color-border, #2c3542) 1px, transparent 1px),
+        linear-gradient(90deg, var(--color-border, #2c3542) 1px, transparent 1px);
+    background-size: 33.34% 33.34%;
+    opacity: 0.25;
+    pointer-events: none;
+}
+
+.abd-xypad__line
+{
+    position: absolute;
+    background: var(--color-accent-dim, rgba(74, 163, 255, 0.35));
+    pointer-events: none;
+}
+
+.abd-xypad__line--v
+{
+    top: 0;
+    bottom: 0;
+    width: 1px;
+}
+
+.abd-xypad__line--h
+{
+    left: 0;
+    right: 0;
+    height: 1px;
+}
+
+.abd-xypad__thumb
+{
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-radius: 50%;
+    background: var(--color-accent, #4aa3ff);
+    border: 2px solid var(--color-bg-base, #0d1117);
+    box-shadow: 0 0 10px var(--color-accent-dim, rgba(74, 163, 255, 0.5));
+    pointer-events: none;
+    transition: left 40ms linear, top 40ms linear;
+}
+
+.abd-xypad__readout
+{
+    position: absolute;
+    right: 6px;
+    bottom: 4px;
+    font-size: 10px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: var(--color-text-dim, #8b98a5);
+    background: var(--color-bg-base, #0d1117);
+    padding: 1px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+}
+/* Corner labels (optional): what lives at each corner of the surface — a
+   morph pad names its four models, same as the native XYPad::paint. Labels
+   are display-only (pointer-events: none): the pad IS the value surface.
+   While any corner is visible the percent readout hides (the wrapper carries
+   `abd-xypad--corners`): the corners say WHAT is where, the crosshair says
+   WHERE, and the value stays readable through aria-valuetext. */
+.abd-xypad--corners .abd-xypad__readout
+{
+    display: none;
+}
+
+.abd-xypad__corner
+{
+    position: absolute;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--color-text-dim, #8b98a5);
+    pointer-events: none;
+}
+
+.abd-xypad__corner[data-corner="tl"] { top: 4px; left: 6px; }
+.abd-xypad__corner[data-corner="tr"] { top: 4px; right: 6px; text-align: right; }
+.abd-xypad__corner[data-corner="bl"] { bottom: 4px; left: 6px; }
+.abd-xypad__corner[data-corner="br"] { bottom: 4px; right: 6px; text-align: right; }
+
+/* Sprite URLs are relative to THIS stylesheet (styles/components/), so they
+   resolve under file:// and under any static server of the package root. */
+.abd-toggle--junio[data-color="orange"] { background-image: url('../../assets/junio/button_orange_off.png'); }
+.abd-toggle--junio[data-color="orange"][aria-pressed="true"] { background-image: url('../../assets/junio/button_orange_on.png'); }
+.abd-toggle--junio[data-color="red"] { background-image: url('../../assets/junio/button_red_off.png'); }
+.abd-toggle--junio[data-color="red"][aria-pressed="true"] { background-image: url('../../assets/junio/button_red_on.png'); }
+.abd-toggle--junio[data-color="blue"] { background-image: url('../../assets/junio/button_blue_off.png'); }
+.abd-toggle--junio[data-color="blue"][aria-pressed="true"] { background-image: url('../../assets/junio/button_blue_on.png'); }
+.abd-toggle--junio[data-color="grey"] { background-image: url('../../assets/junio/button_grey_off.png'); }
+.abd-toggle--junio[data-color="grey"][aria-pressed="true"] { background-image: url('../../assets/junio/button_grey_on.png'); }
+.abd-toggle--junio[data-color="white"] { background-image: url('../../assets/junio/button_white_off.png'); }
+.abd-toggle--junio[data-color="white"][aria-pressed="true"] { background-image: url('../../assets/junio/button_white_on.png'); }
+.abd-toggle--junio[data-color="yellow"] { background-image: url('../../assets/junio/button_yellow_off.png'); }
+.abd-toggle--junio[data-color="yellow"][aria-pressed="true"] { background-image: url('../../assets/junio/button_yellow_on.png'); }
+
+/* ── Slider skin: ms2000 (filmstrip faders from ST_Fader sprites) ──────────── */
+.abd-slider--ms2000 .abd-slider__track {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.abd-slider--ms2000 .abd-slider__fill {
+    display: none;
+}
+
+.abd-slider--ms2000 .abd-slider__track:focus-visible {
+    box-shadow: none;
+}
+
+.abd-slider--ms2000 .abd-slider__thumb {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    transform: translate(-50%, -50%);
+}
+
+.abd-slider--ms2000 .abd-slider--vertical .abd-slider__thumb {
+    transform: translate(-50%, 50%);
+}
+
+/* The thumb carries the filmstrip via inline style (spriteUrl, frames). */
+.abd-slider--ms2000 .abd-slider__thumb[data-frames] {
+    background-size: 100% auto;
+    background-position: 0 0;
+}
+
+/* ── FilmstripFader (viewport + scrolling filmstrip) ───────────────────────── */
+.abd-filmstrip-fader {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-filmstrip-fader__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.abd-filmstrip-fader__viewport {
+    position: relative;
+    width: var(--abd-fader-vw, 36px);
+    height: var(--abd-fader-vh, 80px);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    cursor: grab;
+    touch-action: none;
+    outline: none;
+    overflow: hidden;
+}
+
+.abd-filmstrip-fader__viewport:focus-visible {
+    box-shadow: 0 0 0 1px var(--color-accent, #00c3ff);
+}
+
+.abd-filmstrip-fader__viewport:active {
+    cursor: grabbing;
+}
+
+.abd-filmstrip-fader--horizontal .abd-filmstrip-fader__viewport {
+    width: var(--abd-fader-vw, 140px);
+    height: var(--abd-fader-vh, 32px);
+}
+
+.abd-filmstrip-fader__sprite {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-position: center 0%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+
+.abd-filmstrip-fader__value {
+    min-width: 4ch;
+    font-size: var(--text-xs, 8px);
+    color: var(--color-text-dim, #4a637a);
+}
+
+
+/* --- theme switcher (infraestructura de pagina, no un control) ------------ */
+
+.abd-theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 4px);
+}
+
+.abd-theme-switcher__btn {
+  appearance: none;
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  background: transparent;
+  color: var(--color-text-dim, #4a637a);
+  font: inherit;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: var(--radius-md, 4px);
+  cursor: pointer;
+  transition: var(--transition-fast, 0.15s ease);
+}
+
+.abd-theme-switcher__btn:hover {
+  color: var(--color-text-main, #f0f7ff);
+  border-color: var(--color-panel-border-strong, rgb(0 195 255 / 45%));
+}
+
+.abd-theme-switcher__btn.is-active {
+  color: var(--color-accent, #00c3ff);
+  border-color: var(--color-accent, #00c3ff);
+  background: var(--color-accent-dim, rgb(0 195 255 / 15%));
+}
+.abd-theme-switcher--select {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-2xs, 7px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-dim, #4a637a);
+  background: var(--color-panel, transparent);
+  border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+  border-radius: var(--radius-md, 4px);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: var(--transition-fast, 0.15s ease);
+}
+
+.abd-theme-switcher--select:hover {
+  color: var(--color-text-main, #f0f7ff);
+  border-color: var(--color-panel-border-strong, rgb(0 195 255 / 45%));
+}
+
+.abd-theme-switcher--select:focus-visible {
+  outline: 1px solid var(--color-accent, #00c3ff);
+  outline-offset: 1px;
+}
+
+.abd-theme-switcher--select option {
+  background: var(--color-panel, #0a0e14);
+  color: var(--color-text-main, #f0f7ff);
+}
+/* ── Segmented ───────────────────────────────────────────────────────────── */
+
+/* The Select compact sibling: every option is its own button in one flat
+   row. A radiogroup is the semantics (roving tabindex, arrows); the look is
+   flat segments sharing one border with the active one filled by the accent.
+   Segments share the row (flex: 1 1 0), so N options fill the caller cell —
+   long labels truncate and keep their full text in the title. */
+
+.abd-segmented {
+    width: 100%;
+    max-width: 100%;
+}
+
+.abd-segmented--labelled {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-segmented__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: center;
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+.abd-segmented__group {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+}
+
+.abd-segmented__segment {
+    flex: 1 0 0px;
+    min-width: max-content;
+    padding: 5px 8px;
+    font: inherit;
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    background: var(--color-panel-surface, #141d2b);
+    border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+    margin-left: -1px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    text-align: center;
+    transition: var(--transition-fast, 0.15s ease);
+}
+
+.abd-segmented__segment:first-child {
+    margin-left: 0;
+    border-top-left-radius: var(--radius-sm, 3px);
+    border-bottom-left-radius: var(--radius-sm, 3px);
+}
+
+.abd-segmented__segment:last-child {
+    border-top-right-radius: var(--radius-sm, 3px);
+    border-bottom-right-radius: var(--radius-sm, 3px);
+}
+
+.abd-segmented__segment:hover:not([aria-disabled="true"]) {
+    color: var(--color-text-main, #f0f7ff);
+}
+
+.abd-segmented__segment.is-active {
+    color: var(--color-panel, #0a0e14);
+    background: var(--color-accent, #00c3ff);
+    border-color: var(--color-accent, #00c3ff);
+}
+
+/* Vetado: el mueble apagado cubre los dos selectores. El estado real es
+ * aria-disabled (un `disabled` nativo sacaria al radio del foco y con el su
+ * anuncio); el nativo se mantiene por si un consumidor aun lo pinta asi. */
+.abd-segmented__segment:disabled,
+.abd-segmented__segment[aria-disabled="true"] {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* Motivos del veto: ocultos a la vista, vivos en el arbol de accesibilidad.
+ * Viven FUERA de los botones (un nodo oculto dentro del boton entraria en su
+ * nombre accesible) y llegan al lector por aria-describedby. */
+.abd-segmented__notes {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.abd-segmented__segment:focus-visible {
+    outline: 1px solid var(--color-accent, #00c3ff);
+    outline-offset: 1px;
+    z-index: 1;
+}
+/* ---------------------------------------------------------------------------
+ * Segmented con glifos — las dos variantes de mueble de la familia.
+ * El SVG sigue currentColor (como todo el mueble): el segmento activo invierte
+ * la marca gratis porque la capa activa pinta con el accent.
+ * ------------------------------------------------------------------------- */
+
+/* Marca y texto como piezas apilables; el segmento con glifo es de DOS LINEAS
+ * (marca sobre el texto) en ambas variantes — el strip clasico sin glifo no
+ * cambia. La marca mide 24x16 (la caja completa del glifo canonico). */
+.abd-segmented__segment--glyphed {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 5px 2px 4px;
+}
+
+.abd-segmented__glyph {
+    display: inline-flex;
+    line-height: 0;
+}
+
+.abd-segmented__glyph svg {
+    width: 24px;
+    height: 16px;
+    display: block;
+}
+
+.abd-segmented__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Variante B: fila de botones LED --------------------------------------
+ * Pad oscuro con la marca dormida; el activo se enciende con el accent y su
+ * halo (--color-led-glow esta pensado para el rojo de rec, pero el mueble
+ * pide el accent del tema con el mismo patron de resplandor). Sin activo no
+ * hay capa de fondo que invertir: la marca vive siempre sobre oscuro.
+ * ------------------------------------------------------------------------- */
+.abd-segmented--led .abd-segmented__group {
+    gap: 3px;
+}
+
+.abd-segmented--led .abd-segmented__segment {
+    border: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+    border-radius: var(--radius-sm, 3px);
+    background: var(--color-panel-surface, #151f2e);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 45%);
+    margin-left: 0;
+    padding: 6px 2px 4px;
+}
+
+.abd-segmented--led .abd-segmented__segment--glyphed {
+    flex-direction: column;
+    gap: 2px;
+}
+
+.abd-segmented--led .abd-segmented__segment:hover:not([aria-disabled="true"]) {
+    border-color: var(--color-panel-border, rgb(0 195 255 / 20%));
+    background: var(--color-panel-surface-elevated, #1c2a3d);
+}
+
+.abd-segmented--led .abd-segmented__segment.is-active {
+    background: var(--color-panel-surface-elevated, #1c2a3d);
+    color: var(--color-accent, #00c3ff);
+    border-color: var(--color-accent, #00c3ff);
+    box-shadow:
+        inset 0 1px 2px rgb(0 0 0 / 45%),
+        0 0 8px var(--color-accent-dim, rgb(0 195 255 / 15%));
+}
+
+/* ---------------------------------------------------------------------------
+ * NumberBox — caja numerica con −/+ y edicion directa (BPM, canales, octavas).
+ * Portado del mueble de ABDEep (OCT −/+ + .modal-input) al contrato de familia.
+ * ------------------------------------------------------------------------- */
+.abd-numberbox {
+    max-width: 100%;
+}
+
+.abd-numberbox--labelled {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 2px);
+    user-select: none;
+}
+
+.abd-numberbox__label {
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.abd-numberbox__box {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+}
+
+.abd-numberbox__btn {
+    flex: 0 0 auto;
+    width: 22px;
+    padding: 4px 0;
+    font: inherit;
+    font-size: var(--text-base, 11px);
+    line-height: 1;
+    color: var(--color-text-muted, #7e9bb5);
+    background: var(--color-panel-surface, #141d2b);
+    border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+    cursor: pointer;
+    transition: var(--transition-fast, 0.15s ease);
+}
+
+.abd-numberbox__btn:hover {
+    color: var(--color-text-main, #f0f7ff);
+    background: var(--color-panel-surface-elevated, #1c2a3d);
+}
+
+.abd-numberbox__btn--decrement {
+    border-radius: var(--radius-sm, 3px) 0 0 var(--radius-sm, 3px);
+}
+
+.abd-numberbox__btn--increment {
+    border-radius: 0 var(--radius-sm, 3px) var(--radius-sm, 3px) 0;
+}
+
+.abd-numberbox__btn.is-at-edge {
+    opacity: 0.45;
+}
+
+.abd-numberbox__field {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    font: inherit;
+    font-size: var(--text-base, 11px);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-main, #f0f7ff);
+    background: var(--color-bg-base, #0a0e14);
+    border: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+    border-left: none;
+    border-right: none;
+    padding: 4px 2px;
+    outline: none;
+}
+
+.abd-numberbox__field:focus {
+    border-color: var(--color-accent, #00c3ff);
+}
+
+.abd-numberbox__unit {
+    flex: 0 0 auto;
+    align-self: center;
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    padding-right: 4px;
+    background: var(--color-bg-base, #0a0e14);
+    border-top: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+    border-bottom: 1px solid var(--color-panel-border-dim, rgb(0 195 255 / 10%));
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+}
+
+.abd-numberbox__field:disabled,
+.abd-numberbox__btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.abd-numberbox[data-disabled='true'] .abd-numberbox__field {
+    color: var(--color-text-muted, #7e9bb5);
+}
+/* ============================================================
+   Drawer compartido (createDrawer) — panel lateral deslizante.
+   Posicion/clase son base; cada synthe afina look local (ancho,
+   tipografia) sobre las mismas clases .drawer*.
+   ============================================================ */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgb(4 8 14 / 55%);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out;
+    z-index: 20;
+}
+
+.drawer-backdrop--visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: min(640px, 92vw);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    box-sizing: border-box;
+    background: var(--color-panel-bg, #0f1620);
+    border-left: 1px solid var(--color-panel-border-strong, rgb(0 195 255 / 45%));
+    box-shadow: -12px 0 32px rgb(0 0 0 / 55%);
+    transform: translateX(100%);
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 30;
+}
+
+.drawer--open {
+    transform: translateX(0);
+}
+
+.drawer__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+}
+
+.drawer__badge {
+    padding: 2px 6px;
+    font-size: var(--text-2xs, 7px);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-panel-bg, #0f1620);
+    background: var(--color-accent, #00c3ff);
+    border-radius: 3px;
+}
+
+.drawer__title {
+    margin: 0;
+    font-size: var(--text-md, 10px);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-main, #f0f7ff);
+}
+
+.drawer__close {
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    font: inherit;
+    font-size: var(--text-sm, 9px);
+    color: var(--color-text-muted, #7e9bb5);
+    background: transparent;
+    border: 1px solid var(--color-panel-border, rgb(0 195 255 / 20%));
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.drawer__close:hover {
+    color: var(--color-panel-bg, #0f1620);
+    background: var(--color-accent, #00c3ff);
+}
+
+.drawer__body {
+    display: grid;
+    gap: 8px;
+    align-content: start;
+    padding: 12px;
+    overflow-y: auto;
+}
+
+
+/* =========================================================================
+   SevenSegmentDisplay
+   ========================================================================= */
+@font-face {
+    font-family: 'SevenSegment';
+    src: url('../../assets/junio/SevenSegment.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+.abd-seven-seg {
+    display: inline-flex;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'SevenSegment', monospace;
+}
+
+.abd-seven-seg__digit {
+    min-width: 0.6em;
+    text-align: center;
+}
+
+/* =========================================================================
+   SilverFilmstripKnob (RE-201 style)
+   ========================================================================= */
+.abd-silver-filmstrip-knob {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+}
+
+.abd-silver-filmstrip-knob__label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-text-muted, #7e9bb5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.abd-silver-filmstrip-knob__dial {
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    outline: none;
+    overflow: hidden;
+    border-radius: 50%;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.abd-silver-filmstrip-knob__dial:active { cursor: grabbing; }
+
+.abd-silver-filmstrip-knob__filmstrip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-repeat: no-repeat;
+    background-position: center 0%;
+    pointer-events: none;
+    transition: background-position 0ms;
+}
+
+/* =========================================================================
+   EffectLEDButton (Junio .sq buttons)
+   ========================================================================= */
+.abd-effect-led-btn {
+    width: 44px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.05s, filter 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: center;
+}
+
+.abd-effect-led-btn:active {
+    transform: translateY(1px);
+    filter: brightness(0.85);
+}
+
+.abd-effect-led-btn--tiny {
+    width: 28px;
+    height: 20px;
+}
+
+.abd-effect-led-btn[data-active="true"] {
+    /* background-image set via JS for on/off sprites */
+}
+
+/* =========================================================================
+   PeakLED (RE-201 style)
+   ========================================================================= */
+.abd-peak-led {
+    width: 32px;
+    height: 17px;
+    opacity: 0;
+    transition: opacity 0.05s;
+}
+
+.abd-peak-led--sprite {
+    display: block;
+}
+
+.abd-peak-led--css {
+    background: var(--color-led-active, #ff3344);
+    border-radius: 2px;
+    box-shadow: 0 0 6px var(--color-led-glow, rgba(255, 51, 68, 0.6));
+}
+
+/* =========================================================================
+   TapeEchoVisual (RE-201 tape echo SVG)
+   ========================================================================= */
+.abd-tape-echo-visual {
+    position: relative;
+    overflow: visible;
+}
+
+.abd-tape-echo-visual svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.abd-tape-echo-visual .svg-sync-hidden { display: none; }
+.abd-tape-echo-visual .svg-sync-visible { display: block; }
+.abd-tape-echo-visual .svg-bpm-hidden { display: none; }
+.abd-tape-echo-visual .svg-bpm-visible { display: block; }
+
+.abd-tape-echo-visual #peak-led { opacity: 0; transition: opacity 0.05s; }
+
+
+
+
+/* ─────────────────────────────────────────────────────────
+   ABD TrajectoryStick2D — Universal Circular Vector Stick
+   ───────────────────────────────────────────────────────── */
+.abd-trajectory-stick, .trajectory-stick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  background: var(--color-panel-surface, #1e222b);
+  border: 1px solid var(--color-border-subtle, #333a47);
+  border-radius: var(--radius-md, 8px);
+  padding: var(--space-2, 8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.abd-trajectory-stick.borderless, .trajectory-stick-card.borderless {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.abd-trajectory-stick .stick-card-header, .trajectory-stick-card .stick-card-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.abd-trajectory-stick .stick-label, .trajectory-stick-card .stick-label {
+  font-size: var(--text-xs, 10px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-accent, #38bdf8);
+  text-transform: uppercase;
+}
+
+.abd-trajectory-stick .stick-layer-selector, .trajectory-stick-card .stick-layer-selector {
+  display: flex;
+  gap: 3px;
+  background: var(--color-panel-bg, #0b0f15);
+  padding: 2px;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.06));
+}
+
+.abd-trajectory-stick .btn-layer, .trajectory-stick-card .btn-layer {
+  min-width: 26px;
+  padding: 0 4px;
+}
+
+.abd-trajectory-stick .stick-outer-ring, .trajectory-stick-card .stick-outer-ring {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: var(--space-1, 4px) 0;
+}
+
+.abd-trajectory-stick .stick-pole, .trajectory-stick-card .stick-pole {
+  position: absolute;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--color-stick-pole-text, var(--color-text-muted, #94a3b8));
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.abd-trajectory-stick .pole-n, .trajectory-stick-card .pole-n { top: 2px; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+.abd-trajectory-stick .pole-s, .trajectory-stick-card .pole-s { bottom: 2px; left: 50%; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+.abd-trajectory-stick .pole-w, .trajectory-stick-card .pole-w { left: 4px; top: 50%; transform: translateY(-50%); text-align: right; white-space: nowrap; }
+.abd-trajectory-stick .pole-e, .trajectory-stick-card .pole-e { right: 4px; top: 50%; transform: translateY(-50%); text-align: left; white-space: nowrap; }
+
+.abd-trajectory-stick .stick-pad-circle, .trajectory-stick-card .stick-pad-circle {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--color-stick-pad-gradient, radial-gradient(circle at 50% 50%, #151921 0%, #0d1017 100%));
+  border: 1.5px solid var(--color-stick-pad-border, var(--color-border-subtle, #333a47));
+  box-shadow: var(--color-stick-pad-shadow, inset 0 2px 8px rgba(0, 0, 0, 0.7));
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.abd-trajectory-stick .stick-crosshair-h, .trajectory-stick-card .stick-crosshair-h {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: var(--color-stick-crosshair, rgba(255, 255, 255, 0.08));
+  pointer-events: none;
+}
+
+.abd-trajectory-stick .stick-crosshair-v, .trajectory-stick-card .stick-crosshair-v {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--color-stick-crosshair, rgba(255, 255, 255, 0.08));
+  pointer-events: none;
+}
+
+.abd-trajectory-stick .stick-target-ring, .trajectory-stick-card .stick-target-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50px;
+  height: 50px;
+  border: 1px dashed var(--color-stick-ring, rgba(255, 255, 255, 0.08));
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.abd-trajectory-stick .stick-puck, .trajectory-stick-card .stick-puck {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent, #38bdf8);
+  box-shadow: 0 0 10px var(--color-accent, #38bdf8), 0 0 2px #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  left: 50%;
+  top: 50%;
+  transition: transform 0.05s ease;
+}
+
+.abd-trajectory-stick .stick-card-footer, .trajectory-stick-card .stick-card-footer {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.abd-trajectory-stick .stick-readout, .trajectory-stick-card .stick-readout {
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 6px;
+}
+
+/* ── LED Ladder ───────────────────────────────────────────────────────────── */
+
+.abd-led-ladder {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1, 2px);
+  user-select: none;
+  padding: 3px 2px;
+  background: var(--color-bg-base, #080c14);
+  border: 1px solid var(--color-panel-border-dim, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-sm, 2px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.abd-led-ladder__arrow {
+  font-size: 7px;
+  line-height: 1;
+  color: var(--color-text-dim, #666e7a);
+  opacity: 0.4;
+  transition: color 0.1s ease, opacity 0.1s ease, text-shadow 0.1s ease;
+}
+
+.abd-led-ladder__arrow--active {
+  color: var(--color-accent, #00c3ff);
+  opacity: 1;
+  text-shadow: 0 0 5px var(--color-accent, #00c3ff);
+}
+
+.abd-led-ladder__track {
+  display: flex;
+  flex-direction: column-reverse; /* Bottom segment = index 0 */
+  gap: 2px;
+  width: var(--abd-led-width, 16px);
+}
+
+.abd-led-ladder__segment {
+  width: 100%;
+  height: var(--abd-led-height, 4px);
+  border-radius: 1px;
+  background: var(--color-panel-surface, #151d28);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  opacity: 0.35;
+  transition: opacity 0.04s ease-out, background 0.04s ease-out, box-shadow 0.04s ease-out;
+}
+
+.abd-led-ladder__segment--lit {
+  opacity: 1;
+  background: var(--color-accent, #00c3ff);
+  box-shadow: 0 0 6px var(--color-accent, #00c3ff);
+}
+
+/* ── Rotary LED Knob ──────────────────────────────────────────────────────── */
+
+.abd-rotary-led {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1, 4px);
+  user-select: none;
+  touch-action: none;
+
+  /* Theme tokens fallback */
+  --color-rotary-bezel: var(--color-bg-base, #0a0e14);
+  --color-rotary-bezel-stroke: var(--color-panel-border-dim, rgba(255, 255, 255, 0.08));
+  --color-rotary-cap-fill: var(--color-panel-surface-elevated, #1c2a3d);
+  --color-rotary-cap-stroke: var(--color-panel-border, rgba(0, 195, 255, 0.25));
+  --color-rotary-pointer: var(--color-accent, #00c3ff);
+  --color-rotary-led-lit: var(--color-accent, #00c3ff);
+  --color-rotary-led-lit-stroke: var(--color-accent, #38bdf8);
+  --color-rotary-led-unlit: var(--color-panel-border-dim, rgba(255, 255, 255, 0.08));
+  --color-rotary-led-unlit-stroke: var(--color-panel-border, rgba(255, 255, 255, 0.12));
+}
+
+/* Light theme overrides */
+[data-theme="audiolab-light"] .abd-rotary-led,
+[data-theme="light"] .abd-rotary-led,
+body.theme-light .abd-rotary-led,
+body.skin-audiolab-light .abd-rotary-led {
+  --color-rotary-bezel: #f1f5f9;
+  --color-rotary-bezel-stroke: rgba(15, 23, 42, 0.14);
+  --color-rotary-cap-fill: #ffffff;
+  --color-rotary-cap-stroke: rgba(15, 23, 42, 0.22);
+  --color-rotary-pointer: var(--color-accent, #007a4d);
+  --color-rotary-led-lit: var(--color-accent, #007a4d);
+  --color-rotary-led-lit-stroke: var(--color-accent-hover, #00633e);
+  --color-rotary-led-unlit: rgba(15, 23, 42, 0.10);
+  --color-rotary-led-unlit-stroke: rgba(15, 23, 42, 0.16);
+}
+
+.abd-rotary-led__dial {
+  position: relative;
+  cursor: grab;
+  outline: none;
+  border-radius: 50%;
+  display: block;
+}
+
+.abd-rotary-led__dial:active {
+  cursor: grabbing;
+}
+
+.abd-rotary-led__dial:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-accent, #00c3ff);
+}
+
+.abd-rotary-led__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.abd-rotary-led__bezel {
+  fill: var(--color-rotary-bezel);
+  stroke: var(--color-rotary-bezel-stroke);
+  stroke-width: 1px;
+}
+
+.abd-rotary-led__cap {
+  transition: transform 0.04s ease-out;
+}
+
+.abd-rotary-led__cap-body {
+  fill: var(--color-rotary-cap-fill);
+  stroke: var(--color-rotary-cap-stroke);
+  stroke-width: 1.5px;
+}
+
+.abd-rotary-led__cap-inset {
+  stroke: var(--color-rotary-bezel-stroke);
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+
+.abd-rotary-led__pointer-line {
+  stroke: var(--color-rotary-pointer);
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+
+.abd-rotary-led__pointer-dot {
+  fill: var(--color-rotary-pointer);
+}
+
+.abd-rotary-led .led-dot {
+  fill: var(--color-rotary-led-unlit);
+  stroke: var(--color-rotary-led-unlit-stroke);
+  stroke-width: 0.5px;
+  transition: fill 0.05s ease, filter 0.05s ease;
+}
+
+.abd-rotary-led .led-dot.is-active {
+  fill: var(--color-rotary-led-lit);
+  stroke: var(--color-rotary-led-lit-stroke);
+  filter: drop-shadow(0 0 3px var(--color-rotary-led-lit));
+}
+
+.abd-rotary-led__label {
+  font-size: var(--text-2xs, 8.5px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-text-dim, #64748b);
+  text-transform: uppercase;
+}
+
+.abd-rotary-led__value {
+  font-size: var(--text-xs, 10px);
+  font-weight: 700;
+  color: var(--color-accent, #00c3ff);
+}
+
+

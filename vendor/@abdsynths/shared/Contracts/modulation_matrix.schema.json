@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdaudiolab.com/schemas/modulation_matrix.schema.json",
+  "title": "ModulationMatrixContract",
+  "description": "Esquema de la tabla de modulación de un synth: qué fuentes y qué destinos existen, en qué orden, y qué política aplica a cada destino. El orden de los arrays ES el contrato (el índice es lo que guarda el preset), así que solo se APPENDA al final.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "slots",
+    "sources",
+    "destinations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "description": "Identificador del synth que declara la tabla (p. ej. 'abdeep', 'abdm s2000', 'neuronik').",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string"
+    },
+    "authority": {
+      "type": "string",
+      "enum": [
+        "hardware",
+        "design"
+      ],
+      "description": "De dónde sale la tabla. 'hardware': los índices son índices de BYTE de un dispositivo emulado y su orden es el del manual — no se puede reordenar sin romper la compatibilidad de patches. 'design': el synth es propio y su tabla es el formato de preset; también se appendea, porque los presets guardados guardan el índice."
+    },
+    "replacesNote": {
+      "type": "string",
+      "description": "Explica, en el propio contrato, la decisión de qué destinos `replaces` y cuáles no, cuando esa decisión no se deduce de la tabla. Es OPCIONAL a proposito: un contrato donde `replaces` es uniforme no tiene nada que explicar. Pero en cuanto hay destinos `perNote` que suman encima de un factor con neutro, la tabla sola dice «esto es distinto de aquello» sin decir POR QUE, y esa es la clase de decisión que se vuelve a discutir cada seis meses con el mismo resultado. ESTA era justo esa nota, y estaba en el contrato de NEURONiK desde el 2026-09-29 sin que el esquema la declarara, de modo que `additionalProperties: false` la rechazaba. Un campo que el esquema no conoce no es un campo: es un comentario que se pierde en la primera pasada de formato."
+    },
+    "byteRange": {
+      "type": "object",
+      "description": "Rango del byte que la trama reserva a la matriz, si esta tabla corresponde a un byte real (authority: 'hardware').",
+      "required": [
+        "firstByte",
+        "sourceMax",
+        "destinationMax"
+      ],
+      "properties": {
+        "firstByte": { "type": "integer", "minimum": 0 },
+        "bytesPerSlot": { "type": "integer", "minimum": 1, "default": 3 },
+        "sourceMax": { "type": "integer", "minimum": 0 },
+        "destinationMax": { "type": "integer", "minimum": 0 },
+        "depthIsBipolar": {
+          "type": "boolean",
+          "description": "true si la cantidad es bipolar con centro en el mitad del rango (el DeepMind 12: byte 128 = centro, 0..255). false si es unipolar."
+        },
+        "measuredSourceMax": {
+          "type": "integer",
+          "description": "Máximo de fuente que EJERCITA el hardware real en los bancos de fábrica. Puede ser menor que el máximo declarado: el manual va por delante de lo que el equipo alcanza."
+        },
+        "measuredDestinationMax": {
+          "type": "integer",
+          "description": "Máximo de destino que ejerce el hardware real en los bancos de fábrica."
+        }
+      },
+      "additionalProperties": false
+    },
+    "slots": {
+      "type": "integer",
+      "description": "Cuántos buses de modulación tiene la matriz (DeepMind clásico: 8).",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "sources": {
+      "type": "array",
+      "description": "Tabla de fuentes EN ORDEN DE ÍNDICE. El índice 0 es siempre la fuente inerte ('None'/'Off') y no modula. APPEND-ONLY.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "description": "Familia para el color y para el grouping de la UI. Libre, pero estable: la UI lo pinta.",
+            "enum": [
+              "none",
+              "lfo",
+              "envelope",
+              "performance",
+              "pedal",
+              "voice",
+              "other"
+            ]
+          },
+          "perNote": {
+            "type": "boolean",
+            "description": "true si la fuente se resuelve POR VOZ (una envolvente no es global). Determina si el motor puede leerla en la rejilla de control o tiene que bajarla a la voz.",
+            "default": false
+          },
+          "implemented": {
+            "type": "boolean",
+            "description": "false si la fuente existe en la tabla pero el motor todavía no la entrega (p. ej. el pitch bend que hoy vale 0). La UI la marca como no disponible en vez de fingir que funciona.",
+            "default": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Tabla de destinos EN ORDEN DE ÍNDICE. El índice 0 es siempre el destino inerte ('Off') y no conduce nada. APPEND-ONLY: los presets guardados guardan el índice, así que insertar en medio re-mapea los presets existentes.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parameterId": {
+            "type": ["string", "null"],
+            "description": "Parámetro del APVTS al que conduce. null = no conduce nada (un destino que solo afecta a la modulación, o el 'Off'). Es lo que permite a la UI no reescribir la tabla a mano para pintar el anillo de modulación."
+          },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "scale": {
+            "type": "number",
+            "description": "Unidades del destino por 1.0 de cantidad. 18000 para un cutoff en Hz significa que amount 1.0 sube 18000 Hz."
+          },
+          "perNote": {
+            "type": "boolean",
+            "description": "true si el destino se aplica POR VOZ. False = global, se resuelve una vez en la rejilla de control.",
+            "default": false
+          },
+          "replaces": {
+            "type": "boolean",
+            "description": "Síntesis de reemplazo: cuando la fuente es una envolvente, la ruta REEMPLAZA el factor del destino en vez de sumar encima. Es la política que ABDNeural tenía escondida en un switch y que no puede perderse al migrarlo a la tabla.",
+            "default": false
+          },
+          "engineMask": {
+            "type": "string",
+            "description": "Máscara hexadecimal de los motores del synth que pueden consumir este destino. Vacía = todos. Es lo que usa el gating del desplegable: una opción que el motor activo no puede hacer aparece deshabilitada CON su motivo, en vez de aceptarse y no sonar."
+          },
+          "implemented": {
+            "type": "boolean",
+            "description": "false si el destino existe en la tabla pero el motor todavía no lo aplica.",
+            "default": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "De dónde sale cada fila, para que una etiqueta inventada se distinga de una medida.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Referencia de la evidencia: el manual, el registro de bytes, los bancos de fábrica medidos, o la decisión de diseño."
+        },
+        "measuredFrom": {
+          "type": "string",
+          "description": "Ruta de los datos con los que se midió (p. ej. los dumps de banco del hardware)."
+        },
+        "sourceFiles": {
+          "type": "array",
+          "description": "Las mismas evidencias que dice `source`, pero como rutas completas del monorepo, con el repositorio delante. `source` está para el que lee y explica con palabras; este está para el que COMPRUEBA, y sin él la referencia es un documento y no un dato: `Source/DSP/Modulation/VirtualPatchMatrix.h` no significa nada hasta que se sabe que vive en ABDMS2000 y no en ABDNeural. El preflight comprueba que cada ruta exista, así que el día que el manual se mueva el contrato se pone rojo en vez de seguir mintiendo.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verifiedAt": {
+          "type": "string",
+          "description": "Fecha de la última comprobación contra la evidencia."
+        }
+      },
+      "additionalProperties": false
+    },
+    "generatedBy": {
+      "type": "string",
+      "description": "EL SCRIPT QUE ESCRIBE ESTE FICHERO, si lo hay. Es distinto de `provenance.source`, que es la tabla de la que se lee: `provenance.source` dice de dónde sale cada fila y `generatedBy` dice quién la copia a disco. Sin este campo un contrato generado es indistinguible de uno escrito a mano, y eso tiene una consecuencia concreta: el guard de `.gitattributes` solo sabe proteger un artefacto generado si lo puede RECONOCER, y el nombre (`*_modulation_matrix.json`) no lo dice. Va con dos espacios de sangría porque es la señal que el guard lee del blob, y una clave de segundo nivel —como la que este mismo esquema declara— no cuenta. OPCIONAL a propósito: un contrato escrito a mano no tiene generador, y obligar a declararlo sería obligar a mentir."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,25 @@
+/* Korg microKORG -- Amber Heritage Theme */
+[data-theme="microkorg"], body.skin-microkorg {
+  --color-bg-base:             #14110e;
+  --color-panel-bg:            #1f1b16;
+  --color-panel-surface:       #2b251f;
+  --color-panel-surface-elevated: #383028;
+  --color-panel-border:        rgba(212, 175, 55, 0.28);
+  --color-panel-border-strong: rgba(212, 175, 55, 0.5);
+  --color-panel-border-dim:    rgba(212, 175, 55, 0.12);
+  --color-accent:        #d4af37;
+  --color-accent-rgb:    212, 175, 55;
+  --color-accent-hover:  #e5c158;
+  --color-accent-active: #b38f2e;
+  --color-accent-dim:    rgba(212, 175, 55, 0.15);
+  --color-text-main:  #fcf8ee;
+  --color-text-muted: #a69888;
+  --color-text-dim:   #6d6350;
+  --color-lcd-bg:     #180808;
+  --color-lcd-text:   #ff2222;
+  --color-lcd-border: rgba(255, 34, 34, 0.3);
+  --color-scrollbar-thumb:        #3d342a;
+  --color-scrollbar-thumb-hover:  #504638;
+  --color-scrollbar-thumb-active: #665848;
+  --color-scrollbar-track:        #100d0a;
+}

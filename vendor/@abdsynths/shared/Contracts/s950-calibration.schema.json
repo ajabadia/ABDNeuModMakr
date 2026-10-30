@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdaudiolab.com/schemas/s950-calibration.schema.json",
+  "title": "S950CalibrationContract",
+  "description": "Esquema de las seis curvas que relacionan un valor de panel del Akai S950 con su unidad real (s, Hz, octavas, dB): la unidad, si la escala es logaritmica, que rango de panel cubre, y si sube con el byte. El GENERADO sale de ABDSharedCode/SynthCore/S950Calibration.h, que es la fuente autoritativa. El contrato declara la FORMA de los ejes y NO tiene ni un punto medido, y eso va declarado: `measured` es false, `points` va vacio y `measuredRange` es null, porque un panel tiene que poder enseñar que no lo sabe. Se escribe en un subconjunto DELIBERADAMENTE plano (type, required, properties, enum, pattern, minimum/maximum, minLength/maxLength, items, uniqueItems, additionalProperties) porque es el unico que entiende el validador de tests/helpers/validateSchema.js, sin dependencia nueva. `type` en UNION —[\"object\",\"null\"] en measuredRange— si se ejecuta: el validador lo soporta y hay un test que lo comprueba. Si algun dia hace falta mas, se anade el soporte al validador ANTES que la palabra al esquema: un esquema con cosas que nadie ejecuta es peor que no tener esquema, porque parece que avisa.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "id",
+    "title",
+    "description",
+    "generatedFrom",
+    "sourceOfTruth",
+    "notes",
+    "curves"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "enum": [
+        "./s950-calibration.schema.json"
+      ],
+      "description": "Ruta RELATIVA al propio esquema. Va con enum de un solo valor y no como decoracion: es lo unico que puede decir 'este contrato se valida contra esto', y un `$schema` que apunte a otro sitio se equivoca en silencio."
+    },
+    "id": {
+      "type": "string",
+      "enum": [
+        "s950-calibration"
+      ],
+      "description": "Identificador del contrato. Con enum de un solo valor a proposito: hay una sola calibracion y este es su fichero."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string",
+      "minLength": 2
+    },
+    "generatedFrom": {
+      "type": "string",
+      "enum": [
+        "ABDSharedCode/SynthCore/S950Calibration.h"
+      ],
+      "description": "Ruta, desde la raiz del monorepo, del codigo del que sale el contrato. Sin este campo el contrato es una lista escrita a mano, y las copias se separan sin ruido: alguien anade una septima curva al motor, el panel sigue dibujando seis ejes, y un ataque se dibuja con la escala de otro."
+    },
+    "sourceOfTruth": {
+      "type": "string",
+      "enum": [
+        "ABDSharedCode/SynthCore/S950Calibration.h"
+      ],
+      "description": "Quien manda si alguien cambia el contrato a mano. Va aparte de `generatedFrom` porque los dos se desfasan por motivos distintos: `generatedFrom` es de donde salio esta copia, `sourceOfTruth` es a quien se vuelve."
+    },
+    "notes": {
+      "type": "array",
+      "description": "Por que el contrato no tiene ni un numero medido, y por que eso no es un olvido. Viven aqui y no en una wiki porque son justo las que se vuelven a pisar: el cero que no es un cero, y el flag que arrastra a otro.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 2
+      }
+    },
+    "curves": {
+      "type": "array",
+      "description": "Las seis curvas, EN EL ORDEN DEL ENUM de C++. El orden es parte del contrato porque el motor indexa sus puntos medidos con el entero del enum: una tabla reordenada haria que cada curva leyera los puntos de otra sin dar ningun fallo, solo sonando mal.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "unit",
+          "axisLabel",
+          "storedLo",
+          "storedHi",
+          "risesWithStored",
+          "logarithmic",
+          "positiveOnly",
+          "allowExtrapolation",
+          "measured",
+          "pointCount",
+          "points",
+          "measuredRange"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][A-Za-z0-9]*$",
+            "description": "Identificador corto y estable, el mismo que el `code` de C++. Es la clave con la que un panel, un host o un fichero de medicion nombran la curva, asi que forma parte del contrato."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "El nombre de la curva, en ingles como en el panel. No es el nombre de un campo: una sola curva de envolvente sirve para attack, decay y release, y por eso no lleva el nombre de ninguno de los tres."
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "s",
+              "Hz",
+              "octaves",
+              "dB"
+            ],
+            "description": "La unidad del EJE VERTICAL, que es lo que va en la etiqueta. Con enum y no como texto libre porque un panel formatea segun esto, y \"segundos\" en vez de \"s\" haria que la etiqueta quedara a doble ancho en un eje estrecho. Las cuatro unidades son las cuatro que declara la tabla; una quinta obligaria a tocar el enum del esquema Y el formateo del panel a la vez."
+          },
+          "axisLabel": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Que es el EJE HORIZONTAL, en palabras de panel: \"Attack / Decay / Release\". Es la parte que un motor no necesita y un panel si, y por eso no se deduce del `code`: un eje dibujado sin etiqueta es un eje que hay que adivinar."
+          },
+          "storedLo": {
+            "type": "integer",
+            "minimum": -99,
+            "maximum": 0,
+            "description": "Minimo del valor de PANEL que la curva cubre, inclusivo. El eje horizontal va en unidades de panel —0..99, o -50..+50 en el VCF amount— y no en la unidad de la curva, porque el byte es lo que el panel tiene delante."
+          },
+          "storedHi": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99,
+            "description": "Maximo del valor de PANEL, inclusivo. Y no siempre 99: el VCF amount llega a +-50, y por eso un eje dibujado con la escala de otro no cabe ni se queda vacio."
+          },
+          "risesWithStored": {
+            "type": "boolean",
+            "description": "Si mas byte significa MAS valor de la curva. Es false en las tres curvas de tiempo y en la de dB, porque mas byte es mas LENTO o mas FUERTE, no mas numero. Es lo primero que se dibuja equivocado, porque ni el nombre del byte ni el de la unidad lo dicen."
+          },
+          "logarithmic": {
+            "type": "boolean",
+            "description": "Si el eje vertical se escala en logaritmo. Un eje de tiempo dibujado en lineal aplasta todo el detalle en el extremo lento, que es justo donde se decide un ataque."
+          },
+          "positiveOnly": {
+            "type": "boolean",
+            "description": "Si el valor tiene que ser ESTRICTAMENTE POSITIVO. Y NO es lo mismo que `logarithmic`, aunque en la tabla se escriban juntas: los dB tienen eje logaritmico y admiten el 0 —0 dB es el nivel de referencia, no un instante—, y el silencio de un sustain apagado es un valor legitimo que hay que poder dibujar. Un tiempo de cero si es un instante, y una envolvente de duracion cero es un click."
+          },
+          "allowExtrapolation": {
+            "type": "boolean",
+            "description": "Si se puede dibujar MAS ALLA de lo medido. En las seis es false, y el motivo no es prudencia: un extremo que nadie ha medido es el que se rellena con una conjetura, y una conjetura en un ataque no suena a ataque, suena a error. Va en el contrato porque es una regla de DIBUJADO, no solo de lectura."
+          },
+          "measured": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "Si la curva tiene puntos medidos. Con enum de UN solo valor mientras la tabla este vacia, y no como `false` a secas: hoy no se puede poner a true, y el dia que se pueda habra que quitar esta linea, que es un cambio visible en el diff del esquema. Es preferible a que el contrato admita `true` sin que nadie sepa quien lo pone."
+          },
+          "pointCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 0,
+            "description": "Cuantos puntos medidos tiene. Con maximo 0 mientras la tabla este vacia, por lo mismo que `measured`: el generador no puede leerlos (viven en un vector que se llena en runtime) y no debe poder inventarlos."
+          },
+          "points": {
+            "type": "array",
+            "description": "Los puntos medidos, VACIO. Se declara igual, y no se quita, porque un panel que pinte el eje tiene que recorrer esta lista: quitarla seria cambiar el codigo de dibujo, y dejarla vacia no cambia nada. El item se declara entero para que rellenarla no obligue a inventar el formato.",
+            "maxItems": 0,
+            "items": {
+              "type": "object",
+              "description": "Un punto medido. NUNCA hay uno: su forma es la que tendria si los hubiera, y se documenta para que el que mida no tenga que decidir el formato en el momento de escribir sus datos. Requiere `stored` y `value` y no admite nada mas, para que un punto no pueda traer metadatos que solo existen en un lado.",
+              "required": [
+                "stored",
+                "value"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "stored": {
+                  "type": "integer",
+                  "description": "El valor de panel, el mismo dominio que `storedLo`/`storedHi` y que el byte del keygroup."
+                },
+                "value": {
+                  "type": "number",
+                  "description": "Lo medido ahi, en la unidad de la curva."
+                }
+              }
+            }
+          },
+          "measuredRange": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "El subrange de PANEL que tiene puntos medidos, o null si no hay ninguno. Null y no 0..99 a proposito: el rango de PANEL completo se sabe siempre —esta en `storedLo`/`storedHi`—, y confundirlos daria un eje que parece medir de 0 a 99 cuando no mide ni un punto. Un panel dibuja el eje con `storedLo`/`storedHi` y marca la parte sin medir con esto; al reves, no dice nada.",
+            "required": [
+              "lo",
+              "hi"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "lo": {
+                "type": "integer",
+                "description": "Primer valor de panel medido. El primero MEDIDO, que no es el minimo declarado: una sonda puede no haber llegado al extremo rapido."
+              },
+              "hi": {
+                "type": "integer",
+                "description": "Ultimo valor de panel medido, por la misma razon."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

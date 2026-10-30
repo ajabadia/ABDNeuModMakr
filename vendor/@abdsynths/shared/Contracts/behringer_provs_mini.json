@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "2.0",
+  "id": "behringer_provs_mini",
+  "displayName": "Behringer PRO VS Mini",
+  "description": "4-Voice Hybrid Vector Synthesizer (Prophet VS reproduction with 128 vector waveforms and 24dB/oct resonant analog low-pass filter)",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Behringer",
+  "brandLogo": "brands/behringer-logo.svg",
+  "modelImage": "models/behringer-provs-mini.webp",
+  "midiIdentification": {
+    "manufacturer": "Behringer",
+    "manufacturerIdHex": "00 20 32",
+    "model": "PRO VS Mini",
+    "modelIdHex": "34",
+    "sysexHeaderHex": "00 20 32",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["PRO VS", "PRO VS MINI", "Pro VS", "PROVS", "PRO VS Mini"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "cc": 120, "value": 0.0, "settlingDelayMs": 30 },
+      { "description": "Reset All Controllers", "method": "MIDI_CC", "cc": 121, "value": 0.0, "settlingDelayMs": 30 },
+      { "description": "Modulation Wheel Zero", "method": "MIDI_CC", "cc": 1, "value": 0.0, "settlingDelayMs": 30 },
+      { "description": "Chorus Off (Dry Mode)", "method": "MIDI_CC", "cc": 93, "value": 0.0, "settlingDelayMs": 40 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "analog_curtis_filter",
+      "name": "24dB/oct Resonant Analog Low-Pass Filter",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On (C3) o Entrada de Audio Sync",
+        "responseInput": "Line Out -> Entrada Audio 1 (L)",
+        "notes": "Filtro analógico paso-bajo resonante con respuesta característica Curtis."
+      },
+      "controls": [
+        { "index": 1, "name": "Filter Cutoff", "type": "Knob", "controlMethod": "MIDI_CC", "ccNumber": 74, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.65, "unit": "0-127" },
+        { "index": 2, "name": "Resonance", "type": "Knob", "controlMethod": "MIDI_CC", "ccNumber": 71, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.3, "unit": "0-127" },
+        { "index": 3, "name": "Vector Joy X (Waveform Blend A-C)", "type": "Slider", "controlMethod": "MIDI_CC", "ccNumber": 16, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "0-127" },
+        { "index": 4, "name": "Vector Joy Y (Waveform Blend B-D)", "type": "Slider", "controlMethod": "MIDI_CC", "ccNumber": 17, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.5, "unit": "0-127" }
+      ]
+    }
+  ]
+}

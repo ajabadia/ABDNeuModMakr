@@ -1,0 +1,59 @@
+/**
+ * ABD LcdDisplay System (ABDShared)
+ * =================================
+ */
+
+.abd-lcd,
+.lcd-container {
+  background: var(--color-lcd-bg, #00120b);
+  border: 2px solid rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-md, 4px);
+  font-family: var(--font-lcd, 'Share Tech Mono', monospace);
+  color: var(--color-lcd-text, #00ffcc);
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.85);
+  box-sizing: border-box;
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.abd-lcd__line,
+.lcd-line-1,
+.lcd-line-2 {
+  white-space: pre;
+  overflow: hidden;
+  line-height: 1.3;
+  letter-spacing: 0.8px;
+  text-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
+}
+
+.abd-lcd-panel__pad {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.abd-lcd-panel__btn,
+.lcd-nav-btn {
+  background: var(--color-panel-bg, #1a222d);
+  border: 1px solid var(--color-panel-border, rgba(0, 195, 255, 0.2));
+  color: var(--color-text-main, #f0f7ff);
+  font-family: var(--font-lcd, monospace);
+  font-size: var(--text-xs, 9px);
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 2px);
+  cursor: pointer;
+  transition: all var(--transition-fast, 0.15s ease);
+  user-select: none;
+}
+
+.abd-lcd-panel__btn:hover,
+.lcd-nav-btn:hover {
+  border-color: var(--color-accent, #00c3ff);
+  color: var(--color-accent, #00c3ff);
+  box-shadow: 0 0 6px rgba(0, 195, 255, 0.35);
+}
+
+.abd-seven-seg {
+  user-select: none;
+}

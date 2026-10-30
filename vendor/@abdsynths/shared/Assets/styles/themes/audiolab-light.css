@@ -1,0 +1,54 @@
+/* ABDAudioLab -- Clean Light / Precision Lab Theme ("Técnica Refinada") */
+[data-theme="audiolab-light"], [data-theme="light"], body.skin-audiolab-light, body.theme-light, body.theme-audiolab-light {
+  --color-bg-base:                #f8f9fa;
+  --color-panel-bg:               #ffffff;
+  --color-panel-surface:          #f8fafc;
+  --color-panel-surface-elevated: #ffffff;
+  --navbar-bg:                    #ffffff;
+  --navbar-shadow:                0 1px 3px rgba(15, 23, 42, 0.08);
+  --color-panel-border:           rgba(15, 23, 42, 0.12);
+  --color-panel-border-strong:    rgba(15, 23, 42, 0.24);
+  --color-panel-border-dim:       rgba(15, 23, 42, 0.06);
+  --shadow-card:                  0 4px 16px rgba(15, 23, 42, 0.05);
+  --shadow-card-hover:            0 6px 20px rgba(15, 23, 42, 0.09);
+
+  /* Semantic Accents (Sonarworks / Audio Precision - WCAG AA compliant >= 4.5:1 on white) */
+  --color-accent:                 #007a4d;
+  --color-accent-rgb:             0, 122, 77;
+  --color-accent-hover:           #00633e;
+  --color-accent-active:          #005032;
+  --color-accent-dim:             rgba(0, 122, 77, 0.10);
+
+  --color-success:                #007a4d;
+  --color-success-rgb:            0, 122, 77;
+  --color-warning:                #b45309;
+  --color-warning-rgb:            180, 83, 9;
+  --color-danger:                 #c5221f;
+  --color-danger-rgb:             197, 34, 31;
+  --color-info:                   #0284c7;
+  --color-info-rgb:               2, 132, 199;
+
+  /* Typography (WCAG AA compliant: text-main 16.6:1, text-muted & dim 5.9:1) */
+  --color-text-main:              #1a1d20;
+  --color-text-muted:             #475569;
+  --color-text-dim:               #475569;
+
+  /* LCD / Telemetry */
+  --color-lcd-bg:                 #f1f5f9;
+  --color-lcd-text:               #0f172a;
+  --color-lcd-border:             rgba(15, 23, 42, 0.16);
+
+  /* Scrollbars (6px pill) */
+  --color-scrollbar-thumb:        #cbd5e1;
+  --color-scrollbar-thumb-hover:  #94a3b8;
+  --color-scrollbar-thumb-active: #64748b;
+  --color-scrollbar-track:        #f1f5f9;
+  /* Trajectory Stick 2D / Vector Controllers (Adaptive Light) */
+  --color-stick-pad-bg:           #edf2f7;
+  --color-stick-pad-gradient:     radial-gradient(circle at 50% 50%, #f8fafc 0%, #cbd5e1 100%);
+  --color-stick-pad-border:       rgba(15, 23, 42, 0.22);
+  --color-stick-pad-shadow:       inset 0 2px 6px rgba(15, 23, 42, 0.12);
+  --color-stick-crosshair:        rgba(15, 23, 42, 0.20);
+  --color-stick-ring:             rgba(15, 23, 42, 0.18);
+  --color-stick-pole-text:        #334155;
+}

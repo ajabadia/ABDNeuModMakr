@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "2.0",
+  "id": "behringer_jt4000",
+  "displayName": "Behringer JT-4000 Micro",
+  "description": "Portable 4-Voice Hybrid Modeling Synthesizer (2 Virtual Analog Supersaw Oscillators with Resonant Analog Low-Pass Filter)",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "brand": "Behringer",
+  "brandLogo": "brands/behringer-logo.svg",
+  "modelImage": "models/behringer-jt4000.webp",
+  "midiIdentification": {
+    "manufacturer": "Behringer",
+    "manufacturerIdHex": "00 20 32",
+    "model": "JT-4000 Micro",
+    "modelIdHex": "35",
+    "sysexHeaderHex": "00 20 32",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["JT-4000", "JT4000", "JT-4000 Micro", "JT4000 Micro"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "cc": 120, "value": 0.0, "settlingDelayMs": 30 },
+      { "description": "Reset All Controllers", "method": "MIDI_CC", "cc": 121, "value": 0.0, "settlingDelayMs": 30 },
+      { "description": "Modulation Wheel Zero", "method": "MIDI_CC", "cc": 1, "value": 0.0, "settlingDelayMs": 30 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "analog_vcf_filter",
+      "name": "Resonant Analog Low-Pass VCF",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On (C3) USB",
+        "responseInput": "Audio Output Jack 3.5mm -> Entrada Audio 1 (L)",
+        "notes": "Filtro analógico paso-bajo resonante con control continuo."
+      },
+      "controls": [
+        { "index": 1, "name": "Filter Cutoff", "type": "Knob", "controlMethod": "MIDI_CC", "ccNumber": 74, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.65, "unit": "0-127" },
+        { "index": 2, "name": "Resonance", "type": "Knob", "controlMethod": "MIDI_CC", "ccNumber": 71, "minVal": 0.0, "maxVal": 1.0, "defaultVal": 0.3, "unit": "0-127" }
+      ]
+    }
+  ]
+}
