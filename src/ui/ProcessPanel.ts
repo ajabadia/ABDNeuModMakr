@@ -7,6 +7,7 @@
 import type { DspAlgorithmMode, ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
 import { DEFAULT_AI_ASSISTANCE_CONFIG } from '../core/types';
 import { ICONS } from './icons';
+import { escAttr, escHtml } from './escape';
 
 const EXTENDED_MODE_TITLE_ON =
   'Extended Working Mode: N velocity layers, 2D Key x Velocity regions, crossfades, loop markers, keytrack, and ADSR/Filter/LFO articulation. Adapted automatically when exporting to Classic (.model/.sound).';
@@ -185,7 +186,7 @@ export class ProcessPanel {
     }
     if (nameCounter) {
       const len = (inpName?.value ?? this.currentConfig.modelName).length;
-      nameCounter.textContent = `${len} / ${maxLen}`;
+      nameCounter.textContent = `${len}/${maxLen} chars`;
     }
     if (valComp) {
       const recDepth = STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
@@ -346,9 +347,9 @@ export class ProcessPanel {
             <div class="form-group">
               <div class="label-with-val">
                 <label for="inp-model-name" title="Auto-filled from first sample if not edited manually. Hardware MName max 11 ASCII chars; Extended .nmmodel max 32.">MODEL NAME</label>
-                <span class="val-pill" id="val-name-counter">${this.currentConfig.modelName.length} / ${maxLen}</span>
+                <span class="val-pill" id="val-name-counter">${this.currentConfig.modelName.length}/${maxLen} chars</span>
               </div>
-              <input type="text" id="inp-model-name" maxlength="${maxLen}" value="${this.currentConfig.modelName}" placeholder="Auto from sample..." title="Model Name (max ${maxLen} chars)" />
+              <input type="text" id="inp-model-name" maxlength="${maxLen}" value="${escAttr(this.currentConfig.modelName)}" placeholder="Auto from sample..." title="Model Name (max ${maxLen} chars)" />
             </div>
 
             <div class="form-group">
@@ -382,13 +383,13 @@ export class ProcessPanel {
                   isConv
                     ? `<span class="cover-artwork-spinner" aria-label="Converting to WebP"></span>`
                     : cov
-                      ? `<img src="${cov.webpDataUrl}" alt="${this.currentConfig.modelName} cover" class="cover-artwork-img" />
+                      ? `<img src="${escAttr(cov.webpDataUrl)}" alt="${escAttr(this.currentConfig.modelName)} cover" class="cover-artwork-img" />
                          <span class="cover-thumb-hover-hint" aria-hidden="true">${ICONS.expand}</span>`
                       : `<span class="cover-artwork-placeholder">${ICONS.layers}</span>`
                 }
               </div>
               <div class="cover-artwork-meta">
-                <span class="cover-artwork-title">${isConv ? `Converting "${this.convertingCoverFileName || 'image'}" to .webp...` : cov ? `${cov.originalName || 'cover.webp'} → cover.webp` : 'Drop or Pick Cover Image'}</span>
+                <span class="cover-artwork-title">${isConv ? `Converting &quot;${escHtml(this.convertingCoverFileName || 'image')}&quot; to .webp...` : cov ? `${escHtml(cov.originalName || 'cover.webp')} → cover.webp` : 'Drop or Pick Cover Image'}</span>
                 <span class="cover-artwork-sub">${isConv ? 'Center-cropping & encoding 512×512 RIFF WEBP...' : cov ? `Converted 512×512 WebP (${kb} KB) • 05_extended_model/cover.webp` : 'Converts JPG / PNG / SVG / WEBP to 512×512 .webp'}</span>
                 <div class="cover-artwork-actions">
                   ${
@@ -427,7 +428,7 @@ export class ProcessPanel {
                 </div>
                 <div class="modal-body cover-dialog-body">
                   <div class="cover-dialog-preview-wrapper">
-                    <img id="img-cover-dialog-preview" src="${cov.webpDataUrl}" alt="${this.currentConfig.modelName} cover preview" class="cover-dialog-preview-img" />
+                    <img id="img-cover-dialog-preview" src="${escAttr(cov.webpDataUrl)}" alt="${escAttr(this.currentConfig.modelName)} cover preview" class="cover-dialog-preview-img" />
                   </div>
                   <div class="cover-dialog-meta-grid">
                     <div class="cover-meta-item">
@@ -448,7 +449,7 @@ export class ProcessPanel {
                     </div>
                     <div class="cover-meta-item cover-meta-item-full">
                       <span class="cover-meta-label">ORIGINAL SOURCE</span>
-                      <span class="cover-meta-value" title="${cov.originalName || 'cover.webp'}">${cov.originalName || 'cover.webp'}</span>
+                      <span class="cover-meta-value" title="${escAttr(cov.originalName || 'cover.webp')}">${escHtml(cov.originalName || 'cover.webp')}</span>
                     </div>
                   </div>
                 </div>
@@ -495,6 +496,7 @@ export class ProcessPanel {
                     class="btn-complexity ${level === this.currentConfig.complexity ? 'is-active' : ''}"
                     data-complexity="${level}"
                     title="Complexity ${level}: ${modes} stick modes (recursion depth)"
+                    aria-label="Complexity ${level}, ${modes} modes"
                   >
                     <span class="comp-btn-num">${level}</span>
                     <span class="comp-btn-modes">${modes}m</span>
@@ -643,7 +645,7 @@ export class ProcessPanel {
     const maxLen = this.getMaxNameLength();
 
     if (nameCounter) {
-      nameCounter.textContent = `${rawName.length} / ${maxLen}`;
+      nameCounter.textContent = `${rawName.length}/${maxLen} chars`;
     }
 
     const clampedSlot = Math.min(511, Math.max(0, Number.isNaN(rawSlot) ? 0 : rawSlot));

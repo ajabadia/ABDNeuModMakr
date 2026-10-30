@@ -18,6 +18,7 @@ import { classifyBankCategory } from '@abdsynths/shared/components/bank/bankCate
 import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/formats/neuron';
 import type { AxionikDbModelEntry } from '../core/bridge/BridgeClient';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
+import { escAttr } from './escape';
 
 export type BankTab = 'models' | 'presets' | 'library' | 'axionik';
 
@@ -75,8 +76,8 @@ export function getPresetCategoryInfo(category: string): { icon: string; catClas
 const TAB_LABELS: Record<BankTab, string> = {
   models: 'GENERATED MODELS',
   presets: 'SOUND PRESETS',
-  library: 'NEURONDB (CLÁSICO)',
-  axionik: 'AXIONIKDB (AVANZADO)',
+  library: 'NEURONDB (CLASSIC)',
+  axionik: 'AXIONIKDB (ADVANCED)',
 };
 
 export class BankDrawer {
@@ -528,7 +529,7 @@ export class BankDrawer {
                 ? `${usedCount} Sound${usedCount === 1 ? '' : 's'}`
                 : 'Unused';
             const cardIconHtml = m.coverWebpDataUrl
-              ? `<img src="${m.coverWebpDataUrl}" alt="${m.name}" class="ndb-card-cover-img" />`
+              ? `<img src="${escAttr(m.coverWebpDataUrl)}" alt="${escAttr(m.name)}" class="ndb-card-cover-img" />`
               : ICONS[iconKey] || ICONS.database;
             const badges = [
               `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,

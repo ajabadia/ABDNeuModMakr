@@ -93,11 +93,17 @@ function basenameOfPath(p: string): string {
  * Imports an `.sfz` text definition and accompanying `AudioFilePayload[]`
  * into our native session structures.
  */
+export const MAX_SFZ_TEXT_BYTES = 2 * 1024 * 1024;
+export const MAX_SFZ_REGIONS = 2048;
+
 export function importSfzToNative(
   sfzText: string,
   sfzFileName: string,
   companionAudioFiles: AudioFilePayload[] = [],
 ): NativeSamplerImportResult {
+  if (sfzText.length > MAX_SFZ_TEXT_BYTES) {
+    throw new Error(`SFZ text too large (${sfzText.length} chars, max ${MAX_SFZ_TEXT_BYTES})`);
+  }
   const cleaned = stripSfzComments(sfzText);
   const headerRegex = /<(control|global|master|group|region)>/gi;
 
@@ -158,7 +164,7 @@ export function importSfzToNative(
   const extendedRegions: ExtendedRegion[] = [];
   let seq = 1;
 
-  for (const ops of mergedRegions) {
+  for (const ops of mergedRegions.slice(0, MAX_SFZ_REGIONS)) {
     const rawSample = ops.sample;
     if (!rawSample) continue;
     const baseName = basenameOfPath(rawSample);

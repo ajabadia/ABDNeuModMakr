@@ -180,6 +180,16 @@ export function classifyInstrumentAndParameterSet(name: string): {
   return { category: 'Synth & Neutral', parameterSet: 0 };
 }
 
+export const MAX_SF2_PRESETS = 512;
+export const MAX_SF2_SHDRS = 10000;
+export const MAX_SF2_GENS = 50000;
+
+function safeRecordCount(subSize: number, recordSize: number, bytesLeft: number): number {
+  const byHeader = Math.floor(subSize / recordSize);
+  const byBuffer = Math.floor(Math.max(0, bytesLeft) / recordSize);
+  return Math.max(0, Math.min(byHeader, byBuffer));
+}
+
 function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
   if (buffer.byteLength < 64) {
     throw new Error('Invalid SF2 file: buffer too small (< 64 bytes)');
@@ -229,7 +239,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
           }
         } else if (listType === 'pdta') {
           if (subId === 'phdr') {
-            const count = Math.floor(subSize / 38);
+            const count = Math.min(MAX_SF2_PRESETS + 1, safeRecordCount(subSize, 38, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 38;
               phdrs.push({
@@ -240,7 +250,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'pbag') {
-            const count = Math.floor(subSize / 4);
+            const count = Math.min(MAX_SF2_GENS, safeRecordCount(subSize, 4, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 4;
               pbags.push({
@@ -249,7 +259,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'pgen') {
-            const count = Math.floor(subSize / 4);
+            const count = Math.min(MAX_SF2_GENS, safeRecordCount(subSize, 4, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 4;
               pgens.push({
@@ -261,7 +271,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'inst') {
-            const count = Math.floor(subSize / 22);
+            const count = Math.min(MAX_SF2_PRESETS * 4, safeRecordCount(subSize, 22, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 22;
               insts.push({
@@ -270,7 +280,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'ibag') {
-            const count = Math.floor(subSize / 4);
+            const count = Math.min(MAX_SF2_GENS, safeRecordCount(subSize, 4, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 4;
               ibags.push({
@@ -279,7 +289,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'igen') {
-            const count = Math.floor(subSize / 4);
+            const count = Math.min(MAX_SF2_GENS, safeRecordCount(subSize, 4, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 4;
               igens.push({
@@ -291,7 +301,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
               });
             }
           } else if (subId === 'shdr') {
-            const count = Math.floor(subSize / 46);
+            const count = Math.min(MAX_SF2_SHDRS, safeRecordCount(subSize, 46, listEnd - subData));
             for (let i = 0; i < count; i++) {
               const b = subData + i * 46;
               shdrs.push({

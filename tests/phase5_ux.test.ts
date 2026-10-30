@@ -197,6 +197,34 @@ async function runPhase5Tests(): Promise<void> {
   assert.equal(decodedAiff.instrument?.gainDb, -3);
   console.log('[PASS] 5. Canonical ZoneTableModel formatters & AIFF 44.1kHz/16-bit encoder verified');
 
+  // 6. Auto-derived names (session.name + processConfig.modelName) revert together on undo
+  // Regression: session.name was not part of the history document, so undoing a
+  // sample assignment restored the model name but left the derived session name.
+  await pipeline.newSession('MyModel');
+  assert.equal(pipeline.getSession()!.name, 'MyModel');
+  assert.equal(pipeline.getSession()!.processConfig.modelName, 'NewModel');
+  const targetZone = pipeline.getZones()[0];
+  await pipeline.updateZone(targetZone.id, { sampleLow: 'GrandPiano_60_C4.wav' });
+  const derivedModelName = pipeline.getSession()!.processConfig.modelName;
+  const derivedSessionName = pipeline.getSession()!.name;
+  assert.notEqual(derivedModelName, 'NewModel', 'assigning a sample should auto-derive modelName');
+  assert.equal(derivedSessionName, derivedModelName, 'session.name should follow the derived model name');
+  pipeline.undo();
+  assert.equal(
+    pipeline.getSession()!.processConfig.modelName,
+    'NewModel',
+    'undo must restore the pre-derive modelName'
+  );
+  assert.equal(
+    pipeline.getSession()!.name,
+    'MyModel',
+    'undo must restore the pre-derive session.name'
+  );
+  pipeline.redo();
+  assert.equal(pipeline.getSession()!.processConfig.modelName, derivedModelName);
+  assert.equal(pipeline.getSession()!.name, derivedSessionName);
+  console.log('[PASS] 6. Auto-derived session.name + modelName revert together on undo/redo');
+
   pipeline.dispose();
   console.log('=== ALL PHASE 5 TESTS PASSED ===');
 }

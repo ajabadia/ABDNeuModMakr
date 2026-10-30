@@ -18,6 +18,8 @@ import type {
 
 /** Mutable document slice covered by undo/redo. */
 export interface HistoryDocument {
+  /** Session display name (auto-derived from first sample alongside modelName). */
+  sessionName?: string;
   zones: Zone[];
   extendedRegions?: ExtendedRegion[];
   articulation?: SynthArticulationConfig;
@@ -76,6 +78,7 @@ export class SessionHistory {
     }
     this.undoStack.push({
       label,
+      sessionName: doc.sessionName,
       zones: structuredClone(doc.zones),
       extendedRegions: doc.extendedRegions ? structuredClone(doc.extendedRegions) : undefined,
       articulation: doc.articulation ? structuredClone(doc.articulation) : undefined,
@@ -97,6 +100,7 @@ export class SessionHistory {
     const entry = this.undoStack.pop()!;
     this.redoStack.push({
       label: entry.label,
+      sessionName: current.sessionName,
       zones: structuredClone(current.zones),
       extendedRegions: current.extendedRegions ? structuredClone(current.extendedRegions) : undefined,
       articulation: current.articulation ? structuredClone(current.articulation) : undefined,
@@ -106,6 +110,7 @@ export class SessionHistory {
     });
     return {
       label: entry.label,
+      sessionName: entry.sessionName,
       zones: structuredClone(entry.zones),
       extendedRegions: entry.extendedRegions ? structuredClone(entry.extendedRegions) : undefined,
       articulation: entry.articulation ? structuredClone(entry.articulation) : undefined,
@@ -120,6 +125,7 @@ export class SessionHistory {
     const entry = this.redoStack.pop()!;
     this.undoStack.push({
       label: entry.label,
+      sessionName: current.sessionName,
       zones: structuredClone(current.zones),
       extendedRegions: current.extendedRegions ? structuredClone(current.extendedRegions) : undefined,
       articulation: current.articulation ? structuredClone(current.articulation) : undefined,
@@ -129,6 +135,7 @@ export class SessionHistory {
     });
     return {
       label: entry.label,
+      sessionName: entry.sessionName,
       zones: structuredClone(entry.zones),
       extendedRegions: entry.extendedRegions ? structuredClone(entry.extendedRegions) : undefined,
       articulation: entry.articulation ? structuredClone(entry.articulation) : undefined,

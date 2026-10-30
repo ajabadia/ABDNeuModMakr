@@ -220,18 +220,20 @@ export class AppNavbar {
     // Center HUD Slot
     const centerSlot = document.createElement('div');
     centerSlot.className = 'nav-hud-center';
+    const initMaxLen = (initialSession.processConfig.workingMode ?? 'classic') === 'extended' ? 32 : 11;
+    const initSlot = String(initialSession.processConfig.modelNumber).padStart(3, '0');
     centerSlot.innerHTML = `
-      <div class="hud-pill hud-model-pill" title="Active target model slot and hardware name">
+      <div class="hud-pill hud-model-pill" title="Active target model slot, hardware name, and character length">
         <span class="hud-label">TARGET MODEL:</span>
-        <span class="hud-value hud-model-name" id="hud-model-name">#000 ${initialSession.processConfig.modelName}</span>
+        <span class="hud-value hud-model-name" id="hud-model-name">#${initSlot} &bull; ${initialSession.processConfig.modelName} &bull; ${initialSession.processConfig.modelName.length}/${initMaxLen} chars</span>
       </div>
       <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="Click to inspect or repair MIDI 0..127 coverage">
-        <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.alert}</span>
+        <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.piano}</span>
         <span class="hud-coverage-text">${initialCoverage.length === 0 ? '128/128 MIDI KEYS OK' : `${initialCoverage.length} GAPS DETECTED`}</span>
       </div>
-      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Asistencia por IA vs. Motor Algorítmico DSP. Haz clic para abrir el configurador de IA.">
+      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Algorithmic DSP mode (AI Off). Click to configure AI assistance.">
         <span class="hud-ai-icon">${ICONS.ai}</span>
-        <span class="hud-ai-text" id="hud-ai-text">MODO IA: OFF (DSP)</span>
+        <span class="hud-ai-text" id="hud-ai-text">AI MODE: OFF (DSP)</span>
         <span class="hud-ai-chevron">${ICONS.settings}</span>
       </div>
     `;
@@ -255,13 +257,13 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
         ${ICONS.terminal}
       </button>
-      <button type="button" class="btn btn-hud-icon btn-theme-mode-toggle" id="nav-btn-theme-mode" title="${this.currentThemeMode === 'light' ? 'Cambiar a Modo Oscuro' : 'Cambiar a Modo Claro'}">
+      <button type="button" class="btn btn-hud-icon btn-theme-mode-toggle" id="nav-btn-theme-mode" title="${this.currentThemeMode === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}">
         <span class="theme-mode-icon">${this.currentThemeMode === 'light' ? ICONS.moon : ICONS.sun}</span>
       </button>
-      <button type="button" class="btn btn-hud-icon btn-theme-toggle" id="nav-btn-theme" title="Siguiente sintetizador / skin">
+      <button type="button" class="btn btn-hud-icon btn-theme-toggle" id="nav-btn-theme" title="Next synthesizer skin">
         <span class="theme-icon">${ICONS.palette}</span>
       </button>
-      <button type="button" class="btn btn-hud-icon btn-settings-toggle" id="nav-btn-settings" title="Configuración General y Asistencia IA (Ctrl+,)">
+      <button type="button" class="btn btn-hud-icon btn-settings-toggle" id="nav-btn-settings" title="General Settings &amp; AI Configuration (Ctrl+,)">
         <span class="settings-icon">${ICONS.settings}</span>
       </button>
     `;
@@ -385,16 +387,28 @@ export class AppNavbar {
     if (this.statusElement) {
       const slot = String(session.processConfig.modelNumber).padStart(3, '0');
       const dirtyMark = session.dirty ? ' *' : '';
-      this.statusElement.textContent = `#${slot} ${session.processConfig.modelName}${dirtyMark}`;
+      const maxLen = (session.processConfig.workingMode ?? 'classic') === 'extended' ? 32 : 11;
+      this.statusElement.textContent = `#${slot} \u2022 ${session.processConfig.modelName}${dirtyMark} \u2022 ${session.processConfig.modelName.length}/${maxLen} chars`;
     }
 
     if (this.coverageElement) {
       const isOk = coverageErrors.length === 0;
-      this.coverageElement.className = `hud-pill hud-coverage-pill ${isOk ? 'is-valid' : 'is-error'}`;
-      this.coverageElement.innerHTML = `
-        <span class="hud-icon">${isOk ? ICONS.check : ICONS.alert}</span>
-        <span class="hud-coverage-text">${isOk ? '128/128 MIDI KEYS OK' : `${coverageErrors.length} GAPS DETECTED`}</span>
-      `;
+      const hasAnySample = session.zones.some((z) => Boolean(z.sampleLow || z.sampleHigh));
+
+      if (!hasAnySample && session.zones.length <= 1) {
+        // Initial empty state: show neutral onboarding guidance instead of red alarm
+        this.coverageElement.className = 'hud-pill hud-coverage-pill is-neutral';
+        this.coverageElement.innerHTML = `
+          <span class="hud-icon">${ICONS.piano}</span>
+          <span class="hud-coverage-text">128/128 MIDI KEYS READY</span>
+        `;
+      } else {
+        this.coverageElement.className = `hud-pill hud-coverage-pill ${isOk ? 'is-valid' : 'is-error'}`;
+        this.coverageElement.innerHTML = `
+          <span class="hud-icon">${isOk ? ICONS.check : ICONS.alert}</span>
+          <span class="hud-coverage-text">${isOk ? '128/128 MIDI KEYS OK' : `${coverageErrors.length} GAPS DETECTED`}</span>
+        `;
+      }
     }
 
     if (this.processBtn) {
@@ -412,8 +426,8 @@ export class AppNavbar {
     const enabled = aiConfig?.enabled ?? false;
     if (!enabled) {
       this.aiPillElement.className = 'hud-pill hud-ai-pill is-ai-off';
-      this.aiTextElement.textContent = 'MODO IA: OFF (DSP)';
-      this.aiPillElement.title = 'Modo 100% Algorítmico (DSP Puro). Haz clic para abrir el configurador y activar Asistencia por IA.';
+      this.aiTextElement.textContent = 'AI MODE: OFF (DSP)';
+      this.aiPillElement.title = 'Algorithmic DSP mode (AI Off). Click to configure AI assistance.';
       return;
     }
 
@@ -428,16 +442,16 @@ export class AppNavbar {
     const byok = cloudByokClient.getConfig();
     const isCloudByok = byok.enabled && cloudByokClient.hasValidKey();
     const providerLabel = isBridgeConnected
-      ? 'GPU LOCAL'
+      ? 'LOCAL GPU'
       : isCloudByok
         ? 'CLOUD BYOK'
         : 'WEBGPU';
 
     this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
     this.aiTextElement.textContent = isAllAi
-      ? `MODO IA: ${providerLabel} (5/5)`
-      : `MODO IA: ${providerLabel} (${count}/5)`;
-    this.aiPillElement.title = `Asistencia IA: ${count}/5 etapas activas [${providerLabel}]. Haz clic para abrir la matriz modular.`;
+      ? `AI MODE: ${providerLabel} (5/5)`
+      : `AI MODE: ${providerLabel} (${count}/5)`;
+    this.aiPillElement.title = `AI Assistance: ${count}/5 stages active [${providerLabel}]. Click to open modular configuration.`;
   }
 
 

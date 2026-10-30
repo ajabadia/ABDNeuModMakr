@@ -464,7 +464,7 @@ export class ZoneRibbon {
     const span = Math.max(1, zone.highKey - zone.lowKey + 1);
     const widthPct = (span / 128) * 100;
     const isSelected = zone.id === this.activeZoneId;
-    const lowLabel = zone.sampleLow ? zone.sampleLow.split(/[\\/]/).pop() : 'NO SAMPLE';
+    const lowLabel = zone.sampleLow ? zone.sampleLow.split(/[\\/]/).pop() : '(No sample)';
     const highLabel = zone.sampleHigh ? zone.sampleHigh.split(/[\\/]/).pop() : null;
     const lowStr = midiToNoteName(zone.lowKey);
     const highStr = midiToNoteName(zone.highKey);

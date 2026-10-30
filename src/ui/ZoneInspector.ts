@@ -57,6 +57,7 @@ import {
 } from './ZoneRibbon';
 import { ICONS } from './icons';
 import { confirmDialog } from './notify';
+import { escAttr, escHtml } from './escape';
 
 export interface ZoneInspectorHandlers {
   onSelectZone?: (zoneId: string) => void;
@@ -454,10 +455,11 @@ export class ZoneInspector {
             cells[1].textContent = midiNoteToString(activeRegion.lowKey);
             cells[2].textContent = midiNoteToString(activeRegion.rootKey);
             cells[3].textContent = midiNoteToString(activeRegion.highKey);
+            cells[4].textContent = '';
             cells[4].innerHTML = `<span class="cell-vel-tag">${activeRegion.lowVel}</span>`;
             cells[5].innerHTML = `<span class="cell-vel-tag">${activeRegion.highVel}</span>`;
             cells[6].innerHTML = sampleBase
-              ? `<span class="cell-sample-name">${sampleBase}</span>`
+              ? `<span class="cell-sample-name">${escHtml(sampleBase)}</span>`
               : `<span class="cell-empty-dash">—</span>`;
             cells[7].innerHTML = `<span class="cell-vel-tag">${formatRegionModeBadge(activeRegion)}</span>`;
             cells[8].textContent = detuneToString(activeRegion.detune);
@@ -507,10 +509,10 @@ export class ZoneInspector {
         cells[2].textContent = midiNoteToString(z.rootKey);
         cells[3].textContent = midiNoteToString(z.highKey);
         cells[4].innerHTML = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? rowSplit - 1 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
+          ? `<span class="cell-vel-tag">1–${hasHigh ? rowSplit - 1 : 127}</span> <span class="cell-sample-name">${escHtml(lowVelName)}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[5].innerHTML = highVelName
-          ? `<span class="cell-vel-tag">${rowSplit}–127</span> <span class="cell-sample-name">${highVelName}</span>`
+          ? `<span class="cell-vel-tag">${rowSplit}–127</span> <span class="cell-sample-name">${escHtml(highVelName)}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         cells[6].textContent = detuneToString(z.detune);
         cells[7].textContent = volumeToLongString(z.volume);
@@ -542,10 +544,10 @@ export class ZoneInspector {
           : '';
 
         const lowVelHtml = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? zoneSplit - 1 : 127}</span> <span class="cell-sample-name">${lowVelName}</span>`
+          ? `<span class="cell-vel-tag">1–${hasHigh ? zoneSplit - 1 : 127}</span> <span class="cell-sample-name">${escHtml(lowVelName)}</span>`
           : `<span class="cell-empty-dash">—</span>`;
         const highVelHtml = highVelName
-          ? `<span class="cell-vel-tag">${zoneSplit}–127</span> <span class="cell-sample-name">${highVelName}</span>`
+          ? `<span class="cell-vel-tag">${zoneSplit}–127</span> <span class="cell-sample-name">${escHtml(highVelName)}</span>`
           : `<span class="cell-empty-dash">—</span>`;
 
         const isCurrentPlaying = this.playingRowId === zone.id;
@@ -556,8 +558,8 @@ export class ZoneInspector {
             <td class="col-key ${hasOverlap ? 'is-overlap-cell' : ''}" title="${overlapTip}">${lowKeyStr}</td>
             <td class="col-key is-root">${rootKeyStr}</td>
             <td class="col-key ${hasOverlap ? 'is-overlap-cell' : ''}" title="${overlapTip}">${highKeyStr}</td>
-            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="low" title="${zone.sampleLow ? `Vel 1..${hasHigh ? zoneSplit - 1 : 127}: ${zone.sampleLow}` : 'No Low Vel sample'}">${lowVelHtml}</td>
-            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="high" title="${zone.sampleHigh ? `Vel ${zoneSplit}..127: ${zone.sampleHigh}` : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
+            <td class="col-sample ${lowVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="low" title="${zone.sampleLow ? escAttr(`Vel 1..${hasHigh ? zoneSplit - 1 : 127}: ${zone.sampleLow}`) : 'No Low Vel sample'}">${lowVelHtml}</td>
+            <td class="col-sample ${highVelName ? 'has-sample' : 'is-empty'}" data-vel-layer="high" title="${zone.sampleHigh ? escAttr(`Vel ${zoneSplit}..127: ${zone.sampleHigh}`) : 'No High Vel sample (Low Vel covers 1..127)'}">${highVelHtml}</td>
             <td class="col-num">${detuneStr}</td>
             <td class="col-num">${volumeStr}</td>
             <td class="col-num">${panStr}</td>
@@ -621,7 +623,7 @@ export class ZoneInspector {
         const velCellClass = hasFullIntersect ? 'is-overlap-cell' : '';
 
         const sampleHtml = sampleName
-          ? `<span class="cell-sample-name">${sampleName}</span>`
+          ? `<span class="cell-sample-name">${escHtml(sampleName)}</span>`
           : `<span class="cell-empty-dash">—</span>`;
 
         const ovrBadgeHtml = hasException
@@ -638,7 +640,7 @@ export class ZoneInspector {
             <td class="col-key ${keyCellClass}" title="${fullIntersectTip || keySplitTip}">${highKeyStr}</td>
             <td class="col-vel ${velCellClass}" title="${fullIntersectTip || `Start Velocity (1..127)`}"><span class="cell-vel-tag ${hasFullIntersect ? 'is-overlap-tag' : ''}">${reg.lowVel}</span></td>
             <td class="col-vel ${velCellClass}" title="${fullIntersectTip || `End Velocity (1..127)`}"><span class="cell-vel-tag ${hasFullIntersect ? 'is-overlap-tag' : ''}">${reg.highVel}</span></td>
-            <td class="col-sample ${sampleName ? 'has-sample' : 'is-empty'}" title="${reg.sampleName ? `${reg.sampleName} (Keys ${lowKeyStr}..${highKeyStr}, Vel ${reg.lowVel}..${reg.highVel})` : 'Empty Region — Browse or drop a WAV/AIFF sample'}">${sampleHtml}</td>
+            <td class="col-sample ${sampleName ? 'has-sample' : 'is-empty'}" title="${reg.sampleName ? escAttr(`${reg.sampleName} (Keys ${lowKeyStr}..${highKeyStr}, Vel ${reg.lowVel}..${reg.highVel})`) : 'Empty Region — Browse or drop a WAV/AIFF sample'}">${sampleHtml}</td>
             <td class="col-mode">
               <button type="button" class="btn-cell-loop" data-loop-region-id="${reg.id}" title="Click to open Interactive Waveform Loop Editor for Region #${idx + 1} (${hasException ? 'Custom Region Exception' : 'Inherited from Model Common'})">
                 ${ICONS.wave} <span>${modeBadge}</span>${ovrBadgeHtml}
@@ -718,7 +720,7 @@ export class ZoneInspector {
                 <div class="zone-table-status">
                   <span class="panel-badge">REGION #${activeIndex + 1} (${regions.length} REGIONS)</span>
                   ${intersectBadgeHtml}
-                  <span class="panel-caption">${midiNoteToString(activeRegion.lowKey)} .. ${midiNoteToString(activeRegion.highKey)} | Root: ${midiNoteToString(activeRegion.rootKey)} | Vel: ${activeRegion.lowVel}..${activeRegion.highVel}${sampleTitle ? ` | ${sampleTitle}` : ' | Empty Sample'}${this.handlers.getDetectedCategory?.() ? ` • ${this.handlers.getDetectedCategory?.()}` : ''}</span>
+                  <span class="panel-caption">${midiNoteToString(activeRegion.lowKey)} .. ${midiNoteToString(activeRegion.highKey)} | Root: ${midiNoteToString(activeRegion.rootKey)} | Vel: ${activeRegion.lowVel}..${activeRegion.highVel}${sampleTitle ? ` | ${escHtml(sampleTitle)}` : ' | Empty Sample'}${this.handlers.getDetectedCategory?.() ? ` • ${escHtml(this.handlers.getDetectedCategory?.())}` : ''}</span>
                 </div>
                 <div class="panel-actions">
                   <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeDrawerScope === 'region' && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
@@ -852,14 +854,14 @@ export class ZoneInspector {
       `<option value="">-- Select Loaded Sample --</option>`,
       ...loadedSamples.map(
         (s) =>
-          `<option value="${s}" ${currentPrimarySample === s ? 'selected' : ''}>${basenameOf(s)}</option>`
+          `<option value="${escAttr(s)}" ${currentPrimarySample === s ? 'selected' : ''}>${escHtml(basenameOf(s))}</option>`
       ),
     ].join('');
     const highOptionsHtml = [
       `<option value="">-- None (Low Vel covers 1..127) --</option>`,
       ...loadedSamples.map(
         (s) =>
-          `<option value="${s}" ${z.sampleHigh === s ? 'selected' : ''}>${basenameOf(s)}</option>`
+          `<option value="${escAttr(s)}" ${z.sampleHigh === s ? 'selected' : ''}>${escHtml(basenameOf(s))}</option>`
       ),
     ].join('');
 
@@ -915,7 +917,7 @@ export class ZoneInspector {
       <div class="drawer-header">
         <div class="drawer-title">
           <span class="drawer-icon">${ICONS.settings}</span>
-          <span>${drawerTitleText}</span>
+          <span>${escHtml(drawerTitleText)}</span>
         </div>
         <button type="button" class="btn btn-close-drawer" id="btn-close-zone-drawer" title="Close Metadata Drawer">${ICONS.close}</button>
       </div>
@@ -933,7 +935,7 @@ export class ZoneInspector {
           title="Particular parameters for Selected Region #${activeRegIdx + 1} (Key/Vel Range, Sample, Detune/Vol/Pan, Loop Points &amp; Custom Overrides)"
         >
           <span class="tab-pill-icon">${ICONS.layers}</span>
-          <span>Region #${activeRegIdx + 1}: ${regSampleLabel}</span>
+          <span>Region #${activeRegIdx + 1}: ${escHtml(regSampleLabel)}</span>
           ${activeReg?.hasPlaybackOverride || activeReg?.hasArticulationOverride ? '<span class="cell-ovr-badge">OVR</span>' : ''}
         </button>
         <button

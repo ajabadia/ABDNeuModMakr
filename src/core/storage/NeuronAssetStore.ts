@@ -370,6 +370,25 @@ export class NeuronAssetStore {
     ]);
   }
 
+  /**
+   * Queries navigator.storage.estimate() if available in browser context.
+   * Returns usage in bytes, total quota in bytes, and percentage used (0..100).
+   */
+  public async getStorageEstimate(): Promise<{ usage: number; quota: number; percent: number } | null> {
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+      try {
+        const est = await navigator.storage.estimate();
+        const usage = est.usage ?? 0;
+        const quota = est.quota ?? 1;
+        const percent = Math.min(100, Math.round((usage / quota) * 100));
+        return { usage, quota, percent };
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   public getDiagnostics(): AssetStoreDiagnostics {
     let rawSourceBytes = 0;
     for (const buf of this.rawSources.values()) {

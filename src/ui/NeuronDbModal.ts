@@ -10,6 +10,7 @@
 import { ICONS } from './icons';
 import { midiToNoteName } from './ZoneRibbon';
 import { PARAMETER_SETS } from '../core';
+import { escHtml, escAttr } from './escape';
 
 export interface NeuronDbModelEntry {
   slot: number;
@@ -601,9 +602,9 @@ export class NeuronDbModal {
         <div class="ndb-card-info">
           <div class="ndb-card-top">
             <span class="ndb-card-slot">${slotStr}</span>
-            <span class="ndb-card-cat ${catClass}">${catName}</span>
+            <span class="ndb-card-cat ${catClass}">${escHtml(catName)}</span>
           </div>
-          <div class="ndb-card-name" title="${e.name || slotStr}">${e.name || 'Untitled'}</div>
+          <div class="ndb-card-name" title="${escAttr(e.name || slotStr)}">${escHtml(e.name || 'Untitled')}</div>
           <div class="ndb-card-meta">
             ${zonesBadge ? `<span class="ndb-card-badge">${zonesBadge}</span>` : ''}
             ${compBadge ? `<span class="ndb-card-badge">${compBadge}</span>` : ''}
@@ -699,7 +700,7 @@ export class NeuronDbModal {
   private buildRowInnerHtml(e: NeuronDbModelEntry): string {
     const slotStr = `#${String(e.slot).padStart(3, '0')}`;
     const nameHtml = e.name
-      ? `<span class="ndb-model-name">${e.name}</span>`
+      ? `<span class="ndb-model-name">${escHtml(e.name)}</span>`
       : `<span class="ndb-dim">...</span>`;
 
     let zonesHtml = `<span class="ndb-dim">...</span>`;
@@ -721,7 +722,7 @@ export class NeuronDbModal {
       const ps = PARAMETER_SETS[e.parameterSet];
       const catClass = ps ? `cat-${ps.id}` : '';
       paramHtml = ps
-        ? `<span class="ndb-param-tag ${catClass}">${ps.id}: ${ps.name}</span>`
+        ? `<span class="ndb-param-tag ${catClass}">${ps.id}: ${escHtml(ps.name)}</span>`
         : `Set ${e.parameterSet}`;
     }
 
@@ -738,7 +739,7 @@ export class NeuronDbModal {
       <td class="col-ndb-param">${paramHtml}</td>
       <td class="col-ndb-comp">${compHtml}</td>
       <td class="col-ndb-action">
-        <button type="button" class="btn btn-xs btn-ndb-load-row" title="Load ${slotStr} ${e.name}">Load</button>
+        <button type="button" class="btn btn-xs btn-ndb-load-row" title="Load ${slotStr} ${escAttr(e.name || '')}">Load</button>
       </td>
     `;
   }

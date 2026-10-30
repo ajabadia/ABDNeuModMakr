@@ -28,6 +28,8 @@ import { webNeuralEngine, type WebGpuDeviceStatus } from '../core/ai/WebNeuralEn
 import { cloudByokClient, type CloudAiProvider } from '../core/ai/CloudByokClient';
 import { ICONS } from './icons';
 import { toast } from './notify';
+import { escHtml, escAttr } from './escape';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap';
 
 export interface SettingsModalHandlers {
   onUpdateAiConfig: (config: AiAssistanceConfig) => void;
@@ -52,6 +54,8 @@ const DEFAULT_NEURON_DB_PATH = 'd:\\desarrollos\\ABDSynths\\NeuronDB';
 
 export class SettingsModal {
   private backdropEl: HTMLElement | null = null;
+  private focusTrap: FocusTrap | null = null;
+  private storageEstimate: { usage: number; quota: number; percent: number } | null = null;
   private currentConfig: AiAssistanceConfig = {
     enabled: false,
     masterWave: 'dsp',
@@ -98,8 +102,32 @@ export class SettingsModal {
       document.body.appendChild(this.backdropEl);
     }
 
+    // Query storage quota asynchronously
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.estimate === 'function') {
+      try {
+        const est = await navigator.storage.estimate();
+        const usage = est.usage ?? 0;
+        const quota = est.quota ?? 1;
+        this.storageEstimate = {
+          usage,
+          quota,
+          percent: Math.min(100, Math.round((usage / quota) * 100)),
+        };
+      } catch {
+        this.storageEstimate = null;
+      }
+    }
+
     this.render();
     this.backdropEl.classList.remove('is-hidden');
+
+    if (!this.focusTrap && this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        onEscape: () => this.close(),
+        initialFocusSelector: '#btn-close-settings-modal',
+      });
+    }
+    this.focusTrap?.activate();
 
     // Async init WebGPU status
     void webNeuralEngine.init().then((st) => {
@@ -117,6 +145,9 @@ export class SettingsModal {
   }
 
   public close(): void {
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+    }
     if (this.unsubscribeBridge) {
       this.unsubscribeBridge();
       this.unsubscribeBridge = null;
@@ -163,17 +194,17 @@ export class SettingsModal {
     const activeAiCount = this.countActiveAiStages();
 
     this.backdropEl.innerHTML = `
-      <div class="process-modal-card ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="Ajustes Generales y Motor de Procesamiento">
+      <div class="process-modal-card ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="General Settings and AI Engine Configuration">
         <!-- Header -->
         <div class="modal-header ai-modal-header">
           <div class="modal-title">
             <span class="modal-icon">${ICONS.settings}</span>
-            <span>CONFIGURACIÓN &amp; MOTOR IA</span>
+            <span>SETTINGS &amp; AI ENGINE</span>
             <span class="panel-badge ${cfg.enabled ? 'badge-ai-on' : 'badge-muted'}" id="ai-active-badge">
-              ${cfg.enabled ? `IA: ${activeAiCount}/5 ETAPAS` : 'DSP PURO (IA OFF)'}
+              ${cfg.enabled ? `AI: ${activeAiCount}/5 STAGES` : 'PURE DSP (AI OFF)'}
             </span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-close-settings-modal" title="Cerrar (Esc)">
+          <button type="button" class="btn btn-close-modal" id="btn-close-settings-modal" title="Close (Esc)">
             ${ICONS.close}
           </button>
         </div>
@@ -183,22 +214,22 @@ export class SettingsModal {
           <button type="button" class="ai-tab-btn ${this.currentTab === 'general' ? 'is-active' : ''}" data-tab="general">
             <span class="ai-tab-icon">${ICONS.sliders}</span>
             <span class="ai-tab-title">General</span>
-            <span class="ai-tab-tag">Tema, Modo y Rutas</span>
+            <span class="ai-tab-tag">Themes, Mode &amp; Paths</span>
           </button>
           <button type="button" class="ai-tab-btn ${this.currentTab === 'web' ? 'is-active' : ''}" data-tab="web">
             <span class="ai-tab-icon">${ICONS.cpu}</span>
-            <span class="ai-tab-title">Motor Web Integrado</span>
-            <span class="ai-tab-tag">De Serie (100% Gratis)</span>
+            <span class="ai-tab-title">Built-in Web Engine</span>
+            <span class="ai-tab-tag">In-Browser (100% Free)</span>
           </button>
           <button type="button" class="ai-tab-btn ${this.currentTab === 'cloud' ? 'is-active' : ''}" data-tab="cloud">
             <span class="ai-tab-icon">${ICONS.cloud}</span>
             <span class="ai-tab-title">Cloud AI (BYOK)</span>
-            <span class="ai-tab-tag">Clave Personal</span>
+            <span class="ai-tab-tag">Private User Keys</span>
           </button>
           <button type="button" class="ai-tab-btn ${this.currentTab === 'bridge' ? 'is-active' : ''}" data-tab="bridge">
             <span class="ai-tab-icon">${ICONS.database}</span>
             <span class="ai-tab-title">Companion Bridge</span>
-            <span class="ai-tab-tag">GPU Local (VRAM)</span>
+            <span class="ai-tab-tag">Local GPU (VRAM)</span>
           </button>
         </div>
 
@@ -217,12 +248,12 @@ export class SettingsModal {
         <div class="modal-footer ai-modal-footer">
           <div class="ai-footer-info">
             <span class="text-muted" id="ai-footer-device-status">
-              ${this.webGpuStatus?.statusMessage || 'Motor preparado y en línea.'}
+              ${this.webGpuStatus?.statusMessage || 'Processing engine ready and online.'}
             </span>
           </div>
           <div class="ai-footer-actions">
-            <button type="button" class="btn btn-secondary" id="btn-cancel-settings-modal">Cerrar</button>
-            <button type="button" class="btn btn-primary" id="btn-apply-settings-modal">Aplicar Configuración</button>
+            <button type="button" class="btn btn-secondary" id="btn-cancel-settings-modal">Close</button>
+            <button type="button" class="btn btn-primary" id="btn-apply-settings-modal">Apply Settings</button>
           </div>
         </div>
       </div>
@@ -241,21 +272,21 @@ export class SettingsModal {
     const isBridgeOnline = bridgeClient.isConnected();
 
     const skinFamilies = [
-      { id: 'neuron', name: 'Hartmann Neuron', desc: 'Hardware original (2002), perillas grises y display azul' },
-      { id: 'virus-snow', name: 'Access Virus Snow', desc: 'Estética blanca inmaculada estilo módulo desktop (2008)' },
-      { id: 'audiolab', name: 'AudioLab Precision', desc: 'Diseño clínico de alta precisión y máximo contraste visual' },
-      { id: 'ms2000', name: 'Korg MS2000', desc: 'Panel azul verdoso retro analógico de modelado físico' },
-      { id: 'advanced', name: 'Hartmann Advanced', desc: 'Edición especial ampliada con acentos ámbar' },
-      { id: 'cz101', name: 'Casio CZ-101', desc: 'Panel clásico de síntesis de distorsión de fase (1984)' },
+      { id: 'neuron', name: 'Hartmann Neuron', desc: 'Original hardware (2002), gray knobs and blue OLED display' },
+      { id: 'virus-snow', name: 'Access Virus Snow', desc: 'Pristine white desktop module aesthetics (2008)' },
+      { id: 'audiolab', name: 'AudioLab Precision', desc: 'Clinical high-contrast audio inspection lab' },
+      { id: 'ms2000', name: 'Korg MS2000', desc: 'Retro teal analog-modeling physical synthesizer panel' },
+      { id: 'advanced', name: 'Hartmann Advanced', desc: 'Expanded special edition with warm amber accents' },
+      { id: 'cz101', name: 'Casio CZ-101', desc: 'Classic phase-distortion synthesizer panel (1984)' },
     ];
 
     return `
       <div class="settings-general-container">
-        <!-- 1. Apariencia y Hardware Skin -->
+        <!-- 1. Appearance & Hardware Skin -->
         <div class="settings-section-card">
           <div class="settings-card-header">
-            <h4>${ICONS.palette} Familia de Hardware Skin &amp; Sintetizador</h4>
-            <span class="text-muted">Personaliza la estética visual inspirada en máquinas míticas.</span>
+            <h4>${ICONS.palette} Hardware Synthesizer Skin &amp; Theme</h4>
+            <span class="text-muted">Personalize the application aesthetic inspired by legendary hardware.</span>
           </div>
           <div class="settings-skins-grid">
             ${skinFamilies
@@ -264,8 +295,8 @@ export class SettingsModal {
               <label class="settings-skin-opt ${curFamily === s.id ? 'is-selected' : ''}">
                 <input type="radio" name="opt-theme-family" value="${s.id}" ${curFamily === s.id ? 'checked' : ''} />
                 <div class="skin-opt-body">
-                  <strong>${s.name}</strong>
-                  <small class="text-muted">${s.desc}</small>
+                  <strong>${escHtml(s.name)}</strong>
+                  <small class="text-muted">${escHtml(s.desc)}</small>
                 </div>
               </label>
             `
@@ -274,34 +305,34 @@ export class SettingsModal {
           </div>
 
           <div class="settings-appearance-mode-row">
-            <span class="settings-sublabel">Modo de Luminosidad:</span>
+            <span class="settings-sublabel">Appearance Mode:</span>
             <div class="mode-pill-toggle">
               <button type="button" class="btn btn-sm ${curMode === 'light' ? 'btn-primary' : 'btn-outline'}" id="btn-set-mode-light">
-                ${ICONS.sun} Modo Claro
+                ${ICONS.sun} Light Mode
               </button>
               <button type="button" class="btn btn-sm ${curMode === 'dark' ? 'btn-primary' : 'btn-outline'}" id="btn-set-mode-dark">
-                ${ICONS.moon} Modo Oscuro
+                ${ICONS.moon} Dark Mode
               </button>
             </div>
           </div>
         </div>
 
-        <!-- 2. Modo de Trabajo y Creación (Working Mode) -->
+        <!-- 2. Working Mode & Keyboard Mapping -->
         <div class="settings-section-card">
           <div class="settings-card-header">
-            <h4>${ICONS.piano} Modo de Creación y Mapeo del Teclado</h4>
-            <span class="text-muted">Define cómo se construyen y organizan las zonas y capas de velocidad.</span>
+            <h4>${ICONS.piano} Creation &amp; Keyboard Mapping Mode</h4>
+            <span class="text-muted">Defines how keyboard zones and velocity layers are structured.</span>
           </div>
           <div class="settings-working-mode-grid">
             <label class="settings-mode-opt ${curWorkingMode === 'classic' ? 'is-selected' : ''}">
               <input type="radio" name="opt-working-mode" value="classic" ${curWorkingMode === 'classic' ? 'checked' : ''} />
               <div class="mode-opt-body">
                 <div class="mode-opt-title">
-                  <strong>Modo Clásico (Hartmann Neuron 2002)</strong>
+                  <strong>Classic Mode (Hartmann Neuron 2002)</strong>
                   <span class="panel-badge badge-muted">1:1 Hardware Original</span>
                 </div>
                 <p class="text-muted">
-                  Columnas contiguas de teclado <code>0..127</code> sin huecos ni solapamientos. Dos capas de velocidad fijas en el valor <code>64</code> (Low y High). Nombres de modelo limitados estrictamente a 11 caracteres para compatibilidad con la pantalla del sintetizador físico.
+                  Contiguous keyboard <code>0..127</code> columns with no gaps or overlaps. Two velocity layers fixed at value <code>64</code> (Low and High). Model names strictly capped at 11 characters for physical display compatibility.
                 </p>
               </div>
             </label>
@@ -310,11 +341,11 @@ export class SettingsModal {
               <input type="radio" name="opt-working-mode" value="extended" ${curWorkingMode === 'extended' ? 'checked' : ''} />
               <div class="mode-opt-body">
                 <div class="mode-opt-title">
-                  <strong>Modo Extendido (Modern Neural / Next-Gen)</strong>
-                  <span class="panel-badge badge-ai-on">HD Multi-Capa</span>
+                  <strong>Extended Mode (Modern Neural / Next-Gen)</strong>
+                  <span class="panel-badge badge-ai-on">HD Multi-Layer</span>
                 </div>
                 <p class="text-muted">
-                  Mapeo 2D libre tipo sampler profesional (Key &times; Velocity). Múltiples velocidades por nota, crossfades dinámicos, envolventes DAHDSR, bucles ping-pong y artwork de modelo en WebP 512&times;512.
+                  Arbitrary 2D mapping (Key &times; Velocity). Multiple velocity splits, dynamic crossfades, DAHDSR envelopes, ping-pong loops, and 512&times;512 WebP model cover artwork.
                 </p>
               </div>
             </label>
@@ -323,60 +354,60 @@ export class SettingsModal {
           <div class="settings-mode-reassurance-box">
             <span class="reassurance-icon">${ICONS.check}</span>
             <div class="reassurance-text">
-              <strong>Compatibilidad Bidireccional Segura y No Destructiva:</strong>
+              <strong>Safe Non-Destructive Bidirectional Compatibility:</strong>
               <p>
-                Puedes cambiar de modo libremente en cualquier momento. Si has añadido capas en Modo Extendido y vuelves a Modo Clásico, los datos extendidos <strong>no se borran</strong>: el compilador inteligente proyecta y compensa matemáticamente las ganancias relativas (<span class="math-snippet">10<sup>&Delta;G/20</sup></span>) para reproducir el balance sonoro exacto dentro de los límites del hardware original.
+                You can switch between Classic and Extended modes at any time. When switching back to Classic Mode, multi-layer velocity regions are <strong>not deleted</strong>: the compiler mathematically projects and compensates relative gains (<span class="math-snippet">10<sup>&Delta;G/20</sup></span>) to preserve exact sonic balance within original hardware constraints.
               </p>
             </div>
           </div>
         </div>
 
-        <!-- 3. Carpetas de Bancos y Archivos Locales -->
+        <!-- 3. Local Library Folders -->
         <div class="settings-section-card">
           <div class="settings-card-header">
-            <h4>${ICONS.folder} Carpetas de Librería Local (AxionikDB, NeuronDB &amp; Recursos)</h4>
-            <span class="text-muted">Configura las rutas a tus librerías locales para sincronizarlas con el Companion Bridge.</span>
+            <h4>${ICONS.folder} Local Library Folders (AxionikDB, NeuronDB &amp; Samples)</h4>
+            <span class="text-muted">Configure paths to your local libraries to synchronize with the Companion Bridge.</span>
           </div>
 
           <div class="settings-libraries-container">
-            <!-- 1. AxionikDB (Modo Avanzado) -->
+            <!-- 1. AxionikDB (Advanced Mode) -->
             <div class="library-path-card">
               <div class="library-path-header">
-                <strong>Librería AxionikDB (Modo Avanzado / Time-Capsule)</strong>
-                <span class="text-muted">Modelos con slugs semánticos y Time Capsule auto-contenida (<code>manifest.json</code> + <code>cover.webp</code>).</span>
+                <strong>AxionikDB Library (Advanced / Time-Capsule)</strong>
+                <span class="text-muted">Models with semantic slugs and self-contained Time Capsules (<code>manifest.json</code> + <code>cover.webp</code>).</span>
               </div>
               <div class="bank-path-input-wrap">
-                <input type="text" id="input-axionikdb-path" class="form-control" value="${savedAxionikDbPath}" placeholder="${DEFAULT_AXIONIK_DB_PATH}" />
+                <input type="text" id="input-axionikdb-path" class="form-control" value="${escAttr(savedAxionikDbPath)}" placeholder="${escAttr(DEFAULT_AXIONIK_DB_PATH)}" />
                 <button type="button" class="btn btn-primary" id="btn-scan-axionikdb-dir" ${isBridgeOnline ? '' : 'disabled'}>
-                  ${ICONS.search} ${this.isScanningAxionik ? 'Escaneando...' : 'Escanear AxionikDB'}
+                  ${ICONS.search} ${this.isScanningAxionik ? 'Scanning...' : 'Scan AxionikDB'}
                 </button>
               </div>
             </div>
 
-            <!-- 2. NeuronDB (Modo Clásico) -->
+            <!-- 2. NeuronDB (Classic Mode) -->
             <div class="library-path-card" style="margin-top: 12px;">
               <div class="library-path-header">
-                <strong>Librería NeuronDB (Modo Clásico / Hartmann 000..511)</strong>
-                <span class="text-muted">Bancos compatibles con sintetizador Hartmann Neuron original y emulador clásico.</span>
+                <strong>NeuronDB Library (Classic / Hartmann 000..511)</strong>
+                <span class="text-muted">Banks compatible with Hartmann Neuron hardware &amp; classic software.</span>
               </div>
               <div class="bank-path-input-wrap">
-                <input type="text" id="input-neurondb-path" class="form-control" value="${savedNeuronDbPath}" placeholder="${DEFAULT_NEURON_DB_PATH}" />
+                <input type="text" id="input-neurondb-path" class="form-control" value="${escAttr(savedNeuronDbPath)}" placeholder="${escAttr(DEFAULT_NEURON_DB_PATH)}" />
                 <button type="button" class="btn btn-outline" id="btn-scan-neurondb-dir" ${isBridgeOnline ? '' : 'disabled'}>
-                  ${ICONS.search} ${this.isScanningNeuronDb ? 'Escaneando...' : 'Escanear NeuronDB'}
+                  ${ICONS.search} ${this.isScanningNeuronDb ? 'Scanning...' : 'Scan NeuronDB'}
                 </button>
               </div>
             </div>
 
-            <!-- 3. Recursos SoundFonts / Raw Samples -->
+            <!-- 3. SoundFonts / Raw Samples -->
             <div class="library-path-card" style="margin-top: 12px;">
               <div class="library-path-header">
-                <strong>Colección SoundFonts y Muestras Raw</strong>
-                <span class="text-muted">Fuentes de muestras acústicas (.sf2, .sfz, .wav) para importación directa.</span>
+                <strong>SoundFonts &amp; Raw Sample Collection</strong>
+                <span class="text-muted">Acoustic audio sources (.sf2, .sfz, .wav) for direct sample import.</span>
               </div>
               <div class="bank-path-input-wrap">
-                <input type="text" id="input-bank-path" class="form-control" value="${savedBankPath}" placeholder="${DEFAULT_BANK_PATH}" />
+                <input type="text" id="input-bank-path" class="form-control" value="${escAttr(savedBankPath)}" placeholder="${escAttr(DEFAULT_BANK_PATH)}" />
                 <button type="button" class="btn btn-outline" id="btn-scan-bank-dir" ${isBridgeOnline ? '' : 'disabled'}>
-                  ${ICONS.search} ${this.isScanning ? 'Escaneando...' : 'Escanear Muestras'}
+                  ${ICONS.search} ${this.isScanning ? 'Scanning...' : 'Scan Samples'}
                 </button>
               </div>
             </div>
@@ -384,7 +415,7 @@ export class SettingsModal {
             ${
               !isBridgeOnline
                 ? `<p class="bank-bridge-offline-hint text-muted" style="margin-top: 10px;">
-                    Para explorar carpetas locales sin límites del navegador, inicia el Companion Bridge (<code>bridge/server.py</code>).
+                    To scan local directories without browser sandbox restrictions, launch the Companion Bridge (<code>bridge/server.py</code>).
                   </p>`
                 : ''
             }
@@ -393,6 +424,37 @@ export class SettingsModal {
           <!-- Scan Results Area -->
           <div id="settings-scan-results-wrap" class="settings-scan-results-wrap">
             ${this.buildScanResultsHtml()}
+          </div>
+        </div>
+
+        <!-- 4. Storage Quota & Offline Persistence -->
+        <div class="settings-section-card">
+          <div class="settings-card-header">
+            <h4>${ICONS.database} Offline Storage &amp; IndexedDB Quota</h4>
+            <span class="text-muted">Persistent browser storage for audio buffers, time capsules, and models.</span>
+          </div>
+          <div class="settings-storage-row">
+            ${
+              this.storageEstimate
+                ? `
+              <div class="storage-estimate-box ${this.storageEstimate.percent > 80 ? 'is-warning' : ''}">
+                <div class="storage-text">
+                  <strong>IndexedDB Storage:</strong>
+                  <span>${(this.storageEstimate.usage / (1024 * 1024)).toFixed(1)} MB used of ${(this.storageEstimate.quota / (1024 * 1024 * 1024)).toFixed(1)} GB available (${this.storageEstimate.percent}%)</span>
+                </div>
+                ${
+                  this.storageEstimate.percent > 80
+                    ? `<span class="panel-badge badge-warning">High Storage Usage (>80%)</span>`
+                    : `<span class="panel-badge badge-success">Storage Healthy</span>`
+                }
+              </div>
+            `
+                : `
+              <div class="storage-estimate-box">
+                <span class="text-muted">Storage quota estimation available in standard browser sessions.</span>
+              </div>
+            `
+            }
           </div>
         </div>
       </div>
@@ -404,8 +466,8 @@ export class SettingsModal {
       return `
         <div class="scan-summary-card">
           <div class="scan-summary-header">
-            <strong>Modelos detectados en AxionikDB:</strong>
-            <span class="panel-badge badge-success">${this.axionikScanResults.length} modelos</span>
+            <strong>Models detected in AxionikDB:</strong>
+            <span class="panel-badge badge-success">${this.axionikScanResults.length} models</span>
           </div>
           <div class="scan-files-list">
             ${this.axionikScanResults
@@ -413,8 +475,8 @@ export class SettingsModal {
               .map(
                 (m) => `
               <div class="scan-file-row">
-                <span class="scan-file-name"><strong>${m.name}</strong> <small class="text-muted">(${m.slug})</small></span>
-                <span class="scan-file-size text-muted">${m.category} &bull; Set ${m.parameterSet} &bull; ${m.zoneCount} zonas</span>
+                <span class="scan-file-name"><strong>${escHtml(m.name)}</strong> <small class="text-muted">(${escHtml(m.slug)})</small></span>
+                <span class="scan-file-size text-muted">${escHtml(m.category)} &bull; Set ${m.parameterSet} &bull; ${m.zoneCount} zones</span>
                 <span class="scan-file-ext">${m.hasCover ? 'Cover OK' : 'No cover'}</span>
               </div>
             `
@@ -422,7 +484,7 @@ export class SettingsModal {
               .join('')}
             ${
               this.axionikScanResults.length > 30
-                ? `<div class="scan-more text-muted">+${this.axionikScanResults.length - 30} modelos adicionales disponibles en el explorador de bancos.</div>`
+                ? `<div class="scan-more text-muted">+${this.axionikScanResults.length - 30} additional models available in Bank Browser.</div>`
                 : ''
             }
           </div>
@@ -434,8 +496,8 @@ export class SettingsModal {
       return `
         <div class="scan-summary-card">
           <div class="scan-summary-header">
-            <strong>Archivos encontrados en NeuronDB (<code>${this.neuronDbScanResults.scanned_path}</code>):</strong>
-            <span class="panel-badge badge-success">${this.neuronDbScanResults.total_files} archivos</span>
+            <strong>Files found in NeuronDB (<code>${escHtml(this.neuronDbScanResults.scanned_path)}</code>):</strong>
+            <span class="panel-badge badge-success">${this.neuronDbScanResults.total_files} files</span>
           </div>
           <div class="scan-files-list">
             ${this.neuronDbScanResults.files
@@ -443,9 +505,9 @@ export class SettingsModal {
               .map(
                 (f) => `
               <div class="scan-file-row">
-                <span class="scan-file-name">${f.name}</span>
+                <span class="scan-file-name">${escHtml(f.name)}</span>
                 <span class="scan-file-size text-muted">${Math.round(f.size / 1024)} KB</span>
-                <span class="scan-file-ext">${f.ext}</span>
+                <span class="scan-file-ext">${escHtml(f.ext)}</span>
               </div>
             `
               )
@@ -459,8 +521,8 @@ export class SettingsModal {
     return `
       <div class="scan-summary-card">
         <div class="scan-summary-header">
-          <strong>Archivos encontrados en <code>${this.scanResults.scanned_path}</code>:</strong>
-          <span class="panel-badge badge-success">${this.scanResults.total_files} archivos</span>
+          <strong>Files found in <code>${escHtml(this.scanResults.scanned_path)}</code>:</strong>
+          <span class="panel-badge badge-success">${this.scanResults.total_files} files</span>
         </div>
         <div class="scan-files-list">
           ${this.scanResults.files
@@ -468,16 +530,16 @@ export class SettingsModal {
             .map(
               (f) => `
             <div class="scan-file-row">
-              <span class="scan-file-name">${f.name}</span>
+              <span class="scan-file-name">${escHtml(f.name)}</span>
               <span class="scan-file-size text-muted">${Math.round(f.size / 1024)} KB</span>
-              <span class="scan-file-ext">${f.ext}</span>
+              <span class="scan-file-ext">${escHtml(f.ext)}</span>
             </div>
           `
             )
             .join('')}
           ${
             this.scanResults.total_files > 30
-              ? `<div class="scan-more text-muted">+${this.scanResults.total_files - 30} archivos adicionales disponibles en el explorador de bancos.</div>`
+              ? `<div class="scan-more text-muted">+${this.scanResults.total_files - 30} additional files available in Bank Browser.</div>`
               : ''
           }
         </div>
@@ -492,23 +554,23 @@ export class SettingsModal {
           <label class="toggle-switch-label" for="ai-master-toggle">
             <input type="checkbox" id="ai-master-toggle" ${cfg.enabled ? 'checked' : ''} />
             <span class="toggle-slider"></span>
-            <span class="toggle-title">Habilitar Asistencia por IA</span>
+            <span class="toggle-title">Enable AI Assistance</span>
           </label>
           <span class="ai-master-hint text-muted">
-            (Si está apagado, el 100% de los procesos se ejecutan con algoritmos matemáticos deterministas en WebAudio)
+            (When disabled, 100% of processing runs with deterministic algorithmic DSP in WebAudio)
           </span>
         </div>
 
         <div class="ai-presets-group">
-          <span class="presets-label">Perfiles Rápidos:</span>
-          <button type="button" class="btn btn-sm btn-preset" id="btn-preset-all-dsp" title="Todo por algoritmos matemáticos clásicos (rápido y determinista)">
+          <span class="presets-label">Quick Presets:</span>
+          <button type="button" class="btn btn-sm btn-preset" id="btn-preset-all-dsp" title="Pure deterministic classic math algorithms (fast and reproducible)">
             ${ICONS.cpu} 100% DSP
           </button>
-          <button type="button" class="btn btn-sm btn-preset btn-preset-highlight" id="btn-preset-hybrid" title="Mezcla óptima recomendada (DSP Sinc + Separación y Outpainting IA)">
-            ${ICONS.zap} Híbrido Óptimo
+          <button type="button" class="btn btn-sm btn-preset btn-preset-highlight" id="btn-preset-hybrid" title="Recommended optimal balance (Sinc DSP + AI Separation &amp; Outpainting)">
+            ${ICONS.zap} Optimal Hybrid
           </button>
-          <button type="button" class="btn btn-sm btn-preset btn-preset-ai" id="btn-preset-all-ai" title="Todas las etapas asistidas por IA">
-            ${ICONS.ai} Máxima Calidad IA
+          <button type="button" class="btn btn-sm btn-preset btn-preset-ai" id="btn-preset-all-ai" title="All processing stages AI-assisted">
+            ${ICONS.ai} Max AI Quality
           </button>
         </div>
       </div>
@@ -521,12 +583,12 @@ export class SettingsModal {
         <div class="ai-hw-indicator">
           <span class="hw-icon">${ICONS.cpu}</span>
           <div class="hw-text">
-            <strong>Aceleración de Hardware del Navegador</strong>
-            <span id="ai-hw-desc">${this.webGpuStatus?.statusMessage ?? 'Detectando capacidades WebGPU/WASM...'}</span>
+            <strong>Browser Hardware Acceleration</strong>
+            <span id="ai-hw-desc">${this.webGpuStatus?.statusMessage ?? 'Detecting WebGPU / WASM SIMD capabilities...'}</span>
           </div>
         </div>
         <div class="ai-hw-guarantee">
-          <span>0 Servidores</span> &bull; <span>0 Coste</span> &bull; <span>100% Privado en Cliente</span>
+          <span>0 Servers</span> &bull; <span>0 Cost</span> &bull; <span>100% Client-Side Private</span>
         </div>
       </div>
 
@@ -537,22 +599,22 @@ export class SettingsModal {
             <span class="stage-num">1</span>
             <div class="stage-info">
               <h4 class="stage-title">Master Wave Standard (24-bit / 96 kHz)</h4>
-              <p class="stage-desc text-muted">Remuestreo de alta fidelidad y reconstrucción de frecuencias armónicas superiores.</p>
+              <p class="stage-desc text-muted">High-fidelity sample rate conversion and upper harmonic reconstruction.</p>
             </div>
           </div>
           <div class="stage-options">
             <label class="stage-opt ${cfg.masterWave === 'dsp' ? 'is-selected' : ''}">
               <input type="radio" name="opt-master-wave" value="dsp" ${cfg.masterWave === 'dsp' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.cpu} Algorítmico (DSP)</strong>
-                <small>Sinc polifásico lineal + saturador armónico. Cero artefactos de red, fase coherente.</small>
+                <strong>${ICONS.cpu} Algorithmic (DSP)</strong>
+                <small>Linear polyphase sinc + harmonic saturator. Zero network artifacts, phase-coherent.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.masterWave === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-master-wave" value="ai" ${cfg.masterWave === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} Extensión Neuronal (AudioSR)</strong>
-                <small>Difusión latente que genera armónicos ultra-agudos realistas hasta 48 kHz Nyquist.</small>
+                <strong>${ICONS.ai} Neural Extension (AudioSR)</strong>
+                <small>Latent diffusion generating realistic ultra-high harmonics up to 48 kHz Nyquist.</small>
               </span>
             </label>
           </div>
@@ -563,30 +625,30 @@ export class SettingsModal {
           <div class="stage-header">
             <span class="stage-num">2</span>
             <div class="stage-info">
-              <h4 class="stage-title">Separación de Fuentes y Desangrado (De-bleeding)</h4>
-              <p class="stage-desc text-muted">Aislar el instrumento solista si la muestra contiene sangrado de micrófono o ruido.</p>
+              <h4 class="stage-title">Source Separation &amp; De-Bleeding</h4>
+              <p class="stage-desc text-muted">Isolate the solo instrument if the recording contains background bleeding or room noise.</p>
             </div>
           </div>
           <div class="stage-options">
             <label class="stage-opt ${cfg.separation === 'dsp' ? 'is-selected' : ''}">
               <input type="radio" name="opt-separation" value="dsp" ${cfg.separation === 'dsp' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.cpu} Algorítmico (HPSS)</strong>
-                <small>Separación armónico/percusiva por filtrado de medianas sobre el espectrograma STFT.</small>
+                <strong>${ICONS.cpu} Algorithmic (HPSS)</strong>
+                <small>Harmonic/percussive separation via median filtering on the STFT spectrogram.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.separation === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-separation" value="ai" ${cfg.separation === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} Separador IA (Demucs v4)</strong>
-                <small>Aislamiento quirúrgico por red neuronal convolucional residual.</small>
+                <strong>${ICONS.ai} AI Separator (Demucs v4)</strong>
+                <small>Surgical stem isolation via residual convolutional neural network.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.separation === 'bypass' ? 'is-selected' : ''}">
               <input type="radio" name="opt-separation" value="bypass" ${cfg.separation === 'bypass' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.bypass} Bypass / Directo</strong>
-                <small>No separar; utilizar la muestra original tal cual fue grabada.</small>
+                <strong>${ICONS.bypass} Bypass / Direct</strong>
+                <small>Do not separate; use original sample as recorded.</small>
               </span>
             </label>
           </div>
@@ -597,23 +659,23 @@ export class SettingsModal {
           <div class="stage-header">
             <span class="stage-num">3</span>
             <div class="stage-info">
-              <h4 class="stage-title">Expansión Orgánica de Bucles Cortos</h4>
-              <p class="stage-desc text-muted">Desenrollar samples con loops diminutos para generar sustain natural sin zumbidos.</p>
+              <h4 class="stage-title">Organic Short Loop Expansion</h4>
+              <p class="stage-desc text-muted">Unroll short loops to create natural, non-cyclic sustain without buzzing.</p>
             </div>
           </div>
           <div class="stage-options">
             <label class="stage-opt ${cfg.loopExpansion === 'dsp' ? 'is-selected' : ''}">
               <input type="radio" name="opt-loop-expansion" value="dsp" ${cfg.loopExpansion === 'dsp' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.cpu} Algorítmico (Ventana Circular)</strong>
-                <small>Modulación periódica de fase y crossfade de igual potencia en cruces por cero.</small>
+                <strong>${ICONS.cpu} Algorithmic (Circular Window)</strong>
+                <small>Periodic phase modulation and equal-power crossfading at zero crossings.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.loopExpansion === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-loop-expansion" value="ai" ${cfg.loopExpansion === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} Outpainting Neuronal</strong>
-                <small>Síntesis generativa autorregresiva de continuación tímbrica infinita.</small>
+                <strong>${ICONS.ai} Neural Outpainting</strong>
+                <small>Generative autoregressive continuation for natural timbral sustain.</small>
               </span>
             </label>
           </div>
@@ -624,30 +686,30 @@ export class SettingsModal {
           <div class="stage-header">
             <span class="stage-num">4</span>
             <div class="stage-info">
-              <h4 class="stage-title">Clasificador de Parámetros y Familia Acústica</h4>
-              <p class="stage-desc text-muted">Selección automática del Parameter Set 0..9 y etiquetado de instrumentos.</p>
+              <h4 class="stage-title">Parameter Set &amp; Acoustic Classifier</h4>
+              <p class="stage-desc text-muted">Automatic selection of Parameter Set 0..9 and instrument family tagging.</p>
             </div>
           </div>
           <div class="stage-options">
             <label class="stage-opt ${cfg.classifier === 'dsp' ? 'is-selected' : ''}">
               <input type="radio" name="opt-classifier" value="dsp" ${cfg.classifier === 'dsp' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.cpu} Algorítmico (Descriptores)</strong>
-                <small>Ataque logarítmico, inarmonicidad B, centroide espectral y tasa de cruce por cero.</small>
+                <strong>${ICONS.cpu} Algorithmic (Descriptors)</strong>
+                <small>Log attack, inharmonicity B, spectral centroid, and zero-crossing rate.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.classifier === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-classifier" value="ai" ${cfg.classifier === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} Clasificador Neuronal</strong>
-                <small>Reconocimiento tímbrico profundo por embeddings acústicos en WebGPU.</small>
+                <strong>${ICONS.ai} Neural Classifier</strong>
+                <small>Deep timbral acoustic embeddings recognition in WebGPU.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.classifier === 'manual' ? 'is-selected' : ''}">
               <input type="radio" name="opt-classifier" value="manual" ${cfg.classifier === 'manual' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.bypass} Selección Manual</strong>
-                <small>Elegir manualmente el Parameter Set 0..9 en el panel principal.</small>
+                <strong>${ICONS.bypass} Manual Selection</strong>
+                <small>Manually select Parameter Set 0..9 on the main process panel.</small>
               </span>
             </label>
           </div>
@@ -658,30 +720,30 @@ export class SettingsModal {
           <div class="stage-header">
             <span class="stage-num">5</span>
             <div class="stage-info">
-              <h4 class="stage-title">Reducción de Ruido y Restauración</h4>
-              <p class="stage-desc text-muted">Supresión de soplido de cinta analógica y ruido de fondo de grabaciones antiguas.</p>
+              <h4 class="stage-title">Noise Reduction &amp; Audio Restoration</h4>
+              <p class="stage-desc text-muted">Suppression of analog tape hiss and background ambient noise from vintage recordings.</p>
             </div>
           </div>
           <div class="stage-options">
             <label class="stage-opt ${cfg.denoise === 'dsp' ? 'is-selected' : ''}">
               <input type="radio" name="opt-denoise" value="dsp" ${cfg.denoise === 'dsp' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.cpu} Algorítmico (Puerta Multibanda)</strong>
-                <small>Atenuación estática según suelo de ruido sin alterar la fase musical.</small>
+                <strong>${ICONS.cpu} Algorithmic (Multiband Gate)</strong>
+                <small>Static noise-floor attenuation without altering musical phase.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.denoise === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-denoise" value="ai" ${cfg.denoise === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} Denoise IA (DeepFilter)</strong>
-                <small>Filtrado neuronal adaptativo que preserva los armónicos sutiles del instrumento.</small>
+                <strong>${ICONS.ai} AI Denoise (DeepFilter)</strong>
+                <small>Adaptive neural filtering preserving subtle instrument harmonics.</small>
               </span>
             </label>
             <label class="stage-opt ${cfg.denoise === 'bypass' ? 'is-selected' : ''}">
               <input type="radio" name="opt-denoise" value="bypass" ${cfg.denoise === 'bypass' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.bypass} Desactivado / Crudo</strong>
-                <small>Preservar la grabación íntegra sin aplicar ningún reductor de ruido.</small>
+                <strong>${ICONS.bypass} Disabled / Raw</strong>
+                <small>Keep raw recording intact without applying any noise suppression.</small>
               </span>
             </label>
           </div>
@@ -705,10 +767,10 @@ export class SettingsModal {
         <div class="byok-guarantee-card">
           <div class="guarantee-icon">${ICONS.lock}</div>
           <div class="guarantee-content">
-            <h4>Garantía Estricta de Privacidad y Coste Cero para el Servidor</h4>
+            <h4>Strict Privacy &amp; Zero Server Cost Guarantee</h4>
             <p>
-              Tus claves API se almacenan <strong>única y exclusivamente en tu navegador (localStorage)</strong>.
-              Jamás se envían ni se guardan en ningún servidor de ABDSynths. Todas las solicitudes viajan de forma directa desde tu navegador hacia el proveedor oficial, y los costes de computación de la GPU Cloud se cargan a tu cuenta personal.
+              Your API keys are stored <strong>solely and exclusively in your local browser (localStorage)</strong>.
+              They are never transmitted to or saved on any ABDSynths server. All requests travel directly from your browser to the official provider endpoint, with computing costs billed to your personal provider account.
             </p>
           </div>
         </div>
@@ -719,37 +781,37 @@ export class SettingsModal {
             <label class="toggle-switch-label" for="byok-enable-toggle">
               <input type="checkbox" id="byok-enable-toggle" ${byok.enabled ? 'checked' : ''} />
               <span class="toggle-slider"></span>
-              <span class="toggle-title">Habilitar Cloud AI (BYOK)</span>
+              <span class="toggle-title">Enable Cloud AI (BYOK)</span>
             </label>
             <span class="byok-status-pill ${byok.enabled ? 'is-active' : 'is-inactive'}">
-              ${byok.enabled ? 'Cloud AI Habilitado' : 'Cloud AI Inactivo'}
+              ${byok.enabled ? 'Cloud AI Active' : 'Cloud AI Inactive'}
             </span>
           </div>
 
           <div class="byok-field-group">
-            <label class="byok-field-label">Proveedor Cloud Preferido:</label>
+            <label class="byok-field-label">Preferred Cloud Provider:</label>
             <div class="byok-provider-grid">
               <label class="byok-provider-opt ${byok.provider === 'replicate' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="replicate" ${byok.provider === 'replicate' ? 'checked' : ''} />
                 <span class="provider-title">Replicate</span>
-                <span class="provider-desc">Ideal para AudioSR (Super-resolución a 96kHz) y MusicGen.</span>
+                <span class="provider-desc">Best for AudioSR (96kHz Super-Resolution) and MusicGen models.</span>
               </label>
               <label class="byok-provider-opt ${byok.provider === 'huggingface' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="huggingface" ${byok.provider === 'huggingface' ? 'checked' : ''} />
                 <span class="provider-title">Hugging Face (Inference API)</span>
-                <span class="provider-desc">Acceso a miles de checkpoints abiertos y aceleradores serverless.</span>
+                <span class="provider-desc">Access to open checkpoints and serverless accelerated inference.</span>
               </label>
               <label class="byok-provider-opt ${byok.provider === 'gemini' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="gemini" ${byok.provider === 'gemini' ? 'checked' : ''} />
                 <span class="provider-title">Google Gemini (AI Studio)</span>
-                <span class="provider-desc">Análisis y razonamiento multimodal de espectros y descriptores.</span>
+                <span class="provider-desc">Multimodal spectral analysis and acoustic reasoning.</span>
               </label>
             </div>
           </div>
 
           <div class="byok-field-group">
             <label class="byok-field-label" for="byok-api-key-input">
-              Clave de API (${byok.provider === 'replicate' ? 'Replicate API Token' : byok.provider === 'huggingface' ? 'HF User Access Token' : 'Gemini API Key'}):
+              API Key (${byok.provider === 'replicate' ? 'Replicate API Token' : byok.provider === 'huggingface' ? 'HF User Access Token' : 'Gemini API Key'}):
             </label>
             <div class="byok-input-row">
               <div class="byok-input-wrap">
@@ -757,29 +819,29 @@ export class SettingsModal {
                   type="${this.showPassword ? 'text' : 'password'}"
                   id="byok-api-key-input"
                   class="form-control byok-key-field"
-                  placeholder="Introduce tu clave personal (p. ej. r8_... / hf_... / AIzaSy...)"
-                  value="${currentToken}"
-                  autocomplete="off"
+                  placeholder="Enter your personal key (e.g. r8_... / hf_... / AIzaSy...)"
+                  value="${escAttr(currentToken)}"
+                  autocomplete="new-password"
                   spellcheck="false"
                 />
-                <button type="button" class="btn btn-icon byok-toggle-visibility" id="btn-toggle-key-visibility" title="Mostrar/ocultar clave">
+                <button type="button" class="btn btn-icon byok-toggle-visibility" id="btn-toggle-key-visibility" title="Show / hide key">
                   ${this.showPassword ? ICONS.eyeOff : ICONS.eye}
                 </button>
               </div>
               <button type="button" class="btn btn-secondary" id="btn-test-byok" ${this.isTestingByok ? 'disabled' : ''}>
-                ${this.isTestingByok ? `${ICONS.spinner} Verificando...` : `${ICONS.zap} Verificar Clave`}
+                ${this.isTestingByok ? `${ICONS.spinner} Verifying...` : `${ICONS.zap} Verify Key`}
               </button>
-              <button type="button" class="btn btn-outline" id="btn-clear-byok" title="Borrar clave del almacenamiento local">
+              <button type="button" class="btn btn-outline" id="btn-clear-byok" title="Clear key from local browser storage">
                 ${ICONS.trash}
               </button>
             </div>
             <small class="text-muted byok-help-hint">
               ${
                 byok.provider === 'replicate'
-                  ? 'Obtén tu token personal en <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener">replicate.com/account/api-tokens</a>.'
+                  ? 'Obtain your personal token at <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener">replicate.com/account/api-tokens</a>.'
                   : byok.provider === 'huggingface'
-                    ? 'Obtén tu token en <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>.'
-                    : 'Obtén tu clave gratuita en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.'
+                    ? 'Obtain your user token at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>.'
+                    : 'Get your free developer API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>.'
               }
             </small>
           </div>
@@ -789,7 +851,7 @@ export class SettingsModal {
               ? `
             <div class="byok-test-banner ${this.byokTestResult.success ? 'is-success' : 'is-error'}">
               <span class="test-icon">${this.byokTestResult.success ? ICONS.check : ICONS.alert}</span>
-              <span class="test-msg">${this.byokTestResult.message}</span>
+              <span class="test-msg">${escHtml(this.byokTestResult.message)}</span>
             </div>
           `
               : ''
@@ -810,26 +872,26 @@ export class SettingsModal {
           <div class="bridge-card-header">
             <div class="bridge-card-title">
               <span class="bridge-dot ${isOnline ? 'dot-online' : 'dot-offline'}"></span>
-              <strong>Companion Bridge Local (Python &amp; GPU)</strong>
+              <strong>Local Companion Bridge (Python &amp; GPU)</strong>
             </div>
-            <span class="bridge-badge">${isOnline ? 'EN LÍNEA (7860)' : 'DESCONECTADO'}</span>
+            <span class="bridge-badge">${isOnline ? 'ONLINE (7860)' : 'DISCONNECTED'}</span>
           </div>
 
           <div class="bridge-details-grid">
             <div class="bridge-detail-item">
-              <span class="detail-label">Endpoint Local:</span>
-              <span class="detail-value"><code>${bridge.url}</code></span>
+              <span class="detail-label">Local Endpoint:</span>
+              <span class="detail-value"><code>${escHtml(bridge.url)}</code></span>
             </div>
             <div class="bridge-detail-item">
-              <span class="detail-label">Dispositivo Hardware:</span>
-              <span class="detail-value">${bridge.capabilities?.device ?? 'N/A'} (${bridge.capabilities?.gpu_name || 'CPU Fallback'})</span>
+              <span class="detail-label">Compute Device:</span>
+              <span class="detail-value">${escHtml(bridge.capabilities?.device ?? 'N/A')} (${escHtml(bridge.capabilities?.gpu_name || 'CPU Fallback')})</span>
             </div>
             <div class="bridge-detail-item">
-              <span class="detail-label">Aceleración GPU:</span>
-              <span class="detail-value">${bridge.capabilities?.gpu ? 'Activada (CUDA / VRAM)' : 'Desactivada'}</span>
+              <span class="detail-label">GPU Acceleration:</span>
+              <span class="detail-value">${bridge.capabilities?.gpu ? 'Enabled (CUDA / VRAM)' : 'Disabled'}</span>
             </div>
             <div class="bridge-detail-item">
-              <span class="detail-label">Latencia Loopback:</span>
+              <span class="detail-label">Loopback Latency:</span>
               <span class="detail-value">${bridge.latencyMs ?? 0} ms</span>
             </div>
           </div>
@@ -839,15 +901,15 @@ export class SettingsModal {
               ? `
             <div class="bridge-offline-instructions">
               <p>
-                El Companion Bridge permite conectar tu navegador (incluso desde Vercel) a tu GPU dedicada local (por ejemplo, RTX 3070 8GB VRAM) para ejecutar modelos pesados a coste cero y sin subir audio a servidores remotos.
-                Para arrancarlo, ejecuta en tu terminal:
+                The Companion Bridge connects your browser (even when hosted on Vercel) to your local dedicated GPU (e.g. RTX 3070 8GB VRAM) to execute heavy neural models with zero server costs and zero audio uploads.
+                To launch it, run in your terminal:
               </p>
-              <pre class="bridge-code-snippet"><code>start.bat  (Arranca la app y el Bridge minimizado)
-o bien:
+              <pre class="bridge-code-snippet"><code>start.bat  (Launches app and companion bridge)
+or:
 python bridge/server.py</code></pre>
               <div class="bridge-retry-row">
                 <button type="button" class="btn btn-sm btn-outline" id="btn-bridge-retry">
-                  ${ICONS.refresh} Reintentar Conexión Ahora
+                  ${ICONS.refresh} Retry Connection Now
                 </button>
               </div>
             </div>
@@ -860,15 +922,15 @@ python bridge/server.py</code></pre>
         <div class="bridge-models-section">
           <div class="models-section-header">
             <div class="header-left">
-              <h4>Catálogo de Modelos Neuronales Locales</h4>
+              <h4>Local Neural Model Catalog</h4>
               <p class="text-muted">
-                Pre-descarga transparente multihilo directamente a tu GPU local.
+                Transparent multithreaded model pre-download directly to your local GPU.
                 <br/>
-                <small style="opacity: 0.85;">(Nota: Si no los descargas aquí, el sistema los descargará de forma 100% transparente y automática la primera vez que actives su función en el proyecto).</small>
+                <small style="opacity: 0.85;">(Note: Models are also downloaded automatically on first demand if not pre-fetched here).</small>
               </p>
             </div>
             <button type="button" class="btn btn-xs btn-outline" id="btn-refresh-models">
-              ${ICONS.refresh} Actualizar Lista
+              ${ICONS.refresh} Refresh List
             </button>
           </div>
 
@@ -884,7 +946,7 @@ python bridge/server.py</code></pre>
     if (!bridgeClient.isConnected()) {
       return `
         <div class="models-empty-state text-muted">
-          Conecta el Companion Bridge en local para gestionar, descargar o desinstalar modelos neuronales en tu GPU.
+          Connect the local Companion Bridge to manage, download, or uninstall GPU neural models.
         </div>
       `;
     }
@@ -892,7 +954,7 @@ python bridge/server.py</code></pre>
     if (this.bridgeModels.length === 0) {
       return `
         <div class="models-empty-state text-muted">
-          Cargando catálogo de modelos disponibles...
+          Loading catalog of available models...
         </div>
       `;
     }
@@ -912,15 +974,15 @@ python bridge/server.py</code></pre>
           m.size_mb >= 1000 ? `${(m.size_mb / 1024).toFixed(1)} GB` : `${m.size_mb} MB`;
 
         return `
-        <div class="model-row-card ${m.installed ? 'is-installed' : ''}" data-model-id="${m.id}">
+        <div class="model-row-card ${m.installed ? 'is-installed' : ''}" data-model-id="${escAttr(m.id)}">
           <div class="model-row-main">
             <div class="model-row-title">
-              <strong>${m.name}</strong>
+              <strong>${escHtml(m.name)}</strong>
               <span class="model-size-badge">${sizeDisplay}</span>
-              <span class="model-task-badge">${m.task}</span>
-              ${m.is_custom_url ? '<span class="model-custom-url-badge" title="URL personalizada en uso">Mirror Custom</span>' : ''}
+              <span class="model-task-badge">${escHtml(m.task)}</span>
+              ${m.is_custom_url ? '<span class="model-custom-url-badge" title="Custom download mirror in use">Custom Mirror</span>' : ''}
             </div>
-            <p class="model-row-desc text-muted">${m.description}</p>
+            <p class="model-row-desc text-muted">${escHtml(m.description)}</p>
             ${
               isDownloading
                 ? `
@@ -937,12 +999,12 @@ python bridge/server.py</code></pre>
               isEditingUrl
                 ? `
               <div class="model-url-editor-box">
-                <div class="url-editor-label">URL de descarga del modelo:</div>
+                <div class="url-editor-label">Model Download URL:</div>
                 <div class="url-editor-input-row">
-                  <input type="text" class="form-control input-custom-model-url" data-id="${m.id}" value="${m.url || ''}" placeholder="${m.default_url || ''}" />
-                  <button type="button" class="btn btn-xs btn-primary btn-save-model-url" data-id="${m.id}">Guardar</button>
-                  <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${m.id}">Restablecer Oficial</button>
-                  <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${m.id}">Cancelar</button>
+                  <input type="text" class="form-control input-custom-model-url" data-id="${escAttr(m.id)}" value="${escAttr(m.url || '')}" placeholder="${escAttr(m.default_url || '')}" />
+                  <button type="button" class="btn btn-xs btn-primary btn-save-model-url" data-id="${escAttr(m.id)}">Save</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${escAttr(m.id)}">Reset to Official</button>
+                  <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${escAttr(m.id)}">Cancel</button>
                 </div>
               </div>
             `
@@ -950,24 +1012,24 @@ python bridge/server.py</code></pre>
             }
           </div>
           <div class="model-row-action">
-            <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${m.id}" title="Configurar URL / Mirror de descarga">
+            <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
               ${ICONS.settings} URL
             </button>
             ${
               m.installed
                 ? `
-                <span class="badge-installed">${ICONS.check} Instalado en Disco</span>
-                <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${m.id}" title="Eliminar este modelo del disco para liberar espacio">
-                  ${ICONS.trash} Desinstalar
+                <span class="badge-installed">${ICONS.check} Installed on Disk</span>
+                <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${escAttr(m.id)}" title="Delete this model from local disk to free space">
+                  ${ICONS.trash} Uninstall
                 </button>
               `
                 : isDownloading
                   ? `<button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
                       <span class="btn-spinner">${ICONS.spinner}</span>
-                      <span>Descargando (${pct}%)...</span>
+                      <span>Downloading (${pct}%)...</span>
                     </button>`
-                  : `<button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${m.id}">
-                      ${ICONS.zap} Descargar (${sizeDisplay})
+                  : `<button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${escAttr(m.id)}">
+                      ${ICONS.zap} Download (${sizeDisplay})
                     </button>`
             }
           </div>
@@ -1020,7 +1082,7 @@ python bridge/server.py</code></pre>
     this.backdropEl.querySelector('#btn-apply-settings-modal')?.addEventListener('click', () => {
       this.handlers.onUpdateAiConfig({ ...this.currentConfig });
       this.close();
-      toast('Configuración guardada y aplicada con éxito', 'success');
+      toast('Settings saved and applied successfully', 'success');
     });
 
     // Tab Navigation
@@ -1075,7 +1137,7 @@ python bridge/server.py</code></pre>
           const mode = r.value as WorkingMode;
           this.handlers.onSetWorkingMode(mode);
           this.render();
-          toast(`Modo de creación cambiado a: ${mode === 'classic' ? 'Clásico (1:1 Hardware)' : 'Extendido (HD Multi-Capa)'}`, 'info');
+          toast(`Working mode switched to: ${mode === 'classic' ? 'Classic (1:1 Hardware)' : 'Extended (HD Multi-Layer)'}`, 'info');
         }
       });
     });
@@ -1092,9 +1154,9 @@ python bridge/server.py</code></pre>
       this.render();
       try {
         this.axionikScanResults = await bridgeClient.scanAxionikDb(p);
-        toast(`AxionikDB escaneado: ${this.axionikScanResults.length} modelos encontrados`, 'success');
+        toast(`AxionikDB scanned: ${this.axionikScanResults.length} models found`, 'success');
       } catch (err) {
-        toast(`Error al escanear AxionikDB: ${String(err)}`, 'error');
+        toast(`Error scanning AxionikDB: ${String(err)}`, 'error');
       } finally {
         this.isScanningAxionik = false;
         this.render();
@@ -1113,9 +1175,9 @@ python bridge/server.py</code></pre>
       this.render();
       try {
         this.neuronDbScanResults = await bridgeClient.scanLocalFiles(p);
-        toast(`NeuronDB escaneado: ${this.neuronDbScanResults.total_files} archivos encontrados`, 'success');
+        toast(`NeuronDB scanned: ${this.neuronDbScanResults.total_files} files found`, 'success');
       } catch (err) {
-        toast(`Error al escanear NeuronDB: ${String(err)}`, 'error');
+        toast(`Error scanning NeuronDB: ${String(err)}`, 'error');
       } finally {
         this.isScanningNeuronDb = false;
         this.render();
@@ -1135,9 +1197,9 @@ python bridge/server.py</code></pre>
       this.render();
       try {
         this.scanResults = await bridgeClient.scanLocalFiles(p);
-        toast(`Escaneo completado: ${this.scanResults.total_files} archivos encontrados`, 'success');
+        toast(`Scan complete: ${this.scanResults.total_files} files found`, 'success');
       } catch (err) {
-        toast(`Error al escanear directorio: ${String(err)}`, 'error');
+        toast(`Error scanning directory: ${String(err)}`, 'error');
       } finally {
         this.isScanning = false;
         this.render();
@@ -1166,7 +1228,7 @@ python bridge/server.py</code></pre>
         denoise: 'dsp',
       };
       this.render();
-      toast('Perfil aplicado: 100% DSP Matemático Clásico', 'info');
+      toast('Preset applied: 100% Deterministic Algorithmic DSP', 'info');
     });
 
     this.backdropEl.querySelector('#btn-preset-hybrid')?.addEventListener('click', () => {
@@ -1179,7 +1241,7 @@ python bridge/server.py</code></pre>
         denoise: 'ai',
       };
       this.render();
-      toast('Perfil aplicado: Híbrido Óptimo (DSP Sinc + IA en Outpainting/Denoise)', 'success');
+      toast('Preset applied: Optimal Hybrid (Sinc DSP + AI Outpainting/Denoise)', 'success');
     });
 
     this.backdropEl.querySelector('#btn-preset-all-ai')?.addEventListener('click', () => {
@@ -1192,7 +1254,7 @@ python bridge/server.py</code></pre>
         denoise: 'ai',
       };
       this.render();
-      toast('Perfil aplicado: Máxima Calidad Asistida por IA (5/5 etapas)', 'success');
+      toast('Preset applied: Maximum Quality AI-Assisted (5/5 stages)', 'success');
     });
 
     // Stage radio changes
@@ -1276,7 +1338,7 @@ python bridge/server.py</code></pre>
       cloudByokClient.clearConfig();
       this.byokTestResult = null;
       this.render();
-      toast('Claves borradas del almacenamiento local del navegador', 'info');
+      toast('Keys cleared from local browser storage', 'info');
     });
   }
 
@@ -1284,7 +1346,7 @@ python bridge/server.py</code></pre>
     if (!this.backdropEl) return;
 
     this.backdropEl.querySelector('#btn-bridge-retry')?.addEventListener('click', async () => {
-      toast('Comprobando Companion Bridge...', 'info');
+      toast('Checking Companion Bridge connection...', 'info');
       await bridgeClient.checkHealth();
       await this.refreshBridgeModels();
       this.render();
@@ -1313,7 +1375,7 @@ python bridge/server.py</code></pre>
           m.status = 'downloading';
         }
         this.renderBridgeModelsList();
-        toast(`Iniciando descarga multihilo de "${m?.name || modelId}" en el Bridge...`, 'info');
+        toast(`Initiating background download for "${m?.name || modelId}"...`, 'info');
 
         try {
           await bridgeClient.downloadModel(modelId);
@@ -1323,7 +1385,7 @@ python bridge/server.py</code></pre>
           if (m) {
             m.status = 'error';
           }
-          toast(`Error al iniciar descarga: ${String(err)}`, 'error');
+          toast(`Error initiating download: ${String(err)}`, 'error');
           this.renderBridgeModelsList();
         }
       });
@@ -1336,7 +1398,7 @@ python bridge/server.py</code></pre>
         if (!modelId) return;
         const m = this.bridgeModels.find((x) => x.id === modelId);
         const confirmed = window.confirm(
-          `¿Deseas desinstalar "${m?.name || modelId}" de tu disco local para liberar espacio?`
+          `Do you want to uninstall "${m?.name || modelId}" from local disk to free space?`
         );
         if (!confirmed) return;
 
@@ -1348,10 +1410,10 @@ python bridge/server.py</code></pre>
             m.progress = 0;
             m.downloaded_bytes = 0;
           }
-          toast(`Modelo desinstalado: ${res.freed_mb ?? 0} MB liberados en disco`, 'info');
+          toast(`Model uninstalled: ${res.freed_mb ?? 0} MB freed on disk`, 'info');
           this.renderBridgeModelsList();
         } catch (err) {
-          toast(`Error al desinstalar modelo: ${String(err)}`, 'error');
+          toast(`Error uninstalling model: ${String(err)}`, 'error');
         }
       });
     });
@@ -1376,9 +1438,9 @@ python bridge/server.py</code></pre>
           await bridgeClient.updateModelUrl(modelId, newUrl);
           this.editingUrlModelId = null;
           await this.refreshBridgeModels();
-          toast('URL del modelo actualizada correctamente', 'success');
+          toast('Model URL updated successfully', 'success');
         } catch (err) {
-          toast(`Error al actualizar URL: ${String(err)}`, 'error');
+          toast(`Error updating URL: ${String(err)}`, 'error');
         }
       });
     });
@@ -1392,9 +1454,9 @@ python bridge/server.py</code></pre>
           await bridgeClient.updateModelUrl(modelId, '');
           this.editingUrlModelId = null;
           await this.refreshBridgeModels();
-          toast('URL restablecida a la fuente oficial', 'info');
+          toast('URL reset to official repository mirror', 'info');
         } catch (err) {
-          toast(`Error al restablecer URL: ${String(err)}`, 'error');
+          toast(`Error resetting URL: ${String(err)}`, 'error');
         }
       });
     });
@@ -1437,10 +1499,10 @@ python bridge/server.py</code></pre>
               model.status = 'ready';
               model.progress = 100;
               this.activePollingModelIds.delete(mId);
-              toast(`Modelo "${model.name}" descargado y listo en disco / GPU`, 'success');
+              toast(`Model "${model.name}" downloaded and ready on GPU`, 'success');
             } else if (prog.status === 'error') {
               this.activePollingModelIds.delete(mId);
-              toast(`Fallo en la descarga de "${model.name}": ${prog.error ?? 'Error de red'}`, 'error');
+              toast(`Download failed for "${model.name}": ${prog.error ?? 'Network error'}`, 'error');
             }
           }
         } catch {
@@ -1458,8 +1520,8 @@ python bridge/server.py</code></pre>
       const activeAiCount = this.countActiveAiStages();
       badge.className = `panel-badge ${this.currentConfig.enabled ? 'badge-ai-on' : 'badge-muted'}`;
       badge.textContent = this.currentConfig.enabled
-        ? `IA: ${activeAiCount}/5 ETAPAS`
-        : 'DSP PURO (IA OFF)';
+        ? `AI: ${activeAiCount}/5 STAGES`
+        : 'PURE DSP (AI OFF)';
     }
   }
 

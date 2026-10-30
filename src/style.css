@@ -381,6 +381,12 @@ input[type="range"] {
   color: var(--color-success);
 }
 
+.hud-coverage-pill.is-neutral {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-panel-surface);
+}
+
 .hud-coverage-pill.is-error {
   border-color: var(--color-danger);
   color: var(--color-danger);
@@ -600,8 +606,8 @@ input[type="range"] {
 }
 
 .zone-vel-low.is-missing-vel {
-  background: var(--color-danger-dim);
-  color: var(--color-danger);
+  background: var(--color-panel-surface-elevated);
+  color: var(--color-text-muted);
 }
 
 .vel-band-badge {

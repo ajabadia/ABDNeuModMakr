@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
+import { midiToNoteName } from './ZoneRibbon';
 import type { Session } from '../core/types';
 
 export class TelemetryDrawer {
@@ -146,13 +147,13 @@ export class TelemetryDrawer {
     return `
       ${segmentsHtml}
       <div class="telemetry-minimap-labels">
-        <span>C-1 (0)</span>
-        <span>C1 (24)</span>
-        <span>C3 (48)</span>
-        <span>C4 (60)</span>
-        <span>C6 (84)</span>
-        <span>C8 (108)</span>
-        <span>G9 (127)</span>
+        <span>${midiToNoteName(0)} (0)</span>
+        <span>${midiToNoteName(24)} (24)</span>
+        <span>${midiToNoteName(48)} (48)</span>
+        <span>${midiToNoteName(60)} (60)</span>
+        <span>${midiToNoteName(84)} (84)</span>
+        <span>${midiToNoteName(108)} (108)</span>
+        <span>${midiToNoteName(127)} (127)</span>
       </div>
     `;
   }

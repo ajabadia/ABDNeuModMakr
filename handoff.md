@@ -75,10 +75,11 @@ ABDNeuModMakr/
 │   │   ├── MockCore.ts         <- Mock de referencia
 │   │   ├── extendedAdapter.ts  <- Compilador bidireccional Classic <-> Extended
 │   │   ├── sessionSchema.ts    <- Esquema y validacion de sesiones .nmsession
+│   │   ├── bridge/
+│   │   │   └── BridgeClient.ts     <- Cliente HTTP/SSE para Companion Bridge local (7860) y escaneo de disco
 │   │   ├── ai/
-│   │   │   ├── AiBridgeClient.ts   <- Cliente HTTP para Companion Bridge local (7860)
-│   │   │   ├── WebNeuralEngine.ts  <- Motor WebGPU / WebAssembly SIMD en navegador
-│   │   │   └── CloudByokClient.ts  <- Cliente BYOK para inferencia serverless en la nube
+│   │   │   ├── WebNeuralEngine.ts  <- Deteccion WebGPU / SIMD y andamiaje de conectividad
+│   │   │   └── CloudByokClient.ts  <- Cliente BYOK para inferencia serverless en la nube (Replicate/HF/Gemini)
 │   │   ├── cache/
 │   │   │   └── HashCache.ts        <- Dirty tracking y cache por huella SHA-256
 │   │   ├── storage/
@@ -172,9 +173,9 @@ ABDNeuModMakr/
   - [x] Normalizacion a WebP 512x512 via Canvas con recorte centrado.
   - [x] Dialogo modal de inspeccion en alta definicion y empaquetado en la capa `05_extended_model`.
 - [x] **Fase 15 -- Arquitectura de Inferencia Híbrida de 3 Niveles y Dirty Tracking**:
-  - [x] Nivel 1: `WebNeuralEngine` con WebGPU y WASM SIMD en cliente (cero costes, 100% privado).
+  - [x] Nivel 1: `WebNeuralEngine` con detección WebGPU y andamiaje de fallbacks WASM SIMD en cliente.
   - [x] Nivel 2: `CloudByokClient` con Bring-Your-Own-Key directo a proveedores y claves solo en `localStorage`.
-  - [x] Nivel 3: `AiBridgeClient` conectado al Companion Bridge local (`http://127.0.0.1:7860`) con descarga en background de modelos neuronales pesados.
+  - [x] Nivel 3: `BridgeClient` conectado al Companion Bridge local (`http://127.0.0.1:7860`) con descarga en background de modelos neuronales pesados y acceso directo a disco.
   - [x] Dirty Tracking y Hash Caching con SHA-256 (`HashCache.ts`) para evitar reprocesamientos innecesarios.
 
 ---

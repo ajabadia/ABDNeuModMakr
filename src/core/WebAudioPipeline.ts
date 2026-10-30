@@ -362,6 +362,7 @@ export class WebAudioPipeline implements CoreService {
     if (!this.session) return;
     this.history.push(
       {
+        sessionName: this.session.name,
         zones: this.session.zones,
         extendedRegions: this.session.extendedRegions,
         articulation: this.session.articulation,
@@ -379,6 +380,7 @@ export class WebAudioPipeline implements CoreService {
   }
 
   private applyHistoryDocument(doc: {
+    sessionName?: string;
     zones: Zone[];
     extendedRegions?: ExtendedRegion[];
     articulation?: SynthArticulationConfig;
@@ -386,6 +388,7 @@ export class WebAudioPipeline implements CoreService {
     processConfig: ProcessConfig;
   }): void {
     if (!this.session) return;
+    if (doc.sessionName !== undefined) this.session.name = doc.sessionName;
     this.session.zones = structuredClone(doc.zones);
     this.session.extendedRegions = doc.extendedRegions
       ? structuredClone(doc.extendedRegions)
@@ -406,6 +409,7 @@ export class WebAudioPipeline implements CoreService {
   public undo(): Session | null {
     if (!this.session) return null;
     const restored = this.history.undo({
+      sessionName: this.session.name,
       zones: this.session.zones,
       extendedRegions: this.session.extendedRegions,
       articulation: this.session.articulation,
@@ -420,6 +424,7 @@ export class WebAudioPipeline implements CoreService {
   public redo(): Session | null {
     if (!this.session) return null;
     const restored = this.history.redo({
+      sessionName: this.session.name,
       zones: this.session.zones,
       extendedRegions: this.session.extendedRegions,
       articulation: this.session.articulation,

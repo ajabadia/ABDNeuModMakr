@@ -18,6 +18,7 @@ import {
 } from '../core/dsp/LoopEditorTools';
 import type { AutoLoopAlgorithm, LoopMode, ZoneLoopEditorData, ZoneSpectralInspection } from '../core/types';
 import { ICONS } from './icons';
+import { escAttr, escHtml } from './escape';
 
 export type SpectralDisplayMode =
   | 'spectrogram'
@@ -190,7 +191,7 @@ export class SpectralView {
         <div class="spectral-header">
           <div class="spectral-title-group">
             <span class="panel-badge">${ICONS.wave} SPECTRAL &amp; A/B/C MONITOR</span>
-            <span class="spectral-sample-title" title="${sampleName}">${sampleName}</span>
+            <span class="spectral-sample-title" title="${escAttr(sampleName)}">${escHtml(sampleName)}</span>
             <span class="spectral-meta-pill">${(sampleRate / 1000).toFixed(1)} kHz | ${durationSec.toFixed(2)}s</span>
             <span class="spectral-grid-pill ${bandClass}" title="${summary.gridNotice}">
               f0: ${summary.detectedF0Hz.toFixed(2)} Hz (${summary.gridResidualCents.toFixed(1)} ct) | ${summary.activePartials} Partials | ${summary.layerCount} Layer${summary.layerCount > 1 ? 's' : ''}

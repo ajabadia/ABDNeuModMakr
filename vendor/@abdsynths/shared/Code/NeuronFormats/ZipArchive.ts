@@ -172,7 +172,14 @@ export function createZipArchive(entries: readonly ZipEntryInput[]): Uint8Array 
  * Inflates a raw DEFLATE (RFC 1951, method 8) byte stream into an uncompressed Uint8Array.
  * Supports Block Type 0 (stored), Block Type 1 (fixed Huffman), and Block Type 2 (dynamic Huffman).
  */
+export const MAX_ZIP_ENTRIES = 2000;
+export const MAX_ZIP_ENTRY_BYTES = 100 * 1024 * 1024;
+export const MAX_ZIP_TOTAL_BYTES = 300 * 1024 * 1024;
+
 export function inflateRaw(compressed: Uint8Array, expectedSize?: number): Uint8Array {
+  if (expectedSize !== undefined && expectedSize > MAX_ZIP_ENTRY_BYTES) {
+    throw new Error(`ZIP entry too large (${expectedSize} bytes, max ${MAX_ZIP_ENTRY_BYTES})`);
+  }
   let out = new Uint8Array(
     expectedSize && expectedSize > 0
       ? expectedSize
@@ -422,8 +429,15 @@ export function parseZipArchive(zipBytes: Uint8Array): ParsedZipEntry[] {
     }
   }
 
+  let totalUncompressed = 0;
+  const checkBudget = (size: number): boolean => {
+    if (size > MAX_ZIP_ENTRY_BYTES) return false;
+    totalUncompressed += size;
+    return totalUncompressed <= MAX_ZIP_TOTAL_BYTES;
+  };
+
   if (eocdOffset >= 0) {
-    const totalEntries = view.getUint16(eocdOffset + 10, true);
+    const totalEntries = Math.min(view.getUint16(eocdOffset + 10, true), MAX_ZIP_ENTRIES);
     const centralDirOffset = view.getUint32(eocdOffset + 16, true);
     let cdPtr = centralDirOffset;
 
@@ -452,17 +466,22 @@ export function parseZipArchive(zipBytes: Uint8Array): ParsedZipEntry[] {
       const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
       if (dataStart + compSize > zipBytes.byteLength) continue;
 
+      if (compSize > MAX_ZIP_ENTRY_BYTES || uncompSize > MAX_ZIP_ENTRY_BYTES) continue;
       const rawSlice = zipBytes.subarray(dataStart, dataStart + compSize);
       if (method === 0) {
+        if (!checkBudget(compSize)) break;
         const payload = new Uint8Array(compSize);
         payload.set(rawSlice);
         entries.push({ path, data: payload });
       } else if (method === 8) {
+        if (uncompSize === 0 && compSize === 0) continue;
         const inflated = inflateRaw(rawSlice, uncompSize);
+        if (!checkBudget(inflated.byteLength)) break;
         const payload = new Uint8Array(inflated.byteLength);
         payload.set(inflated);
         entries.push({ path, data: payload });
       }
+      if (entries.length >= MAX_ZIP_ENTRIES) break;
     }
 
     if (entries.length > 0) {
@@ -489,17 +508,21 @@ export function parseZipArchive(zipBytes: Uint8Array): ParsedZipEntry[] {
     const path = decodeUtf8(nameBytes);
 
     if (!path.endsWith('/') && !isMacOsJunkZipPath(path)) {
+      if (compSize > MAX_ZIP_ENTRY_BYTES || uncompSize > MAX_ZIP_ENTRY_BYTES) break;
       const rawSlice = zipBytes.subarray(dataStart, dataStart + compSize);
       if (method === 0) {
+        if (!checkBudget(compSize)) break;
         const payload = new Uint8Array(compSize);
         payload.set(rawSlice);
         entries.push({ path, data: payload });
       } else if (method === 8 && compSize > 0) {
         const inflated = inflateRaw(rawSlice, uncompSize);
+        if (!checkBudget(inflated.byteLength)) break;
         const payload = new Uint8Array(inflated.byteLength);
         payload.set(inflated);
         entries.push({ path, data: payload });
       }
+      if (entries.length >= MAX_ZIP_ENTRIES) break;
     }
 
     ptr = dataStart + compSize;
