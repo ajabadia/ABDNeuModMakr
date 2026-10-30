@@ -261,10 +261,19 @@ Cada modelo empaquetado almacena de forma estructurada y trazable (`src/core/tim
 - [x] Al ejecutar **`reprocessFromPurestSource` ("Reprocess Purest Source")**, el motor resuelve automáticamente la fuente primaria más pura disponible (`resolvePurestSourceForSample`: `01` o `02` $\rightarrow$ `03` $\rightarrow$ `04`/`05`), sin recomprimir jamás un binario `04_classic_enhanced` ya degradado.
 - [x] **Persistencia de activos pesados en `IndexedDB` (`src/core/storage/NeuronAssetStore.ts`)**: Mantiene configuraciones ligeras en `localStorage` y almacena las 5 capas binarias (`raw_sources`, `legacy_originals`, `enhanced_audio`, `model_capsules`) en `IndexedDB` con caché write-through en memoria y fallback automático para tests en Node.js.
 
-### 9.3 Tarea a Estudiar: Ofuscación, Extensión Propietaria y Cifrado del Contenedor (ABDAxionikVS / VST)
+### 9.3 Tarea a Estudiar: Exportación Clásica Pura, Gestión de Librerías NeuronDB y Cifrado de Contenedor
 
 > *Nota: Se abordará una vez validado empíricamente en las pruebas que el contenido del paquete actual satisface todas las necesidades del sintetizador y del diseñador sonoro.*
 
+- [ ] **Exportación Exclusiva en Formato Clásico (`Legacy Hardware/Software Only`)**:
+  - Opción de exportar un paquete depurado que contenga **únicamente la estructura clásica original** (`Models/<NNN>.model/` con `MName`, `map.script`, `.scape`, `.sphere` y `Sounds/<NNN>.sound/` con `sound.script`, `sound.stickrec`), omitiendo las capas de preservación cruda o moderna cuando el destino sea estrictamente volcar a CompactFlash para el teclado hardware Hartmann Neuron o para el plugin clásico `NeuronVS`.
+  - Opción de **inyectar / actualizar modelos directamente** sobre una carpeta de librería `NeuronDB` existente seleccionada por el usuario (mediante File System Access API o descargador de reemplazo).
+- [ ] **Generador y Reorganizador de Librerías Clásicas Nuevas (NeuronDB Manager)**:
+  - Capacidad de **crear una librería completa nueva en formato antiguo** sin sobreescribir ni tocar la librería original de fábrica (`Factory NeuronDB`), tanto de forma manual (modelo a modelo) como en lotes (*batch* cuando se implemente la Fase 12).
+  - **Herramientas de reorganización de la librería**:
+    - Reordenar visualmente y reasignar números de slot (`000..511`).
+    - Copiar, clonar y mover modelos entre diferentes librerías o bancos.
+    - Reconstrucción y sincronización automática de los archivos índice de catálogo `ModelNames` y `SoundNames` de la librería para que el hardware y NeuronVS reconozcan los nombres sin corrupción de índices.
 - [ ] **Extensión de Paquete Propia**:
   - Reemplazar la extensión genérica `.zip` por una extensión de marca propia (ej. `.abdnmodel`, `.axionikpack` o `.npack`).
 - [ ] **Ofuscación y Protección contra Extracción Genérica**:

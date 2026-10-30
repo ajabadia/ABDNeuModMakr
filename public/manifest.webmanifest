@@ -1,0 +1,27 @@
+{
+  "name": "NEURON MODELmaker — ABDSynths",
+  "short_name": "MODELmaker",
+  "description": "Web-based Hartmann Neuron model maker, resynthesis & spectral sound designer",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d0f12",
+  "theme_color": "#0d0f12",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["music", "audio", "utilities"],
+  "lang": "en"
+}

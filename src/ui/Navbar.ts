@@ -22,6 +22,7 @@ export interface NavbarHandlers {
   onExportModel: () => void;
   onExportModelAs?: () => void;
   onExportZoneAiff: () => void;
+  onInstallPwa?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onAddZone: () => void;
@@ -173,7 +174,7 @@ export class AppNavbar {
           { id: 901, label: 'Hartmann MODELmaker User Guide...', action: 'manual', shortcut: 'F1' },
           { id: 902, label: 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
-          { id: 903, label: 'Check for Updates...', action: 'checkForUpdates' },
+          { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
           { id: 904, label: 'About NEURON MODELmaker...', action: 'about' },
         ],
       },
@@ -454,6 +455,7 @@ export class AppNavbar {
       case 'toggleTheme': this.handlers.onToggleTheme(); break;
       case 'manual': this.showDocModal('manual'); break;
       case 'specs': this.showDocModal('specs'); break;
+      case 'installPwa': this.handlers.onInstallPwa?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
     }
   }

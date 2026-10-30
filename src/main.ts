@@ -26,6 +26,7 @@ import { BankDrawer } from './ui/BankDrawer';
 import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
 import { confirmDialog, toast } from './ui/notify';
+import { pwaManager } from './app/pwa';
 
 class App {
   private core: CoreService = createCoreService();
@@ -641,6 +642,7 @@ class App {
     this.menus.bindKeyboardShortcuts();
     this.imports.bindGlobalDragAndDrop();
     this.menus.bindUnsavedChangesGuard();
+    pwaManager.registerServiceWorker();
   }
 
   private async handleCoverImageUpload(file: File): Promise<void> {

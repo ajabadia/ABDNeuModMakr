@@ -12,6 +12,8 @@ import type { SpectralView } from '../ui/SpectralView';
 import type { TelemetryDrawer } from '../ui/TelemetryDrawer';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { ImportHandlers } from './importHandlers';
+import { toast } from '../ui/notify';
+import { pwaManager } from './pwa';
 
 export interface MenuShell {
   getNavbar(): AppNavbar;
@@ -137,6 +139,24 @@ export class MenuActions {
       onImportModel: () => this.ctx.imports.triggerModelImport(),
       onExportModel: () => void this.exportModel(),
       onExportModelAs: () => void this.exportModelAs(),
+      onInstallPwa: async () => {
+        if (pwaManager.getIsStandalone()) {
+          toast('NEURON MODELmaker is already running as a standalone desktop app.', 'info');
+          return;
+        }
+        if (pwaManager.canInstall()) {
+          const installed = await pwaManager.triggerInstall();
+          if (installed) {
+            toast('NEURON MODELmaker installed on desktop!', 'success');
+            this.ctx.shell.getTelemetry().addLog('Installed as desktop PWA.');
+          }
+        } else {
+          toast(
+            'To install on your desktop, use the Install icon (⤓) in your browser address bar or menu.',
+            'info'
+          );
+        }
+      },
       onExportZoneAiff: () => {
         const active = this.ctx.getActiveZone();
         if (!active) return;
