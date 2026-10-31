@@ -6,8 +6,13 @@ import assert from 'assert';
 import {
   sliceAudioBuffer,
   buildMidiFileBuffer,
+  moveSliceBoundary,
+  splitSliceAtFrame,
+  deleteSlice,
+  extractBoundaryFrames,
   type DetectedSlice,
 } from '../src/core/dsp/AudioSlicerEngine.ts';
+import { parseSliceFile } from '../src/core/dsp/SliceFileParser.ts';
 
 console.log('=== ABDNeuModMakr Audio Slicer & Chopper Verification ===\n');
 
@@ -60,9 +65,9 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   console.log(`   -> Created ${res.slices.length} grid slices at 120 BPM quarter notes.`);
 }
 
-// Test 2: Transient Detection & Silence Gating (Drums Mode)
+// Test 2: Transient Detection & Silence Gating (Drums Mode with SuperFlux)
 {
-  console.log('2. Testing Transient Detection & Silence Gating (Drums Mode)...');
+  console.log('2. Testing Transient Detection & Silence Gating (Drums Mode with SuperFlux)...');
   const res = sliceAudioBuffer(drumPcm, sampleRate, {
     mode: 'drums',
     sensitivity: 75,
@@ -91,8 +96,6 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
     if (sl.startFrame > 0 && sl.startFrame < totalSamples - 1) {
       const prev = drumPcm[sl.startFrame - 1];
       const curr = drumPcm[sl.startFrame];
-      console.log(`      slice #${sl.index}: startFrame=${sl.startFrame}, prev=${prev.toFixed(4)}, curr=${curr.toFixed(4)}`);
-      // Zero crossing: prev <= 0 and curr >= 0, or smallest magnitude in radius
       assert(
         (prev <= 0 && curr >= 0) || Math.abs(curr) <= 0.25,
         `Start frame should snap near zero or crossing: prev=${prev}, curr=${curr}`
@@ -105,7 +108,6 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
 // Test 4: Chromatic Equidistant Zone Mapping
 {
   console.log('4. Testing Chromatic Equidistant Zone Mapping...');
-  // Synthetic tonal notes: C3 (130.81Hz), E3 (164.81Hz), G3 (196Hz)
   const tonalPcm = new Float32Array(sampleRate * 1.5);
   const n1 = 0;
   const n2 = Math.round(0.5 * sampleRate);
@@ -127,7 +129,6 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   const valid = res.slices.filter((s) => !s.isSilence);
   assert(valid.length >= 2, 'Should detect at least 2 tonal slices');
 
-  // Verify full 0..127 contiguous coverage
   if (valid.length >= 2) {
     assert.strictEqual(valid[0].lowKey, 0, 'First zone should start at MIDI 0');
     assert.strictEqual(valid[valid.length - 1].highKey, 127, 'Last zone should end at MIDI 127');
@@ -135,9 +136,95 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   }
 }
 
-// Test 5: Standard MIDI File (.mid Type 0) Generation
+// Test 5: Vocal & Phrase Mode (OpenVPI Slicer algorithm)
 {
-  console.log('5. Testing Standard MIDI File (.mid Type 0) Generation...');
+  console.log('5. Testing Vocal & Phrase Mode (OpenVPI Silence Valley Segmentation)...');
+  // 3-second vocal phrase: Phrase 1 (0.2s - 1.2s), Silence (1.2s - 1.7s), Phrase 2 (1.7s - 2.8s)
+  const vocalPcm = new Float32Array(sampleRate * 3.0);
+  const p1Start = Math.round(0.2 * sampleRate);
+  const p1End = Math.round(1.2 * sampleRate);
+  for (let i = p1Start; i < p1End; i++) {
+    const t = (i - p1Start) / sampleRate;
+    // Vibrato singing tone (220Hz + 5Hz vibrato)
+    const vibrato = 220 + 8 * Math.sin(2 * Math.PI * 5.5 * t);
+    vocalPcm[i] = 0.6 * Math.sin(2 * Math.PI * vibrato * t);
+  }
+
+  const p2Start = Math.round(1.7 * sampleRate);
+  const p2End = Math.round(2.8 * sampleRate);
+  for (let i = p2Start; i < p2End; i++) {
+    const t = (i - p2Start) / sampleRate;
+    const vibrato = 330 + 10 * Math.sin(2 * Math.PI * 6.0 * t);
+    vocalPcm[i] = 0.7 * Math.sin(2 * Math.PI * vibrato * t);
+  }
+
+  const res = sliceAudioBuffer(vocalPcm, sampleRate, {
+    mode: 'vocals',
+    sensitivity: 70,
+    silenceThresholdDb: -42,
+    minSliceMs: 250,
+  });
+
+  console.log(`   -> OpenVPI vocal slicing produced ${res.slices.length} slices (valid: ${res.validSlicesCount}).`);
+  // Must avoid over-chopping! Total slices should be between 2 and 5 (phrase 1, breath silence, phrase 2)
+  assert(res.slices.length <= 6, `Vocal mode should not over-chop phrases! Got ${res.slices.length}`);
+  assert(res.validSlicesCount >= 2, `Should segment into at least 2 distinct vocal phrases`);
+  console.log(`   -> Successfully split continuous vibrato phrases without micro-chatter.`);
+}
+
+// Test 6: Manual Slice Boundary Editing (Move, Split, Delete)
+{
+  console.log('6. Testing Interactive Slice Boundary Operations (Move, Split, Delete)...');
+  let res = sliceAudioBuffer(drumPcm, sampleRate, { mode: 'grid', bpm: 120, gridDivision: '1/4' });
+  const initialCount = res.slices.length;
+  assert(initialCount >= 4, 'Grid should have at least 4 slices');
+
+  // Test Move boundary #2
+  const boundariesBefore = extractBoundaryFrames(res, drumPcm.length);
+  const oldBoundary = boundariesBefore[2];
+  res = moveSliceBoundary(res, drumPcm, sampleRate, 2, oldBoundary + 500, false);
+  const boundariesAfterMove = extractBoundaryFrames(res, drumPcm.length);
+  assert.strictEqual(boundariesAfterMove[2], oldBoundary + 500, 'Boundary should move by exact delta');
+  console.log(`   -> moveSliceBoundary succeeded: moved boundary #2 from ${oldBoundary} to ${boundariesAfterMove[2]}`);
+
+  // Test Split Slice at frame
+  const splitPos = Math.round(oldBoundary + 1500);
+  res = splitSliceAtFrame(res, drumPcm, sampleRate, splitPos, false);
+  assert.strictEqual(res.slices.length, initialCount + 1, 'Splitting should increase slice count by 1');
+  console.log(`   -> splitSliceAtFrame succeeded: split slice at ${splitPos}, total slices now ${res.slices.length}`);
+
+  // Test Delete Slice
+  const sliceToDelete = res.slices[1].id;
+  res = deleteSlice(res, drumPcm, sampleRate, sliceToDelete);
+  assert.strictEqual(res.slices.length, initialCount, 'Deleting slice should reduce count back');
+  console.log(`   -> deleteSlice succeeded: deleted ${sliceToDelete}, total slices now ${res.slices.length}`);
+}
+
+// Test 7: Slice File Parser (SFZ, CUE Label Text, WAV cues)
+{
+  console.log('7. Testing Slice File Parser (SFZ and CUE Label Tracks)...');
+  const sfzText = `
+// SFZ Slice Map
+<region> sample=loop.wav offset=0 end=22050
+<region> sample=loop.wav offset=22050 end=44100
+<region> sample=loop.wav offset=44100 end=88200
+  `;
+  const parsedSfz = parseSliceFile(sfzText, 'loop.sfz', sampleRate);
+  assert(parsedSfz !== null, 'SFZ should be parsed');
+  assert.strictEqual(parsedSfz.sliceFrames.length, 4, 'Should extract 4 boundary frames');
+  assert.strictEqual(parsedSfz.format, 'sfz');
+  console.log(`   -> Parsed SFZ slices: frames=[${parsedSfz.sliceFrames.join(', ')}]`);
+
+  const cueText = `0.000000\t0.500000\tKick\n0.500000\t1.000000\tSnare\n1.000000\t1.500000\tHat`;
+  const parsedCue = parseSliceFile(cueText, 'labels.txt', sampleRate);
+  assert(parsedCue !== null, 'CUE label track should be parsed');
+  assert.strictEqual(parsedCue.markers.length, 3, 'Should extract 3 labels');
+  console.log(`   -> Parsed CUE label track: markers=[${parsedCue.markers.map((m) => m.label).join(', ')}]`);
+}
+
+// Test 8: Standard MIDI File (.mid Type 0) Generation
+{
+  console.log('8. Testing Standard MIDI File (.mid Type 0) Generation...');
   const testSlices: DetectedSlice[] = [
     {
       id: 's1',
@@ -184,11 +271,9 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   const midiBytes = buildMidiFileBuffer(testSlices, 120);
   assert(midiBytes.length > 20, 'MIDI buffer should be populated');
 
-  // Check 'MThd' header
   const mthd = String.fromCharCode(...midiBytes.slice(0, 4));
   assert.strictEqual(mthd, 'MThd', "Header must start with 'MThd'");
 
-  // Check 'MTrk' header
   const mtrk = String.fromCharCode(...midiBytes.slice(14, 18));
   assert.strictEqual(mtrk, 'MTrk', "Track must start with 'MTrk'");
 

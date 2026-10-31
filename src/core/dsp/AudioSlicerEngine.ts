@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Fase 18: Audio Chopper & Multi-Layer Auto-Slicer Engine
 //
-// High-precision transient detection (Spectral Flux + High Frequency Content),
+// High-precision transient detection (SuperFlux with vibrato suppression + adaptive median thresholding),
+// OpenVPI (slicer2) silence valley phrase segmentation for vocal tracks,
 // configurable RMS silence gating, rising zero-crossing snapping,
 // intelligent General MIDI Drum mapping & chromatic equidistant keybed distribution,
 // and in-memory Standard MIDI File (.mid Type 0) pattern generator for DAW drag-and-drop.
@@ -13,11 +14,11 @@ import { detectPitchYinMpm, hzToMidiAndCents } from './AcousticIntelligence.ts';
 import { GM_DRUM_MAP } from '../gmDrumMap.ts';
 import { midiToNoteName } from '../../ui/ZoneRibbon.ts';
 
-export type SlicerMode = 'drums' | 'chromatic' | 'grid';
+export type SlicerMode = 'drums' | 'chromatic' | 'vocals' | 'grid';
 export type GridDivision = '1/4' | '1/8' | '1/16' | '1/32';
 
 export interface SlicerOptions {
-  /** Mode: 'drums' (GM Map), 'chromatic' (F0 pitch + equidistant zones), 'grid' (BPM division) */
+  /** Mode: 'drums' (GM Map), 'chromatic' (F0 pitch + equidistant zones), 'vocals' (vocal/phrase segmentation), 'grid' (BPM division) */
   mode: SlicerMode;
   /** Transient attack sensitivity: 0..100 (default: 70) */
   sensitivity: number;
@@ -37,6 +38,8 @@ export interface SlicerOptions {
   allowOverlap: boolean;
   /** Base MIDI note for chromatic sequential mapping (default: 36 C1 or 60 C3) */
   chromaticBaseNote: number;
+  /** Minimum slice distance in milliseconds (default: 45ms for drums, 250ms for vocals) */
+  minSliceMs?: number;
 }
 
 export interface DetectedSlice {
@@ -63,7 +66,7 @@ export interface DetectedSlice {
   highVel: number;
   /** Classified label: e.g. "Bass Drum 1 (36 C1)", "Acoustic Snare (38 D1)", or "Note 60 (C3)" */
   label: string;
-  /** Category: 'kick' | 'snare' | 'hihat' | 'tom' | 'cymbal' | 'percussion' | 'chromatic' */
+  /** Category: 'kick' | 'snare' | 'hihat' | 'tom' | 'cymbal' | 'percussion' | 'chromatic' | 'vocals' | 'grid' | 'silence' */
   category: string;
   /** Sliced PCM audio buffer (mono) */
   pcm: Float32Array;
@@ -94,18 +97,20 @@ export const DEFAULT_SLICER_OPTIONS: SlicerOptions = {
 };
 
 /**
- * Calculates Spectral Flux and High Frequency Content (HFC) on a moving STFT frame.
+ * Calculates SuperFlux onset novelty curve with vibrato suppression and HFC weighting.
+ * Based on Böck & Widmer (SuperFlux) & aubio onset algorithms.
  */
 function computeSpectralNoveltyCurve(
   pcm: Float32Array,
   frameSize: number = 1024,
-  hopSize: number = 256
+  hopSize: number = 256,
+  filterWidthBins: number = 2
 ): Float32Array {
   const numFrames = Math.max(1, Math.floor((pcm.length - frameSize) / hopSize));
   const novelty = new Float32Array(numFrames);
-
-  let prevMag = new Float32Array(frameSize / 2);
   const half = frameSize / 2;
+
+  let prevMag = new Float32Array(half);
 
   // Pre-calculate Hamming window
   const window = new Float32Array(frameSize);
@@ -114,41 +119,39 @@ function computeSpectralNoveltyCurve(
   }
 
   const real = new Float32Array(frameSize);
-  const imag = new Float32Array(frameSize);
 
   for (let f = 0; f < numFrames; f++) {
     const offset = f * hopSize;
-
-    // Apply window and compute simple magnitude spectrum approximation
     let hfc = 0;
     let flux = 0;
 
     for (let i = 0; i < frameSize; i++) {
       real[i] = pcm[offset + i] * window[i];
-      imag[i] = 0;
     }
 
-    // Direct energy in sub-bands (Low, Mid, High)
     const currentMag = new Float32Array(half);
-    // Sub-band energy approximation
     for (let k = 1; k < half; k++) {
-      // Simplified DFT bin energy estimate
       const s0 = real[k];
-      const s1 = real[k * 2 % frameSize];
+      const s1 = real[(k * 2) % frameSize];
       const mag = Math.sqrt(s0 * s0 + s1 * s1 + 1e-9);
       currentMag[k] = mag;
 
-      // Positive spectral difference (Flux)
-      const diff = mag - prevMag[k];
+      // SuperFlux vibrato suppression: compare mag[k] to max of prevMag in window [k - mu .. k + mu]
+      let prevLocalMax = prevMag[k];
+      for (let w = 1; w <= filterWidthBins; w++) {
+        if (k - w >= 0 && prevMag[k - w] > prevLocalMax) prevLocalMax = prevMag[k - w];
+        if (k + w < half && prevMag[k + w] > prevLocalMax) prevLocalMax = prevMag[k + w];
+      }
+
+      const diff = mag - prevLocalMax;
       if (diff > 0) {
         flux += diff;
       }
 
-      // High Frequency Content weighting
       hfc += mag * (k / half);
     }
 
-    novelty[f] = flux * 0.7 + hfc * 0.3;
+    novelty[f] = flux * 0.75 + hfc * 0.25;
     prevMag = currentMag;
   }
 
@@ -162,6 +165,117 @@ function computeSpectralNoveltyCurve(
 }
 
 /**
+ * Moving Median filter for adaptive onset thresholding (aubio / SuperFlux standard).
+ */
+function computeAdaptiveMedianThreshold(
+  novelty: Float32Array,
+  windowRadius: number = 7,
+  multiplier: number = 1.35,
+  offset: number = 0.02
+): Float32Array {
+  const threshold = new Float32Array(novelty.length);
+  const buf: number[] = [];
+
+  for (let i = 0; i < novelty.length; i++) {
+    const start = Math.max(0, i - windowRadius);
+    const end = Math.min(novelty.length, i + windowRadius + 1);
+    buf.length = 0;
+    for (let k = start; k < end; k++) {
+      buf.push(novelty[k]);
+    }
+    buf.sort((a, b) => a - b);
+    const median = buf[Math.floor(buf.length / 2)] ?? 0;
+    threshold[i] = median * multiplier + offset;
+  }
+
+  return threshold;
+}
+
+/**
+ * Segments vocals and speech using the OpenVPI (slicer2) algorithm:
+ * RMS silence gap detection + energy valley cut points + zero-crossing snapping.
+ * Avoids chopping mid-syllable or triggering false onsets on vocal vibrato/formants.
+ */
+function sliceVocalPhrasesOpenVpi(
+  pcm: Float32Array,
+  sampleRate: number,
+  opts: SlicerOptions
+): number[] {
+  const totalFrames = pcm.length;
+  const hopFrames = Math.max(64, Math.round(0.01 * sampleRate)); // 10ms hop
+  const numHops = Math.floor(totalFrames / hopFrames);
+  if (numHops <= 2) return [0, totalFrames];
+
+  // 1. Calculate RMS energy per hop
+  const hopRms = new Float32Array(numHops);
+  for (let h = 0; h < numHops; h++) {
+    const start = h * hopFrames;
+    const end = Math.min(totalFrames, start + hopFrames);
+    let sumSq = 0;
+    for (let i = start; i < end; i++) {
+      const v = pcm[i];
+      sumSq += v * v;
+    }
+    hopRms[h] = Math.sqrt(sumSq / Math.max(1, end - start));
+  }
+
+  // Linear threshold from dB (adjusted by user sensitivity: -50 dB to -32 dB)
+  const sensNorm = clamp(opts.sensitivity, 5, 95) / 100;
+  const effectiveDbThresh = opts.silenceThresholdDb + (sensNorm - 0.5) * 12;
+  const silenceLinear = Math.pow(10, effectiveDbThresh / 20);
+
+  const minSliceFrames = Math.round(((opts.minSliceMs ?? 250) / 1000) * sampleRate);
+  // Minimum silence gap to trigger phrase split: ~150ms
+  const minSilenceHops = Math.max(3, Math.round(0.15 * (sampleRate / hopFrames)));
+
+  const boundaries: number[] = [0];
+  let lastCutFrame = 0;
+  let inSilence = false;
+  let silenceStartHop = 0;
+
+  for (let h = 0; h < numHops; h++) {
+    const isQuiet = hopRms[h] < silenceLinear;
+
+    if (isQuiet && !inSilence) {
+      inSilence = true;
+      silenceStartHop = h;
+    } else if (!isQuiet && inSilence) {
+      // Silence gap ended
+      inSilence = false;
+      const silenceEndHop = h;
+      const silenceDurationHops = silenceEndHop - silenceStartHop;
+
+      if (silenceDurationHops >= minSilenceHops) {
+        // Find hop with lowest RMS within this silence gap
+        let minHop = silenceStartHop;
+        let minVal = hopRms[silenceStartHop];
+        for (let k = silenceStartHop + 1; k < silenceEndHop; k++) {
+          if (hopRms[k] < minVal) {
+            minVal = hopRms[k];
+            minHop = k;
+          }
+        }
+
+        const candidateCutFrame = minHop * hopFrames;
+        if (
+          candidateCutFrame - lastCutFrame >= minSliceFrames &&
+          totalFrames - candidateCutFrame >= minSliceFrames
+        ) {
+          boundaries.push(candidateCutFrame);
+          lastCutFrame = candidateCutFrame;
+        }
+      }
+    }
+  }
+
+  if (boundaries[boundaries.length - 1] !== totalFrames) {
+    boundaries.push(totalFrames);
+  }
+
+  return boundaries;
+}
+
+/**
  * Classifies an isolated drum slice into a standard General MIDI drum piece note.
  */
 function classifyDrumSlice(pcm: Float32Array, sampleRate: number): { note: number; category: string; label: string } {
@@ -169,7 +283,6 @@ function classifyDrumSlice(pcm: Float32Array, sampleRate: number): { note: numbe
     return { note: 36, category: 'kick', label: 'Bass Drum 1 (36 C1)' };
   }
 
-  // Calculate energy distribution: Sub (<120Hz), Mid (200-2500Hz), High (>3500Hz)
   let totalEnergy = 0;
   let zeroCrossings = 0;
   let peakVal = 0;
@@ -186,8 +299,6 @@ function classifyDrumSlice(pcm: Float32Array, sampleRate: number): { note: numbe
   const durationMs = (pcm.length / sampleRate) * 1000;
   const zcr = zeroCrossings / Math.max(1, pcm.length);
 
-  // Spectral Centroid approximation using zero-crossing rate and peak decay
-  // High ZCR (> 0.25) -> Cymbals, Hi-Hats, Shakers
   if (zcr > 0.22) {
     if (durationMs < 280) {
       return { note: 42, category: 'hihat', label: `${GM_DRUM_MAP[42]} (42 F#1)` };
@@ -198,17 +309,14 @@ function classifyDrumSlice(pcm: Float32Array, sampleRate: number): { note: numbe
     return { note: 46, category: 'hihat', label: `${GM_DRUM_MAP[46]} (46 A#1)` };
   }
 
-  // Low ZCR (< 0.08) with strong decay -> Kick Drum
   if (zcr < 0.08) {
     return { note: 36, category: 'kick', label: `${GM_DRUM_MAP[36]} (36 C1)` };
   }
 
-  // Mid ZCR (0.08..0.22): Snare or Tom
   if (zcr >= 0.12) {
     return { note: 38, category: 'snare', label: `${GM_DRUM_MAP[38]} (38 D1)` };
   }
 
-  // Low-mid: Tom
   return { note: 45, category: 'tom', label: `${GM_DRUM_MAP[45]} (45 A1)` };
 }
 
@@ -222,7 +330,6 @@ export function buildMidiFileBuffer(slices: DetectedSlice[], bpm: number): Uint8
 
   const trackEvents: number[] = [];
 
-  // Helper: write Variable Length Quantity (VLQ)
   const writeVlq = (val: number) => {
     let buffer = val & 0x7f;
     const bytes: number[] = [];
@@ -247,7 +354,6 @@ export function buildMidiFileBuffer(slices: DetectedSlice[], bpm: number): Uint8
   // Time signature 4/4 (Meta 0x58)
   trackEvents.push(0x00, 0xff, 0x58, 0x04, 0x04, 0x02, 0x18, 0x08);
 
-  // Convert slice start & end seconds to MIDI ticks
   const secToTick = (sec: number) => Math.max(0, Math.round((sec * safeBpm * ppqn) / 60));
 
   interface MidiNoteItem {
@@ -268,7 +374,6 @@ export function buildMidiFileBuffer(slices: DetectedSlice[], bpm: number): Uint8
     noteItems.push({ tick: offTick, type: 'off', note: sl.rootKey, vel: 0 });
   }
 
-  // Sort chronologically (off before on at the same tick)
   noteItems.sort((a, b) => (a.tick === b.tick ? (a.type === 'off' ? -1 : 1) : a.tick - b.tick));
 
   let currentTick = 0;
@@ -314,11 +419,13 @@ export function buildMidiFileBuffer(slices: DetectedSlice[], bpm: number): Uint8
 }
 
 /**
- * Core Slicing Engine: segments audio, classifies slices, and computes zone distributions.
+ * Core Slicing Engine: builds slices from a list of boundary frames,
+ * classifying slices, micro-fading edges, and computing zone distributions.
  */
-export function sliceAudioBuffer(
+export function buildSlicesFromBoundaries(
   pcm: Float32Array,
   sampleRate: number,
+  boundaries: number[],
   options: Partial<SlicerOptions> = {}
 ): SlicerResult {
   const opts: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...options };
@@ -338,75 +445,23 @@ export function sliceAudioBuffer(
     };
   }
 
-  const rawBoundaries: number[] = [0];
-  const hopSize = 256;
-  const preRollFrames = Math.round((opts.preRollMs / 1000) * sampleRate);
-
-  if (opts.mode === 'grid') {
-    // Mathematical tempo subdivision
-    const divisionFactors: Record<GridDivision, number> = {
-      '1/4': 1,
-      '1/8': 0.5,
-      '1/16': 0.25,
-      '1/32': 0.125,
-    };
-    const beatSec = (60 / Math.max(20, opts.bpm)) * divisionFactors[opts.gridDivision];
-    const beatFrames = Math.max(64, Math.round(beatSec * sampleRate));
-
-    let frame = beatFrames;
-    while (frame < totalFrames - 64) {
-      rawBoundaries.push(frame);
-      frame += beatFrames;
-    }
-  } else {
-    // Transient & Onset detection via Spectral Novelty Curve
-    const novelty = computeSpectralNoveltyCurve(pcm, 1024, hopSize);
-    const minDistanceFrames = Math.max(256, Math.round(0.045 * sampleRate)); // 45 ms minimum slice gap
-    const minDistanceBins = Math.max(1, Math.floor(minDistanceFrames / hopSize));
-
-    // Calculate dynamic threshold based on sensitivity (0..100)
-    let meanNovelty = 0;
-    for (let i = 0; i < novelty.length; i++) meanNovelty += novelty[i];
-    meanNovelty /= Math.max(1, novelty.length);
-
-    // Higher sensitivity -> lower threshold multiplier
-    const sensNorm = clamp(opts.sensitivity, 1, 100) / 100;
-    const threshold = meanNovelty * (2.8 - sensNorm * 2.2);
-
-    let lastDetectedBin = -minDistanceBins;
-
-    for (let i = 2; i < novelty.length - 2; i++) {
-      if (
-        novelty[i] > threshold &&
-        novelty[i] > novelty[i - 1] &&
-        novelty[i] >= novelty[i + 1] &&
-        i - lastDetectedBin >= minDistanceBins
-      ) {
-        const onsetFrame = i * hopSize;
-        const candidateStart = Math.max(0, onsetFrame - preRollFrames);
-        rawBoundaries.push(candidateStart);
-        lastDetectedBin = i;
-      }
-    }
-  }
-
-  // Ensure end boundary
-  rawBoundaries.push(totalFrames);
-
   // Magnetize boundaries to Zero Crossing if requested
-  const snappedBoundaries = rawBoundaries.map((pos, idx) => {
-    if (!opts.snapZeroCrossing || idx === 0 || idx === rawBoundaries.length - 1) {
+  const snappedBoundaries = boundaries.map((pos, idx) => {
+    if (!opts.snapZeroCrossing || idx === 0 || idx === boundaries.length - 1) {
       return clamp(Math.round(pos), 0, totalFrames);
     }
     return snapFrameToRisingZeroCrossing(pcm, pos, 128);
   });
 
-  // Filter duplicated or too-close boundaries (< 32 frames)
+  // Filter duplicated or too-close boundaries (< 64 frames)
   const cleanBoundaries: number[] = [];
   for (const b of snappedBoundaries) {
     if (cleanBoundaries.length === 0 || b - cleanBoundaries[cleanBoundaries.length - 1] >= 64) {
       cleanBoundaries.push(b);
     }
+  }
+  if (cleanBoundaries.length === 0 || cleanBoundaries[0] !== 0) {
+    cleanBoundaries.unshift(0);
   }
   if (cleanBoundaries[cleanBoundaries.length - 1] !== totalFrames) {
     cleanBoundaries.push(totalFrames);
@@ -470,7 +525,6 @@ export function sliceAudioBuffer(
 
   // Assign Key & Velocity Mappings based on Mode
   if (opts.mode === 'drums') {
-    // Group drum slices and map to GM Drum Map
     for (const sl of rawSlices) {
       if (sl.isSilence) {
         sl.label = `Silence (${sl.rmsDb} dB)`;
@@ -485,7 +539,6 @@ export function sliceAudioBuffer(
       sl.label = drumClass.label;
     }
 
-    // Velocity Layer grouping for identical notes
     const slicesByNote = new Map<number, DetectedSlice[]>();
     for (const sl of rawSlices) {
       if (sl.isSilence) continue;
@@ -496,7 +549,6 @@ export function sliceAudioBuffer(
 
     for (const [, list] of slicesByNote) {
       if (list.length > 1) {
-        // Sort ascending by RMS energy
         list.sort((a, b) => a.rmsDb - b.rmsDb);
         const layers = list.length;
         const span = 127 / layers;
@@ -507,7 +559,6 @@ export function sliceAudioBuffer(
       }
     }
   } else if (opts.mode === 'chromatic') {
-    // Pitch detection + Equidistant Keybed Distribution
     const activeSlices = rawSlices.filter((s) => !s.isSilence);
     for (const sl of activeSlices) {
       const pitch = detectPitchYinMpm(sl.pcm, sampleRate);
@@ -518,10 +569,8 @@ export function sliceAudioBuffer(
       sl.category = 'chromatic';
     }
 
-    // Sort tonal slices by pitch
     activeSlices.sort((a, b) => a.rootKey - b.rootKey);
 
-    // Equidistant boundaries: frontier(A, B) = floor((rootA + rootB) / 2)
     for (let i = 0; i < activeSlices.length; i++) {
       const cur = activeSlices[i];
       const prev = i > 0 ? activeSlices[i - 1] : null;
@@ -531,6 +580,31 @@ export function sliceAudioBuffer(
       cur.highKey = next ? Math.floor((cur.rootKey + next.rootKey) / 2) : 127;
       if (cur.lowKey > cur.rootKey) cur.lowKey = cur.rootKey;
       if (cur.highKey < cur.rootKey) cur.highKey = cur.rootKey;
+    }
+  } else if (opts.mode === 'vocals') {
+    let curNote = clamp(opts.chromaticBaseNote || 48, 0, 127);
+    for (const sl of rawSlices) {
+      if (sl.isSilence) {
+        sl.label = `Silence (${sl.rmsDb} dB)`;
+        sl.category = 'silence';
+        continue;
+      }
+      const pitch = detectPitchYinMpm(sl.pcm, sampleRate);
+      if (pitch.harmonicity > 0.55 && pitch.f0Hz > 60 && pitch.f0Hz < 1500) {
+        sl.f0Hz = Math.round(pitch.f0Hz * 10) / 10;
+        const { midiNote } = hzToMidiAndCents(pitch.f0Hz);
+        sl.rootKey = midiNote;
+        sl.lowKey = midiNote;
+        sl.highKey = midiNote;
+        sl.label = `Vocal [${midiNoteToString(midiNote)}] (${(sl.durationSec * 1000).toFixed(0)} ms)`;
+      } else {
+        sl.rootKey = curNote;
+        sl.lowKey = curNote;
+        sl.highKey = curNote;
+        sl.label = `Vocal Phrase #${sl.index} (${(sl.durationSec * 1000).toFixed(0)} ms)`;
+        curNote = Math.min(127, curNote + 1);
+      }
+      sl.category = 'vocals';
     }
   } else {
     // Grid: sequential chromatic assignment from base note
@@ -559,6 +633,176 @@ export function sliceAudioBuffer(
     totalDurationSec,
     midiFileBuffer: midiBuffer,
   };
+}
+
+/**
+ * Automatically segments audio using SuperFlux (drums), OpenVPI Silence Valley (vocals), or Grid.
+ */
+export function sliceAudioBuffer(
+  pcm: Float32Array,
+  sampleRate: number,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const opts: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...options };
+  const totalFrames = pcm.length;
+
+  if (totalFrames <= 128) {
+    return buildSlicesFromBoundaries(pcm, sampleRate, [0, totalFrames], opts);
+  }
+
+  // 1. Vocals & Speech: OpenVPI Slicer algorithm (RMS silence gap + lowest energy valley)
+  if (opts.mode === 'vocals') {
+    const vocalBoundaries = sliceVocalPhrasesOpenVpi(pcm, sampleRate, opts);
+    return buildSlicesFromBoundaries(pcm, sampleRate, vocalBoundaries, opts);
+  }
+
+  // 2. Grid Subdivision: Mathematical tempo subdivision
+  if (opts.mode === 'grid') {
+    const rawBoundaries: number[] = [0];
+    const divisionFactors: Record<GridDivision, number> = {
+      '1/4': 1,
+      '1/8': 0.5,
+      '1/16': 0.25,
+      '1/32': 0.125,
+    };
+    const beatSec = (60 / Math.max(20, opts.bpm)) * divisionFactors[opts.gridDivision];
+    const beatFrames = Math.max(64, Math.round(beatSec * sampleRate));
+
+    let frame = beatFrames;
+    while (frame < totalFrames - 64) {
+      rawBoundaries.push(frame);
+      frame += beatFrames;
+    }
+    rawBoundaries.push(totalFrames);
+    return buildSlicesFromBoundaries(pcm, sampleRate, rawBoundaries, opts);
+  }
+
+  // 3. Drums & Chromatic: SuperFlux Transient Detection with Vibrato Suppression & Moving Median Threshold
+  const rawBoundaries: number[] = [0];
+  const hopSize = 256;
+  const preRollFrames = Math.round((opts.preRollMs / 1000) * sampleRate);
+  const minSliceGapSec = opts.minSliceMs ? opts.minSliceMs / 1000 : 0.045;
+  const minDistanceFrames = Math.max(256, Math.round(minSliceGapSec * sampleRate));
+  const minDistanceBins = Math.max(1, Math.floor(minDistanceFrames / hopSize));
+
+  // Compute SuperFlux novelty curve with 2-bin vibrato suppression filter
+  const novelty = computeSpectralNoveltyCurve(pcm, 1024, hopSize, 2);
+
+  // Adaptive Moving Median Threshold (aubio / SuperFlux standard)
+  const sensNorm = clamp(opts.sensitivity, 1, 100) / 100;
+  // Sensitivity maps to adaptive multiplier (higher sensitivity -> lower multiplier)
+  const medianMultiplier = 2.4 - sensNorm * 1.6;
+  const adaptiveThreshold = computeAdaptiveMedianThreshold(novelty, 7, medianMultiplier, 0.015);
+
+  let lastDetectedBin = -minDistanceBins;
+
+  for (let i = 2; i < novelty.length - 2; i++) {
+    const val = novelty[i];
+    const thresh = adaptiveThreshold[i];
+
+    if (
+      val > thresh &&
+      val > novelty[i - 1] &&
+      val >= novelty[i + 1] &&
+      i - lastDetectedBin >= minDistanceBins
+    ) {
+      const onsetFrame = i * hopSize;
+      const candidateStart = Math.max(0, onsetFrame - preRollFrames);
+      rawBoundaries.push(candidateStart);
+      lastDetectedBin = i;
+    }
+  }
+
+  rawBoundaries.push(totalFrames);
+  return buildSlicesFromBoundaries(pcm, sampleRate, rawBoundaries, opts);
+}
+
+/**
+ * Extracts all boundary points from an existing SlicerResult.
+ */
+export function extractBoundaryFrames(result: SlicerResult, totalFrames: number): number[] {
+  if (result.slices.length === 0) return [0, totalFrames];
+  const b = result.slices.map((s) => s.startFrame);
+  const lastEnd = result.slices[result.slices.length - 1].endFrame;
+  if (b[b.length - 1] !== lastEnd) b.push(lastEnd);
+  return b;
+}
+
+/**
+ * Moves an existing slice boundary (index 1..N-1) to a new sample frame.
+ */
+export function moveSliceBoundary(
+  result: SlicerResult,
+  pcm: Float32Array,
+  sampleRate: number,
+  boundaryIndex: number,
+  newFrame: number,
+  snap0X: boolean = true,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const boundaries = extractBoundaryFrames(result, pcm.length);
+  if (boundaryIndex <= 0 || boundaryIndex >= boundaries.length - 1) {
+    return result;
+  }
+
+  const prev = boundaries[boundaryIndex - 1];
+  const next = boundaries[boundaryIndex + 1];
+  let target = clamp(Math.round(newFrame), prev + 64, next - 64);
+  if (snap0X) {
+    target = snapFrameToRisingZeroCrossing(pcm, target, 128);
+    target = clamp(target, prev + 32, next - 32);
+  }
+
+  boundaries[boundaryIndex] = target;
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
+}
+
+/**
+ * Splits a slice at a given sample frame position.
+ */
+export function splitSliceAtFrame(
+  result: SlicerResult,
+  pcm: Float32Array,
+  sampleRate: number,
+  targetFrame: number,
+  snap0X: boolean = true,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const boundaries = extractBoundaryFrames(result, pcm.length);
+  let frame = clamp(Math.round(targetFrame), 64, pcm.length - 64);
+  if (snap0X) {
+    frame = snapFrameToRisingZeroCrossing(pcm, frame, 128);
+    frame = clamp(frame, 64, pcm.length - 64);
+  }
+
+  // Avoid creating a slice that's too close to an existing boundary
+  const tooClose = boundaries.some((b) => Math.abs(b - frame) < 64);
+  if (tooClose) return result;
+
+  boundaries.push(frame);
+  boundaries.sort((a, b) => a - b);
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
+}
+
+/**
+ * Deletes a slice and merges its duration with adjacent slice.
+ */
+export function deleteSlice(
+  result: SlicerResult,
+  pcm: Float32Array,
+  sampleRate: number,
+  sliceId: string,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const sliceIdx = result.slices.findIndex((s) => s.id === sliceId);
+  if (sliceIdx < 0 || result.slices.length <= 1) return result;
+
+  const boundaries = extractBoundaryFrames(result, pcm.length);
+  const boundaryToRemove = sliceIdx === 0 ? 1 : sliceIdx;
+  if (boundaryToRemove > 0 && boundaryToRemove < boundaries.length - 1) {
+    boundaries.splice(boundaryToRemove, 1);
+  }
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
 }
 
 /**

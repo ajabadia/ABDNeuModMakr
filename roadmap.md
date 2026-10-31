@@ -519,6 +519,21 @@
 
 ---
 
+## Fase 23 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing) [PLANIFICADA]
+
+**Objetivo**: Integrar modelos neuronales de análisis y segmentación semántica de audio para el troceado inteligente de muestras complejas (vocales, frases habladas, loops polifónicos, baterías densas), siguiendo escrupulosamente los estándares de IA establecidos en la aplicación:
+- **Arquitectura Local-First**: Inferencia mediante ONNX Runtime Web / WebAudio Worker local, con fallback al Companion Bridge Python local (`aiBridgeEndpoint`) si se requiere mayor precisión o modelos más pesados.
+- **Filosofía No Destructiva**: La IA propone los puntos de corte, etiquetas fonéticas/instrumentales y zonas candidatas, pero el usuario mantiene el control total para arrastrar marcadores, ajustar en el Cut Point Magnifier (±256 smp) y forzar cruces por cero.
+- **Desactivable / Opcional**: El usuario puede alternar en cualquier momento entre algoritmos DSP deterministas (SuperFlux, OpenVPI Silence Valley, Grid) y la asistencia por IA con un solo clic.
+
+### 23.1 Modelos y Capacidades Previstas
+- **Vocal & Speech Phoneme/Word Alignment**: Modelos ligeros de segmentación fonética (estilo CTC / Whisper-tiny / Wav2Vec2) para detectar comienzos exactos de palabras, sílabas y respiraciones naturales, evitando cortes a mitad de consonante o en formantes mantenidos.
+- **Separación de Stems Pre-Troceado (Demucs / MDX-Net via Bridge)**: Capacidad para aislar la voz de la base rítmica antes de trocear, permitiendo rebanar el loop de batería y la frase vocal de un sample compuesto de forma totalmente independiente.
+- **Clasificación Semántica Automática de Slices**: Etiquetado neuronal de piezas de percusión y articulaciones tímbricas (Kick, Snare, Ghost Note, Open/Closed Hat, Ride Bell, Vocal Chop, Ad-lib, Sung Word) para mapeo instantáneo a notas MIDI y capas de velocidad (velocity switching).
+- **Refinamiento de Micro-Transitorios**: Red neuronal ligera de corrección que magnetiza el punto de corte al valle acústico óptimo anterior al transitorio para preservar el ataque íntegro del sonido con 0% de chasquidos (click-free).
+
+---
+
 ## Revisión pendiente — NeuronDB Bank Browser (capturas aportadas, no tocar ahora) [PLANIFICADA]
 
 **Situación**: el usuario aportó 7 capturas del panel `NEURONDB BANK BROWSER` (visto en `localhost:5320`) sin pedir un cambio concreto. Se deja esta tarea al final del roadmap para revisarla cuando se llegue aquí; es muy posible que para entonces ya no haga falta porque la UI ya habrá evolucionado o el BankDrawer/BankManager ya cubrirá lo necesario.
