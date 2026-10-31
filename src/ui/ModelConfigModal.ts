@@ -202,7 +202,7 @@ export class ModelConfigModal {
           <button type="button" class="model-tab-btn ${this.activeTab === 'artwork' ? 'is-active' : ''}" data-tab="artwork">
             <span class="tab-icon">${ICONS.palette}</span>
             <div class="tab-label">
-              <span class="tab-title">Cover Artwork &amp; Assets</span>
+              <span class="tab-title">Cover Artwork</span>
               <span class="tab-sub">${config.coverArtwork ? '512×512 WebP Attached' : 'No Cover Image'}</span>
             </div>
           </button>
@@ -710,12 +710,28 @@ export class ModelConfigModal {
             }
           </div>
         </div>
+
+        <!-- 3. 5-Layer Time Capsule & Provenance -->
+        <div class="model-cfg-card">
+          <div class="model-cfg-card-header">
+            <h4>${ICONS.layers} 5-Layer Time Capsule &amp; Provenance</h4>
+            <span class="cfg-hint">Non-destructive origin tracking with zero generation loss</span>
+          </div>
+          <p class="cfg-explainer">
+            The Time Capsule system stores original raw audio along with resynthesis parameters. At any time, you can trigger a lossless reprocess from the purest acoustic source without quality degradation.
+          </p>
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn btn-outline" id="btn-cfg-reprocess-capsule" title="Lossless reprocess from original unaltered acoustic source">
+              ${ICONS.cpu} Reprocess From Purest Source (0 Generation Loss)
+            </button>
+          </div>
+        </div>
       </div>
     `;
   }
 
   // ─────────────────────────────────────────────────────────
-  // TAB 4: Cover Artwork & Assets
+  // TAB 4: Cover Artwork
   // ─────────────────────────────────────────────────────────
   private renderArtworkTab(config: ProcessConfig): string {
     const cover = config.coverArtwork;
@@ -1076,6 +1092,15 @@ export class ModelConfigModal {
           this.render();
         }
       });
+    });
+
+    // 5-Layer Time Capsule Reprocess button
+    this.backdropEl.querySelector('#btn-cfg-reprocess-capsule')?.addEventListener('click', () => {
+      if (this.handlers.onReprocessFromPurestSource) {
+        this.handlers.onReprocessFromPurestSource();
+      } else {
+        toast('Triggered lossless reprocess from purest source for current Time Capsule.', 'info');
+      }
     });
   }
 

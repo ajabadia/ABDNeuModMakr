@@ -11,6 +11,8 @@ import {
   deleteSlice,
   toggleSliceSilence,
   extractBoundaryFrames,
+  mergeManualBoundariesWithAuto,
+  sliceAudioBufferPreservingManualCuts,
   type DetectedSlice,
 } from '../src/core/dsp/AudioSlicerEngine.ts';
 import { snapFrameToNearestZeroCrossing } from '../src/core/dsp/LoopEditorTools.ts';
@@ -308,6 +310,45 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   assert.strictEqual(mtrk, 'MTrk', "Track must start with 'MTrk'");
 
   console.log(`   -> Generated valid SMF Type 0 buffer (${midiBytes.length} bytes) ready for DAW drag-and-drop.`);
+}
+
+// Test 9: Preserve Manual Cuts & Silence During Re-slicing
+{
+  console.log('9. Testing Preserve Manual Cuts & Silence on Sensitivity/Options Change...');
+  // 1. Initial slice with low sensitivity
+  const initial = sliceAudioBuffer(drumPcm, sampleRate, { mode: 'drums', sensitivity: 40 });
+  const initialBoundaries = extractBoundaryFrames(initial, drumPcm.length);
+
+  // 2. Add a manual cut at frame 15000 and move an existing boundary
+  const manualCut = 15000;
+  const manualCuts = [manualCut];
+  const mergedDirect = mergeManualBoundariesWithAuto(initialBoundaries, manualCuts, drumPcm.length);
+  assert(mergedDirect.includes(manualCut), 'mergeManualBoundariesWithAuto must contain manual cut');
+
+  // 3. Mark a slice as manual silence
+  const manualSilenceRanges = [{ start: 0, end: 4000 }];
+
+  // 4. Re-slice with higher sensitivity (e.g. 85%) while preserving manual cuts & silence
+  const resPreserved = sliceAudioBufferPreservingManualCuts(
+    drumPcm,
+    sampleRate,
+    { mode: 'drums', sensitivity: 85 },
+    manualCuts,
+    manualSilenceRanges
+  );
+
+  const boundariesPreserved = extractBoundaryFrames(resPreserved, drumPcm.length);
+  assert(
+    boundariesPreserved.includes(manualCut),
+    `Manual cut frame ${manualCut} must be strictly preserved in boundaries list!`
+  );
+
+  const firstSlice = resPreserved.slices[0];
+  assert(
+    firstSlice.isSilence === true,
+    'Slice overlapping manual silence range must remain marked as silence'
+  );
+  console.log(`   -> Preserved manual cut at ${manualCut} and silence range [0..4000] successfully across sensitivity change.`);
 }
 
 console.log('\n=== ALL AUDIO SLICER & CHOPPER TESTS PASSED SUCCESSFULLY! ===');

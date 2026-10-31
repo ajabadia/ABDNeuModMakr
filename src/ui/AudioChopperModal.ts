@@ -20,6 +20,7 @@ import {
 } from '../core/dsp/LoopEditorTools.ts';
 import {
   sliceAudioBuffer,
+  sliceAudioBufferPreservingManualCuts,
   buildSlicesFromBoundaries,
   moveSliceBoundary,
   splitSliceAtFrame,
@@ -30,6 +31,8 @@ import {
   type DetectedSlice,
   type SlicerOptions,
   type SlicerResult,
+  type SlicerMode,
+  type ManualSilenceRange,
 } from '../core/dsp/AudioSlicerEngine.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import type { Zone, ExtendedRegion, WorkingMode } from '../core/types.ts';
@@ -93,6 +96,12 @@ export class AudioChopperModal {
   // Floating Context Menu element
   private activeContextMenuEl: HTMLElement | null = null;
 
+  // Manual slice boundary & silence tracking
+  private manualCutFrames: Set<number> = new Set();
+  private manualSilenceRanges: ManualSilenceRange[] = [];
+  private manualCutsPolicy: 'prompt' | 'keep' | 'discard' = 'prompt';
+  private activeConfirmModalEl: HTMLElement | null = null;
+
   constructor(context: AudioChopperContext) {
     this.context = context;
   }
@@ -106,6 +115,9 @@ export class AudioChopperModal {
     this.viewCenterNorm = 0.5;
     this.selectedSliceId = null;
     this.activeBoundaryIndex = 1;
+    this.manualCutFrames.clear();
+    this.manualSilenceRanges = [];
+    this.manualCutsPolicy = 'prompt';
 
     if (this.pcm.length > 0) {
       this.recomputeSlices();
@@ -119,6 +131,7 @@ export class AudioChopperModal {
   public close(): void {
     this.context.onStopAudition?.();
     this.closeContextMenu();
+    this.closeConfirmModal();
     if (this.backdropEl) {
       this.backdropEl.remove();
       this.backdropEl = null;
@@ -142,6 +155,9 @@ export class AudioChopperModal {
           }
           if (this.pcm.length > 0) {
             this.sourceFilename = file.name;
+            this.manualCutFrames = new Set(parsed.sliceFrames.filter((f) => f > 0 && f < this.pcm.length));
+            this.manualSilenceRanges = [];
+            this.manualCutsPolicy = 'prompt';
             this.currentResult = buildSlicesFromBoundaries(
               this.pcm,
               this.sampleRate,
@@ -176,6 +192,9 @@ export class AudioChopperModal {
       // Check if standard WAV / AIFF contains embedded slice cues
       const embedded = parseSliceFile(arrayBuf, file.name, this.sampleRate);
       if (embedded && embedded.sliceFrames.length > 1) {
+        this.manualCutFrames = new Set(embedded.sliceFrames.filter((f) => f > 0 && f < this.pcm.length));
+        this.manualSilenceRanges = [];
+        this.manualCutsPolicy = 'prompt';
         this.currentResult = buildSlicesFromBoundaries(
           this.pcm,
           this.sampleRate,
@@ -188,6 +207,9 @@ export class AudioChopperModal {
           'success'
         );
       } else {
+        this.manualCutFrames.clear();
+        this.manualSilenceRanges = [];
+        this.manualCutsPolicy = 'prompt';
         this.recomputeSlices();
         toast(
           `Loaded "${file.name}" into Audio Chopper (${(this.pcm.length / this.sampleRate).toFixed(2)}s, ${this.sampleRate} Hz)`,
@@ -215,6 +237,9 @@ export class AudioChopperModal {
         return;
       }
 
+      this.manualCutFrames = new Set(parsed.sliceFrames.filter((f) => f > 0 && f < this.pcm.length));
+      this.manualSilenceRanges = [];
+      this.manualCutsPolicy = 'prompt';
       this.currentResult = buildSlicesFromBoundaries(
         this.pcm,
         this.sampleRate,
@@ -256,17 +281,61 @@ export class AudioChopperModal {
     this.viewCenterNorm = 0.5;
     this.selectedSliceId = null;
     this.activeBoundaryIndex = 1;
+    this.manualCutFrames.clear();
+    this.manualSilenceRanges = [];
+    this.manualCutsPolicy = 'prompt';
     this.recomputeSlices();
     this.render();
     toast('Loaded 2-second synthesized test beat for slicer auditioning.', 'info');
   }
 
-  private recomputeSlices(): void {
+  private isBoundaryManual(frame: number): boolean {
+    if (this.manualCutFrames.has(frame)) return true;
+    for (const mf of this.manualCutFrames) {
+      if (Math.abs(mf - frame) <= 6) return true;
+    }
+    return false;
+  }
+
+  private registerManualBoundary(newFrame: number, oldFrame?: number): void {
+    if (oldFrame !== undefined) {
+      for (const mf of Array.from(this.manualCutFrames)) {
+        if (Math.abs(mf - oldFrame) <= 6) {
+          this.manualCutFrames.delete(mf);
+        }
+      }
+    }
+    this.manualCutFrames.add(newFrame);
+  }
+
+  private removeManualBoundary(frame: number): void {
+    for (const mf of Array.from(this.manualCutFrames)) {
+      if (Math.abs(mf - frame) <= 6) {
+        this.manualCutFrames.delete(mf);
+      }
+    }
+  }
+
+  private hasManualCuts(): boolean {
+    return this.manualCutFrames.size > 0 || this.manualSilenceRanges.length > 0;
+  }
+
+  private recomputeSlices(forceAuto: boolean = false): void {
     if (this.pcm.length === 0) {
       this.currentResult = null;
       return;
     }
-    this.currentResult = sliceAudioBuffer(this.pcm, this.sampleRate, this.options);
+    if (forceAuto || (!this.hasManualCuts())) {
+      this.currentResult = sliceAudioBuffer(this.pcm, this.sampleRate, this.options);
+    } else {
+      this.currentResult = sliceAudioBufferPreservingManualCuts(
+        this.pcm,
+        this.sampleRate,
+        this.options,
+        Array.from(this.manualCutFrames),
+        this.manualSilenceRanges
+      );
+    }
     if (!this.selectedSliceId && this.currentResult.slices.length > 0) {
       const firstValid = this.currentResult.slices.find((s) => !s.isSilence);
       this.selectedSliceId = firstValid ? firstValid.id : this.currentResult.slices[0].id;
@@ -275,6 +344,106 @@ export class AudioChopperModal {
     if (this.activeBoundaryIndex >= boundaries.length - 1) {
       this.activeBoundaryIndex = Math.max(1, boundaries.length - 2);
     }
+  }
+
+  private handleToggleSliceSilence(sliceId: string): void {
+    if (!this.currentResult) return;
+    const sl = this.currentResult.slices.find((s) => s.id === sliceId);
+    if (!sl) return;
+    const willBeSilence = !sl.isSilence;
+    this.currentResult = toggleSliceSilence(this.currentResult, sliceId, this.sampleRate, this.options);
+
+    if (willBeSilence) {
+      this.manualSilenceRanges.push({ start: sl.startFrame, end: sl.endFrame });
+    } else {
+      this.manualSilenceRanges = this.manualSilenceRanges.filter(
+        (r) => !(Math.abs(r.start - sl.startFrame) < 32 && Math.abs(r.end - sl.endFrame) < 32)
+      );
+    }
+
+    this.drawWaveformCanvas();
+    this.drawMagnifierCanvas();
+    this.refreshTable();
+  }
+
+  private closeConfirmModal(): void {
+    if (this.activeConfirmModalEl) {
+      this.activeConfirmModalEl.remove();
+      this.activeConfirmModalEl = null;
+    }
+  }
+
+  private showManualCutsConfirmationModal(
+    descriptionHtml: string,
+    onKeep: () => void,
+    onDiscard: () => void,
+    onCancel: () => void
+  ): void {
+    this.closeConfirmModal();
+
+    const modal = document.createElement('div');
+    modal.className = 'nmm-modal-backdrop nmm-confirm-backdrop';
+    modal.innerHTML = `
+      <div class="nmm-modal-window nmm-confirm-window" style="max-width: 520px; z-index: 100010;">
+        <header class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
+            <span class="nmm-modal-header-icon" style="color: #f59e0b;">${ICONS.scissors}</span>
+            <h2>Manual Slice Edits Detected</h2>
+          </div>
+          <button type="button" class="nmm-modal-close" id="btn-confirm-close">${ICONS.close || '✕'}</button>
+        </header>
+        <div class="nmm-modal-body" style="padding: 16px 20px; font-size: 13px; line-height: 1.5;">
+          <p style="margin-bottom: 12px; color: var(--color-text-main);">
+            ${descriptionHtml}
+          </p>
+          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+            <span style="color: #fbbf24; font-weight: 600;">Manual Customizations:</span>
+            <ul style="margin: 6px 0 0 18px; padding: 0; color: var(--color-text-muted);">
+              <li><strong>${this.manualCutFrames.size}</strong> manual slice cut marker(s)</li>
+              ${this.manualSilenceRanges.length > 0 ? `<li><strong>${this.manualSilenceRanges.length}</strong> manual silence interval(s)</li>` : ''}
+            </ul>
+          </div>
+          <p style="font-size: 12px; color: var(--color-text-dim); margin-bottom: 14px;">
+            How would you like to handle your manual cuts?
+          </p>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--color-text-muted);">
+            <input type="checkbox" id="chk-remember-policy" />
+            Remember choice for subsequent changes in this session
+          </label>
+        </div>
+        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" id="btn-cuts-cancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="btn-cuts-discard" style="background: #ef4444; color: #fff; border: none;">Discard Cuts (Auto)</button>
+          <button type="button" class="btn btn-primary" id="btn-cuts-keep">Keep Manual Cuts</button>
+        </footer>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    this.activeConfirmModalEl = modal;
+
+    const rememberCheck = modal.querySelector('#chk-remember-policy') as HTMLInputElement | null;
+
+    modal.querySelector('#btn-confirm-close')?.addEventListener('click', () => {
+      this.closeConfirmModal();
+      onCancel();
+    });
+    modal.querySelector('#btn-cuts-cancel')?.addEventListener('click', () => {
+      this.closeConfirmModal();
+      onCancel();
+    });
+    modal.querySelector('#btn-cuts-discard')?.addEventListener('click', () => {
+      const remember = rememberCheck?.checked;
+      if (remember) this.manualCutsPolicy = 'discard';
+      this.closeConfirmModal();
+      onDiscard();
+    });
+    modal.querySelector('#btn-cuts-keep')?.addEventListener('click', () => {
+      const remember = rememberCheck?.checked;
+      if (remember) this.manualCutsPolicy = 'keep';
+      this.closeConfirmModal();
+      onKeep();
+    });
   }
 
   private getActiveCutFrame(): number {
@@ -476,6 +645,16 @@ export class AudioChopperModal {
                   <div class="chopper-param-header">
                     <span>TRANSIENT SENSITIVITY</span>
                     <span class="chopper-param-val" id="lbl-sens-val">${this.options.sensitivity}%</span>
+                    ${
+                      this.manualCutFrames.size > 0
+                        ? `
+                      <span class="badge-manual-cuts" title="${this.manualCutFrames.size} manual cut(s) preserved">
+                        ${ICONS.scissors} ${this.manualCutFrames.size} manual
+                        <button type="button" class="btn-reset-cuts" id="btn-reset-cuts-auto" title="Discard manual cuts and reset to full auto detection">Reset</button>
+                      </span>
+                    `
+                        : ''
+                    }
                   </div>
                   <input type="range" class="form-control" id="rng-sens" min="5" max="98" value="${this.options.sensitivity}" />
                 </div>
@@ -632,8 +811,16 @@ export class AudioChopperModal {
     sliceEven: string;
     sliceOdd: string;
     silence: string;
+    silenceStripe: string;
+    silenceWaveform: string;
+    silenceBadgeBg: string;
+    silenceBadgeText: string;
     marker: string;
     markerHover: string;
+    markerManual: string;
+    markerManualHover: string;
+    markerActive: string;
+    markerActiveManual: string;
     centerLine: string;
     text: string;
   } {
@@ -650,9 +837,17 @@ export class AudioChopperModal {
       sliceSel: isDark ? 'rgba(56, 189, 248, 0.28)' : 'rgba(14, 165, 233, 0.25)',
       sliceEven: isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(14, 165, 233, 0.08)',
       sliceOdd: isDark ? 'rgba(168, 85, 247, 0.08)' : 'rgba(139, 92, 246, 0.08)',
-      silence: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(148, 163, 184, 0.45)',
+      silence: isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(203, 213, 225, 0.65)',
+      silenceStripe: isDark ? 'rgba(255, 255, 255, 0.09)' : 'rgba(0, 0, 0, 0.12)',
+      silenceWaveform: isDark ? 'rgba(100, 116, 139, 0.35)' : 'rgba(148, 163, 184, 0.45)',
+      silenceBadgeBg: isDark ? 'rgba(30, 41, 59, 0.9)' : 'rgba(241, 245, 249, 0.9)',
+      silenceBadgeText: isDark ? '#94a3b8' : '#64748b',
       marker: accent,
-      markerHover: '#f59e0b',
+      markerHover: '#38bdf8',
+      markerManual: '#f59e0b',
+      markerManualHover: '#fbbf24',
+      markerActive: '#10b981',
+      markerActiveManual: '#fbbf24',
       centerLine: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
       text: isDark ? '#f8fafc' : '#0f172a',
     };
@@ -697,7 +892,7 @@ export class AudioChopperModal {
 
     const frameToX = (frame: number) => ((frame - viewStart) / viewSpan) * width;
 
-    // Draw Slices Background Shading & Non-Overlapping Labels
+    // 1. Draw Slices Background Shading & Active Badges
     const slices = this.currentResult?.slices ?? [];
     slices.forEach((sl, idx) => {
       const x1 = frameToX(sl.startFrame);
@@ -735,7 +930,7 @@ export class AudioChopperModal {
       }
     });
 
-    // Center Reference Line
+    // 2. Center Reference Line
     const centerY = height * 0.5;
     ctx.strokeStyle = colors.centerLine;
     ctx.lineWidth = 1;
@@ -744,7 +939,7 @@ export class AudioChopperModal {
     ctx.lineTo(width, centerY);
     ctx.stroke();
 
-    // Waveform Envelope
+    // 3. Waveform Envelope (attenuated / dim color for silence intervals)
     const numPoints = Math.min(width, 600);
     const env = computeZoomedWaveformEnvelope(this.pcm, viewStart, viewEnd, numPoints);
     const ampScale = height * 0.44;
@@ -753,50 +948,123 @@ export class AudioChopperModal {
     grad.addColorStop(0, colors.waveform);
     grad.addColorStop(1, colors.waveformGradientEnd);
 
-    ctx.fillStyle = grad;
     const stepX = width / numPoints;
     for (let i = 0; i < numPoints; i++) {
       const x = i * stepX;
+      const pointFrame = Math.round(viewStart + (i / numPoints) * viewSpan);
+      const inSilence = slices.some((sl) => sl.isSilence && pointFrame >= sl.startFrame && pointFrame < sl.endFrame);
+
+      ctx.fillStyle = inSilence ? colors.silenceWaveform : grad;
+
       const topY = centerY - (env.max[i] ?? 0) * ampScale;
       const botY = centerY - (env.min[i] ?? 0) * ampScale;
       const barH = Math.max(1, botY - topY);
       ctx.fillRect(x, topY, Math.max(1, stepX - 0.5), barH);
     }
 
-    // Draw Draggable Boundary Lines with Handles
+    // 4. Diagonal Hatching & Disabled Overlay for Silence Slices
+    slices.forEach((sl) => {
+      if (!sl.isSilence) return;
+      const x1 = frameToX(sl.startFrame);
+      const x2 = frameToX(sl.endFrame);
+      if (x2 < 0 || x1 > width) return;
+      const w = Math.max(1, x2 - x1);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x1, 0, w, height);
+      ctx.clip();
+
+      // Diagonal striped lines across silence area
+      ctx.strokeStyle = colors.silenceStripe;
+      ctx.lineWidth = 1.2;
+      const spacing = 10;
+      for (let lx = x1 - height; lx <= x1 + w; lx += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(lx, height);
+        ctx.lineTo(lx + height, 0);
+        ctx.stroke();
+      }
+
+      // Dim "MUTED" badge
+      if (w >= 36) {
+        ctx.fillStyle = colors.silenceBadgeBg;
+        ctx.fillRect(x1 + 4, 3, Math.min(w - 8, 48), 13);
+        ctx.fillStyle = colors.silenceBadgeText;
+        ctx.font = 'bold 9px monospace';
+        ctx.fillText('MUTED', x1 + 8, 13);
+      }
+
+      ctx.restore();
+    });
+
+    // 5. Draw Boundary Lines with Amber Distinction for Manual Cuts & Handles
     const boundaries = extractBoundaryFrames(this.currentResult || { slices: [] } as any, totalFrames);
     for (let bIdx = 1; bIdx < boundaries.length - 1; bIdx++) {
       const bFrame = boundaries[bIdx];
       const bx = frameToX(bFrame);
       if (bx < -5 || bx > width + 5) continue;
 
+      const isManual = this.isBoundaryManual(bFrame);
       const isHovered = bIdx === this.hoveredBoundaryIndex || bIdx === this.draggedBoundaryIndex;
       const isActive = bIdx === this.activeBoundaryIndex;
 
-      ctx.strokeStyle = isHovered ? colors.markerHover : isActive ? '#10b981' : colors.marker;
-      ctx.lineWidth = isHovered || isActive ? 2.5 : 1.5;
+      let lineColor: string;
+      if (isHovered) {
+        lineColor = isManual ? colors.markerManualHover : colors.markerHover;
+      } else if (isActive) {
+        lineColor = isManual ? colors.markerActiveManual : colors.markerActive;
+      } else if (isManual) {
+        lineColor = colors.markerManual;
+      } else {
+        lineColor = colors.marker;
+      }
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = isHovered || isActive ? 2.5 : isManual ? 2.0 : 1.5;
 
       ctx.beginPath();
       ctx.moveTo(bx, 0);
       ctx.lineTo(bx, height);
       ctx.stroke();
 
-      // Top drag handle triangle
-      ctx.fillStyle = isHovered ? colors.markerHover : isActive ? '#10b981' : colors.marker;
-      ctx.beginPath();
-      ctx.moveTo(bx - 5, 0);
-      ctx.lineTo(bx + 5, 0);
-      ctx.lineTo(bx, 8);
-      ctx.closePath();
-      ctx.fill();
+      // Top and bottom handles: diamond shape for manual cuts, triangle for auto cuts
+      ctx.fillStyle = lineColor;
+      if (isManual) {
+        // Top diamond handle
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx + 5, 5);
+        ctx.lineTo(bx, 10);
+        ctx.lineTo(bx - 5, 5);
+        ctx.closePath();
+        ctx.fill();
 
-      // Bottom drag handle triangle
-      ctx.beginPath();
-      ctx.moveTo(bx - 5, height);
-      ctx.lineTo(bx + 5, height);
-      ctx.lineTo(bx, height - 8);
-      ctx.closePath();
-      ctx.fill();
+        // Bottom diamond handle
+        ctx.beginPath();
+        ctx.moveTo(bx, height);
+        ctx.lineTo(bx + 5, height - 5);
+        ctx.lineTo(bx, height - 10);
+        ctx.lineTo(bx - 5, height - 5);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // Top triangle handle
+        ctx.beginPath();
+        ctx.moveTo(bx - 5, 0);
+        ctx.lineTo(bx + 5, 0);
+        ctx.lineTo(bx, 8);
+        ctx.closePath();
+        ctx.fill();
+
+        // Bottom triangle handle
+        ctx.beginPath();
+        ctx.moveTo(bx - 5, height);
+        ctx.lineTo(bx + 5, height);
+        ctx.lineTo(bx, height - 8);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
 
     ctx.restore();
@@ -832,10 +1100,30 @@ export class AudioChopperModal {
     }
 
     const cutFrame = this.getActiveCutFrame();
+    const isCutManual = this.isBoundaryManual(cutFrame);
     const halfWindow = 256;
     const startFrame = cutFrame - halfWindow;
     const endFrame = cutFrame + halfWindow;
     const centerY = height * 0.5;
+
+    // Check if the adjacent slice is silence to draw subtle background hatching
+    const currentSlice = this.currentResult?.slices.find(
+      (s) => cutFrame >= s.startFrame && cutFrame <= s.endFrame
+    );
+    if (currentSlice?.isSilence) {
+      ctx.save();
+      ctx.fillStyle = colors.silence;
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = colors.silenceStripe;
+      ctx.lineWidth = 1.0;
+      for (let lx = -height; lx <= width; lx += 12) {
+        ctx.beginPath();
+        ctx.moveTo(lx, height);
+        ctx.lineTo(lx + height, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // Center zero reference line
     ctx.strokeStyle = colors.centerLine;
@@ -847,7 +1135,7 @@ export class AudioChopperModal {
 
     // Waveform line for ±256 sample window
     const ampScale = height * 0.42;
-    ctx.strokeStyle = colors.waveform;
+    ctx.strokeStyle = currentSlice?.isSilence ? colors.silenceWaveform : colors.waveform;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
 
@@ -867,7 +1155,7 @@ export class AudioChopperModal {
     ctx.stroke();
 
     // Individual sample points
-    ctx.fillStyle = colors.waveform;
+    ctx.fillStyle = currentSlice?.isSilence ? colors.silenceWaveform : colors.waveform;
     for (let i = 0; i < totalSamples; i += 4) {
       const frame = startFrame + i;
       const x = (i / totalSamples) * width;
@@ -876,12 +1164,13 @@ export class AudioChopperModal {
       ctx.fillRect(x - 1, y - 1, 2, 2);
     }
 
-    // Center Cut Line (green or highlighted orange if dragging)
+    // Center Cut Line: amber (#f59e0b) if manual, emerald (#10b981) if auto
     const centerX = width * 0.5;
     const isDragging = this.isDraggingMagnifier;
-    ctx.strokeStyle = isDragging ? '#f59e0b' : '#10b981';
+    const cutColor = isDragging ? '#f59e0b' : isCutManual ? '#fbbf24' : '#10b981';
+    ctx.strokeStyle = cutColor;
     ctx.lineWidth = isDragging ? 3 : 2;
-    ctx.setLineDash(isDragging ? [] : [4, 2]);
+    ctx.setLineDash(isDragging ? [] : isCutManual ? [6, 2] : [4, 2]);
     ctx.beginPath();
     ctx.moveTo(centerX, 0);
     ctx.lineTo(centerX, height);
@@ -891,31 +1180,52 @@ export class AudioChopperModal {
     // Cut point highlight dot
     const centerVal = cutFrame >= 0 && cutFrame < this.pcm.length ? this.pcm[cutFrame] : 0;
     const centerDotY = centerY - centerVal * ampScale;
-    ctx.fillStyle = isDragging ? '#f59e0b' : '#10b981';
+    ctx.fillStyle = cutColor;
     ctx.beginPath();
     ctx.arc(centerX, centerDotY, isDragging ? 5 : 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Handle Triangles
-    ctx.fillStyle = isDragging ? '#f59e0b' : '#10b981';
-    ctx.beginPath();
-    ctx.moveTo(centerX - 6, 0);
-    ctx.lineTo(centerX + 6, 0);
-    ctx.lineTo(centerX, 9);
-    ctx.closePath();
-    ctx.fill();
+    // Top & Bottom Handles: diamond if manual, triangle if auto
+    if (isCutManual) {
+      ctx.beginPath();
+      ctx.moveTo(centerX, 0);
+      ctx.lineTo(centerX + 6, 6);
+      ctx.lineTo(centerX, 12);
+      ctx.lineTo(centerX - 6, 6);
+      ctx.closePath();
+      ctx.fill();
 
-    ctx.beginPath();
-    ctx.moveTo(centerX - 6, height);
-    ctx.lineTo(centerX + 6, height);
-    ctx.lineTo(centerX, height - 9);
-    ctx.closePath();
-    ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(centerX, height);
+      ctx.lineTo(centerX + 6, height - 6);
+      ctx.lineTo(centerX, height - 12);
+      ctx.lineTo(centerX - 6, height - 6);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(centerX - 6, 0);
+      ctx.lineTo(centerX + 6, 0);
+      ctx.lineTo(centerX, 9);
+      ctx.closePath();
+      ctx.fill();
 
-    // Visual drag hint
+      ctx.beginPath();
+      ctx.moveTo(centerX - 6, height);
+      ctx.lineTo(centerX + 6, height);
+      ctx.lineTo(centerX, height - 9);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Visual drag & mode hint
     ctx.font = '10px monospace';
-    ctx.fillStyle = isDragging ? '#f59e0b' : 'rgba(16, 185, 129, 0.8)';
-    const hintText = isDragging ? 'DRAGGING CUT POINT (MICRO-ADJUST)' : 'CLICK & DRAG TO MICRO-ADJUST CUT (±256 smp)';
+    ctx.fillStyle = isDragging ? '#f59e0b' : isCutManual ? '#fbbf24' : 'rgba(16, 185, 129, 0.8)';
+    const hintText = isDragging
+      ? 'DRAGGING CUT POINT (MICRO-ADJUST)'
+      : isCutManual
+      ? 'MANUAL CUT POINT (AMBER) • DRAG OR NUDGE TO REFINE'
+      : 'CLICK & DRAG TO MICRO-ADJUST CUT (±256 smp)';
     ctx.fillText(hintText, 10, 14);
 
     ctx.restore();
@@ -951,6 +1261,8 @@ export class AudioChopperModal {
     const currentF = boundaries[bIdx];
     const newF = currentF + deltaSamples;
 
+    this.registerManualBoundary(newF, currentF);
+
     this.currentResult = moveSliceBoundary(
       this.currentResult,
       this.pcm,
@@ -976,6 +1288,8 @@ export class AudioChopperModal {
     const currentF = boundaries[bIdx];
     const snapped = snapFrameToNearestZeroCrossing(this.pcm, currentF, 256);
 
+    this.registerManualBoundary(snapped, currentF);
+
     this.currentResult = moveSliceBoundary(
       this.currentResult,
       this.pcm,
@@ -997,6 +1311,7 @@ export class AudioChopperModal {
   private updateMagnifierHeader(): void {
     if (!this.backdropEl) return;
     const activeCutFrame = this.getActiveCutFrame();
+    const isCutManual = this.isBoundaryManual(activeCutFrame);
     const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
     const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
 
@@ -1007,6 +1322,7 @@ export class AudioChopperModal {
         <span>CUT POINT MAGNIFIER (±256 smp):</span>
         <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous slice boundary">&lt; Prev Cut</button>
         <strong>Boundary #${this.activeBoundaryIndex}</strong>
+        ${isCutManual ? '<span class="val-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);">MANUAL CUT</span>' : ''}
         <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next slice boundary">Next Cut &gt;</button>
         <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
         <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
@@ -1143,55 +1459,181 @@ export class AudioChopperModal {
       this.render();
     });
 
-    // Mode Buttons
-    this.backdropEl.querySelector('#btn-mode-drums')?.addEventListener('click', () => {
-      this.options.mode = 'drums';
-      this.options.minSliceMs = 45;
-      this.recomputeSlices();
+    // Mode Switching with Manual Cuts Guard
+    const switchMode = (newMode: SlicerMode, defaultMinSlice?: number) => {
+      if (this.options.mode === newMode) return;
+      if (this.hasManualCuts() && this.manualCutsPolicy === 'prompt') {
+        this.showManualCutsConfirmationModal(
+          `You are switching <strong>Slicing Mode</strong> to <strong>${newMode.toUpperCase()}</strong>.`,
+          () => {
+            this.options.mode = newMode;
+            if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
+            this.recomputeSlices(false);
+            this.render();
+            toast(`Mode switched to ${newMode}: manual cuts preserved.`, 'success');
+          },
+          () => {
+            this.options.mode = newMode;
+            if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
+            this.manualCutFrames.clear();
+            this.manualSilenceRanges = [];
+            this.recomputeSlices(true);
+            this.render();
+            toast(`Mode switched to ${newMode}: reset to auto.`, 'info');
+          },
+          () => {
+            // Cancelled: leave mode unchanged
+          }
+        );
+        return;
+      }
+      this.options.mode = newMode;
+      if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
-    });
-    this.backdropEl.querySelector('#btn-mode-vocals')?.addEventListener('click', () => {
-      this.options.mode = 'vocals';
-      this.options.minSliceMs = 250;
-      this.recomputeSlices();
-      this.render();
-    });
-    this.backdropEl.querySelector('#btn-mode-chromatic')?.addEventListener('click', () => {
-      this.options.mode = 'chromatic';
-      this.recomputeSlices();
-      this.render();
-    });
-    this.backdropEl.querySelector('#btn-mode-grid')?.addEventListener('click', () => {
-      this.options.mode = 'grid';
-      this.recomputeSlices();
-      this.render();
-    });
+    };
 
-    // Sensitivity Slider
+    this.backdropEl.querySelector('#btn-mode-drums')?.addEventListener('click', () => switchMode('drums', 45));
+    this.backdropEl.querySelector('#btn-mode-vocals')?.addEventListener('click', () => switchMode('vocals', 250));
+    this.backdropEl.querySelector('#btn-mode-chromatic')?.addEventListener('click', () => switchMode('chromatic'));
+    this.backdropEl.querySelector('#btn-mode-grid')?.addEventListener('click', () => switchMode('grid'));
+
+    // Sensitivity Slider with Manual Cuts Protection
     const rngSens = this.backdropEl.querySelector('#rng-sens') as HTMLInputElement | null;
+    let prevSensVal = this.options.sensitivity;
+
     rngSens?.addEventListener('input', () => {
-      this.options.sensitivity = parseInt(rngSens.value, 10);
+      const newSens = parseInt(rngSens.value, 10);
+      if (newSens === this.options.sensitivity) return;
+
+      if (this.hasManualCuts()) {
+        if (this.manualCutsPolicy === 'prompt') {
+          this.showManualCutsConfirmationModal(
+            `You are changing <strong>Transient Sensitivity</strong> from ${this.options.sensitivity}% to ${newSens}%.`,
+            () => {
+              this.options.sensitivity = newSens;
+              prevSensVal = newSens;
+              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
+              if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
+              this.recomputeSlices(false);
+              this.render();
+              toast(`Sensitivity set to ${newSens}%: preserved ${this.manualCutFrames.size} manual cut(s).`, 'success');
+            },
+            () => {
+              this.options.sensitivity = newSens;
+              prevSensVal = newSens;
+              this.manualCutFrames.clear();
+              this.manualSilenceRanges = [];
+              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
+              if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
+              this.recomputeSlices(true);
+              this.render();
+              toast(`Sensitivity set to ${newSens}%: reset to automatic transient detection.`, 'info');
+            },
+            () => {
+              rngSens.value = String(prevSensVal);
+              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
+              if (lbl) lbl.textContent = `${prevSensVal}%`;
+            }
+          );
+          return;
+        } else if (this.manualCutsPolicy === 'keep') {
+          this.options.sensitivity = newSens;
+          prevSensVal = newSens;
+          const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
+          if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
+          this.recomputeSlices(false);
+          this.drawWaveformCanvas();
+          this.drawMagnifierCanvas();
+          this.refreshTable();
+          return;
+        }
+      }
+
+      this.options.sensitivity = newSens;
+      prevSensVal = newSens;
       const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
       if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
     });
 
-    // Silence Gate Slider
+    // Silence Gate Slider with Manual Cuts Protection
     const rngSilence = this.backdropEl.querySelector('#rng-silence') as HTMLInputElement | null;
+    let prevSilenceVal = this.options.silenceThresholdDb;
+
     rngSilence?.addEventListener('input', () => {
-      this.options.silenceThresholdDb = parseInt(rngSilence.value, 10);
+      const newSilence = parseInt(rngSilence.value, 10);
+      if (newSilence === this.options.silenceThresholdDb) return;
+
+      if (this.hasManualCuts()) {
+        if (this.manualCutsPolicy === 'prompt') {
+          this.showManualCutsConfirmationModal(
+            `You are changing <strong>Silence Gate Threshold</strong> from ${this.options.silenceThresholdDb} dB to ${newSilence} dB.`,
+            () => {
+              this.options.silenceThresholdDb = newSilence;
+              prevSilenceVal = newSilence;
+              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
+              if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
+              this.recomputeSlices(false);
+              this.render();
+              toast(`Silence gate set to ${newSilence} dB: preserved manual edits.`, 'success');
+            },
+            () => {
+              this.options.silenceThresholdDb = newSilence;
+              prevSilenceVal = newSilence;
+              this.manualCutFrames.clear();
+              this.manualSilenceRanges = [];
+              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
+              if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
+              this.recomputeSlices(true);
+              this.render();
+              toast(`Silence gate set to ${newSilence} dB: reset to auto.`, 'info');
+            },
+            () => {
+              rngSilence.value = String(prevSilenceVal);
+              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
+              if (lbl) lbl.textContent = `${prevSilenceVal} dB`;
+            }
+          );
+          return;
+        } else if (this.manualCutsPolicy === 'keep') {
+          this.options.silenceThresholdDb = newSilence;
+          prevSilenceVal = newSilence;
+          const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
+          if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
+          this.recomputeSlices(false);
+          this.drawWaveformCanvas();
+          this.drawMagnifierCanvas();
+          this.refreshTable();
+          return;
+        }
+      }
+
+      this.options.silenceThresholdDb = newSilence;
+      prevSilenceVal = newSilence;
       const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
       if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
+    });
+
+    // Reset Manual Cuts to Full Auto
+    this.backdropEl.querySelector('#btn-reset-cuts-auto')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.manualCutFrames.clear();
+      this.manualSilenceRanges = [];
+      this.manualCutsPolicy = 'prompt';
+      this.recomputeSlices(true);
+      this.render();
+      toast('Reset all slices to automatic transient detection.', 'info');
     });
 
     // Min Slice Ms Input
     const inpMinSlice = this.backdropEl.querySelector('#inp-minslice') as HTMLInputElement | null;
     inpMinSlice?.addEventListener('change', () => {
       this.options.minSliceMs = Math.max(10, parseInt(inpMinSlice.value, 10) || 45);
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
     });
 
@@ -1199,19 +1641,19 @@ export class AudioChopperModal {
     const inpPreroll = this.backdropEl.querySelector('#inp-preroll') as HTMLInputElement | null;
     inpPreroll?.addEventListener('change', () => {
       this.options.preRollMs = Math.max(0, parseInt(inpPreroll.value, 10) || 0);
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
     });
 
     // Toggles
     this.backdropEl.querySelector('#btn-toggle-zc-snap')?.addEventListener('click', () => {
       this.options.snapZeroCrossing = !this.options.snapZeroCrossing;
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
     });
     this.backdropEl.querySelector('#btn-toggle-overlap')?.addEventListener('click', () => {
       this.options.allowOverlap = !this.options.allowOverlap;
-      this.recomputeSlices();
+      this.recomputeSlices(this.manualCutsPolicy === 'discard');
       this.render();
     });
 
@@ -1234,9 +1676,7 @@ export class AudioChopperModal {
 
     this.backdropEl.querySelector('#btn-mag-toggle-silence')?.addEventListener('click', () => {
       if (this.selectedSliceId && this.currentResult) {
-        this.currentResult = toggleSliceSilence(this.currentResult, this.selectedSliceId, this.sampleRate, this.options);
-        this.drawWaveformCanvas();
-        this.refreshTable();
+        this.handleToggleSliceSilence(this.selectedSliceId);
       }
     });
 
@@ -1245,6 +1685,9 @@ export class AudioChopperModal {
         const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
         if (boundaries.length <= 2) return;
         const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
+        const bFrame = boundaries[bIdx];
+        this.removeManualBoundary(bFrame);
+
         // Find slice starting at this boundary and delete it
         const slice = this.currentResult.slices[bIdx];
         if (slice) {
@@ -1438,6 +1881,7 @@ export class AudioChopperModal {
             isDanger: true,
             onClick: () => {
               if (sliceRight) {
+                this.removeManualBoundary(sliceRight.startFrame);
                 this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, sliceRight.id, this.options);
                 this.activeBoundaryIndex = Math.max(1, hoveredBIdx - 1);
                 this.render();
@@ -1474,9 +1918,7 @@ export class AudioChopperModal {
                   label: sliceLeft.isSilence ? `Unmute Left Slice #${sliceLeft.index}` : `Mute Left Slice #${sliceLeft.index}`,
                   icon: ICONS.eyeOff,
                   onClick: () => {
-                    this.currentResult = toggleSliceSilence(this.currentResult!, sliceLeft.id, this.sampleRate, this.options);
-                    this.drawWaveformCanvas();
-                    this.refreshTable();
+                    this.handleToggleSliceSilence(sliceLeft.id);
                   },
                 },
               ]
@@ -1492,9 +1934,7 @@ export class AudioChopperModal {
                   label: sliceRight.isSilence ? `Unmute Right Slice #${sliceRight.index}` : `Mute Right Slice #${sliceRight.index}`,
                   icon: ICONS.eyeOff,
                   onClick: () => {
-                    this.currentResult = toggleSliceSilence(this.currentResult!, sliceRight.id, this.sampleRate, this.options);
-                    this.drawWaveformCanvas();
-                    this.refreshTable();
+                    this.handleToggleSliceSilence(sliceRight.id);
                   },
                 },
               ]
@@ -1514,6 +1954,7 @@ export class AudioChopperModal {
           label: `+ Add Cut Marker Here (${clickedFrame.toLocaleString()} smp)`,
           icon: ICONS.plus,
           onClick: () => {
+            this.registerManualBoundary(clickedFrame);
             this.currentResult = splitSliceAtFrame(
               this.currentResult!,
               this.pcm,
@@ -1542,9 +1983,7 @@ export class AudioChopperModal {
                 label: hitSlice.isSilence ? `Unmute Slice (Mark Active)` : `Mark as Silence (Mute)`,
                 icon: ICONS.eyeOff,
                 onClick: () => {
-                  this.currentResult = toggleSliceSilence(this.currentResult!, hitSlice.id, this.sampleRate, this.options);
-                  this.drawWaveformCanvas();
-                  this.refreshTable();
+                  this.handleToggleSliceSilence(hitSlice.id);
                 },
               },
               { label: '', isDivider: true },
@@ -1553,6 +1992,7 @@ export class AudioChopperModal {
                 icon: ICONS.trash,
                 isDanger: true,
                 onClick: () => {
+                  this.removeManualBoundary(hitSlice.startFrame);
                   this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, hitSlice.id, this.options);
                   this.render();
                   toast(`Deleted slice #${hitSlice.index}.`, 'info');
@@ -1567,6 +2007,7 @@ export class AudioChopperModal {
     canvas.addEventListener('dblclick', (e: MouseEvent) => {
       if (!this.currentResult || this.pcm.length === 0) return;
       const splitFrame = getFrameFromMouseX(e.clientX);
+      this.registerManualBoundary(splitFrame);
       this.currentResult = splitSliceAtFrame(
         this.currentResult,
         this.pcm,
@@ -1617,6 +2058,8 @@ export class AudioChopperModal {
       const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
       if (boundaries.length <= 2) return;
       const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
+
+      this.registerManualBoundary(targetFrame, this.magDragStartCutFrame);
 
       this.currentResult = moveSliceBoundary(
         this.currentResult,
@@ -1680,9 +2123,7 @@ export class AudioChopperModal {
         e.stopPropagation();
         const sliceId = btn.dataset.sliceId;
         if (sliceId && this.currentResult) {
-          this.currentResult = toggleSliceSilence(this.currentResult, sliceId, this.sampleRate, this.options);
-          this.drawWaveformCanvas();
-          this.refreshTable();
+          this.handleToggleSliceSilence(sliceId);
         }
       });
     });
@@ -1692,6 +2133,8 @@ export class AudioChopperModal {
         e.stopPropagation();
         const sliceId = btn.dataset.sliceId;
         if (sliceId && this.currentResult) {
+          const sl = this.currentResult.slices.find((s) => s.id === sliceId);
+          if (sl) this.removeManualBoundary(sl.startFrame);
           this.currentResult = deleteSlice(this.currentResult, this.pcm, this.sampleRate, sliceId, this.options);
           const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
           if (this.activeBoundaryIndex >= boundaries.length - 1) {

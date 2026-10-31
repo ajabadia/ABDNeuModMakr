@@ -7427,7 +7427,57 @@ textarea.form-control::placeholder {
 
 .chopper-slices-table tr.is-silence-row {
   opacity: 0.55;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(148, 163, 184, 0.08) 8px,
+    rgba(148, 163, 184, 0.08) 16px
+  );
   font-style: italic;
+}
+
+.chopper-slices-table tr.is-silence-row td:nth-child(4) {
+  text-decoration: line-through;
+  color: var(--color-text-dim);
+}
+
+.badge-manual-cuts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.badge-manual-cuts .btn-reset-cuts {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.badge-manual-cuts .btn-reset-cuts:hover {
+  opacity: 1;
+}
+
+.nmm-confirm-backdrop {
+  z-index: 100050 !important;
+}
+
+.nmm-confirm-window {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(245, 158, 11, 0.3);
 }
 
 .chopper-slices-table tr:hover:not(.is-selected) {

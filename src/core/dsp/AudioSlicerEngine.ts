@@ -728,6 +728,90 @@ export function extractBoundaryFrames(result: SlicerResult, totalFrames: number)
   return b;
 }
 
+export interface ManualSilenceRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Merges manual cut boundaries with auto-detected boundaries.
+ * Preserves all manual cut frames while allowing newly detected transients around them.
+ */
+export function mergeManualBoundariesWithAuto(
+  autoBoundaries: number[],
+  manualCutFrames: number[],
+  totalFrames: number,
+  minDistanceFrames: number = 64
+): number[] {
+  const result: number[] = [0];
+  const sortedManual = Array.from(new Set(manualCutFrames))
+    .filter((f) => f > 16 && f < totalFrames - 16)
+    .sort((a, b) => a - b);
+
+  // Filter out any auto boundary that is within minDistanceFrames of any manual cut
+  const filteredAuto = autoBoundaries.filter((ab) => {
+    if (ab <= 0 || ab >= totalFrames) return false;
+    return !sortedManual.some((mf) => Math.abs(mf - ab) < minDistanceFrames);
+  });
+
+  const all = [...filteredAuto, ...sortedManual].sort((a, b) => a - b);
+  for (const b of all) {
+    if (b > result[result.length - 1] + 16 && b < totalFrames - 16) {
+      result.push(b);
+    }
+  }
+  result.push(totalFrames);
+  return result;
+}
+
+/**
+ * Recomputes audio slicing with new options while preserving user-defined manual cut boundaries
+ * and manual silence states.
+ */
+export function sliceAudioBufferPreservingManualCuts(
+  pcm: Float32Array,
+  sampleRate: number,
+  options: Partial<SlicerOptions> = {},
+  manualCutFrames: number[] = [],
+  manualSilenceRanges: ManualSilenceRange[] = []
+): SlicerResult {
+  const opts: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...options };
+  const autoResult = sliceAudioBuffer(pcm, sampleRate, opts);
+  if (manualCutFrames.length === 0 && manualSilenceRanges.length === 0) {
+    return autoResult;
+  }
+
+  const autoBoundaries = extractBoundaryFrames(autoResult, pcm.length);
+  const mergedBoundaries = mergeManualBoundariesWithAuto(autoBoundaries, manualCutFrames, pcm.length);
+
+  // Build slices without auto zero-crossing snap so manual cuts are strictly preserved
+  const mergedResult = buildSlicesFromBoundaries(pcm, sampleRate, mergedBoundaries, {
+    ...opts,
+    snapZeroCrossing: false,
+  });
+
+  // Re-apply manual silence ranges if any
+  if (manualSilenceRanges.length > 0) {
+    for (const sl of mergedResult.slices) {
+      const mid = Math.round((sl.startFrame + sl.endFrame) / 2);
+      const isManualSilence = manualSilenceRanges.some(
+        (r) => (mid >= r.start && mid <= r.end) || (sl.startFrame >= r.start && sl.endFrame <= r.end)
+      );
+      if (isManualSilence) {
+        sl.isSilence = true;
+        sl.category = 'silence';
+        sl.label = 'Silence (Manual)';
+      }
+    }
+    const valid = mergedResult.slices.filter((s) => !s.isSilence);
+    mergedResult.validSlicesCount = valid.length;
+    mergedResult.silenceSlicesCount = mergedResult.slices.length - valid.length;
+    mergedResult.midiFileBuffer = buildMidiFileBuffer(valid, opts.bpm);
+  }
+
+  return mergedResult;
+}
+
 /**
  * Moves an existing slice boundary (index 1..N-1) to a new sample frame.
  */
