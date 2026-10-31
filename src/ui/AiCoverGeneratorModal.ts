@@ -28,6 +28,73 @@ export interface AiCoverGeneratorModalContext {
   onOpenSettings?: () => void;
 }
 
+export interface ArtworkProviderOption {
+  id: ArtworkProvider;
+  name: string;
+  badge: string;
+  badgeClass: 'badge-free' | 'badge-local' | 'badge-byok';
+  description: string;
+}
+
+export const ARTWORK_PROVIDERS: readonly ArtworkProviderOption[] = [
+  {
+    id: 'procedural',
+    name: 'Procedural Acoustic',
+    badge: 'Offline • Free',
+    badgeClass: 'badge-free',
+    description: 'Mathematical canvas rendering from F0 harmonics. 0 ms, 0 cost.',
+  },
+  {
+    id: 'bridge',
+    name: 'Companion Bridge',
+    badge: 'Python 7860',
+    badgeClass: 'badge-local',
+    description: 'Local GPU dedicated neural inference (SD-Turbo / PIL synthesis).',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    badge: 'Imagen 3 • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'Photorealistic & artistic neural synthesis via Google AI Studio.',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI / ChatGPT',
+    badge: 'DALL-E 3 • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'High-definition geometric synth art & aesthetic album covers.',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    badge: 'Multi-Model • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'Universal gateway: FLUX.1, Claude, GPT-4o, Llama-3 & Imagen.',
+  },
+  {
+    id: 'claude',
+    name: 'Anthropic Claude',
+    badge: 'Reasoning • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'Acoustic prompt reasoning, structure design & vector synthesis.',
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    badge: 'FLUX.1 • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'Serverless ultra-fast 4-step latent diffusion inference.',
+  },
+  {
+    id: 'replicate',
+    name: 'Replicate',
+    badge: 'FLUX / SDXL • BYOK',
+    badgeClass: 'badge-byok',
+    description: 'Cloud serverless GPU for FLUX.1 and SDXL diffusion.',
+  },
+];
+
 export class AiCoverGeneratorModal {
   private readonly context: AiCoverGeneratorModalContext;
   private backdropEl: HTMLElement | null = null;
@@ -49,6 +116,10 @@ export class AiCoverGeneratorModal {
       this.selectedProvider = 'gemini';
     } else if (byok.openaiApiKey?.trim()) {
       this.selectedProvider = 'openai';
+    } else if (byok.openrouterApiKey?.trim()) {
+      this.selectedProvider = 'openrouter';
+    } else if (byok.claudeApiKey?.trim()) {
+      this.selectedProvider = 'claude';
     } else {
       this.selectedProvider = 'procedural';
     }
@@ -226,29 +297,25 @@ export class AiCoverGeneratorModal {
               <div class="ai-ctrl-card">
                 <div class="ai-ctrl-header">
                   <strong>${ICONS.sparkle || ICONS.ai} Generative Engine / Provider</strong>
-                  <span class="text-muted">Local or Cloud BYOK</span>
+                  <span class="text-muted">Select offline procedural, local bridge or private Cloud BYOK</span>
                 </div>
-                <div class="ai-provider-select-row">
-                  <select id="sel-ai-provider" class="form-control flex-1">
-                    <option value="procedural" ${this.selectedProvider === 'procedural' ? 'selected' : ''}>
-                      Procedural Acoustic Spectrogram (Instant • Offline • Free)
-                    </option>
-                    <option value="bridge" ${this.selectedProvider === 'bridge' ? 'selected' : ''}>
-                      Local Companion Bridge (Python 7860 • Instant)
-                    </option>
-                    <option value="gemini" ${this.selectedProvider === 'gemini' ? 'selected' : ''}>
-                      Google Gemini (Imagen 3 • BYOK)
-                    </option>
-                    <option value="openai" ${this.selectedProvider === 'openai' ? 'selected' : ''}>
-                      OpenAI (DALL-E 3 • BYOK)
-                    </option>
-                    <option value="huggingface" ${this.selectedProvider === 'huggingface' ? 'selected' : ''}>
-                      Hugging Face (FLUX.1-schnell • BYOK)
-                    </option>
-                    <option value="replicate" ${this.selectedProvider === 'replicate' ? 'selected' : ''}>
-                      Replicate (FLUX / SDXL • BYOK)
-                    </option>
-                  </select>
+                <div class="ai-styles-grid ai-providers-grid">
+                  ${ARTWORK_PROVIDERS.map(
+                    (p) => `
+                    <button
+                      type="button"
+                      class="btn-style-pill btn-provider-pill ${this.selectedProvider === p.id ? 'is-selected' : ''}"
+                      data-provider="${p.id}"
+                      title="${escAttr(p.name)}: ${escAttr(p.description)}"
+                    >
+                      <div class="style-title-row">
+                        <span class="style-title">${escHtml(p.name)}</span>
+                        <span class="provider-badge ${p.badgeClass}">${escHtml(p.badge)}</span>
+                      </div>
+                      <div class="style-desc">${escHtml(p.description)}</div>
+                    </button>
+                  `
+                  ).join('')}
                 </div>
                 <div class="provider-key-status ${providerKeyStatus.statusClass}">
                   ${providerKeyStatus.message}
@@ -349,6 +416,34 @@ export class AiCoverGeneratorModal {
         showSettingsLink: true,
       };
     }
+    if (provider === 'openrouter') {
+      if (byok.openrouterApiKey?.trim()) {
+        return {
+          message: 'OpenRouter API Key is configured in BYOK storage.',
+          statusClass: 'status-ok',
+          showSettingsLink: false,
+        };
+      }
+      return {
+        message: 'OpenRouter API Key is not configured.',
+        statusClass: 'status-warn',
+        showSettingsLink: true,
+      };
+    }
+    if (provider === 'claude') {
+      if (byok.claudeApiKey?.trim()) {
+        return {
+          message: 'Anthropic Claude API Key is configured in BYOK storage.',
+          statusClass: 'status-ok',
+          showSettingsLink: false,
+        };
+      }
+      return {
+        message: 'Anthropic Claude API Key is not configured.',
+        statusClass: 'status-warn',
+        showSettingsLink: true,
+      };
+    }
     if (provider === 'huggingface') {
       if (byok.huggingfaceToken?.trim()) {
         return {
@@ -393,7 +488,7 @@ export class AiCoverGeneratorModal {
     });
 
     // Style buttons
-    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-style-pill').forEach((btn) => {
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-style-pill[data-style]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const style = btn.getAttribute('data-style') as ArtworkStylePreset;
         if (style) {
@@ -403,11 +498,15 @@ export class AiCoverGeneratorModal {
       });
     });
 
-    // Provider select
-    const selProvider = this.backdropEl.querySelector<HTMLSelectElement>('#sel-ai-provider');
-    selProvider?.addEventListener('change', () => {
-      this.selectedProvider = selProvider.value as ArtworkProvider;
-      this.render();
+    // Provider pill buttons
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-provider-pill[data-provider]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const provider = btn.getAttribute('data-provider') as ArtworkProvider;
+        if (provider) {
+          this.selectedProvider = provider;
+          this.render();
+        }
+      });
     });
 
     // Open Settings link

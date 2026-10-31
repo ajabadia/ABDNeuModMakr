@@ -114,14 +114,36 @@ async function runPhase20Tests() {
   assert.ok(missingKeyResult.error?.includes('API Key is missing'), 'Must state API key is missing');
   console.log('✓ Graceful error handling for unconfigured cloud providers verified.');
 
-  console.log('\n--- Test 6: CloudByokClient OpenAI Provider Support ---');
-  cloudByokClient.saveConfig({ openaiApiKey: 'sk-test-mock-key-12345' });
+  console.log('\n--- Test 6: CloudByokClient Expanded Provider Support ---');
+  cloudByokClient.saveConfig({
+    openaiApiKey: 'sk-test-mock-key-12345',
+    claudeApiKey: 'sk-ant-test-mock-key-67890',
+    openrouterApiKey: 'sk-or-test-mock-key-abcde',
+    deepseekApiKey: 'sk-deepseek-test-mock-123',
+    groqApiKey: 'gsk_test-mock-key-456',
+    mistralApiKey: 'mistral-test-mock-789',
+  });
   assert.equal(cloudByokClient.getConfig().openaiApiKey, 'sk-test-mock-key-12345');
   assert.equal(cloudByokClient.hasValidKey('openai'), true);
-  // Clear key
-  cloudByokClient.saveConfig({ openaiApiKey: '' });
+  assert.equal(cloudByokClient.hasValidKey('claude'), true);
+  assert.equal(cloudByokClient.hasValidKey('openrouter'), true);
+  assert.equal(cloudByokClient.hasValidKey('deepseek'), true);
+  assert.equal(cloudByokClient.hasValidKey('groq'), true);
+  assert.equal(cloudByokClient.hasValidKey('mistral'), true);
+
+  // Clear keys
+  cloudByokClient.saveConfig({
+    openaiApiKey: '',
+    claudeApiKey: '',
+    openrouterApiKey: '',
+    deepseekApiKey: '',
+    groqApiKey: '',
+    mistralApiKey: '',
+  });
   assert.equal(cloudByokClient.hasValidKey('openai'), false);
-  console.log('✓ CloudByokClient OpenAI provider integration verified.');
+  assert.equal(cloudByokClient.hasValidKey('claude'), false);
+  assert.equal(cloudByokClient.hasValidKey('openrouter'), false);
+  console.log('✓ CloudByokClient expanded providers (Claude, OpenRouter, DeepSeek, Groq, Mistral) verified.');
 
   console.log('\n--- Test 7: Time Capsule Layer 05 Integration ---');
   const cfg: ProcessConfig = {
@@ -136,15 +158,14 @@ async function runPhase20Tests() {
 
   const dummyZone: Zone = {
     id: 'z1',
-    zoneIndex: 0,
     lowKey: 0,
     highKey: 127,
     rootKey: 60,
-    lowVelocity: 1,
-    highVelocity: 127,
-    sampleNameA: 'test.wav',
-    sampleNameB: null,
-    crossfade: 0,
+    sampleLow: 'test.wav',
+    sampleHigh: null,
+    detune: 0,
+    volume: 0,
+    pan: 0,
   };
 
   const { zipBytes } = buildTimeCapsuleZipArchive({

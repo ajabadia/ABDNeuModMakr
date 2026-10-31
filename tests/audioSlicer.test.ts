@@ -252,6 +252,29 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   assert(parsedCue !== null, 'CUE label track should be parsed');
   assert.strictEqual(parsedCue.markers.length, 3, 'Should extract 3 labels');
   console.log(`   -> Parsed CUE label track: markers=[${parsedCue.markers.map((m) => m.label).join(', ')}]`);
+
+  // Synthetic ReCycle 2.0 (.rx2) IFF chunk structure
+  const rx2Buf = new Uint8Array([
+    0x43, 0x41, 0x54, 0x20, // 'CAT '
+    0x00, 0x00, 0x00, 0x30, // size 48
+    0x52, 0x45, 0x58, 0x32, // 'REX2'
+    0x43, 0x41, 0x54, 0x20, // 'CAT ' (SLCL)
+    0x00, 0x00, 0x00, 0x24, // size 36
+    0x53, 0x4c, 0x43, 0x4c, // 'SLCL'
+    0x53, 0x4c, 0x43, 0x45, // 'SLCE' #1
+    0x00, 0x00, 0x00, 0x08, // size 8
+    0x00, 0x00, 0x00, 0x20, // startFrame = 32
+    0x00, 0x00, 0x27, 0x10, // length = 10000
+    0x53, 0x4c, 0x43, 0x45, // 'SLCE' #2
+    0x00, 0x00, 0x00, 0x08, // size 8
+    0x00, 0x00, 0x27, 0x30, // startFrame = 10032
+    0x00, 0x00, 0x27, 0x10, // length = 10000
+  ]);
+  const parsedRx2 = parseSliceFile(rx2Buf.buffer, 'groove.rx2', sampleRate);
+  assert(parsedRx2 !== null, 'ReCycle 2.0 (.rx2) should be parsed');
+  assert.strictEqual(parsedRx2.sliceFrames.length, 2, 'Should extract 2 slice frames');
+  assert.strictEqual(parsedRx2.format, 'recycle-rx2');
+  console.log(`   -> Parsed ReCycle 2.0 (.rx2) slices: frames=[${parsedRx2.sliceFrames.join(', ')}]`);
 }
 
 // Test 8: Standard MIDI File (.mid Type 0) Generation

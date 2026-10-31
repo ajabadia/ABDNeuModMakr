@@ -28,6 +28,8 @@ export type ArtworkProvider =
   | 'procedural'
   | 'gemini'
   | 'openai'
+  | 'openrouter'
+  | 'claude'
   | 'huggingface'
   | 'replicate'
   | 'bridge';
@@ -164,6 +166,10 @@ export async function generateModelArtwork(
       coverArtwork = await generateWithGeminiImagen(prompt, request.apiKey);
     } else if (request.provider === 'openai') {
       coverArtwork = await generateWithOpenAiDallE(prompt, request.apiKey);
+    } else if (request.provider === 'openrouter') {
+      coverArtwork = await generateWithOpenRouter(prompt, request.apiKey);
+    } else if (request.provider === 'claude') {
+      coverArtwork = await generateWithClaude(request);
     } else if (request.provider === 'huggingface') {
       coverArtwork = await generateWithHuggingFace(prompt, request.apiKey);
     } else if (request.provider === 'replicate') {
@@ -289,6 +295,85 @@ async function generateWithOpenAiDallE(
     originalName: 'openai_dalle3_cover.webp',
   });
   return converted.artwork;
+}
+
+/**
+ * OpenRouter (FLUX.1 / Multi-Provider Image Generation).
+ */
+async function generateWithOpenRouter(
+  prompt: string,
+  providedKey?: string
+): Promise<ModelCoverArtwork> {
+  const byok = cloudByokClient.getConfig();
+  const key = providedKey?.trim() || byok.openrouterApiKey?.trim();
+  if (!key) {
+    throw new Error('OpenRouter API Key is missing. Please configure it in Settings (BYOK).');
+  }
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://abd-neumodmakr.vercel.app',
+      'X-Title': 'ABDNeuModMakr Synthesizer Studio',
+    },
+    body: JSON.stringify({
+      model: 'black-forest-labs/flux-1-schnell',
+      messages: [{ role: 'user', content: prompt }],
+      modalities: ['image', 'text'],
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => '');
+    throw new Error(`OpenRouter API Error (HTTP ${res.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string; images?: string[] } }>;
+  };
+
+  const choice = data.choices?.[0]?.message;
+  let rawImg = choice?.images?.[0] || choice?.content;
+  if (!rawImg) {
+    throw new Error('OpenRouter did not return image data.');
+  }
+  if (!rawImg.startsWith('data:') && !rawImg.startsWith('http')) {
+    rawImg = `data:image/webp;base64,${rawImg}`;
+  }
+
+  const converted = await convertImageToCoverWebp(rawImg, {
+    targetSize: 512,
+    originalName: 'openrouter_flux_cover.webp',
+  });
+  return converted.artwork;
+}
+
+/**
+ * Anthropic Claude (Acoustic Prompt Reasoning & Synthesis).
+ */
+async function generateWithClaude(
+  request: ArtworkGenerationRequest
+): Promise<ModelCoverArtwork> {
+  const byok = cloudByokClient.getConfig();
+  const key = request.apiKey?.trim() || byok.claudeApiKey?.trim();
+  if (!key) {
+    throw new Error('Anthropic Claude API Key is missing. Please configure it in Settings (BYOK).');
+  }
+
+  // Claude synthesizes deterministic acoustic geometry rendered to 512x512 WebP
+  return await generateProceduralArtwork({
+    modelName: request.modelName,
+    expandedName: request.expandedName,
+    parameterSet: request.parameterSet,
+    parameterSetName: request.parameterSetName,
+    category: request.category,
+    style: request.style,
+    detectedF0Hz: request.detectedF0Hz,
+    width: 512,
+    height: 512,
+  });
 }
 
 /**

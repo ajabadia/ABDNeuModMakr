@@ -152,6 +152,20 @@ export class AudioChopperModal {
           if (parsed.pcm && parsed.pcm.length > 0) {
             this.pcm = parsed.pcm;
             this.sampleRate = parsed.sampleRate || 44100;
+          } else if (this.pcm.length === 0) {
+            // Generate synthetic acoustic preview buffer corresponding to slice boundaries
+            const maxFrame = Math.max(...parsed.sliceFrames);
+            const totalLen = Math.max(maxFrame + 22050, Math.round((parsed.sampleRate || 44100) * 2));
+            const synthPcm = new Float32Array(totalLen);
+            for (const f of parsed.sliceFrames) {
+              if (f < synthPcm.length) {
+                synthPcm[f] = 0.8;
+                if (f + 1 < synthPcm.length) synthPcm[f + 1] = -0.5;
+                if (f + 2 < synthPcm.length) synthPcm[f + 2] = 0.2;
+              }
+            }
+            this.pcm = synthPcm;
+            this.sampleRate = parsed.sampleRate || 44100;
           }
           if (this.pcm.length > 0) {
             this.sourceFilename = file.name;

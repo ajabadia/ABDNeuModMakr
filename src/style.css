@@ -8229,6 +8229,43 @@ textarea.form-control::placeholder {
   color: var(--color-text-primary);
 }
 
+.style-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.provider-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+.provider-badge.badge-free {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-success, #10b981);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.provider-badge.badge-local {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.provider-badge.badge-byok {
+  background: rgba(var(--color-accent-rgb, 0, 195, 255), 0.12);
+  color: var(--color-accent);
+  border: 1px solid rgba(var(--color-accent-rgb, 0, 195, 255), 0.25);
+}
+
 .btn-style-pill .style-desc {
   font-size: 11px;
   color: var(--color-text-muted);

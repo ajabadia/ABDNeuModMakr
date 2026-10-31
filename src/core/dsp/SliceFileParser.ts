@@ -276,32 +276,49 @@ export function parseReCycleSliceFile(buffer: ArrayBuffer, filename: string): Pa
   if (headerTag === 'FORM' || headerTag === 'CAT ') {
     const subType = readFourCC(view, 8);
     if (subType === 'RCY ' || subType === 'REX ' || subType === 'REX2' || isRexExt) {
-      let offset = 12;
       const sliceFrames: number[] = [];
       let sampleRate = 44100;
       let bpm = 120;
+      let totalFrames = 0;
 
-      while (offset + 8 <= view.byteLength) {
-        const chunkId = readFourCC(view, offset);
-        const chunkSize = view.getUint32(offset + 4, false); // Big-endian
-        const start = offset + 8;
+      const scanChunks = (startOffset: number, endLimit: number) => {
+        let offset = startOffset;
+        while (offset + 8 <= endLimit) {
+          const chunkId = readFourCC(view, offset);
+          const chunkSize = view.getUint32(offset + 4, false); // Big-endian
+          const chunkStart = offset + 8;
+          const chunkEnd = Math.min(chunkStart + chunkSize, endLimit);
 
-        if ((chunkId === 'SLIC' || chunkId === 'slce' || chunkId === 'MARK') && chunkSize >= 4) {
-          const count = view.getUint32(start, false);
-          for (let i = 0; i < count; i++) {
-            if (start + 4 + (i + 1) * 4 <= view.byteLength) {
-              sliceFrames.push(view.getUint32(start + 4 + i * 4, false));
+          if (chunkId === 'CAT ' || chunkId === 'FORM' || chunkId === 'LIST') {
+            scanChunks(chunkStart + 4, chunkEnd);
+          } else if (chunkId === 'SLCE' && chunkSize >= 8) {
+            // REX2 SLCE chunk: startFrame (uint32 BE), length (uint32 BE)
+            const sliceStart = view.getUint32(chunkStart, false);
+            sliceFrames.push(sliceStart);
+          } else if ((chunkId === 'SLIC' || chunkId === 'slce' || chunkId === 'MARK') && chunkSize >= 4) {
+            const count = view.getUint32(chunkStart, false);
+            for (let i = 0; i < count; i++) {
+              if (chunkStart + 4 + (i + 1) * 4 <= endLimit) {
+                sliceFrames.push(view.getUint32(chunkStart + 4 + i * 4, false));
+              }
+            }
+          } else if (chunkId === 'SINF' && chunkSize >= 10) {
+            const srVal = view.getUint32(chunkStart + 2, false);
+            const framesVal = view.getUint32(chunkStart + 6, false);
+            if (srVal >= 8000 && srVal <= 192000) sampleRate = srVal;
+            if (framesVal > 0) totalFrames = framesVal;
+          } else if (chunkId === 'COMM' || chunkId === 'HEAD') {
+            if (chunkSize >= 4) {
+              const sr = view.getUint32(chunkStart, false);
+              if (sr >= 8000 && sr <= 192000) sampleRate = sr;
             }
           }
-        } else if (chunkId === 'COMM' || chunkId === 'HEAD') {
-          if (chunkSize >= 4) {
-            const sr = view.getUint32(start, false);
-            if (sr >= 8000 && sr <= 192000) sampleRate = sr;
-          }
-        }
 
-        offset += 8 + chunkSize + (chunkSize % 2 === 1 ? 1 : 0);
-      }
+          offset += 8 + chunkSize + (chunkSize % 2 === 1 ? 1 : 0);
+        }
+      };
+
+      scanChunks(12, view.byteLength);
 
       if (sliceFrames.length > 0) {
         sliceFrames.sort((a, b) => a - b);
@@ -314,6 +331,7 @@ export function parseReCycleSliceFile(buffer: ArrayBuffer, filename: string): Pa
           markers: sliceFrames.map((f, i) => ({ id: i + 1, frame: f, label: `Slice #${i + 1}` })),
           sampleRate,
           bpm,
+          totalFrames: totalFrames > 0 ? totalFrames : undefined,
         };
       }
     }

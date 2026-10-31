@@ -789,28 +789,68 @@ export class SettingsModal {
           ? byok.huggingfaceToken ?? ''
           : byok.provider === 'openai'
             ? byok.openaiApiKey ?? ''
-            : byok.geminiApiKey ?? '';
+            : byok.provider === 'claude'
+              ? byok.claudeApiKey ?? ''
+              : byok.provider === 'openrouter'
+                ? byok.openrouterApiKey ?? ''
+                : byok.provider === 'deepseek'
+                  ? byok.deepseekApiKey ?? ''
+                  : byok.provider === 'groq'
+                    ? byok.groqApiKey ?? ''
+                    : byok.provider === 'mistral'
+                      ? byok.mistralApiKey ?? ''
+                      : byok.geminiApiKey ?? '';
 
     const providerMeta = {
       replicate: {
         url: 'https://replicate.com/account/api-tokens',
         label: 'Obtain Replicate API Token',
+        keyTitle: 'Replicate API Token (r8_...)',
       },
       huggingface: {
         url: 'https://huggingface.co/settings/tokens',
         label: 'Obtain Hugging Face User Token',
+        keyTitle: 'HF User Access Token (hf_...)',
       },
       gemini: {
         url: 'https://aistudio.google.com/app/apikey',
         label: 'Get Google AI Studio API Key',
+        keyTitle: 'Google Gemini API Key (AIzaSy...)',
       },
       openai: {
         url: 'https://platform.openai.com/api-keys',
         label: 'Get OpenAI API Key',
+        keyTitle: 'OpenAI API Key (sk-...)',
+      },
+      claude: {
+        url: 'https://console.anthropic.com/settings/keys',
+        label: 'Get Anthropic Claude API Key',
+        keyTitle: 'Anthropic Claude API Key (sk-ant-...)',
+      },
+      openrouter: {
+        url: 'https://openrouter.ai/keys',
+        label: 'Get OpenRouter API Key',
+        keyTitle: 'OpenRouter API Key (sk-or-...)',
+      },
+      deepseek: {
+        url: 'https://platform.deepseek.com/api_keys',
+        label: 'Get DeepSeek API Key',
+        keyTitle: 'DeepSeek API Key (sk-...)',
+      },
+      groq: {
+        url: 'https://console.groq.com/keys',
+        label: 'Get Groq API Key',
+        keyTitle: 'Groq API Key (gsk_...)',
+      },
+      mistral: {
+        url: 'https://console.mistral.ai/api-keys',
+        label: 'Get Mistral API Key',
+        keyTitle: 'Mistral API Key',
       },
     }[byok.provider] ?? {
       url: 'https://replicate.com/account/api-tokens',
       label: 'Obtain API Token',
+      keyTitle: 'API Key',
     };
 
     return `
@@ -860,15 +900,40 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'openai' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="openai" ${byok.provider === 'openai' ? 'checked' : ''} />
-                <span class="provider-title">OpenAI (DALL-E 3)</span>
-                <span class="provider-desc">High-definition neural album artwork &amp; synth cover art.</span>
+                <span class="provider-title">OpenAI / ChatGPT</span>
+                <span class="provider-desc">DALL-E 3 high-definition neural album artwork &amp; synth cover art.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'claude' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="claude" ${byok.provider === 'claude' ? 'checked' : ''} />
+                <span class="provider-title">Anthropic Claude</span>
+                <span class="provider-desc">Sonnet 3.5 / Haiku for acoustic prompt synthesis &amp; reasoning.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'openrouter' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="openrouter" ${byok.provider === 'openrouter' ? 'checked' : ''} />
+                <span class="provider-title">OpenRouter</span>
+                <span class="provider-desc">Universal multi-model gateway (FLUX.1, Claude, GPT-4o, Llama-3).</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'deepseek' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="deepseek" ${byok.provider === 'deepseek' ? 'checked' : ''} />
+                <span class="provider-title">DeepSeek</span>
+                <span class="provider-desc">DeepSeek-V3 &amp; R1 deep reasoning for timbre analysis.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'groq' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="groq" ${byok.provider === 'groq' ? 'checked' : ''} />
+                <span class="provider-title">Groq (LPU Speed)</span>
+                <span class="provider-desc">Ultra-fast token inference for instant prompt refinement.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'mistral' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="mistral" ${byok.provider === 'mistral' ? 'checked' : ''} />
+                <span class="provider-title">Mistral AI</span>
+                <span class="provider-desc">European AI models (Mistral Large, Codestral &amp; Pixtral).</span>
               </label>
             </div>
           </div>
 
           <div class="byok-field-group">
             <label class="byok-field-label" for="byok-api-key-input">
-              API Key (${byok.provider === 'replicate' ? 'Replicate API Token' : byok.provider === 'huggingface' ? 'HF User Access Token' : byok.provider === 'openai' ? 'OpenAI API Key (sk-...)' : 'Gemini API Key'}):
+              API Key (${escHtml(providerMeta.keyTitle)}):
             </label>
             <div class="byok-input-row">
               <div class="byok-input-wrap">
@@ -1434,6 +1499,16 @@ python bridge/server.py</code></pre>
         cloudByokClient.saveConfig({ geminiApiKey: val });
       } else if (currentProvider === 'openai') {
         cloudByokClient.saveConfig({ openaiApiKey: val });
+      } else if (currentProvider === 'claude') {
+        cloudByokClient.saveConfig({ claudeApiKey: val });
+      } else if (currentProvider === 'openrouter') {
+        cloudByokClient.saveConfig({ openrouterApiKey: val });
+      } else if (currentProvider === 'deepseek') {
+        cloudByokClient.saveConfig({ deepseekApiKey: val });
+      } else if (currentProvider === 'groq') {
+        cloudByokClient.saveConfig({ groqApiKey: val });
+      } else if (currentProvider === 'mistral') {
+        cloudByokClient.saveConfig({ mistralApiKey: val });
       }
     });
 

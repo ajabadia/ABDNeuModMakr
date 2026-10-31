@@ -111,6 +111,33 @@ MODEL_REGISTRY = {
         "url": "https://github.com/Rikorose/DeepFilterNet/raw/main/models/DeepFilterNet3_onnx.tar.gz",
         "size_mb": 8,
         "description": "Real-time speech & instrument neural noise suppression and tape hiss reduction."
+    },
+    "sdturbo": {
+        "id": "sdturbo",
+        "name": "SD-Turbo (1-Step Synthesizer Cover Artwork)",
+        "task": "image-generation",
+        "filename": "sd_turbo_fp16.safetensors",
+        "url": "https://huggingface.co/stabilityai/sd-turbo/resolve/main/sd_turbo.safetensors",
+        "size_mb": 1600,
+        "description": "High-speed 1-step diffusion model for local 512x512 synth cover artwork directly on GPU."
+    },
+    "whispertiny": {
+        "id": "whispertiny",
+        "name": "OpenAI Whisper-tiny (Speech & Phoneme Slicing)",
+        "task": "phoneme-alignment",
+        "filename": "whisper_tiny_en.onnx",
+        "url": "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model_quantized.onnx",
+        "size_mb": 39,
+        "description": "Vocal onset & speech phoneme boundary alignment for semantic audio chopping (Fase 23)."
+    },
+    "musicgen": {
+        "id": "musicgen",
+        "name": "Meta MusicGen-Small (Timbre Continuation & Infill)",
+        "task": "timbre-generation",
+        "filename": "musicgen_small.bin",
+        "url": "https://huggingface.co/facebook/musicgen-small/resolve/main/pytorch_model.bin",
+        "size_mb": 300,
+        "description": "Autoregressive neural continuation for acoustic infill and organic sustain loop unrolling."
     }
 }
 

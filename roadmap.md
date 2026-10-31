@@ -389,9 +389,9 @@
   - Licencia y autoría: Autor/diseñador sonoro (`author`), librería/distribuidor (`vendor`), versión semántica (`version`, ej. "1.0.0"), tipo de licencia (`license`, ej. "CC-BY 4.0", "CC0", "Comercial") y descripción técnica/acústica (`description`).
   - Atributos libres definidos por el usuario: pares de metadatos `customAttributes: [{ tag: string, value: string }]` con editor dinámico interactivo en la tarjeta de `ProcessPanel.ts` (`+ Add Tag` y eliminación individual).
   - Validación y persistencia en esquema de sesión (`sessionSchema.ts`) y empaquetado transparente en la Cápsula del Tiempo (`manifest.json` y `05_extended_model/extended_map.json`).
-- [ ] **Reubicación UX de Edición de Metadatos/Tags al Drawer de Datos Generales (Model Common & Global)**:
-  - En `ProcessPanel.ts`: Mostrar un resumen visual compacto en modo solo-lectura (chips/etiquetas de Autor, Versión, Licencia y Tags libres, solo si existen) con un botón interactivo `[ ✏ Edit Metadata & Tags ]`.
-  - En el Drawer de datos generales (`Model Common & Global Settings`): Añadir una pestaña dedicada `Metadata & Provenance` donde se aloja el editor completo de todos los campos de autoría, enlaces, descripciones y tags, liberando espacio vertical en el panel de procesado.
+- [x] **Reubicación UX de Edición de Metadatos/Tags al Modal de Configuración Global (Model Configuration)** [COMPLETADA]:
+  - En `ProcessPanel.ts`: Mostrar un resumen visual compacto en modo solo-lectura (chips/etiquetas de Autor, Versión, Licencia y Tags libres, solo si existen) con un botón interactivo `[ ✏ Edit ]`.
+  - En el Modal de configuración global (`ModelConfigModal.ts`): Pestaña dedicada `Metadata & Tags (SoundFont & Provenance)` donde se aloja el editor completo de todos los campos de autoría, enlaces, descripciones y tags personalizados (`customAttributes`), liberando espacio vertical en el panel de procesado y garantizando una experiencia limpia.
 
 ---
 
@@ -427,6 +427,13 @@
    - Botón arrastrable (`Draggable MIDI Badge`) que permite arrastrar directamente el patrón MIDI al DAW (Ableton, FL Studio, Logic, Reaper, Cubase) para disparar los slices con el timing del audio original.
 7. **Arquitectura Transversal Reutilizable**:
    - Los submódulos de auto-detección tonal y re-distribución equidistante de zonas son utilidades independientes del Core, aplicables a cualquier sesión o lote de importación, no restringidas únicamente al chopper.
+8. **Punto de Entrada Unificado de Importación Inteligente (Universal Smart Import desde Menú File / Edit)**:
+   - Fusión de las entradas fragmentadas del menú `File` (`Import Audio Files`, `Import SoundFont / SFZ`, etc.) en un único acceso universal:
+     `Import Audio, Bank or Slices (WAV, AIFF, SF2, SFZ, REX, RX2, CUE)...` (con atajo unificado `Ctrl+I`).
+   - Detección automática del formato de archivo por firma binaria y cabeceras:
+     - Si es `.sf2` / `.sfz`: ejecuta el conversor e importador nativo de SoundFont/SFZ mapeando capas de velocidad y envolventes.
+     - Si es un archivo de bucle troceado (`.rx2`, `.rex`, `.rcy` o audio con `cue`/markers incrustados): detecta que es un loop con rebanadas y lo abre directamente en el **Audio Chopper / AutoSlicer** con todos los puntos de corte pre-cargados listos para afinar o mapear.
+     - Si es un archivo de audio WAV / AIFF estándar: si es una toma continua o loop, ofrece la opción de mapeo directo o paso por el Chopper según las preferencias del usuario.
 
 ---
 
@@ -533,6 +540,22 @@
 - **Separación de Stems Pre-Troceado (Demucs / MDX-Net via Bridge)**: Capacidad para aislar la voz de la base rítmica antes de trocear, permitiendo rebanar el loop de batería y la frase vocal de un sample compuesto de forma totalmente independiente.
 - **Clasificación Semántica Automática de Slices**: Etiquetado neuronal de piezas de percusión y articulaciones tímbricas (Kick, Snare, Ghost Note, Open/Closed Hat, Ride Bell, Vocal Chop, Ad-lib, Sung Word) para mapeo instantáneo a notas MIDI y capas de velocidad (velocity switching).
 - **Refinamiento de Micro-Transitorios**: Red neuronal ligera de corrección que magnetiza el punto de corte al valle acústico óptimo anterior al transitorio para preservar el ataque íntegro del sonido con 0% de chasquidos (click-free).
+
+---
+
+## Fase 24 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer) [PLANIFICADA]
+
+**Objetivo**: Integrar la tecnología de troceado automático y mapeo multicapa dentro del motor de procesamiento por lotes (`BatchProcessorModal.ts` y `FolderBatchExtractor.ts`), permitiendo procesar masivamente carpetas completas de loops rítmicos, frases vocales y archivos ReCycle (`.rx2` / `.rex` / WAV) de forma 100% desatendida.
+
+### 24.1 Capacidades y Flujo en Lote
+- **Detección Automática de Loops y Rebanadas en Lote**:
+  - El extractor inspecciona recursivamente la carpeta de entrada y detecta si los archivos contienen marcas CUE, cabeceras ReCycle o transitorios rítmicos marcados.
+- **Perfiles de Troceado Masivo Configurables**:
+  - **Batch Slicer -> Drum Kits (GM Drum Map)**: Convierte cada loop rítmico en un kit percusivo asignado a C1..B2 con hasta 128 zonas por modelo.
+  - **Batch Slicer -> Chromatic Equidistant Maps**: Trocea frases melódicas o vocales, detecta la nota raíz de cada fragmento y distribuye zonas contiguas 0..127 sin huecos.
+  - **Batch ReCycle / CUE Converter**: Procesa masivamente archivos `.rx2`, `.rex` o audio con pistas CUE, extrayendo los slices a muestras independientes o generando directamente el paquete `.nmmodel` / Cápsula del Tiempo por cada archivo.
+- **Exportación Masiva de Patrones MIDI**:
+  - Generación automática de archivos `.mid` Type 0 con el groove original por cada loop procesado, empaquetados junto a los parches en el archivo maestro ZIP o exportados a la librería local `AxionikDB`.
 
 ---
 
