@@ -12,7 +12,7 @@
 //   - All GPU compute costs are billed directly to the user's own account.
 // ─────────────────────────────────────────────────────────
 
-export type CloudAiProvider = 'replicate' | 'huggingface' | 'gemini';
+export type CloudAiProvider = 'replicate' | 'huggingface' | 'gemini' | 'openai';
 
 export interface ByokConfig {
   enabled: boolean;
@@ -20,6 +20,7 @@ export interface ByokConfig {
   replicateToken?: string;
   huggingfaceToken?: string;
   geminiApiKey?: string;
+  openaiApiKey?: string;
   preferredCloudModel?: 'audiosr' | 'demucs';
 }
 
@@ -82,6 +83,7 @@ export class CloudByokClient {
     if (provider === 'replicate') return Boolean(this.config.replicateToken?.trim());
     if (provider === 'huggingface') return Boolean(this.config.huggingfaceToken?.trim());
     if (provider === 'gemini') return Boolean(this.config.geminiApiKey?.trim());
+    if (provider === 'openai') return Boolean(this.config.openaiApiKey?.trim());
     return false;
   }
 
@@ -142,6 +144,22 @@ export class CloudByokClient {
         return {
           success: false,
           message: `Error de Gemini (HTTP ${res.status}): Clave incorrecta o sin cuota habilitada.`,
+        };
+      }
+
+      if (provider === 'openai') {
+        const res = await fetch('https://api.openai.com/v1/models', {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${cleanToken}`,
+          },
+        });
+        if (res.ok) {
+          return { success: true, message: 'OpenAI API Key verificada correctamente (DALL-E 3 habilitado).' };
+        }
+        return {
+          success: false,
+          message: `Error de OpenAI (HTTP ${res.status}): Clave incorrecta o sin cuota de facturacion activa.`,
         };
       }
 

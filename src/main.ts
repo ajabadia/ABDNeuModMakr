@@ -29,6 +29,7 @@ import { NeuronDbModal } from './ui/NeuronDbModal';
 import { SettingsModal } from './ui/SettingsModal';
 import { BatchProcessorModal } from './ui/BatchProcessorModal';
 import { ModelConfigModal } from './ui/ModelConfigModal';
+import { AiCoverGeneratorModal } from './ui/AiCoverGeneratorModal';
 import { AudioChopperModal } from './ui/AudioChopperModal';
 import { LoopEditorModal } from './ui/LoopEditorModal';
 import { withLoading } from './ui/LoadingModal';
@@ -56,6 +57,7 @@ class App {
   private settingsModal!: SettingsModal;
   private batchModal!: BatchProcessorModal;
   private modelConfigModal!: ModelConfigModal;
+  private aiCoverModal!: AiCoverGeneratorModal;
   private audioChopperModal!: AudioChopperModal;
   private loopEditorModal!: LoopEditorModal;
   private imports: ImportHandlers;
@@ -104,6 +106,25 @@ class App {
         toast('Reprocessed from purest acoustic source (0 Generation-Loss)', 'success');
         self.refreshUI();
         self.modelConfigModal.updateConfig();
+      },
+      onOpenAiCoverGenerator: () => {
+        self.aiCoverModal.open();
+      },
+    });
+
+    this.aiCoverModal = new AiCoverGeneratorModal({
+      getConfig: () => self.session?.processConfig ?? self.core.getSession()!.processConfig,
+      onApplyCover: (artwork) => {
+        if (!self.session) return;
+        self.session = self.core.setModelCoverArtwork(artwork);
+        self.telemetryDrawer.addLog(
+          `AI Cover: Attached 512×512 WebP artwork to model "${self.session.processConfig.modelName}".`
+        );
+        self.refreshUI();
+        self.modelConfigModal.updateConfig();
+      },
+      onOpenSettings: () => {
+        self.settingsModal.open();
       },
     });
 
@@ -287,6 +308,7 @@ class App {
       toggleThemeMode: () => self.toggleThemeMode(),
       openBatchModal: () => self.batchModal.open(),
       openModelConfig: (tab) => self.modelConfigModal.open(tab),
+      openAiCoverGenerator: () => self.aiCoverModal.open(),
       openAudioChopper: () => void self.openAudioChopper(),
       openLoopEditor: () => self.openLoopEditor(),
     });
@@ -795,6 +817,7 @@ class App {
         },
         onStartProcess: () => this.handleStartProcess(),
         onOpenModelConfig: (tab) => this.modelConfigModal.open(tab),
+        onOpenAiCoverGenerator: () => this.aiCoverModal.open(),
         onOpenAiEngineModal: () => this.settingsModal.open('web', this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
         onSelectCoverImage: (file) => {
           void this.handleCoverImageUpload(file);

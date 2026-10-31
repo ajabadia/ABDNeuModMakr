@@ -28,6 +28,7 @@ export interface ModelConfigModalHandlers {
   onSelectCoverImage?: (file: File) => void;
   onRemoveCoverImage?: () => void;
   onReprocessFromPurestSource?: () => void;
+  onOpenAiCoverGenerator?: () => void;
 }
 
 const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
@@ -1149,10 +1150,11 @@ export class ModelConfigModal {
 
     // AI Artwork Generator (Roadmap Phase 20)
     this.backdropEl.querySelector('#btn-cfg-ai-cover')?.addEventListener('click', () => {
-      toast(
-        'AI Cover Artwork Generation will be available in Roadmap Phase 20 (Neural Diffusion via Companion Bridge / Cloud BYOK).',
-        'info'
-      );
+      if (this.handlers.onOpenAiCoverGenerator) {
+        this.handlers.onOpenAiCoverGenerator();
+      } else {
+        toast('Opening AI Cover Artwork Generator...', 'info');
+      }
     });
   }
 }

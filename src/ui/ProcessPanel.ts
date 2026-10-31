@@ -18,6 +18,7 @@ export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
   onOpenModelConfig?: (tab?: ModelConfigTab) => void;
+  onOpenAiCoverGenerator?: () => void;
   onOpenAiEngineModal?: () => void;
   onSelectCoverImage?: (file: File) => void;
   onRemoveCoverImage?: () => void;
@@ -435,7 +436,10 @@ export class ProcessPanel {
           <div class="hud-card" id="hud-card-artwork" title="Click to view or edit Cover Artwork">
             <div class="hud-card-header">
               <span class="hud-card-label">${ICONS.palette} COVER ARTWORK</span>
-              <button type="button" class="btn-hud-link" id="btn-hud-edit-artwork">Edit</button>
+              <div class="hud-card-header-actions">
+                <button type="button" class="btn-hud-link" id="btn-hud-ai-artwork" title="Generate Cover with AI (Fase 20)">${ICONS.sparkle || ICONS.ai} AI</button>
+                <button type="button" class="btn-hud-link" id="btn-hud-edit-artwork">Edit</button>
+              </div>
             </div>
             <div class="hud-card-body">
               <div class="hud-artwork-row">
@@ -517,6 +521,10 @@ export class ProcessPanel {
     });
     this.container.querySelector('#hud-card-metadata')?.addEventListener('click', () => {
       this.handlers.onOpenModelConfig?.('metadata');
+    });
+    this.container.querySelector('#btn-hud-ai-artwork')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handlers.onOpenAiCoverGenerator?.();
     });
     this.container.querySelector('#hud-card-artwork')?.addEventListener('click', () => {
       this.handlers.onOpenModelConfig?.('artwork');

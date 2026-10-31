@@ -25,6 +25,7 @@ const TEST_FILES = [
   'security_hardening.test.ts',
   'zoneTemplates.test.ts',
   'audioSlicer.test.ts',
+  'phase20_artwork.test.ts',
 ];
 
 interface TestResult {

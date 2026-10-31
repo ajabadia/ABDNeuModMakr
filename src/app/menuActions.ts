@@ -47,6 +47,7 @@ export interface MenuContext {
   toggleThemeMode?: () => void;
   openBatchModal?: () => void;
   openModelConfig?: (tab?: import('../ui/ModelConfigModal').ModelConfigTab) => void;
+  openAiCoverGenerator?: () => void;
   openAudioChopper?: () => void;
   openLoopEditor?: () => void;
 }
@@ -391,6 +392,7 @@ export class MenuActions {
       },
       onOpenBatchModal: () => this.ctx.openBatchModal?.(),
       onOpenModelConfig: () => this.ctx.openModelConfig?.('general'),
+      onOpenAiCoverGenerator: () => this.ctx.openAiCoverGenerator?.(),
       onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
       onOpenLoopEditor: () => this.ctx.openLoopEditor?.(),
       onToggleLogs: () => {

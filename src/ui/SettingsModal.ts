@@ -787,7 +787,9 @@ export class SettingsModal {
         ? byok.replicateToken ?? ''
         : byok.provider === 'huggingface'
           ? byok.huggingfaceToken ?? ''
-          : byok.geminiApiKey ?? '';
+          : byok.provider === 'openai'
+            ? byok.openaiApiKey ?? ''
+            : byok.geminiApiKey ?? '';
 
     const providerMeta = {
       replicate: {
@@ -801,6 +803,10 @@ export class SettingsModal {
       gemini: {
         url: 'https://aistudio.google.com/app/apikey',
         label: 'Get Google AI Studio API Key',
+      },
+      openai: {
+        url: 'https://platform.openai.com/api-keys',
+        label: 'Get OpenAI API Key',
       },
     }[byok.provider] ?? {
       url: 'https://replicate.com/account/api-tokens',
@@ -850,14 +856,19 @@ export class SettingsModal {
               <label class="byok-provider-opt ${byok.provider === 'gemini' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="gemini" ${byok.provider === 'gemini' ? 'checked' : ''} />
                 <span class="provider-title">Google Gemini (AI Studio)</span>
-                <span class="provider-desc">Multimodal spectral analysis and acoustic reasoning.</span>
+                <span class="provider-desc">Multimodal spectral analysis, reasoning &amp; Imagen 3 artwork.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'openai' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="openai" ${byok.provider === 'openai' ? 'checked' : ''} />
+                <span class="provider-title">OpenAI (DALL-E 3)</span>
+                <span class="provider-desc">High-definition neural album artwork &amp; synth cover art.</span>
               </label>
             </div>
           </div>
 
           <div class="byok-field-group">
             <label class="byok-field-label" for="byok-api-key-input">
-              API Key (${byok.provider === 'replicate' ? 'Replicate API Token' : byok.provider === 'huggingface' ? 'HF User Access Token' : 'Gemini API Key'}):
+              API Key (${byok.provider === 'replicate' ? 'Replicate API Token' : byok.provider === 'huggingface' ? 'HF User Access Token' : byok.provider === 'openai' ? 'OpenAI API Key (sk-...)' : 'Gemini API Key'}):
             </label>
             <div class="byok-input-row">
               <div class="byok-input-wrap">
@@ -865,7 +876,7 @@ export class SettingsModal {
                   type="${this.showPassword ? 'text' : 'password'}"
                   id="byok-api-key-input"
                   class="form-control byok-key-field"
-                  placeholder="Enter your personal key (e.g. r8_... / hf_... / AIzaSy...)"
+                  placeholder="Enter your personal key (e.g. sk-... / r8_... / hf_... / AIzaSy...)"
                   value="${escAttr(currentToken)}"
                   autocomplete="new-password"
                   spellcheck="false"
@@ -1421,6 +1432,8 @@ python bridge/server.py</code></pre>
         cloudByokClient.saveConfig({ huggingfaceToken: val });
       } else if (currentProvider === 'gemini') {
         cloudByokClient.saveConfig({ geminiApiKey: val });
+      } else if (currentProvider === 'openai') {
+        cloudByokClient.saveConfig({ openaiApiKey: val });
       }
     });
 

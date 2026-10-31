@@ -444,31 +444,33 @@
 
 ---
 
-## Fase 20 — Autocarátula Asistida por IA (Model Cover Artwork Generator) [PLANIFICADA]
+## Fase 20 — Autocarátula Asistida por IA (Model Cover Artwork Generator) [COMPLETADA]
 
 **Objetivo**: Generar automáticamente portadas y carátulas de alta estética para modelos sonoros (`cover.webp` en la capa `05_extended_model` de la Cápsula del Tiempo) asistidas por IA, basadas en la identidad tímbrica, nombre extendido, autor y metadatos acústicos del instrumento.
 
-### 20.1 Estrategia de Inferencia: Local (WebGPU) vs Cloud API (BYOK)
-- **Evaluación de Factibilidad Local (In-Browser / WebGPU / ONNX)**:
-  - Investigar si es viable ejecutar en el navegador un micromodelo generativo de imagen ligero (e.g. SD-Turbo, LCM-LoRA o micro-difusor ONNX vía Transformers.js con WebGPU) que ofrezca un estándar de calidad artística aceptable sin saturar la memoria del navegador.
-  - **Criterio estricto de calidad y estabilidad**: Si la huella de memoria supera cotas razonables (>1.5 GB VRAM/RAM) o el rendimiento degrada la experiencia del usuario, la generación de imágenes quedará reservada **exclusivamente al modo Cloud API (BYOK)** para evitar bloqueos y garantizar un resultado profesional.
-- **Generación mediante Cloud API (BYOK - Claves Privadas de Usuario)**:
-  - Operación con privacidad absoluta y coste de servidor 0 para la plataforma (el usuario utiliza su propia clave de API almacenada localmente).
-  - **Ampliación de Proveedores Cloud BYOK en Settings**:
-    - **OpenAI (ChatGPT / Codex / DALL-E 3)**: Generación directa de arte conceptual de alta definición mediante la API de DALL-E 3 / GPT-4o.
-    - **Anthropic Claude API**: Orquestación y enriquecimiento contextual: diseño de prompts visuales hiper-evocadores a partir de las características espectrales y metadatos del sintetizador.
-    - **Google Gemini (AI Studio)**: Generación y razonamiento multimodal de alta fidelidad con Imagen 3 / Gemini.
-    - **Replicate & Hugging Face**: Soporte para checkpoints punteros de código abierto (FLUX.1-schnell, SDXL Lightning, etc.).
+### 20.1 Estrategia Multi-Motor: Procedural Espectral, Companion Bridge y Cloud API (BYOK)
+- [x] **Generador Procedural Acústico Espectral (100% Offline, Instantáneo y Sin Coste)**:
+  - Motor matemático en Canvas (`ProceduralAcousticArtwork.ts` con fallback headless deterministic RIFF WebP) que sintetiza arte abstracto de 512×512 derivado de los armónicos F0, anillos acústicos, oscilogramas y los 10 Parameter Sets (0..9).
+- [x] **Local Companion Bridge (Python 7860)**:
+  - Endpoint `POST /api/generate-artwork` en `bridge/server.py` para renderizado procedural acelerado y preparado para diffusers locales.
+- [x] **Cloud API (BYOK - Bring Your Own Key Privado en Navegador)**:
+  - Operación con privacidad absoluta y coste de servidor 0 para la plataforma (almacenamiento en `localStorage`).
+  - **Google Gemini (AI Studio / Imagen 3)**: Endpoint `imagen-3.0-generate-002:predict` para generación de imágenes de alta fidelidad.
+  - **OpenAI (DALL-E 3)**: Integración en `CloudByokClient` y endpoint `v1/images/generations` con formato `b64_json`.
+  - **Hugging Face Inference API**: Checkpoints serverless de difusión acelerada (FLUX.1-schnell).
+  - **Replicate**: Inferencia mediante predicciones de FLUX / SDXL.
 
-### 20.2 Flujo de Usuario y Optimización de Activos
-1. **Disparador en Interfaz**: Botón interactivo `[ 🪄 Generar Carátula con IA ]` situado en el panel de portada de `ProcessPanel.ts` (habilitado cuando el usuario dispone de una API Key configurada o modelo disponible).
-2. **Asistente de Prompting Acústico**:
-   - Construcción automática de una descripción artística a partir de `expandedName`, `category`, etiquetas tímbricas (ej. "Warm Brass", "Metallic Pad", "Organic Woodwind") y descriptores espectrales.
-   - Campo para que el usuario introduzca retoques o elija estilos artísticos sugeridos (Cyberpunk Synth, 80s Hardware Retro, Acuarela Orgánica, Vectorial Minimalista, Studio Hi-Fi).
-3. **Conversión y Almacenamiento**:
-   - Descarga o generación del bitmap resultante.
-   - Recorte centrado automático (aspect ratio 1:1) y compresión en cliente a formato `.webp` optimizado (512x512 / 1024x1024).
-   - Inserción directa en la Cápsula del Tiempo (`05_extended_model/cover.webp`) y previsualización inmediata en el inspector y las tarjetas de la librería.
+### 20.2 Flujo de Usuario, Diálogo Interactivo y Optimización
+- [x] **Modal Interactivo Dedicado (`AiCoverGeneratorModal.ts`)**:
+  - Invocable desde la pestaña *Cover Artwork* de `ModelConfigModal.ts`, desde la tarjeta de portada de `ProcessPanel.ts` y desde el menú superior `Model -> Generate Cover Artwork with AI (Fase 20)...`.
+  - Vista previa en tiempo real 512×512 con insignia de dimensiones y peso WebP.
+  - Asistente de Prompting Acústico (`buildAcousticArtworkPrompt`) con 6 estilos pre-diseñados (Cyberpunk Synthesizer, 1980s Analog Hardware, Minimalist Bauhaus Vector, Studio Hi-Fi Audiophile, Organic Acoustic Watercolor, Neural Latent Space) y campo de edición manual.
+  - Acciones: `[ Accept & Apply as Model Cover ]`, `[ Download WebP ]` y `[ Regenerate ]`.
+- [x] **Conversión y Empaquetado**:
+  - Recorte centrado automático (aspect ratio 1:1) y compresión a formato `.webp` optimizado (512×512).
+  - Inserción directa en `ProcessConfig.coverArtwork` y en la Cápsula del Tiempo (`05_extended_model/cover.webp`).
+- [x] **Suite de Verificación Automatizada**:
+  - Tests unitarios en `tests/phase20_artwork.test.ts` (prompts en 6 estilos, generación procedural 512x512 RIFF WebP, integración con bridge local, gestión de BYOK y empaquetado en Time Capsule).
 
 ---
 

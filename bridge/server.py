@@ -21,6 +21,7 @@ Features:
 import os
 import re
 import secrets
+import math
 import sys
 import json
 import io
@@ -476,6 +477,73 @@ def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0,
     else:
         # Pass-through fallback if audio libraries missing
         return input_bytes, "Local Python Bridge (Pass-Through)"
+
+
+
+def generate_companion_artwork(prompt="Synth Model", style="cyberpunk", model_name="NewModel", param_set=0):
+    try:
+        from PIL import Image, ImageDraw
+
+        size = 512
+        img = Image.new("RGB", (size, size), (12, 16, 24))
+        draw = ImageDraw.Draw(img)
+
+        palettes = {
+            "cyberpunk": ((8, 8, 22), (0, 240, 255), (255, 0, 127), (121, 40, 202)),
+            "retro_80s": ((24, 4, 42), (255, 215, 0), (255, 0, 127), (255, 85, 0)),
+            "minimalist_vector": ((17, 20, 26), (230, 57, 70), (69, 123, 157), (241, 250, 238)),
+            "studio_hifi": ((12, 15, 20), (212, 175, 55), (229, 229, 229), (140, 155, 165)),
+            "organic_watercolor": ((14, 23, 36), (82, 183, 136), (224, 122, 95), (244, 241, 222)),
+            "neural_abstract": ((8, 2, 18), (157, 78, 221), (0, 245, 212), (58, 134, 255)),
+        }
+        bg, c1, c2, c3 = palettes.get(style, palettes["cyberpunk"])
+
+        cx, cy = size // 2, size // 2
+        for r in range(size // 2, 0, -2):
+            factor = r / (size / 2)
+            cur_r = int(bg[0] * factor + 18 * (1 - factor))
+            cur_g = int(bg[1] * factor + 32 * (1 - factor))
+            cur_b = int(bg[2] * factor + 50 * (1 - factor))
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(cur_r, cur_g, cur_b))
+
+        ring_count = 6 + (param_set % 4)
+        for i in range(1, ring_count + 1):
+            rad = int(size * 0.12 + (i * size * 0.32) / ring_count)
+            color = c1 if i % 2 == 0 else c2
+            draw.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], outline=color, width=2 if i == 1 else 1)
+
+        for i in range(16):
+            angle = i * (2 * math.pi / 16)
+            length = int(size * 0.22 * (0.6 + 0.4 * math.sin(i * 1.5 + param_set)))
+            x2 = int(cx + length * math.cos(angle))
+            y2 = int(cy + length * math.sin(angle))
+            draw.line([(cx, cy), (x2, y2)], fill=c1 if i % 4 == 0 else c2, width=2)
+
+        orb_r = int(size * 0.08)
+        draw.ellipse([cx - orb_r, cy - orb_r, cx + orb_r, cy + orb_r], fill=(255, 255, 255), outline=c1, width=2)
+
+        draw.rectangle([16, 16, size - 16, size - 16], outline=(100, 110, 130), width=1)
+        tick = 8
+        draw.line([(16, 16), (16 + tick, 16)], fill=c1, width=2)
+        draw.line([(16, 16), (16, 16 + tick)], fill=c1, width=2)
+        draw.line([(size - 16, 16), (size - 16 - tick, 16)], fill=c1, width=2)
+        draw.line([(size - 16, 16), (size - 16, 16 + tick)], fill=c1, width=2)
+        draw.line([(16, size - 16), (16 + tick, size - 16)], fill=c1, width=2)
+        draw.line([(16, size - 16), (16, size - 16 - tick)], fill=c1, width=2)
+        draw.line([(size - 16, size - 16), (size - 16 - tick, size - 16)], fill=c1, width=2)
+        draw.line([(size - 16, size - 16), (size - 16, size - 16 - tick)], fill=c1, width=2)
+
+        draw.text((24, 24), "ABDAXIONIK HD", fill=(200, 210, 225))
+        draw.text((size - 120, 24), f"SET #{param_set:02d}", fill=(200, 210, 225))
+        draw.text((24, size - 36), model_name[:24], fill=(255, 255, 255))
+        draw.text((size - 140, size - 36), f"{size}x{size} WEBP", fill=c1)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64_str = base64.b64encode(buf.getvalue()).decode('ascii')
+        return {"success": True, "format": "png", "image_base64": b64_str}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -1204,6 +1272,30 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(res)))
             self.end_headers()
             self.wfile.write(res)
+            return
+
+        if path in ('/api/generate-artwork', '/generate-artwork'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            prompt = payload.get("prompt", "Electronic Synthesizer Sound")
+            style = payload.get("style", "cyberpunk")
+            model_name = payload.get("model_name", "SynthModel")
+            param_set = int(payload.get("parameter_set", 0))
+
+            res_data = generate_companion_artwork(prompt, style, model_name, param_set)
+            body = json.dumps(res_data).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         self.send_response(404)

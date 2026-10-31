@@ -168,11 +168,11 @@ export interface ConvertedCoverResult {
 }
 
 /**
- * Converts an image (`File`, `Blob`, `ArrayBuffer`, or `Uint8Array`) into an optimized
+ * Converts an image (`File`, `Blob`, `ArrayBuffer`, `Uint8Array`, or base64 Data URL string) into an optimized
  * square center-cropped `.webp` binary and `ModelCoverArtwork` metadata object.
  */
 export async function convertImageToCoverWebp(
-  input: File | Blob | ArrayBuffer | Uint8Array,
+  input: File | Blob | ArrayBuffer | Uint8Array | string,
   options?: ConvertCoverOptions
 ): Promise<ConvertedCoverResult> {
   const targetSize = clampCoverSize(options?.targetSize ?? DEFAULT_COVER_SIZE_PX);
@@ -182,7 +182,9 @@ export async function convertImageToCoverWebp(
     (typeof File !== 'undefined' && input instanceof File ? input.name : 'cover.webp');
 
   let rawBytes: Uint8Array;
-  if (input instanceof Uint8Array) {
+  if (typeof input === 'string') {
+    rawBytes = dataUrlToWebpBytes(input);
+  } else if (input instanceof Uint8Array) {
     rawBytes = input;
   } else if (input instanceof ArrayBuffer) {
     rawBytes = new Uint8Array(input);

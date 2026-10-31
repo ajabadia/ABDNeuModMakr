@@ -418,6 +418,7 @@ export interface CustomMetadataTag {
 
 /** Comprehensive metadata specification for Extended Mode & ABDAxionikVS */
 export interface ExtendedModelMetadata {
+  category?: string;          // Rich timbre taxonomy (e.g., "Pads & Atmospheres", "Vocal & Choir")
   author?: string;            // Sound designer or instrument creator
   vendor?: string;            // Library or sample publisher (e.g., Polyphone.io, Spitfire)
   version?: string;           // Semantic model version (e.g., "1.0.0", "2.1")

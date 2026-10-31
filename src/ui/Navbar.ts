@@ -47,6 +47,7 @@ export interface NavbarHandlers {
   onToggleBank: () => void;
   onOpenBatchModal?: () => void;
   onOpenModelConfig?: () => void;
+  onOpenAiCoverGenerator?: () => void;
   onOpenAudioChopper?: () => void;
   onOpenLoopEditor?: () => void;
   onToggleLogs: () => void;
@@ -152,6 +153,7 @@ export class AppNavbar {
         name: 'Model',
         items: [
           { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
+          { id: 3014, label: 'Generate Cover Artwork with AI (Fase 20)...', action: 'openAiCoverGenerator' },
           { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
           { id: 3013, label: 'Waveform AutoLoop Editor...', action: 'openLoopEditor' },
           { id: 301, label: 'Process Model Now...', action: 'startProcess', shortcut: 'Ctrl+P' },
@@ -655,6 +657,7 @@ export class AppNavbar {
       case 'specs': this.showDocModal('specs'); break;
       case 'installPwa': this.handlers.onInstallPwa?.(); break;
       case 'openModelConfig': this.handlers.onOpenModelConfig?.(); break;
+      case 'openAiCoverGenerator': this.handlers.onOpenAiCoverGenerator?.(); break;
       case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
       case 'openLoopEditor': this.handlers.onOpenLoopEditor?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
