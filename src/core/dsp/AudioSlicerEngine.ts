@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { clamp } from './DspMath.ts';
-import { snapFrameToRisingZeroCrossing } from './LoopEditorTools.ts';
+import { snapFrameToNearestZeroCrossing } from './LoopEditorTools.ts';
 import { detectPitchYinMpm, hzToMidiAndCents } from './AcousticIntelligence.ts';
 import { GM_DRUM_MAP } from '../gmDrumMap.ts';
 import { midiToNoteName } from '../../ui/ZoneRibbon.ts';
@@ -450,7 +450,7 @@ export function buildSlicesFromBoundaries(
     if (!opts.snapZeroCrossing || idx === 0 || idx === boundaries.length - 1) {
       return clamp(Math.round(pos), 0, totalFrames);
     }
-    return snapFrameToRisingZeroCrossing(pcm, pos, 128);
+    return snapFrameToNearestZeroCrossing(pcm, pos, 128);
   });
 
   // Filter duplicated or too-close boundaries (< 64 frames)
@@ -737,7 +737,7 @@ export function moveSliceBoundary(
   sampleRate: number,
   boundaryIndex: number,
   newFrame: number,
-  snap0X: boolean = true,
+  snap0X: boolean = false,
   options: Partial<SlicerOptions> = {}
 ): SlicerResult {
   const boundaries = extractBoundaryFrames(result, pcm.length);
@@ -747,14 +747,18 @@ export function moveSliceBoundary(
 
   const prev = boundaries[boundaryIndex - 1];
   const next = boundaries[boundaryIndex + 1];
-  let target = clamp(Math.round(newFrame), prev + 64, next - 64);
+  let target = clamp(Math.round(newFrame), prev + 16, next - 16);
   if (snap0X) {
-    target = snapFrameToRisingZeroCrossing(pcm, target, 128);
-    target = clamp(target, prev + 32, next - 32);
+    target = snapFrameToNearestZeroCrossing(pcm, target, 128);
+    target = clamp(target, prev + 8, next - 8);
   }
 
   boundaries[boundaryIndex] = target;
-  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
+  // Crucial: snapZeroCrossing: false prevents buildSlicesFromBoundaries from erasing manual nudge!
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, {
+    ...options,
+    snapZeroCrossing: false,
+  });
 }
 
 /**
@@ -769,19 +773,22 @@ export function splitSliceAtFrame(
   options: Partial<SlicerOptions> = {}
 ): SlicerResult {
   const boundaries = extractBoundaryFrames(result, pcm.length);
-  let frame = clamp(Math.round(targetFrame), 64, pcm.length - 64);
+  let frame = clamp(Math.round(targetFrame), 32, pcm.length - 32);
   if (snap0X) {
-    frame = snapFrameToRisingZeroCrossing(pcm, frame, 128);
-    frame = clamp(frame, 64, pcm.length - 64);
+    frame = snapFrameToNearestZeroCrossing(pcm, frame, 128);
+    frame = clamp(frame, 32, pcm.length - 32);
   }
 
   // Avoid creating a slice that's too close to an existing boundary
-  const tooClose = boundaries.some((b) => Math.abs(b - frame) < 64);
+  const tooClose = boundaries.some((b) => Math.abs(b - frame) < 32);
   if (tooClose) return result;
 
   boundaries.push(frame);
   boundaries.sort((a, b) => a - b);
-  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, {
+    ...options,
+    snapZeroCrossing: false,
+  });
 }
 
 /**
@@ -802,7 +809,65 @@ export function deleteSlice(
   if (boundaryToRemove > 0 && boundaryToRemove < boundaries.length - 1) {
     boundaries.splice(boundaryToRemove, 1);
   }
-  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, options);
+  return buildSlicesFromBoundaries(pcm, sampleRate, boundaries, {
+    ...options,
+    snapZeroCrossing: false,
+  });
+}
+
+/**
+ * Toggles a slice between silence and active, recomputing counts and MIDI sequence.
+ */
+export function toggleSliceSilence(
+  result: SlicerResult,
+  sliceId: string,
+  sampleRate: number,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const opts: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...options };
+  const target = result.slices.find((s) => s.id === sliceId);
+  if (!target) return result;
+
+  const newIsSilence = !target.isSilence;
+  target.isSilence = newIsSilence;
+
+  if (newIsSilence) {
+    target.label = `Silence (Manual)`;
+    target.category = 'silence';
+  } else {
+    // Restore classification
+    if (opts.mode === 'drums') {
+      const drumClass = classifyDrumSlice(target.pcm, sampleRate);
+      target.rootKey = drumClass.note;
+      target.lowKey = drumClass.note;
+      target.highKey = drumClass.note;
+      target.category = drumClass.category;
+      target.label = drumClass.label;
+    } else if (opts.mode === 'chromatic') {
+      const pitch = detectPitchYinMpm(target.pcm, sampleRate);
+      target.f0Hz = Math.round(pitch.f0Hz * 10) / 10;
+      const { midiNote } = hzToMidiAndCents(pitch.f0Hz);
+      target.rootKey = midiNote;
+      target.label = `${midiNoteToString(midiNote)} (${target.f0Hz} Hz)`;
+      target.category = 'chromatic';
+    } else if (opts.mode === 'vocals') {
+      target.category = 'vocals';
+      target.label = `Vocal Phrase #${target.index} (${(target.durationSec * 1000).toFixed(0)} ms)`;
+    } else {
+      target.category = 'grid';
+      target.label = `Slice #${target.index} [Grid]`;
+    }
+  }
+
+  const validSlices = result.slices.filter((s) => !s.isSilence);
+  const midiBuffer = buildMidiFileBuffer(validSlices, opts.bpm);
+
+  return {
+    ...result,
+    validSlicesCount: validSlices.length,
+    silenceSlicesCount: result.slices.length - validSlices.length,
+    midiFileBuffer: midiBuffer,
+  };
 }
 
 /**

@@ -9,9 +9,11 @@ import {
   moveSliceBoundary,
   splitSliceAtFrame,
   deleteSlice,
+  toggleSliceSilence,
   extractBoundaryFrames,
   type DetectedSlice,
 } from '../src/core/dsp/AudioSlicerEngine.ts';
+import { snapFrameToNearestZeroCrossing } from '../src/core/dsp/LoopEditorTools.ts';
 import { parseSliceFile } from '../src/core/dsp/SliceFileParser.ts';
 
 console.log('=== ABDNeuModMakr Audio Slicer & Chopper Verification ===\n');
@@ -198,6 +200,34 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
   res = deleteSlice(res, drumPcm, sampleRate, sliceToDelete);
   assert.strictEqual(res.slices.length, initialCount, 'Deleting slice should reduce count back');
   console.log(`   -> deleteSlice succeeded: deleted ${sliceToDelete}, total slices now ${res.slices.length}`);
+
+  // Test 6b: Micro-nudge and Zero-Crossing Snapping
+  console.log('   Testing Micro-Nudge & Snap 0-X...');
+  const currentBoundaries = extractBoundaryFrames(res, drumPcm.length);
+  const currentF = currentBoundaries[2];
+  // Nudge +1 sample
+  res = moveSliceBoundary(res, drumPcm, sampleRate, 2, currentF + 1, false);
+  const nudgedF = extractBoundaryFrames(res, drumPcm.length)[2];
+  assert.strictEqual(nudgedF, currentF + 1, 'Micro-nudge by +1 sample must NOT be overwritten by auto-snapping!');
+  console.log(`   -> Micro-nudge +1 sample verified: ${currentF} -> ${nudgedF}`);
+
+  // Snap to 0-X
+  const snappedF = snapFrameToNearestZeroCrossing(drumPcm, nudgedF, 128);
+  res = moveSliceBoundary(res, drumPcm, sampleRate, 2, snappedF, false);
+  const boundaryAfterSnap = extractBoundaryFrames(res, drumPcm.length)[2];
+  assert.strictEqual(boundaryAfterSnap, snappedF, 'Boundary should take exact snapped zero-crossing frame');
+  console.log(`   -> Snap to nearest zero-crossing verified: frame=${boundaryAfterSnap}`);
+
+  // Test 6c: Toggle Slice Silence
+  console.log('   Testing Toggle Slice Silence (Mute / Unmute)...');
+  const targetSliceId = res.slices[0].id;
+  assert.strictEqual(res.slices[0].isSilence, false);
+  res = toggleSliceSilence(res, targetSliceId, sampleRate);
+  assert.strictEqual(res.slices[0].isSilence, true, 'Slice should now be marked as silence');
+  assert.strictEqual(res.slices[0].category, 'silence');
+  res = toggleSliceSilence(res, targetSliceId, sampleRate);
+  assert.strictEqual(res.slices[0].isSilence, false, 'Slice should now be active again');
+  console.log('   -> Toggle silence successfully muted and unmuted slice.');
 }
 
 // Test 7: Slice File Parser (SFZ, CUE Label Text, WAV cues)

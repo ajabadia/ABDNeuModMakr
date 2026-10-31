@@ -3,7 +3,8 @@
 //
 // High-precision interactive waveform slicer with draggable slice markers,
 // zero-crossing snapping, seam magnifier inspection (±256 samples),
-// manual slice nudging, ReCycle (.rx2, .rex, .rcy) & CUE/SFZ slice file import,
+// real-time zoom cut dragging for micro-adjustments, right-click context menu,
+// manual silence marking, ReCycle (.rx2, .rex, .rcy) & CUE/SFZ slice file import,
 // vocal & phrase mode, General MIDI Drum mapping, chromatic keybed distribution,
 // and draggable Standard MIDI File (.mid) export for DAWs.
 // ─────────────────────────────────────────────────────────
@@ -15,7 +16,7 @@ import { clamp } from '../core/dsp/DspMath.ts';
 import { encodePcm16Wav } from '../core/dsp/WavDecoder.ts';
 import {
   computeZoomedWaveformEnvelope,
-  snapFrameToRisingZeroCrossing,
+  snapFrameToNearestZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
 import {
   sliceAudioBuffer,
@@ -23,6 +24,7 @@ import {
   moveSliceBoundary,
   splitSliceAtFrame,
   deleteSlice,
+  toggleSliceSilence,
   extractBoundaryFrames,
   DEFAULT_SLICER_OPTIONS,
   type DetectedSlice,
@@ -48,6 +50,15 @@ export interface AudioChopperContext {
   onRegisterSampleBuffer?: (name: string, buffer: ArrayBuffer) => void;
 }
 
+interface ContextMenuItem {
+  label: string;
+  icon?: string;
+  isHeader?: boolean;
+  isDivider?: boolean;
+  isDanger?: boolean;
+  onClick?: () => void;
+}
+
 export class AudioChopperModal {
   private backdropEl: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -69,10 +80,18 @@ export class AudioChopperModal {
   private zoomFactor: number = 1.0;
   private viewCenterNorm: number = 0.5;
 
-  // Interactive Boundary Dragging state
+  // Overview Waveform Dragging state
   private isDraggingBoundary: boolean = false;
   private draggedBoundaryIndex: number = -1;
   private hoveredBoundaryIndex: number = -1;
+
+  // Magnifier Canvas Dragging state (sample-level micro-adjustments)
+  private isDraggingMagnifier: boolean = false;
+  private magDragStartMouseX: number = 0;
+  private magDragStartCutFrame: number = 0;
+
+  // Floating Context Menu element
+  private activeContextMenuEl: HTMLElement | null = null;
 
   constructor(context: AudioChopperContext) {
     this.context = context;
@@ -99,6 +118,7 @@ export class AudioChopperModal {
 
   public close(): void {
     this.context.onStopAudition?.();
+    this.closeContextMenu();
     if (this.backdropEl) {
       this.backdropEl.remove();
       this.backdropEl = null;
@@ -265,6 +285,20 @@ export class AudioChopperModal {
     return boundaries[idx] ?? 0;
   }
 
+  private checkZeroCrossing(frame: number): boolean {
+    if (this.pcm.length === 0 || frame < 0 || frame >= this.pcm.length) return false;
+    const prev = frame > 0 ? this.pcm[frame - 1] : 0;
+    const curr = this.pcm[frame];
+    const next = frame < this.pcm.length - 1 ? this.pcm[frame + 1] : 0;
+    return (
+      (prev <= 0 && curr >= 0 && (prev < 0 || curr > 0)) ||
+      (prev >= 0 && curr <= 0 && (prev > 0 || curr < 0)) ||
+      (curr <= 0 && next >= 0 && (curr < 0 || next > 0)) ||
+      (curr >= 0 && next <= 0 && (curr > 0 || next < 0)) ||
+      Math.abs(curr) < 0.005
+    );
+  }
+
   private render(): void {
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
@@ -275,7 +309,13 @@ export class AudioChopperModal {
         if (e.target === this.backdropEl) this.close();
       });
       window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && this.backdropEl) this.close();
+        if (e.key === 'Escape') {
+          if (this.activeContextMenuEl) {
+            this.closeContextMenu();
+          } else if (this.backdropEl) {
+            this.close();
+          }
+        }
       });
     }
 
@@ -288,9 +328,8 @@ export class AudioChopperModal {
     const activeCutFrame = this.getActiveCutFrame();
     const activeBoundaryIdx = this.activeBoundaryIndex;
 
-    // Check zero crossing status for the active boundary
     const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
-    const isZeroCrossingGood = Math.abs(cutSampleVal) < 0.005;
+    const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-chopper-window" role="dialog" aria-modal="true" aria-labelledby="chopper-title">
@@ -363,7 +402,7 @@ export class AudioChopperModal {
                 <canvas id="chopper-waveform-canvas" height="150"></canvas>
               </div>
               <div class="chopper-canvas-hint">
-                <span>Drag orange/blue cut handles to adjust boundaries</span> • <span>Double-click to split</span> • <span>0-Crossing Snapped</span>
+                <span>Left-drag markers to move</span> • <span>Right-click line/slice for Actions</span> • <span>Double-click or Right-click to Add Cut</span>
               </div>
             </div>
 
@@ -373,7 +412,9 @@ export class AudioChopperModal {
                 <div class="chopper-magnifier-title-box">
                   <span style="color: var(--color-accent);">${ICONS.wave}</span>
                   <span>CUT POINT MAGNIFIER (±256 smp):</span>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous cut boundary">&lt; Prev Cut</button>
                   <strong>Boundary #${activeBoundaryIdx}</strong>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next cut boundary">Next Cut &gt;</button>
                   <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
                   <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
                     ${isZeroCrossingGood ? '0-X MATCH' : `0-X OFFSET (${(cutSampleVal * 100).toFixed(1)}%)`}
@@ -385,17 +426,23 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m100" title="Nudge boundary -100 samples">&lt;&lt; -100</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m10" title="Nudge boundary -10 samples">&lt; -10</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m1" title="Nudge boundary -1 sample">-1</button>
-                  <button type="button" class="btn btn-xs btn-accent" id="btn-nudge-snap0x" title="Snap boundary to nearest rising zero-crossing">Snap 0-X</button>
+                  <button type="button" class="btn btn-xs btn-accent" id="btn-nudge-snap0x" title="Snap boundary to nearest zero-crossing">Snap 0-X</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p1" title="Nudge boundary +1 sample">+1</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p10" title="Nudge boundary +10 samples">+10 &gt;</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p100" title="Nudge boundary +100 samples">+100 &gt;&gt;</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-play-slice" title="Audition current slice">
-                    ${ICONS.play} Play Slice
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-play-slice" title="Audition selected slice">
+                    ${ICONS.play} Play
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-toggle-silence" title="Toggle silence for current slice">
+                    ${ICONS.eyeOff || 'Mute'} Silence
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-del-boundary" title="Delete this cut boundary" style="color: #ef4444;">
+                    ${ICONS.trash} Del Cut
                   </button>
                 </div>
               </div>
 
-              <div class="chopper-magnifier-canvas-wrap" id="chopper-mag-canvas-wrap">
+              <div class="chopper-magnifier-canvas-wrap" id="chopper-mag-canvas-wrap" style="position: relative; cursor: ew-resize;">
                 <canvas id="chopper-magnifier-canvas" height="84"></canvas>
               </div>
             </div>
@@ -412,7 +459,7 @@ export class AudioChopperModal {
                     <button type="button" class="btn btn-xs ${this.options.mode === 'drums' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-drums" title="Classify into General MIDI Drum Map notes">
                       ${ICONS.drum} Drums (GM)
                     </button>
-                    <button type="button" class="btn btn-xs ${this.options.mode === 'vocals' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-vocals" title="Vocal & phrase segmentation (adaptive sensitivity, longer minimum slice to prevent micro-chatter)">
+                    <button type="button" class="btn btn-xs ${this.options.mode === 'vocals' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-vocals" title="Vocal & phrase segmentation (OpenVPI silence valley segmentation, avoids micro-chatter)">
                       ${ICONS.wave} Vocals / Phrase
                     </button>
                     <button type="button" class="btn btn-xs ${this.options.mode === 'chromatic' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-chromatic" title="Detect F0 pitch and map to contiguous equidistant key zones">
@@ -447,7 +494,7 @@ export class AudioChopperModal {
                   <div class="chopper-param-header">
                     <span>MIN SLICE</span>
                   </div>
-                  <input type="number" id="inp-minslice" class="form-control font-mono" min="20" max="1000" step="10" value="${this.options.minSliceMs ?? (this.options.mode === 'vocals' ? 180 : 45)}" title="Minimum slice duration in milliseconds" />
+                  <input type="number" id="inp-minslice" class="form-control font-mono" min="20" max="1000" step="10" value="${this.options.minSliceMs ?? (this.options.mode === 'vocals' ? 250 : 45)}" title="Minimum slice duration in milliseconds" />
                 </div>
 
                 <!-- Pre-Roll Safety Margin -->
@@ -493,7 +540,7 @@ export class AudioChopperModal {
                       <th style="width: 110px;">Key Range</th>
                       <th style="width: 90px;">Velocity</th>
                       <th style="width: 80px;">Peak / RMS</th>
-                      <th style="width: 80px; text-align: center;">Actions</th>
+                      <th style="width: 110px; text-align: center;">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="chopper-tbody">
@@ -564,6 +611,9 @@ export class AudioChopperModal {
               <button type="button" class="btn btn-xs btn-ghost btn-play-slice" data-slice-id="${sl.id}" title="Audition slice one-shot">
                 ${isPlaying ? ICONS.stop : ICONS.play}
               </button>
+              <button type="button" class="btn btn-xs ${isSilence ? 'btn-outline' : 'btn-ghost'} btn-toggle-silence-row" data-slice-id="${sl.id}" title="${isSilence ? 'Unmute (Mark as active)' : 'Mute (Mark as silence)'}">
+                ${isSilence ? 'Unmute' : 'Mute'}
+              </button>
               <button type="button" class="btn btn-xs btn-ghost btn-danger-hover btn-delete-slice" data-slice-id="${sl.id}" title="Remove slice marker">
                 ${ICONS.trash}
               </button>
@@ -629,8 +679,6 @@ export class AudioChopperModal {
     ctx.scale(dpr, dpr);
 
     const colors = this.getThemeColors();
-
-    // Adaptive background
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, width, height);
 
@@ -666,9 +714,7 @@ export class AudioChopperModal {
         ctx.fillStyle = isSel ? colors.sliceSel : isEven ? colors.sliceEven : colors.sliceOdd;
         ctx.fillRect(x1, 0, w, height);
 
-        // Non-overlapping label logic: only draw if space permits or if slice is selected
         if (isSel) {
-          // Pill badge for selected slice
           const labelText = `#${sl.index} ${sl.label}`;
           ctx.font = 'bold 10px monospace';
           const textW = ctx.measureText(labelText).width;
@@ -680,7 +726,6 @@ export class AudioChopperModal {
           ctx.fillStyle = '#060a12';
           ctx.fillText(labelText, x1 + 5, 13);
         } else if (w >= 44) {
-          // Normal slice label if wide enough
           ctx.fillStyle = colors.text;
           ctx.font = '10px monospace';
           const maxChars = Math.max(2, Math.floor((w - 8) / 7));
@@ -821,7 +866,7 @@ export class AudioChopperModal {
     }
     ctx.stroke();
 
-    // Draw individual sample points
+    // Individual sample points
     ctx.fillStyle = colors.waveform;
     for (let i = 0; i < totalSamples; i += 4) {
       const frame = startFrame + i;
@@ -831,11 +876,12 @@ export class AudioChopperModal {
       ctx.fillRect(x - 1, y - 1, 2, 2);
     }
 
-    // Center Cut Line (green indicator)
+    // Center Cut Line (green or highlighted orange if dragging)
     const centerX = width * 0.5;
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 2]);
+    const isDragging = this.isDraggingMagnifier;
+    ctx.strokeStyle = isDragging ? '#f59e0b' : '#10b981';
+    ctx.lineWidth = isDragging ? 3 : 2;
+    ctx.setLineDash(isDragging ? [] : [4, 2]);
     ctx.beginPath();
     ctx.moveTo(centerX, 0);
     ctx.lineTo(centerX, height);
@@ -845,12 +891,55 @@ export class AudioChopperModal {
     // Cut point highlight dot
     const centerVal = cutFrame >= 0 && cutFrame < this.pcm.length ? this.pcm[cutFrame] : 0;
     const centerDotY = centerY - centerVal * ampScale;
-    ctx.fillStyle = '#10b981';
+    ctx.fillStyle = isDragging ? '#f59e0b' : '#10b981';
     ctx.beginPath();
-    ctx.arc(centerX, centerDotY, 4, 0, Math.PI * 2);
+    ctx.arc(centerX, centerDotY, isDragging ? 5 : 4, 0, Math.PI * 2);
     ctx.fill();
 
+    // Handle Triangles
+    ctx.fillStyle = isDragging ? '#f59e0b' : '#10b981';
+    ctx.beginPath();
+    ctx.moveTo(centerX - 6, 0);
+    ctx.lineTo(centerX + 6, 0);
+    ctx.lineTo(centerX, 9);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(centerX - 6, height);
+    ctx.lineTo(centerX + 6, height);
+    ctx.lineTo(centerX, height - 9);
+    ctx.closePath();
+    ctx.fill();
+
+    // Visual drag hint
+    ctx.font = '10px monospace';
+    ctx.fillStyle = isDragging ? '#f59e0b' : 'rgba(16, 185, 129, 0.8)';
+    const hintText = isDragging ? 'DRAGGING CUT POINT (MICRO-ADJUST)' : 'CLICK & DRAG TO MICRO-ADJUST CUT (±256 smp)';
+    ctx.fillText(hintText, 10, 14);
+
     ctx.restore();
+  }
+
+  private navigateBoundary(delta: number): void {
+    if (!this.currentResult || this.pcm.length === 0) return;
+    const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+    if (boundaries.length <= 2) return;
+
+    const maxIdx = boundaries.length - 2;
+    this.activeBoundaryIndex = clamp(this.activeBoundaryIndex + delta, 1, maxIdx);
+
+    // Select the slice starting at this boundary
+    const cutFrame = boundaries[this.activeBoundaryIndex];
+    const hit = this.currentResult.slices.find((s) => Math.abs(s.startFrame - cutFrame) < 32);
+    if (hit) {
+      this.selectedSliceId = hit.id;
+    }
+
+    this.drawWaveformCanvas();
+    this.drawMagnifierCanvas();
+    this.updateMagnifierHeader();
+    this.refreshTable();
   }
 
   private nudgeActiveBoundary(deltaSamples: number): void {
@@ -885,7 +974,7 @@ export class AudioChopperModal {
 
     const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
     const currentF = boundaries[bIdx];
-    const snapped = snapFrameToRisingZeroCrossing(this.pcm, currentF, 128);
+    const snapped = snapFrameToNearestZeroCrossing(this.pcm, currentF, 256);
 
     this.currentResult = moveSliceBoundary(
       this.currentResult,
@@ -901,26 +990,32 @@ export class AudioChopperModal {
     this.drawMagnifierCanvas();
     this.refreshTable();
     this.updateMagnifierHeader();
-    toast(`Boundary #${bIdx} snapped to rising zero-crossing (${snapped.toLocaleString()} smp).`, 'info');
+    const delta = snapped - currentF;
+    toast(`Boundary #${bIdx} snapped to zero-crossing (${delta >= 0 ? '+' : ''}${delta} smp).`, 'info');
   }
 
   private updateMagnifierHeader(): void {
     if (!this.backdropEl) return;
     const activeCutFrame = this.getActiveCutFrame();
     const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
-    const isZeroCrossingGood = Math.abs(cutSampleVal) < 0.005;
+    const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
 
     const titleBox = this.backdropEl.querySelector('.chopper-magnifier-title-box');
     if (titleBox) {
       titleBox.innerHTML = `
         <span style="color: var(--color-accent);">${ICONS.wave}</span>
         <span>CUT POINT MAGNIFIER (±256 smp):</span>
+        <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous slice boundary">&lt; Prev Cut</button>
         <strong>Boundary #${this.activeBoundaryIndex}</strong>
+        <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next slice boundary">Next Cut &gt;</button>
         <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
         <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
           ${isZeroCrossingGood ? '0-X MATCH' : `0-X OFFSET (${(cutSampleVal * 100).toFixed(1)}%)`}
         </span>
       `;
+
+      this.backdropEl.querySelector('#btn-mag-prev-cut')?.addEventListener('click', () => this.navigateBoundary(-1));
+      this.backdropEl.querySelector('#btn-mag-next-cut')?.addEventListener('click', () => this.navigateBoundary(1));
     }
   }
 
@@ -933,38 +1028,81 @@ export class AudioChopperModal {
     }
   }
 
+  private closeContextMenu(): void {
+    if (this.activeContextMenuEl) {
+      this.activeContextMenuEl.remove();
+      this.activeContextMenuEl = null;
+    }
+  }
+
+  private showContextMenu(x: number, y: number, items: ContextMenuItem[]): void {
+    this.closeContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'chopper-context-menu';
+    menu.style.left = `${Math.min(window.innerWidth - 210, Math.max(10, x))}px`;
+    menu.style.top = `${Math.min(window.innerHeight - 250, Math.max(10, y))}px`;
+
+    items.forEach((it) => {
+      if (it.isHeader) {
+        const header = document.createElement('div');
+        header.className = 'chopper-menu-header';
+        header.textContent = it.label;
+        menu.appendChild(header);
+      } else if (it.isDivider) {
+        const div = document.createElement('div');
+        div.className = 'chopper-menu-divider';
+        menu.appendChild(div);
+      } else {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `chopper-menu-item ${it.isDanger ? 'danger-item' : ''}`;
+        btn.innerHTML = `${it.icon || ''} <span>${escHtml(it.label)}</span>`;
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.closeContextMenu();
+          it.onClick?.();
+        });
+        menu.appendChild(btn);
+      }
+    });
+
+    document.body.appendChild(menu);
+    this.activeContextMenuEl = menu;
+
+    const onOutsideClick = (e: MouseEvent) => {
+      if (!menu.contains(e.target as Node)) {
+        this.closeContextMenu();
+        window.removeEventListener('click', onOutsideClick);
+      }
+    };
+    setTimeout(() => {
+      window.addEventListener('click', onOutsideClick);
+    }, 10);
+  }
+
   private bindEvents(): void {
     if (!this.backdropEl) return;
 
     this.backdropEl.querySelector('#btn-chopper-close')?.addEventListener('click', () => this.close());
     this.backdropEl.querySelector('#btn-chopper-discard')?.addEventListener('click', () => this.close());
 
-    // File input setup
+    // File inputs setup
     const fileInp = this.backdropEl.querySelector('#inp-chopper-audio-file') as HTMLInputElement | null;
     fileInp?.addEventListener('change', () => {
       const file = fileInp.files?.[0];
-      if (file) {
-        void this.loadAudioFile(file);
-      }
+      if (file) void this.loadAudioFile(file);
     });
 
     const markerInp = this.backdropEl.querySelector('#inp-chopper-markers-file') as HTMLInputElement | null;
     markerInp?.addEventListener('change', () => {
       const file = markerInp.files?.[0];
-      if (file) {
-        void this.importSliceMarkersFile(file);
-      }
+      if (file) void this.importSliceMarkersFile(file);
     });
 
-    this.backdropEl.querySelector('#btn-chopper-browse-file')?.addEventListener('click', () => {
-      fileInp?.click();
-    });
-    this.backdropEl.querySelector('#btn-chopper-change-file')?.addEventListener('click', () => {
-      fileInp?.click();
-    });
-    this.backdropEl.querySelector('#btn-chopper-import-cues')?.addEventListener('click', () => {
-      markerInp?.click();
-    });
+    this.backdropEl.querySelector('#btn-chopper-browse-file')?.addEventListener('click', () => fileInp?.click());
+    this.backdropEl.querySelector('#btn-chopper-change-file')?.addEventListener('click', () => fileInp?.click());
+    this.backdropEl.querySelector('#btn-chopper-import-cues')?.addEventListener('click', () => markerInp?.click());
 
     this.backdropEl.querySelector('#btn-chopper-demo-beat')?.addEventListener('click', () => {
       this.loadTestDemoBeat();
@@ -986,9 +1124,7 @@ export class AudioChopperModal {
         dropzone.classList.remove('is-dragover');
         const dt = (e as DragEvent).dataTransfer;
         const file = dt?.files?.[0];
-        if (file) {
-          void this.loadAudioFile(file);
-        }
+        if (file) void this.loadAudioFile(file);
       });
     }
 
@@ -1079,7 +1215,10 @@ export class AudioChopperModal {
       this.render();
     });
 
-    // Cut-Point Magnifier Nudge Buttons
+    // Cut-Point Magnifier Toolbar Buttons
+    this.backdropEl.querySelector('#btn-mag-prev-cut')?.addEventListener('click', () => this.navigateBoundary(-1));
+    this.backdropEl.querySelector('#btn-mag-next-cut')?.addEventListener('click', () => this.navigateBoundary(1));
+
     this.backdropEl.querySelector('#btn-nudge-m100')?.addEventListener('click', () => this.nudgeActiveBoundary(-100));
     this.backdropEl.querySelector('#btn-nudge-m10')?.addEventListener('click', () => this.nudgeActiveBoundary(-10));
     this.backdropEl.querySelector('#btn-nudge-m1')?.addEventListener('click', () => this.nudgeActiveBoundary(-1));
@@ -1093,10 +1232,35 @@ export class AudioChopperModal {
       if (sl) this.auditionSlice(sl);
     });
 
-    // Interactive Waveform Canvas Drag & Selection & Double-Click
-    this.bindCanvasInteraction();
+    this.backdropEl.querySelector('#btn-mag-toggle-silence')?.addEventListener('click', () => {
+      if (this.selectedSliceId && this.currentResult) {
+        this.currentResult = toggleSliceSilence(this.currentResult, this.selectedSliceId, this.sampleRate, this.options);
+        this.drawWaveformCanvas();
+        this.refreshTable();
+      }
+    });
 
-    // Table rows play/delete events
+    this.backdropEl.querySelector('#btn-mag-del-boundary')?.addEventListener('click', () => {
+      if (this.currentResult) {
+        const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+        if (boundaries.length <= 2) return;
+        const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
+        // Find slice starting at this boundary and delete it
+        const slice = this.currentResult.slices[bIdx];
+        if (slice) {
+          this.currentResult = deleteSlice(this.currentResult, this.pcm, this.sampleRate, slice.id, this.options);
+          this.activeBoundaryIndex = Math.max(1, bIdx - 1);
+          this.render();
+          toast(`Removed cut boundary #${bIdx}.`, 'info');
+        }
+      }
+    });
+
+    // Waveform & Magnifier Canvas Interactions
+    this.bindCanvasInteraction();
+    this.bindMagnifierInteraction();
+
+    // Table rows play/silence/delete events
     this.bindTableEvents();
 
     // Drag MIDI to DAW Setup
@@ -1137,9 +1301,8 @@ export class AudioChopperModal {
 
   private bindCanvasInteraction(): void {
     if (!this.backdropEl) return;
-    const canvasWrap = this.backdropEl.querySelector('#chopper-canvas-wrap') as HTMLElement | null;
     const canvas = this.backdropEl.querySelector('#chopper-waveform-canvas') as HTMLCanvasElement | null;
-    if (!canvasWrap || !canvas) return;
+    if (!canvas) return;
 
     const getFrameFromMouseX = (clientX: number): number => {
       const rect = canvas.getBoundingClientRect();
@@ -1163,10 +1326,9 @@ export class AudioChopperModal {
       return ((frame - viewStart) / viewSpan) * rect.width;
     };
 
-    // Hover detection for boundary lines
+    // Hover & Drag detection for overview boundary lines
     canvas.addEventListener('mousemove', (e: MouseEvent) => {
       if (this.isDraggingBoundary) {
-        // Dragging existing boundary
         if (!this.currentResult) return;
         const targetFrame = getFrameFromMouseX(e.clientX);
         this.currentResult = moveSliceBoundary(
@@ -1186,7 +1348,6 @@ export class AudioChopperModal {
         return;
       }
 
-      // Check if mouse is hovering near a boundary handle
       if (!this.currentResult || this.pcm.length === 0) return;
       const rect = canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -1195,7 +1356,7 @@ export class AudioChopperModal {
       let foundIdx = -1;
       for (let bIdx = 1; bIdx < boundaries.length - 1; bIdx++) {
         const bx = getXFromFrame(boundaries[bIdx]);
-        if (Math.abs(mouseX - bx) <= 6) {
+        if (Math.abs(mouseX - bx) <= 7) {
           foundIdx = bIdx;
           break;
         }
@@ -1203,14 +1364,16 @@ export class AudioChopperModal {
 
       if (foundIdx !== this.hoveredBoundaryIndex) {
         this.hoveredBoundaryIndex = foundIdx;
-        canvas.style.cursor = foundIdx > 0 ? 'col-resize' : 'default';
+        canvas.style.cursor = foundIdx > 0 ? 'col-resize' : 'crosshair';
         this.drawWaveformCanvas();
       }
     });
 
     canvas.addEventListener('mousedown', (e: MouseEvent) => {
+      if (e.button !== 0) return; // Only left button for boundary dragging/selecting
+      this.closeContextMenu();
+
       if (this.hoveredBoundaryIndex > 0) {
-        // Start dragging this boundary
         this.isDraggingBoundary = true;
         this.draggedBoundaryIndex = this.hoveredBoundaryIndex;
         this.activeBoundaryIndex = this.hoveredBoundaryIndex;
@@ -1220,20 +1383,18 @@ export class AudioChopperModal {
         return;
       }
 
-      // Normal click: select slice and set active boundary to slice start
+      // Normal click: select slice and update active boundary
       const clickedFrame = getFrameFromMouseX(e.clientX);
       const hit = this.currentResult?.slices.find(
         (s) => clickedFrame >= s.startFrame && clickedFrame <= s.endFrame
       );
       if (hit) {
         this.selectedSliceId = hit.id;
-        // Set active boundary to the start of this slice if not first
         if (this.currentResult) {
           const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+          // If first slice, select boundary #1; otherwise select boundary at slice start
           const bIdx = boundaries.findIndex((b) => Math.abs(b - hit.startFrame) < 32);
-          if (bIdx > 0 && bIdx < boundaries.length - 1) {
-            this.activeBoundaryIndex = bIdx;
-          }
+          this.activeBoundaryIndex = bIdx > 0 && bIdx < boundaries.length - 1 ? bIdx : 1;
         }
         this.auditionSlice(hit);
         this.drawWaveformCanvas();
@@ -1254,6 +1415,154 @@ export class AudioChopperModal {
       }
     });
 
+    // Right-Click Context Menu on Waveform (on cut line or empty space)
+    canvas.addEventListener('contextmenu', (e: MouseEvent) => {
+      e.preventDefault();
+      if (!this.currentResult || this.pcm.length === 0) return;
+
+      const clickedFrame = getFrameFromMouseX(e.clientX);
+      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+
+      // Check if right-clicked directly on a boundary line
+      const hoveredBIdx = this.hoveredBoundaryIndex;
+      if (hoveredBIdx > 0 && hoveredBIdx < boundaries.length - 1) {
+        const bFrame = boundaries[hoveredBIdx];
+        const sliceLeft = this.currentResult.slices[hoveredBIdx - 1];
+        const sliceRight = this.currentResult.slices[hoveredBIdx];
+
+        this.showContextMenu(e.clientX, e.clientY, [
+          { label: `Cut Boundary #${hoveredBIdx} (${bFrame.toLocaleString()} smp)`, isHeader: true },
+          {
+            label: 'Delete Cut Boundary',
+            icon: ICONS.trash,
+            isDanger: true,
+            onClick: () => {
+              if (sliceRight) {
+                this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, sliceRight.id, this.options);
+                this.activeBoundaryIndex = Math.max(1, hoveredBIdx - 1);
+                this.render();
+                toast(`Removed cut boundary #${hoveredBIdx}.`, 'info');
+              }
+            },
+          },
+          {
+            label: 'Snap to 0-Crossing',
+            icon: ICONS.wave,
+            onClick: () => {
+              this.activeBoundaryIndex = hoveredBIdx;
+              this.snapActiveBoundary0X();
+            },
+          },
+          {
+            label: 'Inspect in Magnifier',
+            icon: ICONS.scissors,
+            onClick: () => {
+              this.activeBoundaryIndex = hoveredBIdx;
+              this.drawMagnifierCanvas();
+              this.updateMagnifierHeader();
+            },
+          },
+          { label: '', isDivider: true },
+          ...(sliceLeft
+            ? [
+                {
+                  label: `Play Left: Slice #${sliceLeft.index}`,
+                  icon: ICONS.play,
+                  onClick: () => this.auditionSlice(sliceLeft),
+                },
+                {
+                  label: sliceLeft.isSilence ? `Unmute Left Slice #${sliceLeft.index}` : `Mute Left Slice #${sliceLeft.index}`,
+                  icon: ICONS.eyeOff,
+                  onClick: () => {
+                    this.currentResult = toggleSliceSilence(this.currentResult!, sliceLeft.id, this.sampleRate, this.options);
+                    this.drawWaveformCanvas();
+                    this.refreshTable();
+                  },
+                },
+              ]
+            : []),
+          ...(sliceRight
+            ? [
+                {
+                  label: `Play Right: Slice #${sliceRight.index}`,
+                  icon: ICONS.play,
+                  onClick: () => this.auditionSlice(sliceRight),
+                },
+                {
+                  label: sliceRight.isSilence ? `Unmute Right Slice #${sliceRight.index}` : `Mute Right Slice #${sliceRight.index}`,
+                  icon: ICONS.eyeOff,
+                  onClick: () => {
+                    this.currentResult = toggleSliceSilence(this.currentResult!, sliceRight.id, this.sampleRate, this.options);
+                    this.drawWaveformCanvas();
+                    this.refreshTable();
+                  },
+                },
+              ]
+            : []),
+        ]);
+        return;
+      }
+
+      // Otherwise, right-clicked on empty area within a slice:
+      const hitSlice = this.currentResult.slices.find(
+        (s) => clickedFrame >= s.startFrame && clickedFrame <= s.endFrame
+      );
+
+      this.showContextMenu(e.clientX, e.clientY, [
+        { label: hitSlice ? `Slice #${hitSlice.index} (${((clickedFrame / this.sampleRate) * 1000).toFixed(1)} ms)` : 'Audio Waveform', isHeader: true },
+        {
+          label: `+ Add Cut Marker Here (${clickedFrame.toLocaleString()} smp)`,
+          icon: ICONS.plus,
+          onClick: () => {
+            this.currentResult = splitSliceAtFrame(
+              this.currentResult!,
+              this.pcm,
+              this.sampleRate,
+              clickedFrame,
+              this.options.snapZeroCrossing,
+              this.options
+            );
+            const updatedBoundaries = extractBoundaryFrames(this.currentResult!, this.pcm.length);
+            const newIdx = updatedBoundaries.findIndex((b) => Math.abs(b - clickedFrame) < 64);
+            if (newIdx > 0 && newIdx < updatedBoundaries.length - 1) {
+              this.activeBoundaryIndex = newIdx;
+            }
+            this.render();
+            toast(`Added slice cut at ${clickedFrame.toLocaleString()} smp.`, 'success');
+          },
+        },
+        ...(hitSlice
+          ? [
+              {
+                label: `Audition Slice #${hitSlice.index}`,
+                icon: ICONS.play,
+                onClick: () => this.auditionSlice(hitSlice),
+              },
+              {
+                label: hitSlice.isSilence ? `Unmute Slice (Mark Active)` : `Mark as Silence (Mute)`,
+                icon: ICONS.eyeOff,
+                onClick: () => {
+                  this.currentResult = toggleSliceSilence(this.currentResult!, hitSlice.id, this.sampleRate, this.options);
+                  this.drawWaveformCanvas();
+                  this.refreshTable();
+                },
+              },
+              { label: '', isDivider: true },
+              {
+                label: `Delete Slice #${hitSlice.index}`,
+                icon: ICONS.trash,
+                isDanger: true,
+                onClick: () => {
+                  this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, hitSlice.id, this.options);
+                  this.render();
+                  toast(`Deleted slice #${hitSlice.index}.`, 'info');
+                },
+              },
+            ]
+          : []),
+      ]);
+    });
+
     // Double-click to split slice at frame
     canvas.addEventListener('dblclick', (e: MouseEvent) => {
       if (!this.currentResult || this.pcm.length === 0) return;
@@ -1267,7 +1576,6 @@ export class AudioChopperModal {
         this.options
       );
 
-      // Find index of the newly added boundary
       const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
       const newBIdx = boundaries.findIndex((b) => Math.abs(b - splitFrame) < 64);
       if (newBIdx > 0 && newBIdx < boundaries.length - 1) {
@@ -1276,6 +1584,64 @@ export class AudioChopperModal {
 
       toast(`Added slice cut at ${splitFrame.toLocaleString()} smp.`, 'success');
       this.render();
+    });
+  }
+
+  private bindMagnifierInteraction(): void {
+    if (!this.backdropEl) return;
+    const magCanvas = this.backdropEl.querySelector('#chopper-magnifier-canvas') as HTMLCanvasElement | null;
+    if (!magCanvas) return;
+
+    magCanvas.addEventListener('mousedown', (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      this.closeContextMenu();
+      if (!this.currentResult || this.pcm.length === 0) return;
+
+      this.isDraggingMagnifier = true;
+      this.magDragStartMouseX = e.clientX;
+      this.magDragStartCutFrame = this.getActiveCutFrame();
+      this.drawMagnifierCanvas();
+    });
+
+    window.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!this.isDraggingMagnifier || !this.currentResult || this.pcm.length === 0) return;
+      if (!this.magnifierCanvas) return;
+
+      const rect = this.magnifierCanvas.getBoundingClientRect();
+      const deltaX = e.clientX - this.magDragStartMouseX;
+      const totalMagnifierWindowSamples = 512;
+      const samplesPerPixel = totalMagnifierWindowSamples / Math.max(1, rect.width);
+      const deltaSamples = Math.round(deltaX * samplesPerPixel);
+      const targetFrame = this.magDragStartCutFrame + deltaSamples;
+
+      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+      if (boundaries.length <= 2) return;
+      const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
+
+      this.currentResult = moveSliceBoundary(
+        this.currentResult,
+        this.pcm,
+        this.sampleRate,
+        bIdx,
+        targetFrame,
+        false, // Real-time exact sample dragging (no snap during drag)
+        this.options
+      );
+
+      this.drawWaveformCanvas();
+      this.drawMagnifierCanvas();
+      this.updateMagnifierHeader();
+      this.refreshTable();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (this.isDraggingMagnifier) {
+        this.isDraggingMagnifier = false;
+        this.drawWaveformCanvas();
+        this.drawMagnifierCanvas();
+        this.updateMagnifierHeader();
+        this.refreshTable();
+      }
     });
   }
 
@@ -1290,9 +1656,7 @@ export class AudioChopperModal {
           this.selectedSliceId = sl.id;
           const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
           const bIdx = boundaries.findIndex((b) => Math.abs(b - sl.startFrame) < 32);
-          if (bIdx > 0 && bIdx < boundaries.length - 1) {
-            this.activeBoundaryIndex = bIdx;
-          }
+          this.activeBoundaryIndex = bIdx > 0 && bIdx < boundaries.length - 1 ? bIdx : 1;
           this.auditionSlice(sl);
           this.drawWaveformCanvas();
           this.drawMagnifierCanvas();
@@ -1307,8 +1671,18 @@ export class AudioChopperModal {
         e.stopPropagation();
         const sliceId = btn.dataset.sliceId;
         const sl = this.currentResult?.slices.find((s) => s.id === sliceId);
-        if (sl) {
-          this.auditionSlice(sl);
+        if (sl) this.auditionSlice(sl);
+      });
+    });
+
+    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-toggle-silence-row').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sliceId = btn.dataset.sliceId;
+        if (sliceId && this.currentResult) {
+          this.currentResult = toggleSliceSilence(this.currentResult, sliceId, this.sampleRate, this.options);
+          this.drawWaveformCanvas();
+          this.refreshTable();
         }
       });
     });
@@ -1351,7 +1725,6 @@ export class AudioChopperModal {
     const baseName = (this.sourceFilename || 'sample').replace(/\.[^/.]+$/, '');
     const audioSamples: Array<{ name: string; buffer: ArrayBuffer }> = [];
 
-    // Encode each slice to WAV PCM 16-bit
     validSlices.forEach((sl, idx) => {
       const sliceWavName = `${baseName}_slice${String(idx + 1).padStart(2, '0')}.wav`;
       const wavBuffer = encodePcm16Wav(sl.pcm, this.sampleRate, {
@@ -1363,7 +1736,6 @@ export class AudioChopperModal {
     });
 
     if (isExtended) {
-      // Inject into Extended 2D Sampler Regions
       const isDrum = this.options.mode === 'drums';
       const regions: ExtendedRegion[] = validSlices.map((sl, idx) => ({
         id: `reg_chopped_${idx + 1}_${Date.now()}`,
@@ -1394,7 +1766,6 @@ export class AudioChopperModal {
       this.context.onInjectExtendedRegions?.(regions, audioSamples);
       toast(`Successfully mapped ${regions.length} audio slices to 2D Sampler Regions!`, 'success');
     } else {
-      // Inject into Classic Contiguous Hartmann Zones (0..127)
       const zones: Zone[] = validSlices.map((sl, idx) => ({
         id: `zone_chopped_${idx + 1}_${Date.now()}`,
         rootKey: sl.rootKey,

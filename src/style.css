@@ -7467,6 +7467,65 @@ textarea.form-control::placeholder {
   cursor: grabbing;
 }
 
+/* Floating Context Menu for Audio Chopper & Boundary Lines */
+.chopper-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--color-panel-surface-elevated, #161f30);
+  border: 1px solid var(--color-panel-border, rgba(56, 189, 248, 0.3));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  min-width: 195px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-sans, system-ui);
+}
+
+.chopper-menu-header {
+  padding: 5px 8px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  color: var(--color-accent, #38bdf8);
+  border-bottom: 1px solid var(--color-panel-border-dim, rgba(255, 255, 255, 0.1));
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chopper-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--color-text-main, #f1f5f9);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chopper-menu-item:hover {
+  background: var(--color-accent-subtle, rgba(56, 189, 248, 0.15));
+  color: var(--color-accent, #38bdf8);
+}
+
+.chopper-menu-item.danger-item:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.chopper-menu-divider {
+  height: 1px;
+  background: var(--color-panel-border-dim, rgba(255, 255, 255, 0.08));
+  margin: 3px 0;
+}
+
 
 /* ── Technical Specifications Box & Drawer Waveform Preview ── */
 .sample-tech-spec-box {
