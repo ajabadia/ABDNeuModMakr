@@ -50,6 +50,7 @@ export interface MenuContext {
   openAiCoverGenerator?: () => void;
   openAudioChopper?: () => void;
   openLoopEditor?: () => void;
+  openRawSamplerExport?: () => void;
 }
 
 export class MenuActions {
@@ -267,6 +268,7 @@ export class MenuActions {
       onImportModel: () => this.ctx.imports.triggerModelImport(),
       onExportModel: () => void this.exportModel(),
       onExportModelAs: () => void this.exportModelAs(),
+      onExportSampler: () => this.ctx.openRawSamplerExport?.(),
       onInstallPwa: async () => {
         if (pwaManager.getIsStandalone()) {
           toast('NEURON MODELmaker is already running as a standalone desktop app.', 'info');
@@ -543,7 +545,11 @@ export class MenuActions {
           this.ctx.shell.getInspector().toggleDrawer();
         } else if (key === 'e') {
           e.preventDefault();
-          this.ctx.toggleSpectralPanel();
+          if (e.shiftKey) {
+            this.ctx.openRawSamplerExport?.();
+          } else {
+            this.ctx.toggleSpectralPanel();
+          }
         } else if (key === 't') {
           e.preventDefault();
           if (e.shiftKey) {

@@ -337,43 +337,46 @@
 
 ---
 
-## Fase 16 — Utilidad Universal de Exportación Multi-Formato desde File (Bancos e Instrumentos Raw) [PLANIFICADA]
+## Fase 16 — Utilidad Universal de Exportación Multi-Formato desde File (Bancos e Instrumentos Raw) [COMPLETADA]
 
 **Objetivo**: Exportar la colección de zonas, mapeos y muestras originales (material *raw* antes de análisis/procesamiento de resíntesis) a los principales estándares de la industria del sampling y samplers virtuales/hardware.
 
 ### 16.1 Integración en Interfaz de Usuario
-- [ ] Nuevo acceso en el menú principal: `File -> Export Sampler / Multi-Format Bank...` (con atajo y selector de perfiles).
-- [ ] Diálogo de configuración con múltiples opciones (similar a Save As / Export):
-  - Selección de formato de salida.
-  - Selección de resolución y sample rate de audio (conservar original o remuestrear a 44.1k/48k/96k).
-  - Normalización opcional y retención de metadatos/licencia.
-  - Opciones de estructura de carpetas (monolítico incrustado vs parche con subcarpeta `Samples/`).
-- [ ] **Compuerta de Preflight y Notificación de Incompatibilidades Técnicas**:
-  - Si el formato de destino seleccionado no admite algún parámetro de la sesión actual (por ejemplo: resolución > 16-bit en SF2, curvas DAHDSR no lineales, más de 2 capas de velocidad en hardware clásico Neuron, bucles complejos con micro-crossfades, sample rates no soportados o configuraciones surround):
-    - El conversor calcula el ajuste al valor admitido más próximo (clamp o interpolación matemática).
-    - **Aviso previo interactivo al usuario**: Se despliega una ventana de inspección preflight que lista detalladamente qué parámetros serán adaptados y a qué valores.
-    - El usuario tiene la potestad de **Parar / Cancelar** para ajustar manualmente los parámetros en el editor o **Aceptar y Exportar** con los ajustes automáticos propuestos.
+- [x] Nuevo acceso en el menú principal: `File -> Export Sampler / Multi-Format Bank...` (`Ctrl+Shift+E`).
+- [x] Diálogo de configuración con múltiples opciones (`RawSamplerExportModal.ts`):
+  - Selección de formato de salida: SF2, SFZ, Decent Sampler, Bitwig Multisample, Kontakt XML, HALion vstpreset, Sample Chain.
+  - Selección de resolución y sample rate de audio (conservar original o remuestrear a 16-bit/24-bit PCM y 44.1k/48k/96k).
+  - Normalización opcional (Off, 0 dBFS Peak, -0.3 dBFS True-Peak) y retención de metadatos/licencia.
+  - Opciones de estructura de carpetas (monolítico incrustado vs paquete ZIP con subcarpeta `Samples/`).
+- [x] **Compuerta de Preflight y Notificación de Incompatibilidades Técnicas** (`rawSamplerPreflight.ts`):
+  - Análisis técnico en tiempo real contra los límites del formato de destino:
+    - Resolución > 16-bit en SF2 -> clamp y dither TPDF con aviso interactivo.
+    - Curvas DAHDSR de 6 etapas -> adaptación a ADSR estándar sumando delay/hold al ataque.
+    - Bucles complejos (ping-pong / micro-crossfades) -> adaptación a forward loop continuo.
+    - Muestras ausentes en memoria -> detección y bloqueo preventivo del botón de exportación.
+    - Sample rates dispares en Sample Chain -> remuestreo y unificación automática.
+  - Panel visual de estado (`ALL SPECIFICATIONS COMPATIBLE` / `ADAPTATIONS REQUIRED` / `INCOMPATIBILITIES DETECTED`) con lista detallada de advertencias, mitigaciones y botón de parada/cancelación voluntaria.
 
 ### 16.2 Formatos de Destino Soportados (Muestras Originales Intactas)
 *Nota*: La exportación opera exclusivamente sobre la materia prima original (muestras WAV/AIFF directas, zonas `lowKey..highKey`, `lowVel..highVel`, `rootKey`, afinación, volumen, paneo y rangos de loop `L-START`/`L-END`), **sin pasar por los transformadores espectrales Scape/Sphere de Neuron**.
 
-1. **SoundFont 2 (`.sf2`)**:
-   - Generador binario RIFF `sfbk` con bloques `INFO` (nombre de preset, autor, licencia, software), `sdta` (banco de muestras PCM16 contiguo con padding) y `pdta` (jerarquía PHDR/PBAG/PMOD/PGEN -> IHDR/IBAG/IMOD/IGEN -> SHDR con cabeceras de muestra y bucle).
-2. **SFZ Format (`.sfz` + carpeta de samples)**:
-   - Archivo de definición en texto plano estándar compatible con Cakewalk/Plogue/LinuxSampler/Sforzando.
-   - Declaración de encabezados `<control>`, `<global>`, `<group>` y `<region>` con rutas relativas a las muestras, puntos de loop, rangos de teclas y velocidades.
-3. **Native Instruments Kontakt (`.nki` - ej. Kontakt 5)**:
-   - Parche de instrumento Kontakt o formato estructurado con zonas y mapeo de grupos basado en las especificaciones técnicas disponibles de parches monolíticos/desempaquetados.
-4. **Steinberg HALion (`.vstpreset` / `.fxp`)**:
-   - Estructura de programa y capas de zona para el sampler de Steinberg con mapeo de articulación.
-5. **IK Multimedia SampleTank**:
-   - Definición de instrumento de librería SampleTank con metadatos asociados.
-6. **Otros formatos abiertos con especificación técnica documentada**:
-   - Decent Sampler (`.dspreset` basado en XML).
-   - Bitwig Studio Multisample (`.multisample`).
-7. **Cadena Lineal de Muestras Concatenadas (WAV / AIFF "Sample Chain / Key Map")**:
-   - Exportación de un único archivo de audio lineal continuo (`.wav` o `.aiff`) con todos los tonos/muestras ordenados y pegados secuencialmente uno detrás de otro.
-   - Incrustación de marcas de división/cue points o regiones RIFF/smpl para samplers hardware y grooves (Elektron Octatrack, Roland SP-404, Korg electribe, OP-1/OP-Z).
+1. **SoundFont 2 (`.sf2`)** (`soundfont2Writer.ts`):
+   - Generador binario RIFF `sfbk` con bloques `INFO` (versión 2.04, EMU8000, banco, autor, licencia, software), `sdta` (banco de muestras PCM16 contiguo con 46 muestras de relleno anti-click) y `pdta` (jerarquía PHDR/PBAG/PMOD/PGEN -> INST/IBAG/IMOD/IGEN -> SHDR con cabeceras de muestra y bucle).
+2. **SFZ Format (`.sfz` + carpeta de samples en `.zip`)**:
+   - Archivo de definición en texto plano estándar compatible con Cakewalk/Plogue Sforzando/LinuxSampler.
+   - Declaración de encabezados `<control>`, `<global>`, `<group>` y `<region>` con rutas relativas a las muestras, puntos de loop, rangos de teclas, velocidades, desafinación y envolventes.
+3. **Decent Sampler (`.dspreset` + carpeta `Samples/` en `.zip`)**:
+   - Formato XML nativo de Decent Sampler con controles UI de Attack, Release, Tone y Volume, mapeo de samples, volumen, afinación y bucles.
+4. **Bitwig Studio Multisample (`.multisample`)**:
+   - Paquete multisample `.multisample` (archivo zip estándar con `multisample.xml` y carpeta `Samples/`) directamente importable en Bitwig Studio.
+5. **Native Instruments Kontakt (`.nki.zip` con XML estructurado)**:
+   - Parche de instrumento Kontakt estructurado con zonas y mapeo de grupos basado en las especificaciones técnicas disponibles.
+6. **Steinberg HALion (`.vstpreset.zip` con XML de programa)**:
+   - Estructura de programa HALion y capas de zona para el sampler de Steinberg con mapeo de articulación.
+7. **Cadena Lineal de Muestras Concatenadas (`.wav` Sample Chain / Key Map)** (`sampleChainWriter.ts`):
+   - Archivo de audio continuo lineal de 24-bit o 16-bit PCM con todos los tonos/muestras concatenados secuencialmente.
+   - Incrustación de marcas de división RIFF `cue ` y etiquetas `LIST adtl` con subbloques `labl` para samplers hardware (Elektron Octatrack, Roland SP-404 MKII, Korg electribe, OP-1/OP-Z).
+   - Generación de índice y mapa de marcas (`_slices.txt`).
 
 ---
 

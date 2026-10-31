@@ -32,6 +32,7 @@ import { ModelConfigModal } from './ui/ModelConfigModal';
 import { AiCoverGeneratorModal } from './ui/AiCoverGeneratorModal';
 import { AudioChopperModal } from './ui/AudioChopperModal';
 import { LoopEditorModal } from './ui/LoopEditorModal';
+import { RawSamplerExportModal } from './ui/RawSamplerExportModal';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { createUniqueModelSlug } from './core/modelSlug';
@@ -60,6 +61,7 @@ class App {
   private aiCoverModal!: AiCoverGeneratorModal;
   private audioChopperModal!: AudioChopperModal;
   private loopEditorModal!: LoopEditorModal;
+  private rawSamplerExportModal!: RawSamplerExportModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
@@ -219,6 +221,13 @@ class App {
       isAuditionPlaying: () => self.core.getRealtimeSpectrum().isPlaying,
     });
 
+    this.rawSamplerExportModal = new RawSamplerExportModal({
+      core: self.core,
+      onExportSuccess: (filename, totalBytes) => {
+        self.telemetryDrawer.addLog(`Exported raw sampler library: ${filename} (${totalBytes} bytes).`);
+      },
+    });
+
     this.settingsModal = new SettingsModal({
       onUpdateAiConfig: (config) => {
         if (!self.session) return;
@@ -311,6 +320,7 @@ class App {
       openAiCoverGenerator: () => self.aiCoverModal.open(),
       openAudioChopper: () => void self.openAudioChopper(),
       openLoopEditor: () => self.openLoopEditor(),
+      openRawSamplerExport: () => self.rawSamplerExportModal.open(),
     });
   }
 

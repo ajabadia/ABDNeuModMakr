@@ -26,6 +26,7 @@ export interface NavbarHandlers {
   onConfigureNeuronDbFolder?: () => void;
   onExportModel: () => void;
   onExportModelAs?: () => void;
+  onExportSampler?: () => void;
   onExportZoneAiff: () => void;
   onInstallPwa?: () => void;
   onOpenAiEngineModal?: () => void;
@@ -132,6 +133,7 @@ export class AppNavbar {
           { id: 107, label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
           { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
+          { id: 1056, label: 'Export Sampler / Multi-Format Bank...', action: 'exportSampler', shortcut: 'Ctrl+Shift+E' },
         ],
       },
       {
@@ -592,6 +594,7 @@ export class AppNavbar {
       case 'exportModel': this.handlers.onExportModel(); break;
       case 'exportModelAs': this.handlers.onExportModelAs?.(); break;
       case 'exportZoneAiff': this.handlers.onExportZoneAiff(); break;
+      case 'exportSampler': this.handlers.onExportSampler?.(); break;
       case 'undo': this.handlers.onUndo(); break;
       case 'redo': this.handlers.onRedo(); break;
       case 'addZone': this.handlers.onAddZone(); break;

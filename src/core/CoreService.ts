@@ -39,6 +39,11 @@ import type {
   ModelCoverArtwork,
   ZoneLoopEditorData,
 } from './types.ts';
+import type {
+  RawExportOptions,
+  RawSamplerPreflightReport,
+  RawExportResult,
+} from './export/rawSamplerTypes.ts';
 
 export type CoreEventListener = (event: CoreEvent) => void;
 
@@ -375,5 +380,17 @@ export interface CoreService {
     input: File | Blob | ArrayBuffer | Uint8Array,
     originalName?: string
   ): Promise<ModelCoverArtwork>;
+
+  // ── Phase 16: Universal Raw Multi-Format Sampler Exporter ─
+  /**
+   * Preflight inspection for raw multi-format sampler export (Fase 16).
+   */
+  analyzeRawSamplerPreflight(options: RawExportOptions): RawSamplerPreflightReport;
+
+  /**
+   * Exports original samples and zone/region mappings (unprocessed by Scape/Sphere)
+   * to standard industry sampler formats (SF2, SFZ, Decent Sampler, Bitwig, Kontakt, HALion, Sample Chain).
+   */
+  exportRawSampler(options: RawExportOptions): Promise<RawExportResult>;
 }
 

@@ -59,6 +59,17 @@ import {
 import { parseSessionJson } from './sessionSchema.ts';
 import { DEFAULT_AI_ASSISTANCE_CONFIG } from './types.ts';
 import type {
+  RawExportOptions,
+  RawSamplerPreflightReport,
+  RawExportResult,
+} from './export/rawSamplerTypes.ts';
+import {
+  analyzeRawSamplerPreflight,
+} from './export/rawSamplerPreflight.ts';
+import {
+  exportRawSamplerLibrary,
+} from './export/RawSamplerExporter.ts';
+import type {
   AcousticClassificationResult,
   AssetStoreDiagnostics,
   ExtendedRegion,
@@ -2830,6 +2841,21 @@ export class WebAudioPipeline implements CoreService {
         );
       }
     }
+  }
+
+  // ── Phase 16: Universal Raw Multi-Format Sampler Exporter ─
+  analyzeRawSamplerPreflight(options: RawExportOptions): RawSamplerPreflightReport {
+    if (!this.session) {
+      throw new Error('No active session initialized');
+    }
+    return analyzeRawSamplerPreflight(this.session, options, (name) => this.getSampleBuffer(name));
+  }
+
+  exportRawSampler(options: RawExportOptions): Promise<RawExportResult> {
+    if (!this.session) {
+      throw new Error('No active session initialized');
+    }
+    return exportRawSamplerLibrary(this.session, options, (name) => this.getSampleBuffer(name));
   }
 
   private terminateWorker(): void {

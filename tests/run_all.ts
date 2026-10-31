@@ -26,6 +26,7 @@ const TEST_FILES = [
   'zoneTemplates.test.ts',
   'audioSlicer.test.ts',
   'phase20_artwork.test.ts',
+  'phase16_raw_export.test.ts',
 ];
 
 interface TestResult {
