@@ -9,7 +9,6 @@
 import type {
   AcousticClassificationResult,
   AssetStoreDiagnostics,
-  AutoLoopAlgorithm,
   CommonPlaybackDefaults,
   CrossfadeCurve,
   ExtendedModelMetadata,
@@ -36,13 +35,7 @@ import {
   analyzeDrumCollisions,
 } from '../core/gmDrumMap';
 import { DEFAULT_MASTER_WAVE_CONFIG } from '../core/dsp/MasterWaveEnhancer';
-import {
-  computeLoopSeamAnalysis,
-  computeZoomedWaveformEnvelope,
-  findSmartAutoLoop,
-  snapFrameToRisingZeroCrossing,
-} from '../core/dsp/LoopEditorTools';
-import { clamp } from '../core/dsp/DspMath';
+import { computeZoomedWaveformEnvelope } from '../core/dsp/LoopEditorTools';
 import { Knob } from '@abdsynths/shared/components';
 
 function getThemeColor(tokenName: string, fallback: string): string {
@@ -69,7 +62,6 @@ import {
   formatRegionModeBadge,
   renderExtendedRegionTableRows as tplRenderExtendedRegionTableRows,
   renderGmDrumOptions as tplRenderGmDrumOptions,
-  renderRegionLoopAndExceptionsHtml as tplRenderRegionLoopAndExceptionsHtml,
   renderZoneTableRows as tplRenderZoneTableRows,
 } from './zoneInspector/zoneTemplates.ts';
 
@@ -167,22 +159,10 @@ export class ZoneInspector {
   private noteReleaseTimers = new Map<number, number>();
   private lastExtendedRegionCount: number = 0;
   /** Top-level scope in Extended Drawer: 'region' (Sample-Specific & Overrides) vs 'model' (Model Common & Global) */
-  private activeDrawerScope: 'region' | 'model' = 'region';
-  /** Sub-pill inside zone drawer: 'general' (Mapping & Sample) vs 'loop-acoustic' (Loop Editor) vs 'slicer' (AutoSlicer) */
-  private activeRegionSubTab: 'general' | 'loop-acoustic' | 'slicer' = 'general';
-  /** Sub-pill inside 'model' scope: 'common-playback' | 'articulation' | 'master' | 'capsule' | 'metadata' */
-  private activeModelSubTab: 'common-playback' | 'articulation' | 'master' | 'capsule' | 'metadata' = 'common-playback';
   private detuneKnob: Knob | null = null;
   private volumeKnob: Knob | null = null;
   private panKnob: Knob | null = null;
   private isDraggingKnob: boolean = false;
-  /** Fase 13: Embedded Interactive Waveform Loop Editor state inside Drawer */
-  private drawerLoopData: ZoneLoopEditorData | null = null;
-  private drawerLoopSnapZeroCrossing: boolean = true;
-  private drawerLoopSelectedAlgo: AutoLoopAlgorithm = 'pitch_periodic';
-  private drawerLoopZoomFactor: number = 1.0;
-  private drawerLoopViewCenterNorm: number = 0.5;
-  private draggingDrawerLoopHandle: 'start' | 'end' | null = null;
   /** Active row ID currently being auditioned in the table (classic zone ID or extended region ID) */
   private playingRowId: string | null = null;
   private playingRowStartedAt: number = 0;
@@ -227,21 +207,7 @@ export class ZoneInspector {
     this.selectedRegionId = regionId;
   }
 
-  public openDrawer(
-    scope?: 'region' | 'model',
-    regSubTab?: 'general' | 'loop-acoustic' | 'slicer',
-    modelSubTab?: 'common-playback' | 'articulation' | 'master' | 'capsule' | 'metadata'
-  ): void {
-    if (scope) {
-      this.activeDrawerScope = scope;
-    }
-    if (regSubTab) {
-      this.activeRegionSubTab = regSubTab;
-    }
-    if (modelSubTab) {
-      this.activeModelSubTab = modelSubTab;
-    }
-    this.drawerLoopData = null;
+  public openDrawer(): void {
     this.isDrawerOpen = true;
     this.drawerElement?.classList.remove('is-closed');
     this.renderDrawer();
@@ -251,14 +217,14 @@ export class ZoneInspector {
     if (regionId) {
       this.selectedRegionId = regionId;
     }
-    this.openDrawer('region', 'loop-acoustic');
+    this.handlers.onOpenLoopEditor?.();
   }
 
   public openModelCommonDrawer(): void {
     if (this.handlers.onOpenModelConfig) {
       this.handlers.onOpenModelConfig('general');
     } else {
-      this.openDrawer('model');
+      this.openDrawer();
     }
   }
 
@@ -266,7 +232,7 @@ export class ZoneInspector {
     if (this.handlers.onOpenModelConfig) {
       this.handlers.onOpenModelConfig('metadata');
     } else {
-      this.openDrawer('model', undefined, 'metadata');
+      this.openDrawer();
     }
   }
 
@@ -354,9 +320,6 @@ export class ZoneInspector {
       keyMappingMode !== undefined && keyMappingMode !== this.keyMappingMode;
     if (workingMode !== undefined) {
       this.workingMode = workingMode;
-      if (this.workingMode !== 'extended') {
-        this.activeDrawerScope = 'region';
-      }
     }
     if (keyMappingMode !== undefined) {
       this.keyMappingMode = keyMappingMode;
@@ -364,9 +327,6 @@ export class ZoneInspector {
       this.keyMappingMode = this.handlers.getKeyMappingMode();
     }
     const sameZone = this.currentZone && zone && this.currentZone.id === zone.id;
-    if (!sameZone) {
-      this.drawerLoopData = null;
-    }
     const sameCount = allZones ? allZones.length === this.allZones.length : true;
     const extRegions =
       this.workingMode === 'extended'
@@ -417,8 +377,7 @@ export class ZoneInspector {
       ((activeEl &&
         this.drawerElement &&
         this.drawerElement.contains(activeEl)) ||
-        this.isDraggingKnob ||
-        this.draggingDrawerLoopHandle !== null)
+        this.isDraggingKnob)
     ) {
       this.syncActiveDom();
       return;
@@ -634,7 +593,7 @@ export class ZoneInspector {
                   </button>
                 </div>
                 <div class="panel-actions">
-                  <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeDrawerScope === 'region' && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
                     ${ICONS.wave} Loop Editor
                   </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
@@ -732,7 +691,7 @@ export class ZoneInspector {
               </button>
             </div>
             <div class="panel-actions">
-              <button type="button" class="btn btn-xs btn-accent ${this.isDrawerOpen && this.activeRegionSubTab === 'loop-acoustic' ? 'is-active' : ''}" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
+              <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
                 ${ICONS.wave} Loop Editor
               </button>
               <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
@@ -809,11 +768,6 @@ export class ZoneInspector {
     const hasHighVel = Boolean(z.sampleHigh);
     const split = Math.max(2, Math.min(127, z.velSplit ?? 64));
     const isExtended = this.workingMode === 'extended';
-    if (!isExtended) {
-      this.activeDrawerScope = 'region';
-    }
-    const activeScope = isExtended ? this.activeDrawerScope : 'region';
-    const regSubTab = this.activeRegionSubTab;
     const loadedSamples = this.handlers.getLoadedSamples?.() ?? [];
 
     const extCtx = isExtended ? this.getExtendedContext() : null;
@@ -893,8 +847,6 @@ export class ZoneInspector {
     const effPan = isExtended && activeReg ? activeReg.pan : z.pan;
 
     const effFmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id, activeReg?.id) ?? null;
-    const rowKey = isExtended ? (activeReg?.id ?? z.id) : z.id;
-    const isCurrentPlaying = this.playingRowId !== null && this.playingRowId === rowKey;
 
     const formatByteSize = (bytes?: number): string => {
       if (!bytes || bytes <= 0) return '—';
@@ -961,11 +913,9 @@ export class ZoneInspector {
         : '';
 
     const drawerTitleText =
-      isExtended && activeScope === 'model'
-        ? `MODEL COMMON & GLOBAL EXTENDED SETTINGS (${extRegions.length} REGIONS)`
-        : isExtended && activeReg
-          ? `REGION #${activeRegIdx + 1}: ${regSampleLabel} (${midiNoteToString(activeReg.lowKey)}..${midiNoteToString(activeReg.highKey)} • VEL ${activeReg.lowVel}..${activeReg.highVel})`
-          : `ZONE #${this.zoneIndex + 1} METADATA (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})`;
+      isExtended && activeReg
+        ? `REGION #${activeRegIdx + 1}: ${regSampleLabel} (${midiNoteToString(activeReg.lowKey)}..${midiNoteToString(activeReg.highKey)} • VEL ${activeReg.lowVel}..${activeReg.highVel})`
+        : `ZONE #${this.zoneIndex + 1} METADATA (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})`;
 
     let overlapAlertHtml = '';
     if (isExtended && regOverlapInfo && regOverlapInfo.fullIntersections.length > 0) {
@@ -1009,47 +959,10 @@ export class ZoneInspector {
       </div>
 
       <div class="drawer-body zone-drawer-body">
-        <div class="drawer-tab-pane is-active" data-scope-pane="region">
-          <div class="drawer-subtab-bar" role="tablist" aria-label="Region &amp; Zone Sections">
-            <button
-              type="button"
-              role="tab"
-              aria-selected="${regSubTab === 'general'}"
-              class="drawer-subtab-pill ${regSubTab === 'general' ? 'is-active' : ''}"
-              data-reg-subtab="general"
-              title="Region Mapping (Key &amp; Velocity Range), Sample Assignment &amp; Detune / Volume / Pan Knobs"
-            >
-              ${ICONS.layers} <span>Mapping &amp; Sample</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected="${regSubTab === 'loop-acoustic'}"
-              class="drawer-subtab-pill ${regSubTab === 'loop-acoustic' ? 'is-active' : ''}"
-              data-reg-subtab="loop-acoustic"
-              title="Interactive Waveform Loop Editor, Zero-Crossing Seam Magnifier, Crossfade Widths &amp; Region Exceptions"
-            >
-              ${ICONS.wave} <span>${isExtended ? 'AutoLoop Editor' : 'Loop Editor &amp; Acoustic'}</span>
-              ${activeReg?.hasPlaybackOverride || activeReg?.hasArticulationOverride ? '<span class="cell-ovr-badge">OVR</span>' : ''}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected="${regSubTab === 'slicer'}"
-              class="drawer-subtab-pill ${regSubTab === 'slicer' ? 'is-active' : ''}"
-              data-reg-subtab="slicer"
-              title="Audio Chopper &amp; Transient Auto-Slicer for this Zone/Region"
-            >
-              ${ICONS.scissors} <span>AutoSlicer</span>
-            </button>
-          </div>
+        ${overlapAlertHtml}
 
-          <!-- REGION SUB-PANE A: Mapping, Sample & Knobs -->
-          <div class="drawer-subtab-pane ${regSubTab === 'general' ? 'is-active' : 'is-hidden'}" data-reg-subpane="general">
-            ${overlapAlertHtml}
-
-            <!-- 1. Key Range, Root & (in Extended Mode) Start/End Velocity -->
-            <div class="inspector-section section-keys">
+        <!-- 1. Key Range, Root & (in Extended Mode) Start/End Velocity -->
+        <div class="inspector-section section-keys">
               <div class="section-header-row">
                 <div class="section-title">${isExtended ? 'KEY &amp; VELOCITY BOUNDARIES (FREE 2D REGION)' : 'KEY ZONE BOUNDARIES (MIDI 0 C-2 .. 127 G8)'}</div>
                 ${
@@ -1246,182 +1159,25 @@ export class ZoneInspector {
               </div>
             </div>
 
-            <!-- 4. Sample Waveform Representation & Synchronized Table Audition -->
-            ${
-              (isExtended ? activeReg?.sampleName : (z.sampleLow || z.sampleHigh))
-                ? `
-            <div class="inspector-section section-drawer-waveform">
-              <div class="section-title">WAVEFORM &amp; REGION AUDITION</div>
-              <div class="drawer-waveform-card">
-                <div class="drawer-waveform-canvas-container">
-                  <canvas id="drawer-preview-waveform-canvas" class="drawer-preview-waveform-canvas"></canvas>
-                  <div class="drawer-waveform-overlay">
-                    <span class="drawer-waveform-tag-name">${escHtml(isExtended ? (activeReg?.sampleName ?? '') : (z.sampleLow ?? z.sampleHigh ?? ''))}</span>
-                    <span class="drawer-waveform-tag-dur">${(effFmtInfo?.durationSec ?? 0).toFixed(3)}s</span>
-                  </div>
-                </div>
-                <div class="drawer-waveform-footer">
-                  <button type="button" class="drawer-waveform-play-btn btn-row-play ${isCurrentPlaying ? 'is-playing' : ''}" data-play-region-id="${isExtended && activeReg ? activeReg.id : ''}" data-play-zone-id="${z.id}" data-play-row-id="${rowKey}" title="${isCurrentPlaying ? 'Stop playback' : 'Audition sample (Loop, DAHDSR Envelopes, Volume, Pan, Detune)'}">
-                    ${isCurrentPlaying ? ICONS.stop : ICONS.play}
-                  </button>
-                  <div class="drawer-waveform-status-info">
-                    <span class="status-indicator-dot ${isCurrentPlaying ? 'is-active' : ''}"></span>
-                    <span class="status-text">${isCurrentPlaying ? 'Auditioning... Click to Stop' : 'Ready for audition (Volume, Pan, Detune &amp; Loop applied)'}</span>
-                  </div>
-                </div>
+            <!-- 5. Interactive Audio Tools & Modals Bar -->
+            <div class="inspector-section section-tools">
+              <div class="section-title">INTERACTIVE AUDIO EDITORS</div>
+              <div class="drawer-tools-row">
+                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-loop" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier Modal">
+                  ${ICONS.wave} AutoLoop Editor...
+                </button>
+                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-slicer" title="Open Audio Chopper &amp; Multi-Layer Auto-Slicer Modal">
+                  ${ICONS.scissors} AutoSlicer...
+                </button>
               </div>
             </div>
-            `
-                : ''
-            }
-          </div>
-
-          <!-- REGION SUB-PANE B: Interactive Waveform Loop Editor, Exceptions & Sample Acoustic -->
-          <div class="drawer-subtab-pane ${regSubTab === 'loop-acoustic' ? 'is-active' : 'is-hidden'}" data-reg-subpane="loop-acoustic">
-            ${this.renderRegionLoopAndExceptionsHtml(z, activeReg)}
-          </div>
-
-          <!-- REGION SUB-PANE C: AutoSlicer -->
-          <div class="drawer-subtab-pane ${regSubTab === 'slicer' ? 'is-active' : 'is-hidden'}" data-reg-subpane="slicer">
-            ${this.renderDrawerSlicerTab(z, activeReg)}
-          </div>
-        </div>
-      </div>
-    `;
-
-    this.bindDrawerEvents();
-    if (regSubTab === 'loop-acoustic') {
-      requestAnimationFrame(() => this.drawDrawerLoopCanvas());
-    } else {
-      requestAnimationFrame(() => this.drawDrawerPreviewWaveform());
-    }
-  }
-
-  private ensureDrawerLoopData(zoneId?: string, regionId?: string): ZoneLoopEditorData | null {
-    if (!this.drawerLoopData) {
-      this.drawerLoopData =
-        this.handlers.getLoopEditorData?.(
-          zoneId ?? this.currentZone?.id,
-          regionId ?? this.selectedRegionId ?? undefined
-        ) ?? null;
-    }
-    return this.drawerLoopData;
-  }
-
-  private renderRegionLoopAndExceptionsHtml(
-    z: Zone,
-    activeReg: ExtendedRegion | null
-  ): string {
-    return tplRenderRegionLoopAndExceptionsHtml(z, activeReg, {
-      getCommonPlayback: () => this.handlers.getCommonPlayback?.(),
-      getArticulation: () => this.handlers.getArticulation?.(),
-      getZoneClassification: (zoneId: string) => this.handlers.getZoneClassification?.(zoneId),
-      getDetectedCategory: () => this.handlers.getDetectedCategory?.(),
-      getZoneSampleFormatInfo: (zoneId?: string, regionId?: string) =>
-        this.handlers.getZoneSampleFormatInfo?.(zoneId, regionId) ?? null,
-      isAuditionPlaying: () => Boolean(this.handlers.isAuditionPlaying?.()),
-      getLoopData: (zoneId?: string, regionId?: string) => this.ensureDrawerLoopData(zoneId, regionId),
-      snapZeroCrossing: this.drawerLoopSnapZeroCrossing,
-      selectedAlgo: this.drawerLoopSelectedAlgo,
-    });
-  }
-
-  private renderDrawerSlicerTab(z: Zone, activeReg: ExtendedRegion | null): string {
-    const isExtended = this.workingMode === 'extended';
-    const sampleName = isExtended && activeReg ? activeReg.sampleName : z.sampleLow;
-    const hasSample = Boolean(sampleName);
-
-    if (!hasSample) {
-      return `
-        <div class="drawer-slicer-empty-card">
-          <div class="empty-icon">${ICONS.scissors}</div>
-          <h4>NO AUDIO SAMPLE IN THIS ${isExtended ? 'REGION' : 'ZONE'}</h4>
-          <p class="text-muted">
-            Load an audio sample into this ${isExtended ? 'region' : 'zone'} first, or launch the standalone Audio Chopper to slice an external audio file and auto-populate zones.
-          </p>
-          <div class="slicer-empty-actions">
-            <button type="button" class="btn btn-primary btn-sm" id="btn-drawer-slicer-open-standalone">
-              ${ICONS.scissors} Open Standalone Chopper...
-            </button>
           </div>
         </div>
       `;
+
+      this.bindDrawerEvents();
+      requestAnimationFrame(() => this.drawDrawerPreviewWaveform());
     }
-
-    const fmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id, activeReg?.id);
-    const durStr = fmtInfo ? `${fmtInfo.durationSec.toFixed(2)}s` : '';
-    const srStr = fmtInfo ? `${fmtInfo.sampleRate} Hz` : '';
-
-    return `
-      <div class="drawer-slicer-container">
-        <!-- Sample Header Chip -->
-        <div class="drawer-slicer-sample-card">
-          <div class="slicer-sample-meta">
-            <span class="sample-tag-icon">${ICONS.wave}</span>
-            <div class="sample-title-box">
-              <strong class="sample-name">${escHtml(basenameOf(sampleName))}</strong>
-              <span class="sample-subtext">${durStr ? `${durStr} • ${srStr}` : ''}</span>
-            </div>
-          </div>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-drawer-slicer-audition">
-            ${ICONS.play} Audition Sample
-          </button>
-        </div>
-
-        <!-- Quick Slicer Actions -->
-        <div class="inspector-section">
-          <div class="section-title">AUDIO CHOPPER &amp; TRANSIENT SLICER</div>
-          <p class="text-muted" style="margin: 0 0 var(--space-2) 0; font-size: var(--text-xs);">
-            Detect percussive transients, silence intervals, and zero-crossing seams to cut this sample into discrete zones with GM Drum or Chromatic mapping.
-          </p>
-
-          <div class="slicer-action-box">
-            <button type="button" class="btn btn-accent btn-sm" id="btn-drawer-slicer-open-full">
-              ${ICONS.scissors} Open Interactive Chopper &amp; Slicer Window...
-            </button>
-          </div>
-        </div>
-
-        <!-- Slicer Engine Capabilities -->
-        <div class="inspector-section">
-          <div class="section-title">INTELLIGENT SLICING CAPABILITIES</div>
-          <div class="slicer-features-list">
-            <div class="slicer-feature-item">
-              <span class="feature-icon">${ICONS.check}</span>
-              <div class="feature-text">
-                <strong>Spectral Flux &amp; High-Frequency Content (HFC):</strong>
-                <span>Sub-millisecond transient onset capture for acoustic drums, percussive plucks, and attacks.</span>
-              </div>
-            </div>
-            <div class="slicer-feature-item">
-              <span class="feature-icon">${ICONS.check}</span>
-              <div class="feature-text">
-                <strong>Zero-Crossing Seam Snap (&plusmn;128 smp):</strong>
-                <span>Automatic seam magnetization on exact zero phase with matching sign to eliminate clicks.</span>
-              </div>
-            </div>
-            <div class="slicer-feature-item">
-              <span class="feature-icon">${ICONS.check}</span>
-              <div class="feature-text">
-                <strong>Multi-Target Auto-Mapping:</strong>
-                <span>Maps slices directly to universal General MIDI Drum Map notes or contiguous chromatic keyboard zones.</span>
-              </div>
-            </div>
-            <div class="slicer-feature-item">
-              <span class="feature-icon">${ICONS.check}</span>
-              <div class="feature-text">
-                <strong>Standard MIDI File (.mid Type 0) Drag-and-Drop:</strong>
-                <span>Export generated trigger sequence directly to your DAW timeline.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-
-
 
   private bindTableEvents(): void {
     if (!this.currentZone) return;
@@ -1452,9 +1208,6 @@ export class ZoneInspector {
         if (isExtended && regionId) {
           const regionChanged = regionId !== this.selectedRegionId;
           this.selectedRegionId = regionId;
-          if (regionChanged) {
-            this.drawerLoopData = null;
-          }
           if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
             this.handlers.onSelectZone(zoneId);
           } else if (regionChanged) {
@@ -1468,7 +1221,7 @@ export class ZoneInspector {
           }
           if (editBtn) {
             e.stopPropagation();
-            this.openDrawer('region', 'general');
+            this.openDrawer();
           }
           return;
         }
@@ -1479,7 +1232,7 @@ export class ZoneInspector {
         }
         if (editBtn) {
           e.stopPropagation();
-          this.openDrawer('region', 'general');
+          this.openDrawer();
         }
       });
 
@@ -1491,13 +1244,13 @@ export class ZoneInspector {
           if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
             this.handlers.onSelectZone(zoneId);
           }
-          this.openDrawer('region');
+          this.openDrawer();
           return;
         }
         if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
           this.handlers.onSelectZone(zoneId);
         }
-        this.openDrawer('region');
+        this.openDrawer();
       });
     });
 
@@ -1510,15 +1263,7 @@ export class ZoneInspector {
     });
 
     this.container.querySelector('#btn-open-loop-drawer')?.addEventListener('click', () => {
-      if (
-        this.isDrawerOpen &&
-        this.activeDrawerScope === 'region' &&
-        this.activeRegionSubTab === 'loop-acoustic'
-      ) {
-        this.closeDrawer();
-      } else {
-        this.openLoopEditorDrawer();
-      }
+      this.openLoopEditorDrawer();
     });
 
     this.container.querySelector('#btn-open-autoslicer')?.addEventListener('click', () => {
@@ -1526,27 +1271,13 @@ export class ZoneInspector {
     });
 
     this.container.querySelector('#btn-open-zone-drawer')?.addEventListener('click', () => {
-      if (
-        this.isDrawerOpen &&
-        this.activeDrawerScope === 'region' &&
-        this.activeRegionSubTab === 'general'
-      ) {
-        this.closeDrawer();
-      } else {
-        this.openDrawer('region', 'general');
-      }
+      this.toggleDrawer();
     });
 
     this.container
       .querySelector('#btn-open-model-common-drawer')
       ?.addEventListener('click', () => {
-        if (this.handlers.onOpenModelConfig) {
-          this.handlers.onOpenModelConfig('general');
-        } else if (this.isDrawerOpen && this.activeDrawerScope === 'model') {
-          this.closeDrawer();
-        } else {
-          this.openDrawer('model');
-        }
+        this.openModelCommonDrawer();
       });
 
     this.container.querySelector('#btn-toggle-spectral')?.addEventListener('click', () => {
@@ -1803,107 +1534,25 @@ export class ZoneInspector {
       this.handlers.onOpenModelConfig?.('general');
     });
 
-    // Top-level Scope pills ("Region #X" vs "Model Common & Global")
-    const scopeBtns = this.drawerElement.querySelectorAll<HTMLButtonElement>(
-      '.drawer-tab-pill[data-drawer-scope]'
-    );
-    scopeBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const target = btn.getAttribute('data-drawer-scope') === 'model' ? 'model' : 'region';
-        if (target === this.activeDrawerScope) return;
-        this.activeDrawerScope = target;
-        this.renderDrawer();
-      });
+    this.drawerElement.querySelector('#btn-drawer-invoke-loop')?.addEventListener('click', () => {
+      this.handlers.onOpenLoopEditor?.();
     });
 
-    // Sub-tab pills inside "Region #X" ("Mapping & Sample" vs "Loop Editor" vs "AutoSlicer")
-    const regSubBtns = this.drawerElement.querySelectorAll<HTMLButtonElement>(
-      '.drawer-subtab-pill[data-reg-subtab]'
-    );
-    regSubBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const raw = btn.getAttribute('data-reg-subtab');
-        const target: 'general' | 'loop-acoustic' | 'slicer' =
-          raw === 'loop-acoustic' || raw === 'slicer'
-            ? raw
-            : 'general';
-        if (target === this.activeRegionSubTab) return;
-        this.activeRegionSubTab = target;
-        this.renderDrawer();
-      });
-    });
-
-    // AutoSlicer sub-tab buttons
-    this.drawerElement.querySelector('#btn-drawer-slicer-open-standalone')?.addEventListener('click', () => {
+    this.drawerElement.querySelector('#btn-drawer-invoke-slicer')?.addEventListener('click', () => {
       this.handlers.onOpenAutoSlicer?.();
     });
 
-    this.drawerElement.querySelector('#btn-drawer-slicer-open-full')?.addEventListener('click', () => {
-      this.handlers.onOpenAutoSlicer?.();
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-slicer-audition')?.addEventListener('click', () => {
-      this.handlers.onAuditionRow?.({
-        zoneId: z.id,
-        regionId: isExtended && activeReg ? activeReg.id : undefined,
-      });
-    });
-
-    // Sub-tab pills inside "Model Common & Global" ("Common Playback", "Instrument Articulation", "Master 24/96 Standard", "Time Capsule")
-    const modelSubBtns = this.drawerElement.querySelectorAll<HTMLButtonElement>(
-      '.drawer-subtab-pill[data-model-subtab]'
-    );
-    modelSubBtns.forEach((btn) => {
+    this.drawerElement.querySelectorAll('#btn-sample-card-slicer').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const raw = btn.getAttribute('data-model-subtab');
-        const target: 'common-playback' | 'articulation' | 'master' | 'capsule' | 'metadata' =
-          raw === 'articulation' || raw === 'master' || raw === 'capsule' || raw === 'metadata'
-            ? raw
-            : 'common-playback';
-        if (target === this.activeModelSubTab) return;
-        this.activeModelSubTab = target;
-        this.renderDrawer();
+        this.handlers.onOpenAutoSlicer?.();
       });
     });
 
-    // Quick-jump links from Region inheritance cards to Model Common tabs
-    this.drawerElement
-      .querySelector('#btn-goto-model-common-pb')
-      ?.addEventListener('click', () => {
-        this.activeDrawerScope = 'model';
-        this.activeModelSubTab = 'common-playback';
-        this.renderDrawer();
-      });
-
-    this.drawerElement
-      .querySelector('#btn-goto-model-common-art')
-      ?.addEventListener('click', () => {
-        this.activeDrawerScope = 'model';
-        this.activeModelSubTab = 'articulation';
-        this.renderDrawer();
-      });
-
-    this.drawerElement
-      .querySelector('#btn-sample-card-slicer')
-      ?.addEventListener('click', () => {
-        this.activeDrawerScope = 'region';
-        this.activeRegionSubTab = 'slicer';
-        this.renderDrawer();
-      });
-
-    this.drawerElement
-      .querySelector('#btn-sample-card-loop')
-      ?.addEventListener('click', () => {
-        this.activeDrawerScope = 'region';
-        this.activeRegionSubTab = 'loop-acoustic';
-        this.renderDrawer();
-      });
-
-    this.drawerElement
-      .querySelector('#btn-open-loop-editor')
-      ?.addEventListener('click', () => {
+    this.drawerElement.querySelectorAll('#btn-sample-card-loop').forEach((btn) => {
+      btn.addEventListener('click', () => {
         this.handlers.onOpenLoopEditor?.();
       });
+    });
 
     // Fase 7 Auto-Detect Pitch & Parameter Set buttons
     const triggerAutoDetect = () => {
@@ -2590,8 +2239,6 @@ export class ZoneInspector {
 
       this.bindDrawerMetadataEvents();
     }
-
-    this.bindDrawerLoopEditorEvents(z, activeReg);
   }
 
   private bindDrawerMetadataEvents(): void {
@@ -2699,304 +2346,6 @@ export class ZoneInspector {
     });
   }
 
-  private getDrawerLoopViewWindow(totalFrames: number): { viewStart: number; viewEnd: number } {
-    const zoom = clamp(this.drawerLoopZoomFactor, 1, 32);
-    const span = Math.max(64, Math.round(totalFrames / zoom));
-    const half = Math.floor(span * 0.5);
-    const center = Math.round(clamp(this.drawerLoopViewCenterNorm, 0, 1) * totalFrames);
-    const viewStart = clamp(center - half, 0, Math.max(0, totalFrames - span));
-    const viewEnd = clamp(viewStart + span, viewStart + 1, totalFrames);
-    return { viewStart, viewEnd };
-  }
-
-  private syncDrawerLoopInputs(d: ZoneLoopEditorData): void {
-    if (!this.drawerElement) return;
-    const sr = Math.max(1, d.sampleRate);
-    const inpStart = this.drawerElement.querySelector('#inp-ext-loop-start') as HTMLInputElement | null;
-    const inpEnd = this.drawerElement.querySelector('#inp-ext-loop-end') as HTMLInputElement | null;
-    const lblStart = this.drawerElement.querySelector('#lbl-drawer-loop-start-sec');
-    const lblEnd = this.drawerElement.querySelector('#lbl-drawer-loop-end-sec');
-    if (inpStart && document.activeElement !== inpStart) inpStart.value = String(d.loopStart);
-    if (inpEnd && document.activeElement !== inpEnd) inpEnd.value = String(d.loopEnd);
-    if (lblStart) lblStart.textContent = `${(d.loopStart / sr).toFixed(3)}s`;
-    if (lblEnd) lblEnd.textContent = `${(d.loopEnd / sr).toFixed(3)}s`;
-  }
-
-  private bindDrawerLoopEditorEvents(z: Zone, activeReg: ExtendedRegion | null): void {
-    if (!this.drawerElement) return;
-    const extRegionId = activeReg?.id ?? '';
-
-    const persistLoopToRegion = (changes: Partial<ExtendedRegion>) => {
-      if (extRegionId && this.handlers.onUpdateExtendedRegion) {
-        this.handlers.onUpdateExtendedRegion(extRegionId, changes);
-      }
-    };
-
-    this.drawerElement.querySelector('#btn-drawer-loop-snap')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.drawerLoopSnapZeroCrossing = !this.drawerLoopSnapZeroCrossing;
-      const btn = this.drawerElement?.querySelector('#btn-drawer-loop-snap');
-      if (btn) {
-        btn.classList.toggle('is-on', this.drawerLoopSnapZeroCrossing);
-        btn.textContent = `0-X Snap: ${this.drawerLoopSnapZeroCrossing ? 'ON' : 'OFF'}`;
-      }
-      this.drawDrawerLoopCanvas();
-    });
-
-    this.drawerElement.querySelector('#sel-drawer-loop-algo')?.addEventListener('change', (e) => {
-      this.drawerLoopSelectedAlgo = (e.target as HTMLSelectElement).value as AutoLoopAlgorithm;
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-loop-autofind')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      const candStart = d.loopStart > 0 ? d.loopStart : Math.floor(d.totalFrames * 0.2);
-      const candEnd = d.loopEnd > candStart + 64 ? d.loopEnd : Math.floor(d.totalFrames * 0.85);
-      const knownF0 = d.rootKey ? 440 * Math.pow(2, (d.rootKey - 69) / 12) : undefined;
-      const opt = findSmartAutoLoop(d.monoPcm, d.sampleRate, {
-        algorithm: this.drawerLoopSelectedAlgo,
-        candidateStartFrame: candStart,
-        candidateEndFrame: candEnd,
-        knownF0Hz: knownF0,
-        targetCrossfadeMs: d.loopCrossfadeMs > 0 ? d.loopCrossfadeMs : 20,
-      });
-      d.loopStart = opt.loopStart;
-      d.loopEnd = opt.loopEnd;
-      d.loopCrossfadeMs = opt.loopCrossfadeMs;
-      if (d.loopMode === 'no_loop') {
-        d.loopMode = 'loop_continuous';
-      }
-      this.syncDrawerLoopInputs(d);
-      this.drawDrawerLoopCanvas();
-      this.handlers.onUpdateLiveLoopPoints?.(d.loopStart, d.loopEnd, d.sampleRate, true);
-      persistLoopToRegion({
-        hasPlaybackOverride: true,
-        loopMode: d.loopMode,
-        loopStart: d.loopStart,
-        loopEnd: d.loopEnd,
-        loopCrossfadeMs: d.loopCrossfadeMs,
-      });
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-loop-zoom-in')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (d) {
-        this.drawerLoopViewCenterNorm = ((d.loopStart + d.loopEnd) * 0.5) / Math.max(1, d.totalFrames);
-      }
-      this.drawerLoopZoomFactor = Math.min(32, this.drawerLoopZoomFactor * 2);
-      this.drawDrawerLoopCanvas();
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-loop-zoom-out')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.drawerLoopZoomFactor = Math.max(1.0, this.drawerLoopZoomFactor / 2);
-      this.drawDrawerLoopCanvas();
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-loop-zoom-reset')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.drawerLoopZoomFactor = 1.0;
-      this.drawerLoopViewCenterNorm = 0.5;
-      this.drawDrawerLoopCanvas();
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-loop-play')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const playBtn = this.drawerElement?.querySelector('#btn-drawer-loop-play');
-      const isPlaying = Boolean(this.handlers.isAuditionPlaying?.());
-      if (isPlaying) {
-        this.handlers.onStopAudition?.();
-        if (playBtn) playBtn.innerHTML = `${ICONS.play} Loop Play`;
-        return;
-      }
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      if (d.loopEnd <= d.loopStart) {
-        d.loopStart = Math.floor(d.totalFrames * 0.2);
-        d.loopEnd = Math.max(d.loopStart + 1, Math.floor(d.totalFrames * 0.85));
-      }
-      if (d.loopMode === 'no_loop') {
-        d.loopMode = 'loop_continuous';
-      }
-      this.syncDrawerLoopInputs(d);
-      persistLoopToRegion({
-        hasPlaybackOverride: true,
-        loopMode: d.loopMode,
-        loopStart: d.loopStart,
-        loopEnd: d.loopEnd,
-      });
-      this.handlers.onAuditionLoop?.({
-        zoneId: z.id,
-        regionId: activeReg?.id,
-        loopStartFrame: d.loopStart,
-        loopEndFrame: d.loopEnd,
-        loopEnabled: true,
-      });
-      if (playBtn) playBtn.innerHTML = `■ Stop Loop`;
-      this.drawDrawerLoopCanvas();
-    });
-
-    // Also update canvas & live audio when #inp-ext-loop-start, #inp-ext-loop-end, or #inp-ext-loop-xfade are edited
-    const inpLoopStart = this.drawerElement.querySelector('#inp-ext-loop-start') as HTMLInputElement | null;
-    const inpLoopEnd = this.drawerElement.querySelector('#inp-ext-loop-end') as HTMLInputElement | null;
-    const inpLoopXfade = this.drawerElement.querySelector('#inp-ext-loop-xfade') as HTMLInputElement | null;
-
-    inpLoopStart?.addEventListener('input', () => {
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      d.loopStart = clamp(parseInt(inpLoopStart.value, 10) || 0, 0, Math.max(0, d.loopEnd - 1));
-      this.syncDrawerLoopInputs(d);
-      this.handlers.onUpdateLiveLoopPoints?.(d.loopStart, d.loopEnd, d.sampleRate, true);
-      this.drawDrawerLoopCanvas();
-    });
-
-    inpLoopEnd?.addEventListener('input', () => {
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      d.loopEnd = clamp(parseInt(inpLoopEnd.value, 10) || d.totalFrames, d.loopStart + 1, d.totalFrames);
-      this.syncDrawerLoopInputs(d);
-      this.handlers.onUpdateLiveLoopPoints?.(d.loopStart, d.loopEnd, d.sampleRate, true);
-      this.drawDrawerLoopCanvas();
-    });
-
-    inpLoopXfade?.addEventListener('input', () => {
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      d.loopCrossfadeMs = clamp(parseInt(inpLoopXfade.value, 10) || 0, 0, 5000);
-      this.drawDrawerLoopCanvas();
-    });
-
-    // Interactive pointer drag, double-click & wheel zoom on #drawer-loop-canvas
-    const canvasEl = this.drawerElement.querySelector('#drawer-loop-canvas') as HTMLCanvasElement | null;
-    if (!canvasEl) return;
-
-    const getMetrics = (clientX: number) => {
-      const rect = canvasEl.getBoundingClientRect();
-      const waveW = rect.width * 0.68;
-      const relX = clientX - rect.left;
-      const normX = clamp(relX / Math.max(1, waveW), 0, 1);
-      return { rect, waveW, relX, normX };
-    };
-
-    const applyDraggedFrame = (d: ZoneLoopEditorData, rawFrame: number) => {
-      const minGap = Math.max(16, Math.round(d.sampleRate * 0.005));
-      if (this.draggingDrawerLoopHandle === 'start') {
-        let f = clamp(rawFrame, 0, Math.max(0, d.loopEnd - minGap));
-        if (this.drawerLoopSnapZeroCrossing) {
-          f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), 0, Math.max(0, d.loopEnd - minGap));
-        }
-        d.loopStart = f;
-      } else if (this.draggingDrawerLoopHandle === 'end') {
-        let f = clamp(rawFrame, d.loopStart + minGap, d.totalFrames);
-        if (this.drawerLoopSnapZeroCrossing) {
-          f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), d.loopStart + minGap, d.totalFrames);
-        }
-        d.loopEnd = f;
-      }
-      this.syncDrawerLoopInputs(d);
-      this.handlers.onUpdateLiveLoopPoints?.(
-        d.loopStart,
-        d.loopEnd,
-        d.sampleRate,
-        d.loopMode !== 'no_loop' && d.loopMode !== 'one_shot'
-      );
-      this.drawDrawerLoopCanvas();
-    };
-
-    canvasEl.addEventListener('pointerdown', (e) => {
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      const { waveW, relX } = getMetrics(e.clientX);
-      if (relX > waveW) return;
-
-      const { viewStart, viewEnd } = this.getDrawerLoopViewWindow(d.totalFrames);
-      const viewSpan = Math.max(1, viewEnd - viewStart);
-      const startX = ((d.loopStart - viewStart) / viewSpan) * waveW;
-      const endX = ((d.loopEnd - viewStart) / viewSpan) * waveW;
-      const distStart = Math.abs(relX - startX);
-      const distEnd = Math.abs(relX - endX);
-
-      if (distStart <= 20 && distStart <= distEnd) {
-        this.draggingDrawerLoopHandle = 'start';
-        canvasEl.setPointerCapture(e.pointerId);
-      } else if (distEnd <= 20) {
-        this.draggingDrawerLoopHandle = 'end';
-        canvasEl.setPointerCapture(e.pointerId);
-      }
-    });
-
-    canvasEl.addEventListener('dblclick', (e) => {
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      const { waveW, relX, normX } = getMetrics(e.clientX);
-      if (relX > waveW) return;
-      const { viewStart, viewEnd } = this.getDrawerLoopViewWindow(d.totalFrames);
-      const viewSpan = Math.max(1, viewEnd - viewStart);
-      const startX = ((d.loopStart - viewStart) / viewSpan) * waveW;
-      const endX = ((d.loopEnd - viewStart) / viewSpan) * waveW;
-      this.draggingDrawerLoopHandle = Math.abs(relX - startX) <= Math.abs(relX - endX) ? 'start' : 'end';
-      const targetFrame = Math.round(viewStart + normX * viewSpan);
-      applyDraggedFrame(d, targetFrame);
-      this.draggingDrawerLoopHandle = null;
-      persistLoopToRegion({ loopStart: d.loopStart, loopEnd: d.loopEnd });
-    });
-
-    canvasEl.addEventListener('pointermove', (e) => {
-      if (!this.draggingDrawerLoopHandle) return;
-      const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-      if (!d) return;
-      const { normX } = getMetrics(e.clientX);
-      const { viewStart, viewEnd } = this.getDrawerLoopViewWindow(d.totalFrames);
-      const targetFrame = Math.round(viewStart + normX * Math.max(1, viewEnd - viewStart));
-      applyDraggedFrame(d, targetFrame);
-    });
-
-    const finishDrag = (e: PointerEvent) => {
-      if (!this.draggingDrawerLoopHandle) return;
-      this.draggingDrawerLoopHandle = null;
-      try {
-        canvasEl.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-      const d = this.drawerLoopData;
-      if (d) {
-        persistLoopToRegion({
-          loopStart: d.loopStart,
-          loopEnd: d.loopEnd,
-        });
-      }
-    };
-
-    canvasEl.addEventListener('pointerup', finishDrag);
-    canvasEl.addEventListener('pointercancel', finishDrag);
-
-    canvasEl.addEventListener(
-      'wheel',
-      (e) => {
-        e.preventDefault();
-        const d = this.ensureDrawerLoopData(z.id, activeReg?.id);
-        if (!d) return;
-        const { normX } = getMetrics(e.clientX);
-        const { viewStart, viewEnd } = this.getDrawerLoopViewWindow(d.totalFrames);
-        const focusFrame = viewStart + normX * (viewEnd - viewStart);
-        this.drawerLoopViewCenterNorm = clamp(focusFrame / Math.max(1, d.totalFrames), 0, 1);
-        const factor = e.deltaY < 0 ? 1.35 : 1 / 1.35;
-        this.drawerLoopZoomFactor = clamp(this.drawerLoopZoomFactor * factor, 1, 32);
-        this.drawDrawerLoopCanvas();
-      },
-      { passive: false }
-    );
-  }
-
   private drawDrawerPreviewWaveform(): void {
     if (!this.drawerElement) return;
     const canvas = this.drawerElement.querySelector('#drawer-preview-waveform-canvas') as HTMLCanvasElement | null;
@@ -3006,7 +2355,9 @@ export class ZoneInspector {
 
     const isExtended = this.workingMode === 'extended';
     const activeReg = isExtended ? this.getExtendedContext().activeRegion : null;
-    const d = this.ensureDrawerLoopData(this.currentZone?.id, activeReg?.id);
+    const d =
+      this.handlers.getLoopEditorData?.(this.currentZone?.id, activeReg?.id) ??
+      null;
 
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(300, Math.floor(rect.width || 560));
@@ -3098,225 +2449,4 @@ export class ZoneInspector {
     ctx.restore();
   }
 
-  private drawDrawerLoopCanvas(): void {
-    if (!this.drawerElement) return;
-    const canvas = this.drawerElement.querySelector('#drawer-loop-canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const d = this.ensureDrawerLoopData();
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(360, Math.floor(rect.width || 680));
-    const height = Math.max(150, Math.floor(rect.height || 190));
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-    }
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    const bgColor = getThemeColor('--color-panel-surface', '#151f2e');
-    const origColor = getThemeColor('--color-cable-midi-in', '#06b6d4');
-    const accentColor = getThemeColor('--color-accent', '#00c3ff');
-    const warningColor = getThemeColor('--color-warning', '#ffaa00');
-    const mutedColor = getThemeColor('--color-text-muted', '#7e9bb5');
-    const borderColor = getThemeColor('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
-    const dimGridColor = getThemeColor('--color-panel-border', 'rgba(0, 195, 255, 0.2)');
-
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, width, height);
-
-    if (!d) {
-      ctx.fillStyle = mutedColor;
-      ctx.font = '11px monospace';
-      ctx.fillText('Load a sample into this region to edit loop points', 16, height * 0.5);
-      ctx.restore();
-      return;
-    }
-
-    const waveW = Math.floor(width * 0.68);
-    const seamX0 = waveW + 1;
-    const seamW = Math.max(80, width - seamX0);
-
-    const { viewStart, viewEnd } = this.getDrawerLoopViewWindow(d.totalFrames);
-    const viewSpan = Math.max(1, viewEnd - viewStart);
-    const env = computeZoomedWaveformEnvelope(
-      d.monoPcm,
-      viewStart,
-      viewEnd,
-      Math.min(420, Math.max(120, Math.floor(waveW / 2)))
-    );
-
-    const centerY = height * 0.54;
-    const ampSpan = height * 0.36;
-
-    // 1. Center zero-axis
-    ctx.strokeStyle = dimGridColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(waveW, centerY);
-    ctx.stroke();
-
-    // 2. Shaded Loop Region [loopStart .. loopEnd]
-    const loopStartX = clamp(((d.loopStart - viewStart) / viewSpan) * waveW, 0, waveW);
-    const loopEndX = clamp(((d.loopEnd - viewStart) / viewSpan) * waveW, 0, waveW);
-    if (loopEndX > loopStartX) {
-      ctx.fillStyle = accentColor;
-      ctx.globalAlpha = 0.14;
-      ctx.fillRect(loopStartX, 18, loopEndX - loopStartX, height - 22);
-      ctx.globalAlpha = 1.0;
-
-      const xfadeFrames = Math.round((d.loopCrossfadeMs / 1000) * d.sampleRate);
-      if (xfadeFrames > 0) {
-        const xfadeStartX = clamp(
-          ((d.loopEnd - xfadeFrames - viewStart) / viewSpan) * waveW,
-          loopStartX,
-          loopEndX
-        );
-        if (loopEndX > xfadeStartX + 1) {
-          ctx.fillStyle = warningColor;
-          ctx.globalAlpha = 0.18;
-          ctx.fillRect(xfadeStartX, 18, loopEndX - xfadeStartX, height - 22);
-          ctx.globalAlpha = 1.0;
-
-          ctx.strokeStyle = warningColor;
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.moveTo(xfadeStartX, height - 6);
-          ctx.lineTo(loopEndX, 20);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-
-      if (d.loopMode === 'ping_pong') {
-        ctx.fillStyle = accentColor;
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('⇄ PING-PONG', (loopStartX + loopEndX) * 0.5, 30);
-      } else if (d.loopMode === 'loop_backward') {
-        ctx.fillStyle = warningColor;
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('← REVERSE', (loopStartX + loopEndX) * 0.5, 30);
-      }
-    }
-
-    // 3. Waveform envelope
-    const cols = env.max.length;
-    const colW = waveW / Math.max(1, cols);
-    for (let c = 0; c < cols; c++) {
-      const x = c * colW;
-      const inLoop = x >= loopStartX && x <= loopEndX;
-      ctx.fillStyle = inLoop ? accentColor : origColor;
-      ctx.globalAlpha = inLoop ? 0.92 : 0.58;
-      const minV = clamp(env.min[c] ?? 0, -1, 1);
-      const maxV = clamp(env.max[c] ?? 0, -1, 1);
-      const yTop = centerY - maxV * ampSpan;
-      const yBot = centerY - minV * ampSpan;
-      ctx.fillRect(x, yTop, Math.max(1, colW - 0.4), Math.max(1.5, yBot - yTop));
-    }
-    ctx.globalAlpha = 1.0;
-
-    // 4. Draggable L-START and L-END markers
-    const drawMarker = (x: number, label: string, color: string, alignRight: boolean) => {
-      if (x < 0 || x > waveW) return;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, 18);
-      ctx.lineTo(x, height - 4);
-      ctx.stroke();
-
-      const flagW = 54;
-      const flagH = 15;
-      const fx = alignRight ? Math.max(0, x - flagW) : Math.min(waveW - flagW, x);
-      ctx.fillStyle = color;
-      ctx.fillRect(fx, 19, flagW, flagH);
-      ctx.fillStyle = bgColor;
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText(label, fx + 4, 30);
-    };
-
-    drawMarker(loopStartX, 'L-START', accentColor, false);
-    drawMarker(loopEndX, 'L-END', warningColor, true);
-
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = origColor;
-    ctx.fillText(
-      `WAVEFORM (${basenameOf(d.sampleName)} • ${d.totalFrames} frames • Zoom ${this.drawerLoopZoomFactor.toFixed(1)}x)`,
-      8,
-      13
-    );
-
-    // 5. Divider
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(waveW, 0);
-    ctx.lineTo(waveW, height);
-    ctx.stroke();
-
-    // 6. Right Pane: Zero-Crossing Seam Magnifier
-    const seam = computeLoopSeamAnalysis(d.monoPcm, d.loopStart, d.loopEnd, 64);
-    const midSeamX = seamX0 + seamW * 0.5;
-
-    ctx.strokeStyle = dimGridColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(seamX0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.moveTo(midSeamX, 18);
-    ctx.lineTo(midSeamX, height - 18);
-    ctx.stroke();
-
-    const halfW = seamW * 0.45;
-    const wFrames = Math.max(2, seam.windowFrames);
-
-    // Pre-End incoming curve (left of seam)
-    ctx.strokeStyle = warningColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX - halfW + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.preEndSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Post-Start outgoing curve (right of seam)
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.postStartSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    const spliceY = centerY - clamp(seam.postStartSamples[0] ?? 0, -1, 1) * ampSpan * 1.15;
-    ctx.fillStyle = seam.seamQualityPercent >= 80 ? accentColor : warningColor;
-    ctx.beginPath();
-    ctx.arc(midSeamX, spliceY, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = seam.seamQualityPercent >= 80 ? accentColor : warningColor;
-    ctx.fillText(`SEAM MAGNIFIER (${seam.seamQualityPercent}%)`, seamX0 + 6, 13);
-    ctx.font = '9px monospace';
-    ctx.fillStyle = mutedColor;
-    ctx.fillText(
-      `ΔStep: ${seam.stepDiscontinuity.toFixed(3)} • NCC: ${(seam.nccScore * 100).toFixed(0)}%`,
-      seamX0 + 6,
-      height - 6
-    );
-
-    ctx.restore();
-  }
 }

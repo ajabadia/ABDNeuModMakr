@@ -176,13 +176,11 @@ export class AudioChopperModal {
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
             <h2 id="chopper-title">Audio Chopper &amp; Multi-Layer Auto-Slicer</h2>
-            ${
-              hasAudio
-                ? `<span class="val-pill">${escHtml(this.sourceFilename)}</span>`
-                : `<span class="val-pill" style="opacity: 0.6;">No Sample Loaded</span>`
-            }
+            <span class="panel-badge ${hasAudio ? 'badge-ai-on' : 'badge-muted'}">
+              ${hasAudio ? escHtml(this.sourceFilename) : 'No Sample Loaded'}
+            </span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-chopper-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-chopper-close">${ICONS.close || '✕'}</button>
         </header>
 
         <div class="nmm-modal-body nmm-chopper-body">
@@ -191,14 +189,16 @@ export class AudioChopperModal {
           ${
             !hasAudio
               ? `
-            <!-- Empty State / Dropzone -->
-            <div class="chopper-empty-dropzone" id="chopper-empty-dropzone">
-              <div class="chopper-empty-icon">${ICONS.upload}</div>
-              <h3 class="chopper-empty-title">NO AUDIO FILE LOADED IN AUTO-SLICER</h3>
-              <p class="chopper-empty-subtitle">
+            <!-- Unified Empty State / Dropzone -->
+            <div class="audio-empty-dropzone" id="chopper-empty-dropzone">
+              <div class="dropzone-icon-ring">
+                <span class="dropzone-icon">${ICONS.scissors}</span>
+              </div>
+              <h3 class="dropzone-title">NO AUDIO FILE LOADED IN AUTO-SLICER</h3>
+              <p class="dropzone-subtitle">
                 Drag &amp; drop a drum loop, rhythmic phrase, or audio sample here (.wav, .aif, .flac) to detect transients and auto-map to zones.
               </p>
-              <div class="chopper-empty-actions">
+              <div class="dropzone-actions">
                 <button type="button" class="btn btn-primary" id="btn-chopper-browse-file">
                   ${ICONS.folder} Browse Audio File...
                 </button>
@@ -206,9 +206,9 @@ export class AudioChopperModal {
                   ${ICONS.drum} Load Test Beat (Demo)
                 </button>
               </div>
-              <span class="chopper-empty-hint">
+              <div class="dropzone-hint">
                 AutoSlicer detects transients via Spectral Flux, snaps boundaries to zero-crossings, and maps slices to GM Drum notes or chromatic keyboard zones.
-              </span>
+              </div>
             </div>
           `
               : `

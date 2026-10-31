@@ -10,13 +10,7 @@
 
 import { SpectrumPlotter } from '@abdsynths/shared/components';
 import { clamp, linearToDb } from '../core/dsp/DspMath';
-import {
-  computeLoopSeamAnalysis,
-  computeZoomedWaveformEnvelope,
-  findSmartAutoLoop,
-  snapFrameToRisingZeroCrossing,
-} from '../core/dsp/LoopEditorTools';
-import type { AutoLoopAlgorithm, LoopMode, ZoneLoopEditorData, ZoneSpectralInspection } from '../core/types';
+import type { ZoneSpectralInspection } from '../core/types';
 import { ICONS } from './icons';
 import { escAttr, escHtml } from './escape';
 
@@ -24,8 +18,7 @@ export type SpectralDisplayMode =
   | 'spectrogram'
   | 'partials'
   | 'waveform-ab'
-  | 'log-curve'
-  | 'loop-editor';
+  | 'log-curve';
 export type AuditionTargetMode = 'original' | 'resynthesis' | 'enhanced';
 
 export interface SpectralViewHandlers {
@@ -38,28 +31,7 @@ export interface SpectralViewHandlers {
     isPlaying: boolean;
     mode: AuditionTargetMode | null;
   };
-  /** Fase 13: Retrieve decoded PCM and loop markers for the active zone/region */
-  getLoopEditorData?: () => ZoneLoopEditorData | null;
-  /** Fase 13: Commit updated loop parameters back to the active ExtendedRegion / Zone */
-  onUpdateLoopParams?: (changes: {
-    loopMode?: LoopMode;
-    loopStart?: number;
-    loopEnd?: number;
-    loopCrossfadeMs?: number;
-  }) => void;
-  /** Fase 13: Start real-time looped auditioning */
-  onAuditionLoop?: (opts: {
-    loopStartFrame: number;
-    loopEndFrame: number;
-    loopEnabled: boolean;
-  }) => void;
-  /** Fase 13: Live-update loop points on active AudioBufferSourceNode while dragging */
-  onUpdateLiveLoopPoints?: (
-    loopStartFrame: number,
-    loopEndFrame: number,
-    sampleRate: number,
-    loopEnabled: boolean
-  ) => void;
+  onOpenLoopEditorModal?: () => void;
 }
 
 /**
@@ -95,13 +67,6 @@ export class SpectralView {
   private keyboardMode: AuditionTargetMode = 'original';
 
   // Fase 13: Interactive Waveform Loop Editor state
-  private loopData: ZoneLoopEditorData | null = null;
-  private loopSnapZeroCrossing = true;
-  private loopSelectedAlgo: AutoLoopAlgorithm = 'pitch_periodic';
-  private loopZoomFactor = 1.0;
-  private loopViewCenterNorm = 0.5;
-  private draggingLoopHandle: 'start' | 'end' | 'xfade' | null = null;
-
   private canvas: HTMLCanvasElement | null = null;
   private sharedPlotterWrap: HTMLElement | null = null;
   private sharedPlotter: SpectrumPlotter | null = null;
@@ -118,22 +83,16 @@ export class SpectralView {
 
   public setInspection(inspection: ZoneSpectralInspection | null): void {
     this.inspection = inspection;
-    if (this.displayMode === 'loop-editor') {
-      this.loopData = this.handlers.getLoopEditorData?.() ?? null;
-    }
     this.renderShell();
     this.drawCanvas();
     this.ensureRealtimeLoop();
   }
 
   /**
-   * Fase 13 — Opens the Interactive Waveform Loop Editor tab directly.
+   * Delegates to open the dedicated Waveform AutoLoop Editor modal.
    */
   public openLoopEditor(): void {
-    this.displayMode = 'loop-editor';
-    this.loopData = this.handlers.getLoopEditorData?.() ?? null;
-    this.renderShell();
-    this.drawCanvas();
+    this.handlers.onOpenLoopEditorModal?.();
   }
 
   public refreshTheme(): void {
@@ -218,9 +177,6 @@ export class SpectralView {
             <button type="button" class="btn-spec-tab ${this.displayMode === 'log-curve' ? 'is-active' : ''}" data-mode="log-curve" title="ABDShared SpectrumPlotter (20 Hz..20 kHz Target vs Model vs Residual)">
               LOG CURVE
             </button>
-            <button type="button" class="btn-spec-tab ${this.displayMode === 'loop-editor' ? 'is-active' : ''}" data-mode="loop-editor" title="Fase 13: Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier">
-              LOOP EDITOR
-            </button>
           </div>
         </div>
 
@@ -228,10 +184,6 @@ export class SpectralView {
           <canvas id="spectral-canvas" style="display: ${this.displayMode === 'log-curve' ? 'none' : 'block'}"></canvas>
           <div id="shared-spectrum-plotter" class="shared-plotter-mount" style="display: ${this.displayMode === 'log-curve' ? 'block' : 'none'}"></div>
           <div class="spectral-overlay-bar">
-            ${
-              this.displayMode === 'loop-editor'
-                ? this.renderLoopEditorToolbarHtml()
-                : `
             <div class="layer-legend">
               <span class="legend-item"><i class="layer-swatch layer-swatch-1"></i>L1 Harmonic</span>
               <span class="legend-item"><i class="layer-swatch layer-swatch-2"></i>L2 Sub/Crest</span>
@@ -247,8 +199,6 @@ export class SpectralView {
             <div class="spectral-hover-readout" id="spectral-hover-readout">
               Hover graph to inspect frequency, partial &amp; layer
             </div>
-            `
-            }
           </div>
         </div>
 
@@ -311,18 +261,11 @@ export class SpectralView {
         const mode = btn.getAttribute('data-mode') as SpectralDisplayMode | null;
         if (mode && mode !== this.displayMode) {
           this.displayMode = mode;
-          if (mode === 'loop-editor') {
-            this.loopData = this.handlers.getLoopEditorData?.() ?? null;
-          }
           this.renderShell();
           this.drawCanvas();
         }
       });
     });
-
-    if (this.displayMode === 'loop-editor') {
-      this.bindLoopEditorEvents();
-    }
 
     // Toggle partials overlay on 2D spectrogram
     this.container
@@ -584,8 +527,6 @@ export class SpectralView {
       this.drawSpectrogramMode(ctx, width, height);
     } else if (this.displayMode === 'partials') {
       this.drawPartialsMode(ctx, width, height, rt);
-    } else if (this.displayMode === 'loop-editor') {
-      this.drawLoopEditorMode(ctx, width, height);
     } else {
       this.drawWaveformAbMode(ctx, width, height, rt);
     }
@@ -972,614 +913,6 @@ export class SpectralView {
       `C: ENHANCED DSP RESYNTHESIS (${enhancedPeaks.rmsDb} dB RMS)${activeMode === 'enhanced' ? ' [ACTIVE]' : ''}`,
       8,
       laneH * 2 + 13
-    );
-  }
-
-  // ── Fase 13: Interactive Waveform Loop Editor & Zero-Crossing Seam Magnifier ──
-
-  private ensureLoopData(): ZoneLoopEditorData | null {
-    if (!this.loopData) {
-      this.loopData = this.handlers.getLoopEditorData?.() ?? null;
-    }
-    return this.loopData;
-  }
-
-  private getLoopViewFrameWindow(totalFrames: number): { viewStart: number; viewEnd: number } {
-    const zoom = clamp(this.loopZoomFactor, 1, 32);
-    const span = Math.max(64, Math.round(totalFrames / zoom));
-    const half = Math.floor(span * 0.5);
-    const center = Math.round(clamp(this.loopViewCenterNorm, 0, 1) * totalFrames);
-    const viewStart = clamp(center - half, 0, Math.max(0, totalFrames - span));
-    const viewEnd = clamp(viewStart + span, viewStart + 1, totalFrames);
-    return { viewStart, viewEnd };
-  }
-
-  private renderLoopEditorToolbarHtml(): string {
-    const d = this.ensureLoopData();
-    if (!d) {
-      return `<div class="spectral-hover-readout">No sample loaded for loop editing</div>`;
-    }
-    const sr = Math.max(1, d.sampleRate);
-    const startSec = (d.loopStart / sr).toFixed(3);
-    const endSec = (d.loopEnd / sr).toFixed(3);
-    const loopLenSec = (Math.max(0, d.loopEnd - d.loopStart) / sr).toFixed(3);
-
-    return `
-      <div class="loop-editor-toolbar">
-        <label class="loop-ed-field" title="Loop playback mode">
-          <span>MODE</span>
-          <select id="sel-loop-ed-mode" class="loop-ed-select">
-            <option value="no_loop" ${d.loopMode === 'no_loop' ? 'selected' : ''}>No Loop</option>
-            <option value="loop_continuous" ${d.loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous (Forward)</option>
-            <option value="ping_pong" ${d.loopMode === 'ping_pong' ? 'selected' : ''}>Ping-Pong (⇄ Alternating)</option>
-            <option value="loop_sustain" ${d.loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain</option>
-            <option value="loop_backward" ${d.loopMode === 'loop_backward' ? 'selected' : ''}>Reverse Loop</option>
-            <option value="one_shot" ${d.loopMode === 'one_shot' ? 'selected' : ''}>One Shot</option>
-          </select>
-        </label>
-        <label class="loop-ed-field" title="Loop Start in sample frames (${startSec}s)">
-          <span>START</span>
-          <input type="number" id="inp-loop-ed-start" class="loop-ed-input" min="0" max="${Math.max(0, d.totalFrames - 2)}" value="${d.loopStart}" />
-          <span class="loop-ed-unit" id="lbl-loop-ed-start-sec">${startSec}s</span>
-        </label>
-        <label class="loop-ed-field" title="Loop End in sample frames (${endSec}s • Len: ${loopLenSec}s)">
-          <span>END</span>
-          <input type="number" id="inp-loop-ed-end" class="loop-ed-input" min="1" max="${d.totalFrames}" value="${d.loopEnd}" />
-          <span class="loop-ed-unit" id="lbl-loop-ed-end-sec">${endSec}s</span>
-        </label>
-        <label class="loop-ed-field" title="Equal-power loop crossfade duration (ms)">
-          <span>X-FADE</span>
-          <input type="number" id="inp-loop-ed-xfade" class="loop-ed-input loop-ed-input-sm" min="0" max="2000" value="${d.loopCrossfadeMs}" />
-          <span class="loop-ed-unit">ms</span>
-        </label>
-        <button type="button" class="btn-overlay-toggle ${this.loopSnapZeroCrossing ? 'is-on' : ''}" id="btn-loop-ed-snap" title="Snap dragged Loop Start / Loop End handles to nearest rising zero-crossing">
-          0-X Snap: ${this.loopSnapZeroCrossing ? 'ON' : 'OFF'}
-        </button>
-        <label class="loop-ed-field" title="Auto-Loop algorithm">
-          <select id="sel-loop-ed-algo" class="loop-ed-select">
-            <option value="pitch_periodic" ${this.loopSelectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock</option>
-            <option value="ncc_zc" ${this.loopSelectedAlgo === 'ncc_zc' ? 'selected' : ''}>NCC Zero-Crossing</option>
-            <option value="min_seam_energy" ${this.loopSelectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Min Seam Discontinuity</option>
-            <option value="equal_power_xfade" ${this.loopSelectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power X-Fade</option>
-          </select>
-        </label>
-        <button type="button" class="btn-overlay-toggle is-action-accent" id="btn-loop-ed-autofind" title="Automatically find optimal click-free loop points using selected algorithm">
-          ${ICONS.cpu} Run Auto-Loop
-        </button>
-        <button type="button" class="btn-overlay-toggle" id="btn-loop-ed-zoom-in" title="Zoom In Waveform">
-          Zoom +
-        </button>
-        <button type="button" class="btn-overlay-toggle" id="btn-loop-ed-zoom-reset" title="Reset Waveform Zoom (1x)">
-          1x
-        </button>
-        <button type="button" class="btn-overlay-toggle is-on" id="btn-loop-ed-play" title="Audition sample in continuous hardware loop (updates live while dragging markers)">
-          ${this.handlers.getRealtimeSpectrum?.()?.isPlaying ? `■ Stop Loop` : `${ICONS.play} Loop Play`}
-        </button>
-      </div>
-      <div class="spectral-hover-readout" id="spectral-hover-readout">
-        Drag L-START / L-END handles (or double-click waveform) • Right pane: Seam Magnifier
-      </div>
-    `;
-  }
-
-  private syncLoopToolbarDom(): void {
-    const d = this.loopData;
-    if (!d) return;
-    const sr = Math.max(1, d.sampleRate);
-    const inpStart = this.container.querySelector('#inp-loop-ed-start') as HTMLInputElement | null;
-    const inpEnd = this.container.querySelector('#inp-loop-ed-end') as HTMLInputElement | null;
-    const inpXfade = this.container.querySelector('#inp-loop-ed-xfade') as HTMLInputElement | null;
-    const lblStart = this.container.querySelector('#lbl-loop-ed-start-sec');
-    const lblEnd = this.container.querySelector('#lbl-loop-ed-end-sec');
-    if (inpStart && document.activeElement !== inpStart) inpStart.value = String(d.loopStart);
-    if (inpEnd && document.activeElement !== inpEnd) inpEnd.value = String(d.loopEnd);
-    if (inpXfade && document.activeElement !== inpXfade) inpXfade.value = String(d.loopCrossfadeMs);
-    if (lblStart) lblStart.textContent = `${(d.loopStart / sr).toFixed(3)}s`;
-    if (lblEnd) lblEnd.textContent = `${(d.loopEnd / sr).toFixed(3)}s`;
-  }
-
-  private bindLoopEditorEvents(): void {
-    const toolbarEl = this.container.querySelector('.loop-editor-toolbar') as HTMLElement | null;
-    toolbarEl?.addEventListener('pointerdown', (e) => e.stopPropagation());
-    toolbarEl?.addEventListener('mousedown', (e) => e.stopPropagation());
-    toolbarEl?.addEventListener('click', (e) => e.stopPropagation());
-
-    const selMode = this.container.querySelector('#sel-loop-ed-mode') as HTMLSelectElement | null;
-    const inpStart = this.container.querySelector('#inp-loop-ed-start') as HTMLInputElement | null;
-    const inpEnd = this.container.querySelector('#inp-loop-ed-end') as HTMLInputElement | null;
-    const inpXfade = this.container.querySelector('#inp-loop-ed-xfade') as HTMLInputElement | null;
-
-    selMode?.addEventListener('change', () => {
-      const d = this.ensureLoopData();
-      if (!d) return;
-      d.loopMode = selMode.value as LoopMode;
-      this.handlers.onUpdateLiveLoopPoints?.(
-        d.loopStart,
-        d.loopEnd,
-        d.sampleRate,
-        d.loopMode !== 'no_loop' && d.loopMode !== 'one_shot'
-      );
-      this.handlers.onUpdateLoopParams?.({
-        loopMode: d.loopMode,
-        loopStart: d.loopStart,
-        loopEnd: d.loopEnd,
-      });
-      this.drawCanvas();
-    });
-
-    const commitStartEndFromInputs = () => {
-      const d = this.ensureLoopData();
-      if (!d) return;
-      let nextStart = clamp(parseInt(inpStart?.value || '0', 10) || 0, 0, Math.max(0, d.totalFrames - 2));
-      let nextEnd = clamp(parseInt(inpEnd?.value || String(d.totalFrames), 10) || d.totalFrames, nextStart + 1, d.totalFrames);
-      if (this.loopSnapZeroCrossing) {
-        nextStart = snapFrameToRisingZeroCrossing(d.monoPcm, nextStart, 256);
-        nextEnd = Math.max(nextStart + 1, snapFrameToRisingZeroCrossing(d.monoPcm, nextEnd, 256));
-      }
-      d.loopStart = nextStart;
-      d.loopEnd = nextEnd;
-      this.syncLoopToolbarDom();
-      this.handlers.onUpdateLiveLoopPoints?.(d.loopStart, d.loopEnd, d.sampleRate, d.loopMode !== 'no_loop');
-      this.handlers.onUpdateLoopParams?.({ loopStart: d.loopStart, loopEnd: d.loopEnd });
-      this.drawCanvas();
-    };
-
-    inpStart?.addEventListener('change', commitStartEndFromInputs);
-    inpEnd?.addEventListener('change', commitStartEndFromInputs);
-
-    inpXfade?.addEventListener('change', () => {
-      const d = this.ensureLoopData();
-      if (!d) return;
-      d.loopCrossfadeMs = clamp(parseInt(inpXfade.value || '0', 10) || 0, 0, 2000);
-      this.syncLoopToolbarDom();
-      this.handlers.onUpdateLoopParams?.({ loopCrossfadeMs: d.loopCrossfadeMs });
-      this.drawCanvas();
-    });
-
-    this.container.querySelector('#btn-loop-ed-snap')?.addEventListener('click', () => {
-      this.loopSnapZeroCrossing = !this.loopSnapZeroCrossing;
-      this.renderShell();
-      this.drawCanvas();
-    });
-
-    this.container.querySelector('#sel-loop-ed-algo')?.addEventListener('change', (e) => {
-      this.loopSelectedAlgo = (e.target as HTMLSelectElement).value as AutoLoopAlgorithm;
-    });
-
-    this.container.querySelector('#btn-loop-ed-autofind')?.addEventListener('click', () => {
-      const d = this.ensureLoopData();
-      if (!d) return;
-      const candStart = d.loopStart > 0 ? d.loopStart : Math.floor(d.totalFrames * 0.2);
-      const candEnd = d.loopEnd > candStart + 64 ? d.loopEnd : Math.floor(d.totalFrames * 0.85);
-      const knownF0 = d.rootKey ? 440 * Math.pow(2, (d.rootKey - 69) / 12) : undefined;
-      const res = findSmartAutoLoop(d.monoPcm, d.sampleRate, {
-        algorithm: this.loopSelectedAlgo,
-        candidateStartFrame: candStart,
-        candidateEndFrame: candEnd,
-        knownF0Hz: knownF0,
-        targetCrossfadeMs: d.loopCrossfadeMs > 0 ? d.loopCrossfadeMs : 20,
-      });
-      d.loopStart = res.loopStart;
-      d.loopEnd = res.loopEnd;
-      d.loopCrossfadeMs = res.loopCrossfadeMs;
-      if (d.loopMode === 'no_loop') {
-        d.loopMode = 'loop_continuous';
-      }
-      this.renderShell();
-      this.drawCanvas();
-      this.handlers.onUpdateLiveLoopPoints?.(d.loopStart, d.loopEnd, d.sampleRate, true);
-      this.handlers.onUpdateLoopParams?.({
-        loopMode: d.loopMode,
-        loopStart: d.loopStart,
-        loopEnd: d.loopEnd,
-        loopCrossfadeMs: d.loopCrossfadeMs,
-      });
-    });
-
-    this.container.querySelector('#btn-loop-ed-zoom-in')?.addEventListener('click', () => {
-      const d = this.ensureLoopData();
-      if (d) {
-        this.loopViewCenterNorm = ((d.loopStart + d.loopEnd) * 0.5) / Math.max(1, d.totalFrames);
-      }
-      this.loopZoomFactor = this.loopZoomFactor >= 16 ? 1 : this.loopZoomFactor * 2;
-      this.drawCanvas();
-    });
-
-    this.container.querySelector('#btn-loop-ed-zoom-reset')?.addEventListener('click', () => {
-      this.loopZoomFactor = 1.0;
-      this.loopViewCenterNorm = 0.5;
-      this.drawCanvas();
-    });
-
-    this.container.querySelector('#btn-loop-ed-play')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const isPlaying = Boolean(this.handlers.getRealtimeSpectrum?.()?.isPlaying);
-      if (isPlaying) {
-        this.handlers.onStopAudition?.();
-        this.renderShell();
-        this.drawCanvas();
-        return;
-      }
-      const d = this.ensureLoopData();
-      if (!d) return;
-      if (d.loopEnd <= d.loopStart) {
-        d.loopStart = Math.floor(d.totalFrames * 0.2);
-        d.loopEnd = Math.max(d.loopStart + 1, Math.floor(d.totalFrames * 0.85));
-      }
-      if (d.loopMode === 'no_loop') {
-        d.loopMode = 'loop_continuous';
-      }
-      this.handlers.onUpdateLoopParams?.({
-        loopMode: d.loopMode,
-        loopStart: d.loopStart,
-        loopEnd: d.loopEnd,
-      });
-      this.handlers.onAuditionLoop?.({
-        loopStartFrame: d.loopStart,
-        loopEndFrame: d.loopEnd,
-        loopEnabled: true,
-      });
-      this.renderShell();
-      this.drawCanvas();
-      this.ensureRealtimeLoop();
-    });
-
-    // Pointer drag & wheel zoom on canvas
-    if (this.canvas) {
-      const canvasEl = this.canvas;
-      const getWavePaneMetrics = (clientX: number, clientY: number) => {
-        const rect = canvasEl.getBoundingClientRect();
-        const waveW = rect.width * 0.7;
-        const relX = clientX - rect.left;
-        const relY = clientY - rect.top;
-        const normX = clamp(relX / Math.max(1, waveW), 0, 1);
-        return { rect, waveW, relX, relY, normX };
-      };
-
-      canvasEl.addEventListener('pointerdown', (e) => {
-        if (this.displayMode !== 'loop-editor') return;
-        const d = this.ensureLoopData();
-        if (!d) return;
-        const { rect, waveW, relX, relY } = getWavePaneMetrics(e.clientX, e.clientY);
-        if (relX > waveW) return; // Clicked inside Seam Magnifier pane
-        if (relY > rect.height - 32) return; // Ignore clicks in bottom overlay bar zone
-
-        const { viewStart, viewEnd } = this.getLoopViewFrameWindow(d.totalFrames);
-        const viewSpan = Math.max(1, viewEnd - viewStart);
-        const startX = ((d.loopStart - viewStart) / viewSpan) * waveW;
-        const endX = ((d.loopEnd - viewStart) / viewSpan) * waveW;
-
-        const distStart = Math.abs(relX - startX);
-        const distEnd = Math.abs(relX - endX);
-        if (distStart <= 18 && distStart <= distEnd) {
-          this.draggingLoopHandle = 'start';
-          canvasEl.setPointerCapture(e.pointerId);
-        } else if (distEnd <= 18) {
-          this.draggingLoopHandle = 'end';
-          canvasEl.setPointerCapture(e.pointerId);
-        }
-      });
-
-      canvasEl.addEventListener('dblclick', (e) => {
-        if (this.displayMode !== 'loop-editor') return;
-        const d = this.ensureLoopData();
-        if (!d) return;
-        const { rect, waveW, relX, relY, normX } = getWavePaneMetrics(e.clientX, e.clientY);
-        if (relX > waveW || relY > rect.height - 32) return;
-        const { viewStart, viewEnd } = this.getLoopViewFrameWindow(d.totalFrames);
-        const viewSpan = Math.max(1, viewEnd - viewStart);
-        const startX = ((d.loopStart - viewStart) / viewSpan) * waveW;
-        const endX = ((d.loopEnd - viewStart) / viewSpan) * waveW;
-        const distStart = Math.abs(relX - startX);
-        const distEnd = Math.abs(relX - endX);
-        this.draggingLoopHandle = distStart <= distEnd ? 'start' : 'end';
-        const targetFrame = Math.round(viewStart + normX * viewSpan);
-        this.applyDraggedLoopFrame(d, targetFrame);
-        this.draggingLoopHandle = null;
-        this.handlers.onUpdateLoopParams?.({
-          loopStart: d.loopStart,
-          loopEnd: d.loopEnd,
-        });
-      });
-
-      canvasEl.addEventListener('pointermove', (e) => {
-        if (this.displayMode !== 'loop-editor' || !this.draggingLoopHandle) return;
-        const d = this.ensureLoopData();
-        if (!d) return;
-        const { normX } = getWavePaneMetrics(e.clientX, e.clientY);
-        const { viewStart, viewEnd } = this.getLoopViewFrameWindow(d.totalFrames);
-        const targetFrame = Math.round(viewStart + normX * Math.max(1, viewEnd - viewStart));
-        this.applyDraggedLoopFrame(d, targetFrame);
-      });
-
-      const finishDrag = (e: PointerEvent) => {
-        if (!this.draggingLoopHandle) return;
-        this.draggingLoopHandle = null;
-        try {
-          canvasEl.releasePointerCapture(e.pointerId);
-        } catch {
-          // ignore
-        }
-        const d = this.loopData;
-        if (d) {
-          this.handlers.onUpdateLoopParams?.({
-            loopStart: d.loopStart,
-            loopEnd: d.loopEnd,
-          });
-        }
-      };
-
-      canvasEl.addEventListener('pointerup', finishDrag);
-      canvasEl.addEventListener('pointercancel', finishDrag);
-
-      canvasEl.addEventListener(
-        'wheel',
-        (e) => {
-          if (this.displayMode !== 'loop-editor') return;
-          e.preventDefault();
-          const d = this.ensureLoopData();
-          if (!d) return;
-          const { normX } = getWavePaneMetrics(e.clientX, e.clientY);
-          const { viewStart, viewEnd } = this.getLoopViewFrameWindow(d.totalFrames);
-          const focusFrame = viewStart + normX * (viewEnd - viewStart);
-          this.loopViewCenterNorm = clamp(focusFrame / Math.max(1, d.totalFrames), 0, 1);
-          const factor = e.deltaY < 0 ? 1.35 : 1 / 1.35;
-          this.loopZoomFactor = clamp(this.loopZoomFactor * factor, 1, 32);
-          this.drawCanvas();
-        },
-        { passive: false }
-      );
-    }
-  }
-
-  private applyDraggedLoopFrame(d: ZoneLoopEditorData, rawFrame: number): void {
-    const minGap = Math.max(16, Math.round(d.sampleRate * 0.005));
-    if (this.draggingLoopHandle === 'start') {
-      let f = clamp(rawFrame, 0, Math.max(0, d.loopEnd - minGap));
-      if (this.loopSnapZeroCrossing) {
-        f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), 0, Math.max(0, d.loopEnd - minGap));
-      }
-      d.loopStart = f;
-    } else if (this.draggingLoopHandle === 'end') {
-      let f = clamp(rawFrame, d.loopStart + minGap, d.totalFrames);
-      if (this.loopSnapZeroCrossing) {
-        f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), d.loopStart + minGap, d.totalFrames);
-      }
-      d.loopEnd = f;
-    }
-    this.syncLoopToolbarDom();
-    this.handlers.onUpdateLiveLoopPoints?.(
-      d.loopStart,
-      d.loopEnd,
-      d.sampleRate,
-      d.loopMode !== 'no_loop'
-    );
-    this.drawCanvas();
-  }
-
-  private drawLoopEditorMode(
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number
-  ): void {
-    const d = this.ensureLoopData();
-    if (!d) return;
-
-    const waveW = Math.floor(width * 0.7);
-    const seamX0 = waveW + 1;
-    const seamW = Math.max(80, width - seamX0);
-
-    const origColor = resolveThemeToken('--color-cable-midi-in', '#06b6d4');
-    const accentColor = resolveThemeToken('--color-accent', '#00c3ff');
-    const warningColor = resolveThemeToken('--color-warning', '#ffaa00');
-    const mutedColor = resolveThemeToken('--color-text-muted', '#7e9bb5');
-    const borderColor = resolveThemeToken('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
-    const dimGridColor = resolveThemeToken('--color-panel-border', 'rgba(0, 195, 255, 0.2)');
-
-    const { viewStart, viewEnd } = this.getLoopViewFrameWindow(d.totalFrames);
-    const viewSpan = Math.max(1, viewEnd - viewStart);
-    const env = computeZoomedWaveformEnvelope(d.monoPcm, viewStart, viewEnd, Math.min(480, Math.max(120, Math.floor(waveW / 2))));
-
-    const centerY = height * 0.54;
-    const ampSpan = height * 0.36;
-
-    // 1. Center zero-axis in Waveform Pane
-    ctx.strokeStyle = dimGridColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(waveW, centerY);
-    ctx.stroke();
-
-    // 2. Shaded active loop region [loopStart .. loopEnd]
-    const loopStartX = clamp(((d.loopStart - viewStart) / viewSpan) * waveW, 0, waveW);
-    const loopEndX = clamp(((d.loopEnd - viewStart) / viewSpan) * waveW, 0, waveW);
-    if (loopEndX > loopStartX) {
-      ctx.fillStyle = accentColor;
-      ctx.globalAlpha = 0.13;
-      ctx.fillRect(loopStartX, 20, loopEndX - loopStartX, height - 24);
-      ctx.globalAlpha = 1.0;
-
-      // Crossfade ramp before loopEnd
-      const xfadeFrames = Math.round((d.loopCrossfadeMs / 1000) * d.sampleRate);
-      if (xfadeFrames > 0) {
-        const xfadeStartX = clamp(((d.loopEnd - xfadeFrames - viewStart) / viewSpan) * waveW, loopStartX, loopEndX);
-        if (loopEndX > xfadeStartX + 1) {
-          ctx.fillStyle = warningColor;
-          ctx.globalAlpha = 0.18;
-          ctx.fillRect(xfadeStartX, 20, loopEndX - xfadeStartX, height - 24);
-          ctx.globalAlpha = 1.0;
-
-          ctx.strokeStyle = warningColor;
-          ctx.setLineDash([3, 3]);
-          ctx.beginPath();
-          ctx.moveTo(xfadeStartX, height - 6);
-          ctx.lineTo(loopEndX, 22);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-
-      if (d.loopMode === 'ping_pong') {
-        ctx.fillStyle = accentColor;
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('⇄ PING-PONG', (loopStartX + loopEndX) * 0.5, 32);
-      } else if (d.loopMode === 'loop_backward') {
-        ctx.fillStyle = warningColor;
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('← REVERSE', (loopStartX + loopEndX) * 0.5, 32);
-      }
-    }
-
-    // 3. Draw Waveform Envelope in Left Pane
-    const cols = env.max.length;
-    const colW = waveW / Math.max(1, cols);
-    for (let c = 0; c < cols; c++) {
-      const x = c * colW;
-      const inLoop = x >= loopStartX && x <= loopEndX;
-      ctx.fillStyle = inLoop ? accentColor : origColor;
-      ctx.globalAlpha = inLoop ? 0.92 : 0.58;
-      const minV = clamp(env.min[c] ?? 0, -1, 1);
-      const maxV = clamp(env.max[c] ?? 0, -1, 1);
-      const yTop = centerY - maxV * ampSpan;
-      const yBot = centerY - minV * ampSpan;
-      ctx.fillRect(x, yTop, Math.max(1, colW - 0.4), Math.max(1.5, yBot - yTop));
-    }
-    ctx.globalAlpha = 1.0;
-
-    // 4. Draw draggable L-START and L-END markers & flag handles
-    const drawMarker = (x: number, label: string, color: string, alignRight: boolean) => {
-      if (x < 0 || x > waveW) return;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, 18);
-      ctx.lineTo(x, height - 4);
-      ctx.stroke();
-
-      const flagW = 54;
-      const flagH = 15;
-      const fx = alignRight ? Math.max(0, x - flagW) : Math.min(waveW - flagW, x);
-      ctx.fillStyle = color;
-      ctx.fillRect(fx, 20, flagW, flagH);
-      ctx.fillStyle = resolveThemeToken('--color-panel-surface', '#151f2e');
-      ctx.font = 'bold 9px monospace';
-      ctx.fillText(label, fx + 4, 31);
-    };
-
-    drawMarker(loopStartX, 'L-START', accentColor, false);
-    drawMarker(loopEndX, 'L-END', warningColor, true);
-
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = origColor;
-    const zoomStr = `${this.loopZoomFactor.toFixed(1)}x`;
-    ctx.fillText(
-      `WAVEFORM LOOP EDITOR (${d.sampleName} • ${d.totalFrames} frames • Zoom ${zoomStr})`,
-      8,
-      13
-    );
-
-    // 5. Vertical divider between Waveform Pane and Seam Magnifier Pane
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(waveW, 0);
-    ctx.lineTo(waveW, height);
-    ctx.stroke();
-
-    // 6. Right Pane: LOOP SEAM / ZERO-CROSSING MAGNIFIER
-    const seam = computeLoopSeamAnalysis(d.monoPcm, d.loopStart, d.loopEnd, 96);
-    const midSeamX = seamX0 + seamW * 0.5;
-
-    // Zero-crossing crosshair in Magnifier
-    ctx.strokeStyle = dimGridColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(seamX0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.moveTo(midSeamX, 20);
-    ctx.lineTo(midSeamX, height - 18);
-    ctx.stroke();
-
-    const halfW = seamW * 0.46;
-    const wFrames = Math.max(1, seam.windowFrames);
-
-    // Ghost continuation curves (dashed)
-    ctx.save();
-    ctx.setLineDash([2, 3]);
-    ctx.strokeStyle = mutedColor;
-    ctx.globalAlpha = 0.45;
-    ctx.lineWidth = 1.2;
-
-    // Ghost post-end on right side of seam
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.ghostPostEndSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Ghost pre-start on left side of seam
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX - halfW + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.ghostPreStartSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.restore();
-
-    // Active spliced curve approaching Loop End (left half of Magnifier)
-    ctx.strokeStyle = warningColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX - halfW + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.preEndSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Active spliced curve departing Loop Start (right half of Magnifier)
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i < wFrames; i++) {
-      const x = midSeamX + (i / (wFrames - 1)) * halfW;
-      const y = centerY - clamp(seam.postStartSamples[i] ?? 0, -1, 1) * ampSpan * 1.15;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Seam splice node circle
-    const spliceY = centerY - clamp(seam.postStartSamples[0] ?? 0, -1, 1) * ampSpan * 1.15;
-    ctx.fillStyle = seam.seamQualityPercent >= 80 ? accentColor : warningColor;
-    ctx.beginPath();
-    ctx.arc(midSeamX, spliceY, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Seam Magnifier header & metrics
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = seam.seamQualityPercent >= 80 ? accentColor : warningColor;
-    ctx.fillText(
-      `SEAM MAGNIFIER • QUALITY ${seam.seamQualityPercent}%`,
-      seamX0 + 8,
-      13
-    );
-    ctx.font = '9px monospace';
-    ctx.fillStyle = mutedColor;
-    ctx.fillText(
-      `ΔStep: ${seam.stepDiscontinuity.toFixed(4)} | NCC: ${(seam.nccScore * 100).toFixed(0)}%`,
-      seamX0 + 8,
-      height - 6
     );
   }
 

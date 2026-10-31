@@ -517,6 +517,22 @@
 - **Recálculo Dinámico de Posiciones**: El índice de orden no será un campo fijo o fragmentado; el sistema reajustará y reindexará automáticamente las posiciones contiguas al mover o insertar elementos.
 - **Visualización y Filtros**: Posibilidad de alternar en todo momento entre el orden manual de usuario, ordenación alfabética (A-Z / Z-A), fecha de modificación o filtrado en tiempo real por búsqueda y etiquetas.
 
+---
+
+## Revisión pendiente — NeuronDB Bank Browser (capturas aportadas, no tocar ahora) [PLANIFICADA]
+
+**Situación**: el usuario aportó 7 capturas del panel `NEURONDB BANK BROWSER` (visto en `localhost:5320`) sin pedir un cambio concreto. Se deja esta tarea al final del roadmap para revisarla cuando se llegue aquí; es muy posible que para entonces ya no haga falta porque la UI ya habrá evolucionado o el BankDrawer/BankManager ya cubrirá lo necesario.
+
+**Lo que muestran las capturas (resumen para la revisión futura)**:
+- Panel lateral `NEURONDB BANK BROWSER` con buscador `Search models or presets by name, slot (#000), set...`.
+- Pestañas `MODELS (000..511) [341]` vs `SOUND PRESETS [354]`, y variantes `GENERATED MODELS 16` / `LIBRARY 341`.
+- Filtros por categoría de preset (`All (354)`, `ATTACK PADS (56)`, `SOLO (26)`, `SHOWCASE (21)`, `PADS (37)`, etc.) y por set de modelo (`0: General (179/106)`, `1: Strings`, `2/3: Plucked`, `4/7: Pads`, `8: Loops (45/2)`, `Pending (181)`, etc.).
+- Tarjetas de preset con `#slot`, nombre, `Uses Model #NNN`, `445 params`, badge de categoría y botón `Load Sound`.
+- Tarjetas de modelo con `#slot`, nombre, `N Zones`, `Lvl N`, tag de set (`Default Set`, `Carpet Shop`) y botón `Load`.
+- Controles `ASSIGN TARGET: Resynator 1 (R1)` / `Resynator 2 (R2)` y `TARGET: RESYNATOR 2 (R2)`.
+- Contadores `26 / 354 PRESETS`, `181 / 341 IN LIBRARY`, `341 MODELS`.
+- **Consigna**: no tocar nada de esto ahora. Al llegar a esta tarea, decidir si hace falta algún ajuste en BankDrawer/BankManager o si se cierra sin cambios.
+
 
 
 

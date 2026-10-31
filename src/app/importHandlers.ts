@@ -18,6 +18,7 @@ import {
   parseZipArchive,
 } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
+import { MAX_SFZ_TEXT_BYTES } from '../formats/SfzParser.ts';
 import { toast, confirmDialog } from '../ui/notify';
 import { withLoading } from '../ui/LoadingModal';
 import { MultiInstrumentModal } from '../ui/MultiInstrumentModal';
@@ -1096,6 +1097,11 @@ export class ImportHandlers {
             'IMPORTING SFZ INSTRUMENT...',
             `Decoding opcodes from "${chosenSfz.name}" and mapping regions...`,
             async () => {
+              if (chosenSfz.buffer.byteLength > MAX_SFZ_TEXT_BYTES) {
+                throw new Error(
+                  `SFZ file too large (${chosenSfz.buffer.byteLength} bytes, max ${MAX_SFZ_TEXT_BYTES})`
+                );
+              }
               const sfzText = new TextDecoder('utf-8').decode(chosenSfz.buffer);
               const session = await this.ctx.core.importSfzText(sfzText, chosenSfz.name, audioFiles);
               this.ctx.session = session;

@@ -48,6 +48,7 @@ export interface NavbarHandlers {
   onOpenBatchModal?: () => void;
   onOpenModelConfig?: () => void;
   onOpenAudioChopper?: () => void;
+  onOpenLoopEditor?: () => void;
   onToggleLogs: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
   onOpenAudit?: () => void;
@@ -152,6 +153,7 @@ export class AppNavbar {
         items: [
           { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
           { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
+          { id: 3013, label: 'Waveform AutoLoop Editor...', action: 'openLoopEditor' },
           { id: 301, label: 'Process Model Now...', action: 'startProcess', shortcut: 'Ctrl+P' },
           { id: 3015, label: 'Batch Process Models (Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { id: 302, label: 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
@@ -654,6 +656,7 @@ export class AppNavbar {
       case 'installPwa': this.handlers.onInstallPwa?.(); break;
       case 'openModelConfig': this.handlers.onOpenModelConfig?.(); break;
       case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
+      case 'openLoopEditor': this.handlers.onOpenLoopEditor?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
     }
   }

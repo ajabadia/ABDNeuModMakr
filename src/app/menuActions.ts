@@ -48,6 +48,7 @@ export interface MenuContext {
   openBatchModal?: () => void;
   openModelConfig?: (tab?: import('../ui/ModelConfigModal').ModelConfigTab) => void;
   openAudioChopper?: () => void;
+  openLoopEditor?: () => void;
 }
 
 export class MenuActions {
@@ -391,6 +392,7 @@ export class MenuActions {
       onOpenBatchModal: () => this.ctx.openBatchModal?.(),
       onOpenModelConfig: () => this.ctx.openModelConfig?.('general'),
       onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
+      onOpenLoopEditor: () => this.ctx.openLoopEditor?.(),
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();
         this.ctx.shell.getTelemetry().toggle();

@@ -30,6 +30,7 @@ import { SettingsModal } from './ui/SettingsModal';
 import { BatchProcessorModal } from './ui/BatchProcessorModal';
 import { ModelConfigModal } from './ui/ModelConfigModal';
 import { AudioChopperModal } from './ui/AudioChopperModal';
+import { LoopEditorModal } from './ui/LoopEditorModal';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { createUniqueModelSlug } from './core/modelSlug';
@@ -56,6 +57,7 @@ class App {
   private batchModal!: BatchProcessorModal;
   private modelConfigModal!: ModelConfigModal;
   private audioChopperModal!: AudioChopperModal;
+  private loopEditorModal!: LoopEditorModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
@@ -135,6 +137,65 @@ class App {
       onStopAudition: () => {
         self.stopAuditionPcm();
       },
+    });
+
+    this.loopEditorModal = new LoopEditorModal({
+      getLoopEditorData: (zoneId, regionId) => {
+        const isExtended = self.session?.processConfig.workingMode === 'extended';
+        const zId = zoneId ?? self.getActiveZone()?.id;
+        const rId = isExtended ? (regionId ?? self.inspector?.getSelectedRegionId() ?? undefined) : undefined;
+        return self.core.getZoneLoopEditorData(zId, rId);
+      },
+      onUpdateLoopParams: async (changes) => {
+        const isExtended = self.session?.processConfig.workingMode === 'extended';
+        const targetZoneId = changes.zoneId ?? self.getActiveZone()?.id;
+        const targetRegId = changes.regionId ?? (isExtended ? self.inspector?.getSelectedRegionId() ?? undefined : undefined);
+
+        if (isExtended && targetRegId) {
+          await self.core.updateExtendedRegion(targetRegId, {
+            ...(changes.loopMode !== undefined ? { loopMode: changes.loopMode, hasPlaybackOverride: true } : {}),
+            ...(changes.loopStart !== undefined ? { loopStart: changes.loopStart } : {}),
+            ...(changes.loopEnd !== undefined ? { loopEnd: changes.loopEnd } : {}),
+            ...(changes.loopCrossfadeMs !== undefined ? { loopCrossfadeMs: changes.loopCrossfadeMs } : {}),
+          });
+        } else if (targetZoneId) {
+          const regions = self.core.getExtendedRegions();
+          const reg = (targetRegId ? regions.find((r) => r.id === targetRegId) : null) ?? regions[0];
+          if (reg) {
+            await self.core.updateExtendedRegion(reg.id, {
+              ...(changes.loopMode !== undefined ? { loopMode: changes.loopMode, hasPlaybackOverride: true } : {}),
+              ...(changes.loopStart !== undefined ? { loopStart: changes.loopStart } : {}),
+              ...(changes.loopEnd !== undefined ? { loopEnd: changes.loopEnd } : {}),
+              ...(changes.loopCrossfadeMs !== undefined ? { loopCrossfadeMs: changes.loopCrossfadeMs } : {}),
+            });
+          }
+        }
+        self.session = self.core.getSession()!;
+        self.refreshUI();
+      },
+      onAuditionLoop: (opts) => {
+        const isExtended = self.session?.processConfig.workingMode === 'extended';
+        const zId = opts.zoneId ?? self.getActiveZone()?.id;
+        const rId = isExtended ? (opts.regionId ?? self.inspector?.getSelectedRegionId() ?? undefined) : undefined;
+        if (!zId) return;
+        void self.core.auditionLoop(zId, {
+          regionId: rId,
+          loopStartFrame: opts.loopStartFrame,
+          loopEndFrame: opts.loopEndFrame,
+          loopEnabled: opts.loopEnabled,
+        });
+        self.spectralView?.notifyPlaybackStarted();
+      },
+      onStopAudition: () => {
+        self.core.stopAudition();
+      },
+      onUpdateLiveLoopPoints: (start, end, rate, enabled) => {
+        self.core.updateLiveLoopPoints(start, end, rate, enabled);
+      },
+      onRegisterSampleBuffer: (name, buffer) => {
+        self.core.registerSampleBuffer(name, buffer);
+      },
+      isAuditionPlaying: () => self.core.getRealtimeSpectrum().isPlaying,
     });
 
     this.settingsModal = new SettingsModal({
@@ -227,6 +288,7 @@ class App {
       openBatchModal: () => self.batchModal.open(),
       openModelConfig: (tab) => self.modelConfigModal.open(tab),
       openAudioChopper: () => void self.openAudioChopper(),
+      openLoopEditor: () => self.openLoopEditor(),
     });
   }
 
@@ -620,7 +682,7 @@ class App {
         this.refreshUI();
       },
       onOpenLoopEditor: () => {
-        this.inspector.openLoopEditorDrawer();
+        this.openLoopEditor();
       },
       getLoopEditorData: (zoneId, regionId) => {
         const isExtended = this.session?.processConfig.workingMode === 'extended';
@@ -711,41 +773,7 @@ class App {
         this.telemetryDrawer.addLog(`Keyboard audition mode switched to ${modeLabel}`);
       },
       getRealtimeSpectrum: () => this.core.getRealtimeSpectrum(),
-      getLoopEditorData: () => {
-        const activeZone = this.getActiveZone();
-        const activeRegId = this.inspector.getSelectedRegionId() ?? undefined;
-        return this.core.getZoneLoopEditorData(activeZone?.id, activeRegId);
-      },
-      onUpdateLoopParams: async (changes) => {
-        const regions = this.core.getExtendedRegions();
-        const targetRegId =
-          this.inspector.getSelectedRegionId() ?? regions[0]?.id;
-        if (targetRegId) {
-          await this.core.updateExtendedRegion(targetRegId, {
-            ...(changes.loopMode !== undefined ? { loopMode: changes.loopMode, hasPlaybackOverride: true } : {}),
-            ...(changes.loopStart !== undefined ? { loopStart: changes.loopStart } : {}),
-            ...(changes.loopEnd !== undefined ? { loopEnd: changes.loopEnd } : {}),
-            ...(changes.loopCrossfadeMs !== undefined ? { loopCrossfadeMs: changes.loopCrossfadeMs } : {}),
-          });
-          this.session = this.core.getSession()!;
-          const errors = this.core.validateCoverage();
-          this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
-        }
-      },
-      onAuditionLoop: (opts) => {
-        const activeZone = this.getActiveZone();
-        if (!activeZone) return;
-        const activeRegId = this.inspector.getSelectedRegionId() ?? undefined;
-        void this.core.auditionLoop(activeZone.id, {
-          regionId: activeRegId,
-          loopStartFrame: opts.loopStartFrame,
-          loopEndFrame: opts.loopEndFrame,
-          loopEnabled: opts.loopEnabled,
-        });
-      },
-      onUpdateLiveLoopPoints: (startFrame, endFrame, sampleRate, loopEnabled) => {
-        this.core.updateLiveLoopPoints(startFrame, endFrame, sampleRate, loopEnabled);
-      },
+      onOpenLoopEditorModal: () => this.openLoopEditor(),
     });
 
     // 4. Process Panel
@@ -1060,6 +1088,15 @@ class App {
     }
 
     this.audioChopperModal.open(pcm, sampleRate, filename);
+  }
+
+  public openLoopEditor(): void {
+    const activeZone = this.getActiveZone();
+    const activeRegId = this.inspector?.getSelectedRegionId() ?? undefined;
+    this.loopEditorModal.open({
+      zoneId: activeZone?.id,
+      regionId: activeRegId,
+    });
   }
 
   private async handleCoverImageUpload(file: File): Promise<void> {
