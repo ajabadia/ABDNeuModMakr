@@ -1,45 +1,35 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Process Panel Component
-// Global Model Configuration (Model Name, Hardware Slot, Complexity 1..10,
-// 10 Canonical Parameter Set Buttons, and Target Format Buttons)
+// Global Model Configuration (Summary HUD & Collapsible Icon Rail)
 // ─────────────────────────────────────────────────────────
 
-import type { DspAlgorithmMode, ProcessConfig, ParameterSetInfo, TargetFormat, WorkingMode, Zone } from '../core/types';
-import { DEFAULT_AI_ASSISTANCE_CONFIG } from '../core/types';
+import type {
+  ProcessConfig,
+  ParameterSetInfo,
+  Zone,
+} from '../core/types';
 import { ICONS } from './icons';
 import { escAttr, escHtml } from './escape';
-
-const EXTENDED_MODE_TITLE_ON =
-  'Extended Working Mode: N velocity layers, 2D Key x Velocity regions, crossfades, loop markers, keytrack, and ADSR/Filter/LFO articulation. Adapted automatically when exporting to Classic (.model/.sound).';
+import type { ModelConfigTab } from './ModelConfigModal';
 
 const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
-
-const PARAM_SET_ICONS: Record<number, string> = {
-  0: ICONS.param0,
-  1: ICONS.param1,
-  2: ICONS.param2,
-  3: ICONS.param3,
-  4: ICONS.param4,
-  5: ICONS.param5,
-  6: ICONS.param6,
-  7: ICONS.param7,
-  8: ICONS.param8,
-  9: ICONS.param9,
-};
 
 export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
-  onAutoDetectParameterSet?: () => void;
+  onOpenModelConfig?: (tab?: ModelConfigTab) => void;
   onOpenAiEngineModal?: () => void;
   onSelectCoverImage?: (file: File) => void;
   onRemoveCoverImage?: () => void;
+  onToggleCollapse?: (isCollapsed: boolean) => void;
 }
 
 export interface ProcessValidationState {
   errors: string[];
   zones: Zone[];
 }
+
+const STORAGE_KEY_PANEL_COLLAPSED = 'abd_model_panel_collapsed';
 
 export class ProcessPanel {
   private container: HTMLElement;
@@ -50,6 +40,7 @@ export class ProcessPanel {
   private zones: Zone[] = [];
   private isConvertingCover: boolean = false;
   private convertingCoverFileName: string = '';
+  private isCollapsed: boolean = false;
 
   constructor(
     container: HTMLElement,
@@ -66,6 +57,22 @@ export class ProcessPanel {
       this.coverageErrors = initialValidation.errors;
       this.zones = initialValidation.zones;
     }
+    if (typeof localStorage !== 'undefined') {
+      this.isCollapsed = localStorage.getItem(STORAGE_KEY_PANEL_COLLAPSED) === 'true';
+    }
+    this.render();
+  }
+
+  public getIsCollapsed(): boolean {
+    return this.isCollapsed;
+  }
+
+  public toggleCollapse(): void {
+    this.isCollapsed = !this.isCollapsed;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_PANEL_COLLAPSED, String(this.isCollapsed));
+    }
+    this.handlers.onToggleCollapse?.(this.isCollapsed);
     this.render();
   }
 
@@ -79,28 +86,10 @@ export class ProcessPanel {
     config: ProcessConfig,
     validation?: ProcessValidationState
   ): void {
-    const prevCoverUrl = this.currentConfig.coverArtwork?.webpDataUrl ?? null;
-    const nextCoverUrl = config.coverArtwork?.webpDataUrl ?? null;
-    const prevMode = this.currentConfig.workingMode ?? 'classic';
-    const nextMode = config.workingMode ?? 'classic';
     this.currentConfig = { ...config };
     if (validation) {
       this.coverageErrors = validation.errors;
       this.zones = validation.zones;
-    }
-    const activeEl = document.activeElement;
-    const isTypingInput =
-      (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) &&
-      this.container.contains(activeEl);
-    if (
-      isTypingInput &&
-      this.container.contains(activeEl) &&
-      prevCoverUrl === nextCoverUrl &&
-      prevMode === nextMode &&
-      !this.isConvertingCover
-    ) {
-      this.syncDomValues();
-      return;
     }
     this.render();
   }
@@ -163,124 +152,20 @@ export class ProcessPanel {
     };
   }
 
-
-  private getMaxNameLength(): number {
-    return (this.currentConfig.workingMode ?? 'classic') === 'extended' ? 128 : 11;
-  }
-
-  private syncDomValues(): void {
-    const inpSlot = this.container.querySelector('#inp-model-slot') as HTMLInputElement | null;
-    const inpName = this.container.querySelector('#inp-model-name') as HTMLInputElement | null;
-    const valComp = this.container.querySelector('#val-complexity') as HTMLElement | null;
-    const nameCounter = this.container.querySelector('#val-name-counter') as HTMLElement | null;
-
-    const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
-    const activeName = isExt ? (this.currentConfig.expandedName || this.currentConfig.modelName) : this.currentConfig.modelName;
-
-    if (inpSlot && document.activeElement !== inpSlot) {
-      inpSlot.value = String(this.currentConfig.modelNumber);
-    }
-    if (inpName) {
-      if (isExt) {
-        inpName.removeAttribute('maxlength');
-      } else {
-        inpName.maxLength = 11;
-      }
-      if (document.activeElement !== inpName) {
-        inpName.value = activeName;
-      }
-    }
-    if (nameCounter) {
-      const len = (inpName?.value ?? activeName).length;
-      nameCounter.textContent = isExt ? `${len} chars (Extended)` : `${len}/11 chars`;
-    }
-    if (valComp) {
-      const recDepth = STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
-      valComp.textContent = `${this.currentConfig.complexity} / 10 (${recDepth} modes)`;
-    }
-
-    // Sync Complexity buttons (1..10)
-    const compBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-complexity');
-    compBtns.forEach((btn) => {
-      const val = parseInt(btn.getAttribute('data-complexity') || '8', 10);
-      btn.classList.toggle('is-active', val === this.currentConfig.complexity);
-    });
-
-    // Sync Parameter Set buttons
-    const paramBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-param-set');
-    paramBtns.forEach((btn) => {
-      const id = parseInt(btn.getAttribute('data-param-set') || '0', 10);
-      btn.classList.toggle('is-active', id === this.currentConfig.parameterSet);
-    });
-    const infoCard = this.container.querySelector('#param-set-info-card') as HTMLElement;
-    if (infoCard) {
-      infoCard.className = `param-set-info-card cat-${this.currentConfig.parameterSet}`;
-    }
-
-    // Sync Target Format buttons
-    const activeTarget = this.currentConfig.targetFormat ?? 'dual';
-    const targetBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-target-format');
-    targetBtns.forEach((btn) => {
-      const fmt = btn.getAttribute('data-target-format');
-      btn.classList.toggle('is-active', fmt === activeTarget);
-    });
-
-    // Sync DSP Algorithm buttons (Legacy vs Enhanced)
-    const activeDsp = this.currentConfig.dspAlgorithm ?? 'legacy';
-    const dspBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-dsp-algorithm');
-    dspBtns.forEach((btn) => {
-      const alg = btn.getAttribute('data-dsp-algorithm');
-      btn.classList.toggle('is-active', alg === activeDsp);
-    });
-
-    this.syncWorkingModeButtons();
-    this.syncAiButtons();
-    this.syncCtaButton();
-  }
-
-  private syncAiButtons(): void {
-    const isAi = this.currentConfig.aiConfig?.enabled ?? false;
-    const badge = this.container.querySelector('#panel-ai-badge');
-    if (badge) {
-      badge.className = `ai-status-badge ${isAi ? 'badge-ai-active' : 'badge-ai-off'}`;
-      badge.innerHTML = isAi ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`;
-    }
-    const btnDsp = this.container.querySelector('#btn-panel-ai-dsp');
-    const btnAi = this.container.querySelector('#btn-panel-ai-modal');
-    btnDsp?.classList.toggle('is-active', !isAi);
-    btnAi?.classList.toggle('is-active', isAi);
-  }
-
-  /**
-   * Syncs Working Mode buttons with the current config. Both Classic and
-   * Extended creation modes are freely selectable at any time; when
-   * exporting to classic ('legacy-neuron' or 'dual'), extended regions
-   * are automatically adapted via extendedAdapter.
-   */
-  private syncWorkingModeButtons(): void {
-    const mode = this.currentConfig.workingMode ?? 'classic';
-    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode[data-working-mode]');
-    modeBtns.forEach((btn) => {
-      const m = btn.getAttribute('data-working-mode');
-      btn.classList.toggle('is-active', m === mode || (m === 'classic' && mode !== 'extended'));
-      if (m === 'extended') {
-        btn.classList.remove('is-disabled-future');
-        btn.removeAttribute('disabled');
-        btn.title = EXTENDED_MODE_TITLE_ON;
-        const tag = btn.querySelector('.mode-soon-tag') as HTMLElement | null;
-        if (tag) tag.hidden = true;
-      }
-    });
-  }
-
   private syncCtaButton(): void {
     const btn = this.container.querySelector('#btn-cta-process') as HTMLButtonElement | null;
+    const btnMini = this.container.querySelector('#btn-cta-process-mini') as HTMLButtonElement | null;
     const notice = this.container.querySelector('#cta-process-notice') as HTMLElement | null;
     const status = this.getSufficientDataStatus();
 
     if (btn) {
       btn.disabled = !status.canGenerate;
       btn.title = status.tooltip;
+    }
+    if (btnMini) {
+      btnMini.disabled = !status.canGenerate;
+      btnMini.title = status.tooltip;
+      btnMini.classList.toggle('is-ready', status.canGenerate);
     }
     if (notice) {
       notice.className = `cta-notice ${status.canGenerate ? 'is-ready' : 'is-warning'}`;
@@ -289,24 +174,172 @@ export class ProcessPanel {
   }
 
   private render(): void {
+    const status = this.getSufficientDataStatus();
+    const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
+    const activeName = isExt
+      ? (this.currentConfig.expandedName || this.currentConfig.modelName)
+      : this.currentConfig.modelName;
+
     const activeSet =
       this.parameterSets.find((p) => p.id === this.currentConfig.parameterSet) ||
       this.parameterSets[0];
     const recDepth =
       STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, this.currentConfig.complexity - 1))] ?? 32;
-    const activeTarget = this.currentConfig.targetFormat ?? 'dual';
-    const status = this.getSufficientDataStatus();
 
+    const meta = this.currentConfig.extendedMetadata ?? {};
+    const tagCount = Object.keys(meta.tags ?? {}).length;
+    const isAi = this.currentConfig.aiConfig?.enabled ?? false;
+
+    // Apply class to parent column or workspace container
+    const processMount = this.container.closest('.column-process');
+    const workspaceCols = this.container.closest('.workspace-columns');
+    if (processMount) {
+      processMount.classList.toggle('is-collapsed-rail', this.isCollapsed);
+    }
+    if (workspaceCols) {
+      workspaceCols.classList.toggle('is-sidebar-collapsed', this.isCollapsed);
+    }
+
+    if (this.isCollapsed) {
+      // ─────────────────────────────────────────────────────────
+      // COLLAPSED RAIL VIEW (56px)
+      // ─────────────────────────────────────────────────────────
+      this.container.innerHTML = `
+        <div class="process-panel-rail">
+          <!-- 1. Expand Toggle Button -->
+          <button
+            type="button"
+            class="btn-rail-toggle"
+            id="btn-expand-sidebar"
+            title="Expand Global Model Settings Panel"
+            aria-label="Expand Global Model Settings Panel"
+          >
+            ${ICONS.chevronRight || '»'}
+          </button>
+
+          <!-- 2. High Visibility Mini Generate Button -->
+          <button
+            type="button"
+            class="btn-rail-cta ${status.canGenerate ? 'is-ready' : ''}"
+            id="btn-cta-process-mini"
+            ${status.canGenerate ? '' : 'disabled'}
+            title="${status.tooltip}"
+            aria-label="${status.tooltip}"
+          >
+            ${ICONS.play}
+          </button>
+
+          <div class="rail-divider"></div>
+
+          <!-- 3. Model Identity Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn"
+            id="rail-btn-model"
+            title="Model #${String(this.currentConfig.modelNumber).padStart(3, '0')}: &quot;${escAttr(activeName)}&quot; • Click to edit"
+          >
+            ${ICONS.settings}
+          </button>
+
+          <!-- 4. Mode Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn ${isExt ? 'is-extended' : ''}"
+            id="rail-btn-mode"
+            title="Mode: ${isExt ? 'Extended 2D (HD Multi-Layer)' : 'Classic 1:1 Hardware'} • Click to change"
+          >
+            ${ICONS.piano}
+          </button>
+
+          <!-- 5. Complexity & DSP Engine Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn"
+            id="rail-btn-engine"
+            title="Complexity: Level ${this.currentConfig.complexity} (${recDepth} modes) • DSP: ${this.currentConfig.dspAlgorithm ?? 'legacy'} • Click to edit"
+          >
+            ${ICONS.cpu}
+          </button>
+
+          <!-- 6. Acoustic Parameter Set Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn"
+            id="rail-btn-param"
+            title="Parameter Set #${this.currentConfig.parameterSet}: ${escAttr(activeSet.name)} • Click to edit"
+          >
+            ${ICONS.layers}
+          </button>
+
+          <!-- 7. Metadata & Tags Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn ${tagCount > 0 ? 'has-tags' : ''}"
+            id="rail-btn-metadata"
+            title="Metadata: ${tagCount} tags attached • Click to edit"
+          >
+            ${ICONS.database}
+          </button>
+
+          <!-- 8. Cover Artwork Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn ${this.currentConfig.coverArtwork ? 'has-cover' : ''}"
+            id="rail-btn-artwork"
+            title="Cover Artwork: ${this.currentConfig.coverArtwork ? '512×512 WebP attached' : 'None'} • Click to edit"
+          >
+            ${this.currentConfig.coverArtwork ? `<img src="${escAttr(this.currentConfig.coverArtwork.webpDataUrl)}" class="rail-cover-thumb" alt="Cover" />` : ICONS.wave}
+          </button>
+
+          <!-- 9. AI Engine Status Icon -->
+          <button
+            type="button"
+            class="rail-icon-btn ${isAi ? 'is-ai-active' : ''}"
+            id="rail-btn-ai"
+            title="AI Engine: ${isAi ? 'Active' : 'Pure DSP'} • Click to configure"
+          >
+            ${isAi ? ICONS.ai : ICONS.sliders}
+          </button>
+        </div>
+      `;
+
+      this.bindCollapsedEvents();
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // EXPANDED INFORMATIVE HUD VIEW
+    // ─────────────────────────────────────────────────────────
     this.container.innerHTML = `
       <div class="process-panel-card">
+        <!-- Panel Header with Configure & Collapse buttons -->
         <div class="panel-header">
           <div class="panel-header-title">
             <span class="panel-badge">MODEL GENERATOR</span>
             <span class="panel-caption">GLOBAL MODEL SETTINGS</span>
           </div>
+          <div class="panel-header-actions">
+            <button
+              type="button"
+              class="btn btn-xs btn-outline btn-open-model-config"
+              id="btn-header-open-config"
+              title="Open Full Model Configuration Dialog (General, Articulation, Metadata, Artwork)"
+            >
+              ${ICONS.settings} Configure Model
+            </button>
+            <button
+              type="button"
+              class="btn-hud-icon btn-collapse-panel"
+              id="btn-collapse-sidebar"
+              title="Collapse to Icon Rail"
+              aria-label="Collapse to Icon Rail"
+            >
+              ${ICONS.chevronLeft || '«'}
+            </button>
+          </div>
         </div>
 
-        <!-- 0. Top Action CTA: permanently visible at top of card -->
+        <!-- 0. Pinned Primary Action: Generate Button -->
         <div class="process-cta-box">
           <button
             type="button"
@@ -323,768 +356,208 @@ export class ProcessPanel {
           </p>
         </div>
 
-        <div class="process-form">
-          <!-- 0. Working Mode (Classic vs Extended; extended gated on modern-neural) -->
-          <div class="form-group param-set-group">
-            <label title="Working Mode governs interface limits and workflow (Classic = canonical Hartmann MODELmaker v1.2)">WORKING MODE</label>
-            <div class="working-mode-buttons-grid" role="radiogroup" aria-label="Working Mode">
-              <button
-                type="button"
-                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') !== 'extended' ? 'is-active' : ''}"
-                data-working-mode="classic"
-                title="Classic Working Mode: Canonical Hartmann MODELmaker v1.2 rules (2 velocity layers 1..63 / 64..127, 11-char MName)"
-              >
-                Classic Mode
-              </button>
-              <button
-                type="button"
-                class="btn-working-mode ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'is-active' : ''}"
-                data-working-mode="extended"
-                title="${EXTENDED_MODE_TITLE_ON}"
-              >
-                Extended Mode
-              </button>
+        <!-- Informative Summary HUD -->
+        <div class="process-summary-hud">
+          <!-- Card 1: Model Identity & Mode -->
+          <div class="hud-card" id="hud-card-model" title="Click to edit Model Name and Slot">
+            <div class="hud-card-header">
+              <span class="hud-card-label">${ICONS.settings} MODEL IDENTITY</span>
+              <button type="button" class="btn-hud-link" id="btn-hud-edit-identity">Edit</button>
             </div>
-          </div>
-
-          <!-- 1. Model Name (primary, auto-derived from first sample) & Hardware Slot -->
-          <div class="form-row-name-slot">
-            <div class="form-group">
-              <div class="label-with-val">
-                <label for="inp-model-name" title="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended Model Name: Unrestricted character length for modern presets and ABDAxionikVS integration.' : 'Classic Hardware MName: Strictly max 11 ASCII characters for Hartmann Neuron 2002 compatibility.'}">${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'MODEL NAME (EXTENDED)' : 'MODEL NAME (CLASSIC)'}</label>
-                <span class="val-pill" id="val-name-counter">${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? `${((this.currentConfig.expandedName || this.currentConfig.modelName) ?? '').length} chars (No limit)` : `${this.currentConfig.modelName.length}/11 chars`}</span>
+            <div class="hud-card-body">
+              <div class="hud-model-main">
+                <span class="hud-slot-pill">#${String(this.currentConfig.modelNumber).padStart(3, '0')}</span>
+                <strong class="hud-model-name">${escHtml(activeName)}</strong>
               </div>
-              <input type="text" id="inp-model-name" ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? '' : 'maxlength="11"'} value="${escAttr((this.currentConfig.workingMode ?? 'classic') === 'extended' ? (this.currentConfig.expandedName || this.currentConfig.modelName) : this.currentConfig.modelName)}" placeholder="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended model name...' : 'Auto from sample...'}" title="${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? 'Extended Model Name (Unrestricted length)' : 'Hardware Model Name (max 11 chars)'}" />
-            </div>
-
-            <div class="form-group">
-              <div class="label-with-val">
-                <label for="inp-model-slot" title="Hardware NeuronDB directory index (000.model .. 511.model)">SLOT</label>
-                <span class="val-pill" id="val-slot-badge">#${String(this.currentConfig.modelNumber).padStart(3, '0')}</span>
-              </div>
-              <div class="input-with-prefix">
-                <span class="input-prefix">#</span>
-                <input type="number" id="inp-model-slot" min="0" max="511" value="${this.currentConfig.modelNumber}" title="Hardware Model Slot (0..511)" />
+              <div class="hud-mode-row">
+                <span class="panel-badge ${isExt ? 'badge-ai-on' : 'badge-muted'}">
+                  ${isExt ? 'EXTENDED MODE (HD Multi-Layer)' : 'CLASSIC MODE (1:1 Hardware)'}
+                </span>
               </div>
             </div>
           </div>
 
-          ${
-            (this.currentConfig.workingMode ?? 'classic') === 'extended'
-              ? (() => {
-                  const cov = this.currentConfig.coverArtwork;
-                  const kb = cov ? (cov.byteLength / 1024).toFixed(1) : '0';
-                  const isConv = this.isConvertingCover;
-                  return `
-          <!-- 1b. Fase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode -->
-          <div class="form-group cover-artwork-group" id="cover-artwork-dropzone" title="Drag &amp; drop an image (PNG, JPG, WEBP, AVIF, SVG) or click to set the Extended Model Cover Artwork (auto-converted to 512x512 .webp in Layer 05)">
-            <div class="label-with-val">
-              <label>MODEL COVER ARTWORK (.WEBP)</label>
-              <span class="val-pill ${cov ? 'is-ready-pill' : ''}">${isConv ? 'CONVERTING TO .WEBP...' : cov ? `WEBP • ${cov.width}×${cov.height} • ${kb} KB` : 'EXTENDED ONLY'}</span>
+          <!-- Card 2: Engine, Complexity & Parameter Set -->
+          <div class="hud-card" id="hud-card-engine" title="Click to edit Engine and Complexity">
+            <div class="hud-card-header">
+              <span class="hud-card-label">${ICONS.cpu} RESYNTHESIS ENGINE</span>
+              <button type="button" class="btn-hud-link" id="btn-hud-edit-engine">Edit</button>
             </div>
-            <div class="cover-artwork-card ${cov ? 'has-cover' : ''} ${isConv ? 'is-converting' : ''}">
-              <div class="cover-artwork-thumb ${cov ? 'has-cover' : ''}" id="btn-pick-cover-thumb" title="${isConv ? 'Converting image...' : cov ? 'Click to view large preview (512×512)' : 'Click to upload image'}">
+            <div class="hud-card-body">
+              <div class="hud-specs-row">
+                <div class="hud-spec-pill">
+                  <span class="spec-k">Format:</span>
+                  <strong class="spec-v">${(this.currentConfig.targetFormat ?? 'dual').toUpperCase()}</strong>
+                </div>
+                <div class="hud-spec-pill">
+                  <span class="spec-k">DSP:</span>
+                  <strong class="spec-v">${this.currentConfig.dspAlgorithm === 'enhanced' ? 'Neural' : 'Legacy'}</strong>
+                </div>
+                <div class="hud-spec-pill">
+                  <span class="spec-k">Modes:</span>
+                  <strong class="spec-v">L${this.currentConfig.complexity} (${recDepth}m)</strong>
+                </div>
+              </div>
+              <div class="hud-param-set-row">
+                <span class="param-badge">Set #${activeSet.id}</span>
+                <span class="hud-param-set-title">${escHtml(activeSet.name)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Extended Metadata & Tags -->
+          <div class="hud-card" id="hud-card-metadata" title="Click to view or edit Metadata & Tags">
+            <div class="hud-card-header">
+              <span class="hud-card-label">${ICONS.database} METADATA &amp; PROVENANCE</span>
+              <button type="button" class="btn-hud-link" id="btn-hud-edit-metadata">Edit</button>
+            </div>
+            <div class="hud-card-body">
+              <div class="hud-meta-preview">
                 ${
-                  isConv
-                    ? `<span class="cover-artwork-spinner" aria-label="Converting to WebP"></span>`
-                    : cov
-                      ? `<img src="${escAttr(cov.webpDataUrl)}" alt="${escAttr(this.currentConfig.modelName)} cover" class="cover-artwork-img" />
-                         <span class="cover-thumb-hover-hint" aria-hidden="true">${ICONS.expand}</span>`
-                      : `<span class="cover-artwork-placeholder">${ICONS.layers}</span>`
+                  meta.author || meta.version || meta.license
+                    ? `
+                  <div class="hud-meta-chips">
+                    ${meta.author ? `<span class="meta-tag-chip"><strong>Author:</strong> ${escHtml(meta.author)}</span>` : ''}
+                    ${meta.version ? `<span class="meta-tag-chip"><strong>v:</strong> ${escHtml(meta.version)}</span>` : ''}
+                    ${meta.license ? `<span class="meta-tag-chip"><strong>Lic:</strong> ${escHtml(meta.license)}</span>` : ''}
+                  </div>
+                `
+                    : `<span class="text-muted">No author/license defined yet.</span>`
+                }
+                <div class="hud-tags-count-row">
+                  <span class="hud-tag-count-label">${tagCount} SoundFont / Sampler Tags</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Cover Artwork -->
+          <div class="hud-card" id="hud-card-artwork" title="Click to view or edit Cover Artwork">
+            <div class="hud-card-header">
+              <span class="hud-card-label">${ICONS.palette} COVER ARTWORK</span>
+              <button type="button" class="btn-hud-link" id="btn-hud-edit-artwork">Edit</button>
+            </div>
+            <div class="hud-card-body">
+              <div class="hud-artwork-row">
+                ${
+                  this.isConvertingCover
+                    ? `
+                  <div class="hud-cover-placeholder">${ICONS.spinner}</div>
+                  <div class="hud-artwork-meta">
+                    <strong>Converting Artwork...</strong>
+                    <span class="text-muted">${escHtml(this.convertingCoverFileName)}</span>
+                  </div>
+                `
+                    : this.currentConfig.coverArtwork
+                    ? `
+                  <img src="${escAttr(this.currentConfig.coverArtwork.webpDataUrl)}" class="hud-cover-thumb" alt="Model Cover" />
+                  <div class="hud-artwork-meta">
+                    <strong>512×512 WebP Attached</strong>
+                    <span class="text-muted">ABDAxionikVS &amp; Sampler HD</span>
+                  </div>
+                `
+                    : `
+                  <div class="hud-cover-placeholder">${ICONS.wave}</div>
+                  <div class="hud-artwork-meta">
+                    <span class="text-muted">No cover image attached.</span>
+                  </div>
+                `
                 }
               </div>
-              <div class="cover-artwork-meta">
-                <span class="cover-artwork-title">${isConv ? `Converting &quot;${escHtml(this.convertingCoverFileName || 'image')}&quot; to .webp...` : cov ? `${escHtml(cov.originalName || 'cover.webp')} → cover.webp` : 'Drop or Pick Cover Image'}</span>
-                <span class="cover-artwork-sub">${isConv ? 'Center-cropping & encoding 512×512 RIFF WEBP...' : cov ? `Converted 512×512 WebP (${kb} KB) • 05_extended_model/cover.webp` : 'Converts JPG / PNG / SVG / WEBP to 512×512 .webp'}</span>
-                <div class="cover-artwork-actions">
-                  ${
-                    cov && !isConv
-                      ? `<button type="button" class="btn btn-xs btn-outline" id="btn-view-large-cover" title="Ver portada en grande (512×512 WebP)">${ICONS.expand} Ver en grande</button>`
-                      : ''
-                  }
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-pick-cover-image" ${isConv ? 'disabled' : ''}>
-                    ${ICONS.folder} ${isConv ? 'Converting...' : cov ? 'Replace Cover...' : 'Upload Cover...'}
-                  </button>
-                  ${
-                    cov && !isConv
-                      ? `<button type="button" class="btn btn-xs btn-outline btn-danger-hover" id="btn-remove-cover-image" title="Remove cover artwork">${ICONS.trash}</button>`
-                      : ''
-                  }
-                </div>
+            </div>
+          </div>
+
+          <!-- Card 5: AI Engine Assistance Status -->
+          <div class="hud-card" id="hud-card-ai" title="Configure AI Assistance / BYOK">
+            <div class="hud-card-header">
+              <span class="hud-card-label">${ICONS.ai} AI ASSISTANCE</span>
+              <button type="button" class="btn-hud-link" id="btn-hud-edit-ai">Settings</button>
+            </div>
+            <div class="hud-card-body">
+              <div class="ai-status-row">
+                <span class="ai-status-badge ${isAi ? 'badge-ai-active' : 'badge-ai-off'}">
+                  ${isAi ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`}
+                </span>
+                <span class="text-muted">WebGPU &bull; Companion Bridge &bull; Cloud</span>
               </div>
-              <input type="file" id="inp-cover-image-file" accept="image/*,.jpg,.jpeg,.png,.webp,.avif,.svg,.bmp" hidden />
-            </div>
-
-            <!-- Cover Artwork Modal Dialog (Modern <dialog> standard) -->
-            ${
-              cov
-                ? `
-            <dialog id="dlg-cover-preview" class="cover-artwork-dialog" aria-labelledby="dlg-cover-title">
-              <div class="cover-dialog-shell">
-                <div class="modal-header">
-                  <div class="modal-title" id="dlg-cover-title">
-                    <span>${ICONS.layers}</span>
-                    <span>COVER ARTWORK PREVIEW</span>
-                    <span class="val-pill is-ready-pill">512 × 512 WEBP</span>
-                  </div>
-                  <button type="button" class="btn-close-modal" id="btn-close-cover-modal" title="Cerrar modal (Esc)">
-                    ${ICONS.close}
-                  </button>
-                </div>
-                <div class="modal-body cover-dialog-body">
-                  <div class="cover-dialog-preview-wrapper">
-                    <img id="img-cover-dialog-preview" src="${escAttr(cov.webpDataUrl)}" alt="${escAttr(this.currentConfig.modelName)} cover preview" class="cover-dialog-preview-img" />
-                  </div>
-                  <div class="cover-dialog-meta-grid">
-                    <div class="cover-meta-item">
-                      <span class="cover-meta-label">FORMAT</span>
-                      <span class="cover-meta-value">RIFF WEBP (512×512)</span>
-                    </div>
-                    <div class="cover-meta-item">
-                      <span class="cover-meta-label">FILE SIZE</span>
-                      <span class="cover-meta-value">${kb} KB</span>
-                    </div>
-                    <div class="cover-meta-item">
-                      <span class="cover-meta-label">TARGET LAYER</span>
-                      <span class="cover-meta-value">05_extended_model/cover.webp</span>
-                    </div>
-                    <div class="cover-meta-item">
-                      <span class="cover-meta-label">ASPECT RATIO</span>
-                      <span class="cover-meta-value">1:1 Square (Center-Cropped)</span>
-                    </div>
-                    <div class="cover-meta-item cover-meta-item-full">
-                      <span class="cover-meta-label">ORIGINAL SOURCE</span>
-                      <span class="cover-meta-value" title="${escAttr(cov.originalName || 'cover.webp')}">${escHtml(cov.originalName || 'cover.webp')}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="modal-footer cover-dialog-footer">
-                  <div class="cover-dialog-footer-left">
-                    <button type="button" class="btn btn-sm btn-outline" id="btn-dialog-replace-cover">
-                      ${ICONS.folder} Replace Cover...
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline btn-danger-hover" id="btn-dialog-remove-cover">
-                      ${ICONS.trash} Remove
-                    </button>
-                  </div>
-                  <button type="button" class="btn btn-sm btn-primary" id="btn-dialog-close-cover">
-                    Cerrar
-                  </button>
-                </div>
-              </div>
-            </dialog>`
-                : ''
-            }
-          </div>
-                  `;
-                })()
-              : ''
-          }
-
-          ${(this.currentConfig.workingMode ?? 'classic') === 'extended' ? this.renderExtendedMetadataSection() : ''}
-
-          <div class="validation-inline-bar is-ok is-compact-hidden" id="val-config-status">
-            <span class="val-status-icon">${ICONS.alert}</span>
-            <span class="val-status-text" id="val-config-text"></span>
-          </div>
-
-          <!-- 2. Complexity Matrix (1..10 discrete levels) -->
-          <div class="form-group complexity-group">
-            <div class="label-with-val">
-              <label title="Controls discrete stickModes / recDepth in .scape and .sphere frames">ANALYSIS COMPLEXITY (1..10)</label>
-              <span class="val-pill" id="val-complexity">${this.currentConfig.complexity} / 10 (${recDepth} modes)</span>
-            </div>
-            <div class="complexity-buttons-grid" role="radiogroup" aria-label="Analysis Complexity (1..10)">
-              ${STICK_MODES_BY_COMPLEXITY.map((modes, idx) => {
-                const level = idx + 1;
-                return `
-                  <button
-                    type="button"
-                    class="btn-complexity ${level === this.currentConfig.complexity ? 'is-active' : ''}"
-                    data-complexity="${level}"
-                    title="Complexity ${level}: ${modes} stick modes (recursion depth)"
-                    aria-label="Complexity ${level}, ${modes} modes"
-                  >
-                    <span class="comp-btn-num">${level}</span>
-                    <span class="comp-btn-modes">${modes}m</span>
-                  </button>
-                `;
-              }).join('')}
-            </div>
-          </div>
-
-          <!-- 3. Parameter Set (0..9) in Single Column with Representative Icons -->
-          <div class="form-group param-set-group">
-            <div class="label-with-val">
-              <label title="Selects the 20 mnAN/fdAN morphing axes for Scape and Sphere">PARAMETER SET (0..9)</label>
-              <button
-                type="button"
-                class="btn btn-xs btn-outline"
-                id="btn-auto-detect-param-set"
-                title="Auto-detect instrument category and optimal Parameter Set (0..9) from zone audio"
-              >
-                ${ICONS.cpu} Auto-Detect
-              </button>
-            </div>
-            <div class="param-set-buttons-grid" role="radiogroup" aria-label="Parameter Set (0..9)">
-              ${this.parameterSets
-                .map(
-                  (ps) => `
-                <button
-                  type="button"
-                  class="btn-param-set cat-${ps.id} ${ps.id === this.currentConfig.parameterSet ? 'is-active' : ''}"
-                  data-param-set="${ps.id}"
-                  title="${ps.id}: ${ps.name} [${ps.category}] — ${ps.description}"
-                >
-                  <span class="param-btn-num">${ps.id}</span>
-                  <span class="param-btn-icon">${PARAM_SET_ICONS[ps.id] ?? ICONS.param0}</span>
-                  <span class="param-btn-label">${ps.name}</span>
-                  <span class="param-btn-cat">${ps.category}</span>
-                </button>
-              `
-                )
-                .join('')}
-            </div>
-
-            <div class="param-set-info-card cat-${activeSet.id}" id="param-set-info-card">
-              <div class="param-set-info-header">
-                <span class="param-set-badge" id="disp-param-cat">${activeSet.category}</span>
-                <span class="param-set-name" id="disp-param-name">${activeSet.id}: ${activeSet.name}</span>
-              </div>
-              <div class="param-set-desc" id="disp-param-desc">${activeSet.description}</div>
-            </div>
-          </div>
-
-          <!-- 3b. DSP Algorithm Mode (Legacy 2001 DSP vs Enhanced Neural DSP) -->
-          <div class="form-group param-set-group">
-            <label title="Selects between canonical 2001 Legacy DSP and Enhanced DSP (HPSS + trajectory smoothing + noise floor suppression)">DSP ALGORITHM</label>
-            <div class="working-mode-buttons-grid" role="radiogroup" aria-label="DSP Algorithm">
-              <button
-                type="button"
-                class="btn-working-mode btn-dsp-algorithm ${(this.currentConfig.dspAlgorithm ?? 'legacy') !== 'enhanced' ? 'is-active' : ''}"
-                data-dsp-algorithm="legacy"
-                title="Legacy 2001 DSP: Canonical Hartmann MODELmaker v1.2 partial extraction"
-              >
-                Legacy DSP
-              </button>
-              <button
-                type="button"
-                class="btn-working-mode btn-dsp-algorithm ${(this.currentConfig.dspAlgorithm ?? 'legacy') === 'enhanced' ? 'is-active' : ''}"
-                data-dsp-algorithm="enhanced"
-                title="Enhanced DSP: HPSS harmonic-percussive separation, trajectory smoothing &amp; high-order noise floor suppression"
-              >
-                Enhanced DSP
-              </button>
-            </div>
-          </div>
-
-          <!-- 3c. AI Assistance vs Algorithmic DSP Engine -->
-          <div class="form-group param-set-group">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <label title="Conmuta entre procesamiento 100% Algorítmico (DSP Local) y Asistencia por Modelos de IA (AudioSR, Demucs, Outpainting)">ASISTENCIA POR IA</label>
-              <span class="ai-status-badge ${this.currentConfig.aiConfig?.enabled ? 'badge-ai-active' : 'badge-ai-off'}" id="panel-ai-badge">
-                ${this.currentConfig.aiConfig?.enabled ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`}
-              </span>
-            </div>
-            <div class="working-mode-buttons-grid" role="radiogroup" aria-label="Asistencia por IA">
-              <button
-                type="button"
-                class="btn-working-mode btn-ai-config-mode ${!this.currentConfig.aiConfig?.enabled ? 'is-active' : ''}"
-                id="btn-panel-ai-dsp"
-                title="100% Algorítmico: Ejecuta todas las etapas con DSP matemático determinista en WebAudio"
-              >
-                ${ICONS.cpu} DSP Puro
-              </button>
-              <button
-                type="button"
-                class="btn-working-mode btn-ai-config-mode ${this.currentConfig.aiConfig?.enabled ? 'is-active' : ''}"
-                id="btn-panel-ai-modal"
-                title="Abrir matriz modular de Asistencia por IA (AudioSR, Demucs, Outpainting) o perfiles rápidos"
-              >
-                ${ICONS.ai} Configurar IA...
-              </button>
-            </div>
-          </div>
-
-          <!-- 4. Export / Save Mode (Dual, Classic, Extended) -->
-          <div class="form-group param-set-group">
-            <label title="Selects what format(s) are generated and saved on export: Dual (.model + .nmmodel), Classic (.model / .sound), or Extended (.nmmodel with source audio)">EXPORT / SAVE MODE</label>
-            <div class="target-format-buttons-grid" role="radiogroup" aria-label="Export Mode">
-              <button
-                type="button"
-                class="btn-target-format ${activeTarget === 'dual' ? 'is-active' : ''}"
-                data-target-format="dual"
-                title="Dual Export: Generates both Classic (.model + .sound) and Extended (.nmmodel + Samples/)"
-              >
-                Dual (Both)
-              </button>
-              <button
-                type="button"
-                class="btn-target-format ${activeTarget === 'legacy-neuron' ? 'is-active' : ''}"
-                data-target-format="legacy-neuron"
-                title="Classic Export: Hartmann Neuron (.model + .sound)"
-              >
-                Classic (.model)
-              </button>
-              <button
-                type="button"
-                class="btn-target-format ${activeTarget === 'modern-neural' ? 'is-active' : ''}"
-                data-target-format="modern-neural"
-                title="Extended Export: Float32 .nmmodel + original source audio samples"
-              >
-                Extended (.nmmodel)
-              </button>
             </div>
           </div>
         </div>
       </div>
     `;
 
-
-    this.bindEvents();
+    this.bindExpandedEvents();
   }
 
-  private updateValidationBanner(rawSlot: number, rawName: string): void {
-    const bar = this.container.querySelector('#val-config-status') as HTMLElement | null;
-    const txt = this.container.querySelector('#val-config-text') as HTMLElement | null;
-    const slotBadge = this.container.querySelector('#val-slot-badge') as HTMLElement | null;
-    const nameCounter = this.container.querySelector('#val-name-counter') as HTMLElement | null;
-    const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
-    const maxLen = this.getMaxNameLength();
-
-    if (nameCounter) {
-      nameCounter.textContent = isExt ? `${rawName.length} chars (No limit)` : `${rawName.length}/${maxLen} chars`;
-    }
-
-    const clampedSlot = Math.min(511, Math.max(0, Number.isNaN(rawSlot) ? 0 : rawSlot));
-    if (slotBadge) {
-      slotBadge.textContent = `#${String(clampedSlot).padStart(3, '0')}`;
-    }
-
-    if (!bar || !txt) return;
-
-    if (Number.isNaN(rawSlot) || rawSlot < 0 || rawSlot > 511) {
-      bar.className = 'validation-inline-bar is-warning';
-      txt.textContent = `Slot out of range (${rawSlot}) — clamped to #${String(clampedSlot).padStart(3, '0')} (valid: 0..511)`;
-      return;
-    }
-
-    if (rawName.trim().length === 0) {
-      bar.className = 'validation-inline-bar is-warning';
-      txt.textContent = `Empty model name — will default to "UNTITLED"`;
-      return;
-    }
-
-    if (/[^\x20-\x7E]/.test(rawName)) {
-      bar.className = 'validation-inline-bar is-warning';
-      txt.textContent = `Non-ASCII characters detected — hardware LCD supports ASCII 32..126`;
-      return;
-    }
-
-    bar.className = 'validation-inline-bar is-ok is-compact-hidden';
-    txt.textContent = '';
-  }
-
-  private bindEvents(): void {
-    const inpSlot = this.container.querySelector('#inp-model-slot') as HTMLInputElement;
-    const inpName = this.container.querySelector('#inp-model-name') as HTMLInputElement;
-
-    inpSlot?.addEventListener('input', () => {
-      const parsed = parseInt(inpSlot.value, 10);
-      this.updateValidationBanner(parsed, inpName?.value ?? this.currentConfig.modelName);
-      const val = Math.min(511, Math.max(0, Number.isNaN(parsed) ? 0 : parsed));
-      this.currentConfig.modelNumber = val;
-      this.handlers.onConfigChange({ ...this.currentConfig });
-    });
-
-    inpSlot?.addEventListener('blur', () => {
-      inpSlot.value = String(this.currentConfig.modelNumber);
-      this.updateValidationBanner(this.currentConfig.modelNumber, this.currentConfig.modelName);
-    });
-
-    inpName?.addEventListener('input', () => {
-      const isExt = (this.currentConfig.workingMode ?? 'classic') === 'extended';
-      const raw = inpName.value;
-      this.updateValidationBanner(this.currentConfig.modelNumber, raw);
-      if (isExt) {
-        const fullVal = raw.trim() || 'UNTITLED';
-        this.currentConfig.expandedName = fullVal;
-        if (!this.currentConfig.modelName || this.currentConfig.modelName === 'UNTITLED' || this.currentConfig.modelName === 'NewModel') {
-          this.currentConfig.modelName = fullVal.slice(0, 11);
-        }
-      } else {
-        const val = raw.trim().slice(0, 11) || 'UNTITLED';
-        this.currentConfig.modelName = val;
-        if (!this.currentConfig.expandedName || this.currentConfig.expandedName === 'UNTITLED' || this.currentConfig.expandedName === 'NewModel') {
-          this.currentConfig.expandedName = val;
-        }
-      }
-      this.handlers.onConfigChange({ ...this.currentConfig });
-    });
-
-    const valComp = this.container.querySelector('#val-complexity') as HTMLElement;
-    const compBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-complexity');
-    compBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const val = parseInt(btn.getAttribute('data-complexity') || '8', 10);
-        const recDepth = STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, val - 1))] ?? 32;
-        if (valComp) {
-          valComp.textContent = `${val} / 10 (${recDepth} modes)`;
-        }
-        compBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
-        this.currentConfig.complexity = val;
-        this.handlers.onConfigChange({ ...this.currentConfig });
-      });
-    });
-
-    const dispCat = this.container.querySelector('#disp-param-cat') as HTMLElement;
-    const dispName = this.container.querySelector('#disp-param-name') as HTMLElement;
-    const dispDesc = this.container.querySelector('#disp-param-desc') as HTMLElement;
-
-    const paramBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-param-set');
-    paramBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const setId = parseInt(btn.getAttribute('data-param-set') || '0', 10);
-        this.currentConfig.parameterSet = setId;
-        paramBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
-        const found = this.parameterSets.find((p) => p.id === setId);
-        if (found) {
-          const infoCardEl = this.container.querySelector('#param-set-info-card') as HTMLElement;
-          if (infoCardEl) {
-            infoCardEl.className = `param-set-info-card cat-${found.id}`;
-          }
-          dispCat.textContent = found.category;
-          dispName.textContent = `${found.id}: ${found.name}`;
-          dispDesc.textContent = found.description;
-        }
-        this.handlers.onConfigChange({ ...this.currentConfig });
-      });
-    });
-
-    const modeBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-working-mode[data-working-mode]');
-    modeBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (btn.hasAttribute('disabled')) return;
-        const m = (btn.getAttribute('data-working-mode') === 'extended' ? 'extended' : 'classic') as WorkingMode;
-        if ((this.currentConfig.workingMode ?? 'classic') === m) return;
-        this.currentConfig.workingMode = m;
-        if (!this.currentConfig.expandedName) {
-          this.currentConfig.expandedName = this.currentConfig.modelName || 'UNTITLED';
-        }
-        if (!this.currentConfig.modelName) {
-          this.currentConfig.modelName = (this.currentConfig.expandedName || 'UNTITLED').slice(0, 11);
-        }
-        this.render();
-        this.handlers.onConfigChange({ ...this.currentConfig });
-      });
-    });
-    this.syncWorkingModeButtons();
-
-    // Fase 14: Model Cover Artwork (.webp) file picker & drag-and-drop & Modal Preview
-    const fileCoverInp = this.container.querySelector('#inp-cover-image-file') as HTMLInputElement | null;
-    const triggerCoverPick = () => fileCoverInp?.click();
-    this.container.querySelector('#btn-pick-cover-image')?.addEventListener('click', triggerCoverPick);
-
-    const coverDialog = this.container.querySelector('#dlg-cover-preview') as HTMLDialogElement | null;
-    const openCoverModal = () => {
-      if (this.currentConfig.coverArtwork?.webpDataUrl && coverDialog) {
-        if (typeof coverDialog.showModal === 'function') {
-          coverDialog.showModal();
-        } else {
-          coverDialog.setAttribute('open', '');
-        }
-      }
-    };
-    const closeCoverModal = () => {
-      if (coverDialog) {
-        if (typeof coverDialog.close === 'function') {
-          coverDialog.close();
-        } else {
-          coverDialog.removeAttribute('open');
-        }
-      }
-    };
-
-    if (this.currentConfig.coverArtwork) {
-      this.container.querySelector('#btn-pick-cover-thumb')?.addEventListener('click', openCoverModal);
-    } else {
-      this.container.querySelector('#btn-pick-cover-thumb')?.addEventListener('click', triggerCoverPick);
-    }
-
-    this.container.querySelector('#btn-view-large-cover')?.addEventListener('click', openCoverModal);
-    this.container.querySelector('#btn-close-cover-modal')?.addEventListener('click', closeCoverModal);
-    this.container.querySelector('#btn-dialog-close-cover')?.addEventListener('click', closeCoverModal);
-    this.container.querySelector('#btn-dialog-replace-cover')?.addEventListener('click', () => {
-      closeCoverModal();
-      triggerCoverPick();
-    });
-    this.container.querySelector('#btn-dialog-remove-cover')?.addEventListener('click', () => {
-      closeCoverModal();
-      this.handlers.onRemoveCoverImage?.();
-    });
-
-    // Close on backdrop click
-    coverDialog?.addEventListener('click', (e) => {
-      if (e.target === coverDialog) {
-        closeCoverModal();
-      }
-    });
-
-    fileCoverInp?.addEventListener('change', () => {
-      const f = fileCoverInp.files?.[0];
-      if (f) {
-        this.handlers.onSelectCoverImage?.(f);
-        fileCoverInp.value = '';
-      }
-    });
-    this.container.querySelector('#btn-remove-cover-image')?.addEventListener('click', () => {
-      this.handlers.onRemoveCoverImage?.();
-    });
-    const coverDropzone = this.container.querySelector('#cover-artwork-dropzone') as HTMLElement | null;
-    if (coverDropzone) {
-      coverDropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        coverDropzone.classList.add('is-dragover');
-      });
-      coverDropzone.addEventListener('dragleave', () => {
-        coverDropzone.classList.remove('is-dragover');
-      });
-      coverDropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        coverDropzone.classList.remove('is-dragover');
-        const f = e.dataTransfer?.files?.[0];
-        if (
-          f &&
-          (f.type.startsWith('image/') ||
-            /\.(jpe?g|png|webp|avif|svg|bmp|gif)$/i.test(f.name))
-        ) {
-          this.handlers.onSelectCoverImage?.(f);
-        }
-      });
-    }
-
-    const dspBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-dsp-algorithm');
-    dspBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const alg = (btn.getAttribute('data-dsp-algorithm') === 'enhanced' ? 'enhanced' : 'legacy') as DspAlgorithmMode;
-        if ((this.currentConfig.dspAlgorithm ?? 'legacy') === alg) return;
-        this.currentConfig.dspAlgorithm = alg;
-        dspBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
-        this.handlers.onConfigChange({ ...this.currentConfig });
-      });
-    });
-
-    this.container.querySelector('#btn-auto-detect-param-set')?.addEventListener('click', () => {
-      this.handlers.onAutoDetectParameterSet?.();
-    });
-
-    // AI Assistance buttons
-    this.container.querySelector('#btn-panel-ai-dsp')?.addEventListener('click', () => {
-      this.currentConfig.aiConfig = {
-        ...(this.currentConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
-        enabled: false,
-      };
-      this.syncAiButtons();
-      this.handlers.onConfigChange({ ...this.currentConfig });
-    });
-
-    this.container.querySelector('#btn-panel-ai-modal')?.addEventListener('click', () => {
-      this.handlers.onOpenAiEngineModal?.();
-    });
-
-    const targetBtns = this.container.querySelectorAll<HTMLButtonElement>('.btn-target-format');
-    targetBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const fmt = (btn.getAttribute('data-target-format') || 'dual') as TargetFormat;
-        this.currentConfig.targetFormat = fmt;
-        this.syncWorkingModeButtons();
-        targetBtns.forEach((b) => b.classList.toggle('is-active', b === btn));
-        const maxLen = this.getMaxNameLength();
-        if (inpName) {
-          inpName.maxLength = maxLen;
-          if (this.currentConfig.modelName.length > maxLen) {
-            this.currentConfig.modelName = this.currentConfig.modelName.slice(0, maxLen);
-            inpName.value = this.currentConfig.modelName;
-          }
-        }
-        this.updateValidationBanner(this.currentConfig.modelNumber, this.currentConfig.modelName);
-        this.handlers.onConfigChange({ ...this.currentConfig });
-      });
-    });
-
+  // ─────────────────────────────────────────────────────────
+  // Event Binding
+  // ─────────────────────────────────────────────────────────
+  private bindExpandedEvents(): void {
+    // Generate Button
     this.container.querySelector('#btn-cta-process')?.addEventListener('click', () => {
-      if (!this.getSufficientDataStatus().canGenerate) return;
       this.handlers.onStartProcess();
     });
 
-    this.bindExtendedMetadataEvents();
+    // Collapse toggle
+    this.container.querySelector('#btn-collapse-sidebar')?.addEventListener('click', () => {
+      this.toggleCollapse();
+    });
+
+    // Configure model header button
+    this.container.querySelector('#btn-header-open-config')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
+    });
+
+    // HUD Card click / edit links
+    this.container.querySelector('#hud-card-model')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
+    });
+    this.container.querySelector('#hud-card-engine')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
+    });
+    this.container.querySelector('#hud-card-metadata')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('metadata');
+    });
+    this.container.querySelector('#hud-card-artwork')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('artwork');
+    });
+    this.container.querySelector('#hud-card-ai')?.addEventListener('click', () => {
+      this.handlers.onOpenAiEngineModal?.();
+    });
   }
 
-  private renderExtendedMetadataSection(): string {
-    const meta = this.currentConfig.extendedMetadata ?? {};
-    const customAttrs = meta.customAttributes ?? [];
-
-    return `
-      <!-- Extended Model Metadata & Provenance (Extended Mode / ABDAxionikVS) -->
-      <div class="settings-section-card extended-meta-card" style="margin-bottom: var(--space-3); padding: var(--space-3); background: var(--color-panel-surface-elevated); border: 1px solid var(--color-panel-border); border-radius: var(--radius-sm);">
-        <div class="settings-card-header" style="margin-bottom: 8px;">
-          <div class="label-with-val">
-            <label style="font-weight: 700; font-size: var(--text-xs); letter-spacing: 0.05em; color: var(--color-accent); display: flex; align-items: center; gap: 6px;">
-              ${ICONS.database} EXTENDED MODEL METADATA &amp; PROVENANCE
-            </label>
-            <span class="val-pill" style="font-size: 10px;">ABDAxionikVS</span>
-          </div>
-        </div>
-
-        <div class="extended-meta-body">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label for="meta-inp-author" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Author / Creator</label>
-              <input type="text" id="meta-inp-author" class="form-control" value="${escAttr(meta.author ?? '')}" placeholder="Sound designer..." />
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label for="meta-inp-version" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Version</label>
-              <input type="text" id="meta-inp-version" class="form-control" value="${escAttr(meta.version ?? '1.0.0')}" placeholder="1.0.0" />
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label for="meta-inp-license" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">License</label>
-              <input type="text" id="meta-inp-license" class="form-control" value="${escAttr(meta.license ?? '')}" placeholder="e.g. CC-BY 4.0, CC0, Commercial" />
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-              <label for="meta-inp-source-url" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Source / SF2 Origin URL</label>
-              <div style="display: flex; gap: 4px;">
-                <input type="url" id="meta-inp-source-url" class="form-control" value="${escAttr(meta.sourceUrl ?? '')}" placeholder="https://..." style="flex: 1;" />
-                ${meta.sourceUrl ? `<a href="${escAttr(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline" title="Open URL in browser">${ICONS.externalLink}</a>` : ''}
-              </div>
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-top: 8px; margin-bottom: 0;">
-            <label for="meta-inp-description" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted);">Description &amp; Performance Notes</label>
-            <textarea id="meta-inp-description" class="form-control" rows="2" placeholder="Musical characteristics, acoustic tips, recording gear...">${escHtml(meta.description ?? '')}</textarea>
-          </div>
-
-          <!-- Free-form Tag/Value Attributes -->
-          <div class="custom-attributes-wrap" style="margin-top: 10px; border-top: 1px dashed var(--color-panel-border); padding-top: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted);">
-                Custom Metadata Tags (${customAttrs.length})
-              </span>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-add-meta-tag" title="Add arbitrary custom tag & value attribute (e.g. Mic, Preamp, Hall, Style)">
-                ${ICONS.plus} Add Tag
-              </button>
-            </div>
-
-            <div id="custom-meta-tags-list">
-              ${customAttrs.map((attr, idx) => `
-                <div class="custom-attr-item" data-index="${idx}" style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-                  <input type="text" class="form-control inp-meta-tag" data-index="${idx}" value="${escAttr(attr.tag)}" placeholder="Tag (e.g. Mic)" style="flex: 1;" />
-                  <input type="text" class="form-control inp-meta-val" data-index="${idx}" value="${escAttr(attr.value)}" placeholder="Value (e.g. U87)" style="flex: 2;" />
-                  <button type="button" class="btn btn-xs btn-ghost btn-danger-hover btn-remove-meta-tag" data-index="${idx}" title="Remove tag">
-                    ${ICONS.trash}
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private bindExtendedMetadataEvents(): void {
-    const authorInp = this.container.querySelector('#meta-inp-author') as HTMLInputElement | null;
-    authorInp?.addEventListener('input', () => {
-      this.currentConfig.extendedMetadata = {
-        ...(this.currentConfig.extendedMetadata ?? {}),
-        author: authorInp.value.trim(),
-      };
-      this.handlers.onConfigChange({ ...this.currentConfig });
+  private bindCollapsedEvents(): void {
+    // Expand toggle
+    this.container.querySelector('#btn-expand-sidebar')?.addEventListener('click', () => {
+      this.toggleCollapse();
     });
 
-    const versionInp = this.container.querySelector('#meta-inp-version') as HTMLInputElement | null;
-    versionInp?.addEventListener('input', () => {
-      this.currentConfig.extendedMetadata = {
-        ...(this.currentConfig.extendedMetadata ?? {}),
-        version: versionInp.value.trim(),
-      };
-      this.handlers.onConfigChange({ ...this.currentConfig });
+    // Mini CTA Generate
+    this.container.querySelector('#btn-cta-process-mini')?.addEventListener('click', () => {
+      this.handlers.onStartProcess();
     });
 
-    const licenseInp = this.container.querySelector('#meta-inp-license') as HTMLInputElement | null;
-    licenseInp?.addEventListener('input', () => {
-      this.currentConfig.extendedMetadata = {
-        ...(this.currentConfig.extendedMetadata ?? {}),
-        license: licenseInp.value.trim(),
-      };
-      this.handlers.onConfigChange({ ...this.currentConfig });
+    // Rail icon buttons
+    this.container.querySelector('#rail-btn-model')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
     });
-
-    const urlInp = this.container.querySelector('#meta-inp-source-url') as HTMLInputElement | null;
-    urlInp?.addEventListener('input', () => {
-      this.currentConfig.extendedMetadata = {
-        ...(this.currentConfig.extendedMetadata ?? {}),
-        sourceUrl: urlInp.value.trim(),
-      };
-      this.handlers.onConfigChange({ ...this.currentConfig });
+    this.container.querySelector('#rail-btn-mode')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
     });
-
-    const descInp = this.container.querySelector('#meta-inp-description') as HTMLTextAreaElement | null;
-    descInp?.addEventListener('input', () => {
-      this.currentConfig.extendedMetadata = {
-        ...(this.currentConfig.extendedMetadata ?? {}),
-        description: descInp.value.trim(),
-      };
-      this.handlers.onConfigChange({ ...this.currentConfig });
+    this.container.querySelector('#rail-btn-engine')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
     });
-
-    this.container.querySelector('#btn-add-meta-tag')?.addEventListener('click', () => {
-      const curMeta = this.currentConfig.extendedMetadata ?? {};
-      const curAttrs = [...(curMeta.customAttributes ?? [])];
-      curAttrs.push({ tag: '', value: '' });
-      this.currentConfig.extendedMetadata = {
-        ...curMeta,
-        customAttributes: curAttrs,
-      };
-      this.render();
-      this.handlers.onConfigChange({ ...this.currentConfig });
+    this.container.querySelector('#rail-btn-param')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('general');
     });
-
-    this.container.querySelectorAll<HTMLInputElement>('.inp-meta-tag').forEach((inp) => {
-      inp.addEventListener('input', () => {
-        const idx = parseInt(inp.dataset.index ?? '-1', 10);
-        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes?.[idx]) {
-          this.currentConfig.extendedMetadata.customAttributes[idx].tag = inp.value;
-          this.handlers.onConfigChange({ ...this.currentConfig });
-        }
-      });
+    this.container.querySelector('#rail-btn-metadata')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('metadata');
     });
-
-    this.container.querySelectorAll<HTMLInputElement>('.inp-meta-val').forEach((inp) => {
-      inp.addEventListener('input', () => {
-        const idx = parseInt(inp.dataset.index ?? '-1', 10);
-        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes?.[idx]) {
-          this.currentConfig.extendedMetadata.customAttributes[idx].value = inp.value;
-          this.handlers.onConfigChange({ ...this.currentConfig });
-        }
-      });
+    this.container.querySelector('#rail-btn-artwork')?.addEventListener('click', () => {
+      this.handlers.onOpenModelConfig?.('artwork');
     });
-
-    this.container.querySelectorAll<HTMLButtonElement>('.btn-remove-meta-tag').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.index ?? '-1', 10);
-        if (idx >= 0 && this.currentConfig.extendedMetadata?.customAttributes) {
-          this.currentConfig.extendedMetadata.customAttributes.splice(idx, 1);
-          this.render();
-          this.handlers.onConfigChange({ ...this.currentConfig });
-        }
-      });
+    this.container.querySelector('#rail-btn-ai')?.addEventListener('click', () => {
+      this.handlers.onOpenAiEngineModal?.();
     });
   }
 }
-

@@ -28,6 +28,8 @@ import { SpectralView } from './ui/SpectralView';
 import { NeuronDbModal } from './ui/NeuronDbModal';
 import { SettingsModal } from './ui/SettingsModal';
 import { BatchProcessorModal } from './ui/BatchProcessorModal';
+import { ModelConfigModal } from './ui/ModelConfigModal';
+import { AudioChopperModal } from './ui/AudioChopperModal';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { createUniqueModelSlug } from './core/modelSlug';
@@ -52,12 +54,89 @@ class App {
   private neuronDbModal = new NeuronDbModal();
   private settingsModal!: SettingsModal;
   private batchModal!: BatchProcessorModal;
+  private modelConfigModal!: ModelConfigModal;
+  private audioChopperModal!: AudioChopperModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
+  private auditionPcmSourceNode: AudioBufferSourceNode | null = null;
+  private auditionAudioContext: AudioContext | null = null;
 
   constructor() {
     const self = this;
+    this.modelConfigModal = new ModelConfigModal({
+      getConfig: () => self.session?.processConfig ?? self.core.getSession()!.processConfig,
+      onConfigChange: (cfg) => {
+        if (!self.session) return;
+        self.session = self.core.updateProcessConfig(cfg);
+        const errors = self.core.validateCoverage();
+        self.navbar.updateSession(self.session, errors, bridgeClient.isConnected());
+        self.processPanel.setConfig(self.session.processConfig);
+        self.inspector.setZone(
+          self.getActiveZone(),
+          self.getActiveZoneIndex(),
+          self.session.zones.length,
+          self.session.zones,
+          self.session.processConfig.workingMode,
+          self.session.processConfig.keyMappingMode
+        );
+        self.updateSpectralView(self.getActiveZone());
+      },
+      getParameterSets: () => self.core.getParameterSets(),
+      onSelectCoverImage: (file) => {
+        void self.handleCoverImageUpload(file);
+      },
+      onRemoveCoverImage: () => {
+        if (!self.session) return;
+        self.session = self.core.setModelCoverArtwork(null);
+        toast('Removed model cover artwork.', 'info');
+        self.refreshUI();
+        self.modelConfigModal.updateConfig();
+      },
+      onReprocessFromPurestSource: async () => {
+        const prov = await self.core.reprocessFromPurestSource();
+        self.session = self.core.getSession()!;
+        self.telemetryDrawer.addLog(
+          `Time Capsule Reprocess #${prov.reprocessCount}: Purest origin=${prov.primarySourceLayer} -> activeInput=${prov.activeAnalysisSourceLayer}.`
+        );
+        toast('Reprocessed from purest acoustic source (0 Generation-Loss)', 'success');
+        self.refreshUI();
+        self.modelConfigModal.updateConfig();
+      },
+    });
+
+    this.audioChopperModal = new AudioChopperModal({
+      getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
+      onInjectClassicZones: (zones, audioSamples) => {
+        if (!self.session) return;
+        for (const sample of audioSamples) {
+          self.core.registerSampleBuffer(sample.name, sample.buffer);
+        }
+        self.session.zones = zones;
+        self.selectedZoneId = zones[0]?.id ?? null;
+        self.telemetryDrawer.addLog(`AutoSlicer: Injected ${zones.length} sliced zones into session.`);
+        toast(`Injected ${zones.length} sliced zones into session.`, 'success');
+        self.refreshUI();
+      },
+      onInjectExtendedRegions: (regions, audioSamples) => {
+        if (!self.session) return;
+        for (const sample of audioSamples) {
+          self.core.registerSampleBuffer(sample.name, sample.buffer);
+        }
+        self.session.extendedRegions = regions;
+        self.selectedZoneId = regions[0]?.id ?? null;
+        self.telemetryDrawer.addLog(`AutoSlicer: Injected ${regions.length} sliced 2D regions into session.`);
+        toast(`Injected ${regions.length} sliced regions into session.`, 'success');
+        self.refreshUI();
+      },
+      onAuditionPcm: (pcm, sRate) => {
+        self.playAuditionPcm(pcm, sRate);
+      },
+      onStopAudition: () => {
+        self.stopAuditionPcm();
+      },
+    });
+
     this.settingsModal = new SettingsModal({
       onUpdateAiConfig: (config) => {
         if (!self.session) return;
@@ -69,12 +148,6 @@ class App {
       },
       onSetThemeMode: (mode) => {
         self.setThemeMode(mode);
-      },
-      onSetWorkingMode: (mode) => {
-        if (!self.session) return;
-        self.session = self.core.updateProcessConfig({ workingMode: mode });
-        self.refreshUI();
-        self.telemetryDrawer.addLog(`Working mode switched to: ${mode}`);
       },
       getCurrentThemeFamily: () => self.themeFamilies[self.currentFamilyIndex],
       getCurrentThemeMode: () => self.currentThemeMode,
@@ -113,6 +186,12 @@ class App {
       get bank() { return self.bankDrawer; },
       get neuronDb() { return self.neuronDbModal; },
       onDropCoverImage: (file: File) => self.handleCoverImageUpload(file),
+      onOpenBatchProcessorWithSf2: (buffer: ArrayBuffer, fileName: string) => {
+        self.batchModal.loadSf2Buffer(buffer, fileName);
+      },
+      onOpenBatchProcessor: () => {
+        self.batchModal.open();
+      },
     });
     this.menus = new MenuActions({
       core: self.core,
@@ -146,6 +225,8 @@ class App {
       setThemeMode: (mode: 'light' | 'dark') => self.setThemeMode(mode),
       toggleThemeMode: () => self.toggleThemeMode(),
       openBatchModal: () => self.batchModal.open(),
+      openModelConfig: (tab) => self.modelConfigModal.open(tab),
+      openAudioChopper: () => void self.openAudioChopper(),
     });
   }
 
@@ -322,7 +403,7 @@ class App {
       onSelectZone: (id) => {
         this.selectedZoneId = id;
         const active = this.getActiveZone();
-        this.inspector.setZone(active, this.getActiveZoneIndex(), this.session!.zones.length, this.session!.zones, this.session!.processConfig.workingMode);
+        this.inspector.setZone(active, this.getActiveZoneIndex(), this.session!.zones.length, this.session!.zones, this.session!.processConfig.workingMode, this.session!.processConfig.keyMappingMode);
         this.keyboard.setActiveZone(active);
         this.updateSpectralView(active);
       },
@@ -361,7 +442,7 @@ class App {
         this.selectedZoneId = zoneId;
         const active = this.getActiveZone();
         this.ribbon.setActiveZone(zoneId);
-        this.inspector.setZone(active, this.getActiveZoneIndex(), this.session!.zones.length, this.session!.zones, this.session!.processConfig.workingMode);
+        this.inspector.setZone(active, this.getActiveZoneIndex(), this.session!.zones.length, this.session!.zones, this.session!.processConfig.workingMode, this.session!.processConfig.keyMappingMode);
         this.keyboard.setActiveZone(active);
         this.updateSpectralView(active);
       },
@@ -584,6 +665,25 @@ class App {
         this.core.updateLiveLoopPoints(startFrame, endFrame, sampleRate, loopEnabled);
       },
       isAuditionPlaying: () => this.core.getRealtimeSpectrum().isPlaying,
+      getKeyMappingMode: () => this.session?.processConfig.keyMappingMode ?? 'chromatic',
+      onUpdateKeyMappingMode: (mode) => {
+        if (!this.session) return;
+        this.session = this.core.updateProcessConfig({ keyMappingMode: mode });
+        this.telemetryDrawer.addLog(`Switched Key Mapping Mode: ${mode === 'drum' ? 'General MIDI Drum Map' : 'Chromatic'}`);
+        this.refreshUI();
+      },
+      getExtendedMetadata: () => this.session?.processConfig.extendedMetadata,
+      onUpdateExtendedMetadata: (metadata) => {
+        if (!this.session) return;
+        this.session = this.core.updateProcessConfig({ extendedMetadata: metadata });
+        this.processPanel.setConfig(this.session.processConfig);
+      },
+      onOpenModelConfig: (tab) => {
+        this.modelConfigModal.open(tab);
+      },
+      onOpenAutoSlicer: () => {
+        void this.openAudioChopper();
+      },
     });
 
     // 3b. Spectral & A/B/C Resynthesis Monitor + Fase 13 Loop Editor
@@ -661,30 +761,13 @@ class App {
           this.processPanel.setValidation(errors, this.session.zones);
           // Working Mode / target format changes re-gate the inspector's
           // velSplit slider, so re-sync it with the stored session config.
-          this.inspector.setZone(this.getActiveZone(), this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
+          this.inspector.setZone(this.getActiveZone(), this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode, this.session.processConfig.keyMappingMode);
           this.updateSpectralView(this.getActiveZone());
+          this.modelConfigModal.updateConfig();
         },
-        onOpenAiEngineModal: () => this.settingsModal.open('web', this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
         onStartProcess: () => this.handleStartProcess(),
-        onAutoDetectParameterSet: () => {
-          const active = this.getActiveZone();
-          const res = this.core.autoDetectZonePitchAndParameterSet(active?.id, true);
-          if (res) {
-            this.session = this.core.getSession()!;
-            const pSetInfo = this.core.getParameterSets().find((p) => p.id === res.recommendedParameterSet);
-            const pSetName = pSetInfo?.name ?? `Set ${res.recommendedParameterSet}`;
-            this.telemetryDrawer.addLog(
-              `Auto-detected Parameter Set: #${res.recommendedParameterSet} (${pSetName}) [${res.detectedCategory}] — ${res.rationale}`
-            );
-            toast(
-              `Auto-selected Set #${res.recommendedParameterSet}: ${pSetName} (${res.detectedCategory})`,
-              'success'
-            );
-            this.refreshUI();
-          } else {
-            toast('Load at least one audio sample to auto-detect Parameter Set.', 'warning');
-          }
-        },
+        onOpenModelConfig: (tab) => this.modelConfigModal.open(tab),
+        onOpenAiEngineModal: () => this.settingsModal.open('web', this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
         onSelectCoverImage: (file) => {
           void this.handleCoverImageUpload(file);
         },
@@ -693,6 +776,7 @@ class App {
           this.telemetryDrawer.addLog('Removed Extended Model Cover Artwork (.webp).');
           toast('Removed model cover artwork.', 'info');
           this.refreshUI();
+          this.modelConfigModal.updateConfig();
         },
       },
       {
@@ -723,7 +807,7 @@ class App {
           if (found.id !== this.selectedZoneId) {
             this.selectedZoneId = found.id;
             this.ribbon.setActiveZone(found.id);
-            this.inspector.setZone(found, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode);
+            this.inspector.setZone(found, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, this.session.processConfig.workingMode, this.session.processConfig.keyMappingMode);
             this.keyboard.setActiveZone(found);
             this.updateSpectralView(found);
           }
@@ -898,14 +982,84 @@ class App {
     if (nextEnabled) {
       const isBridge = bridgeClient.isConnected();
       if (!isBridge) {
-        toast('Asistencia por IA activada (usando fallback DSP local si el Companion Bridge está apagado)', 'info');
+        toast('AI Assistance enabled (using local DSP fallback if Companion Bridge is offline)', 'info');
       } else {
-        toast('Asistencia por IA activada (Companion Bridge listo)', 'success');
+        toast('AI Assistance enabled (Companion Bridge ready)', 'success');
       }
     } else {
-      toast('Modo 100% Algorítmico (DSP Puro) activado', 'info');
+      toast('100% Algorithmic DSP Mode activated', 'info');
     }
     this.refreshUI();
+  }
+
+  private playAuditionPcm(pcm: Float32Array, sampleRate: number): void {
+    this.stopAuditionPcm();
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.auditionAudioContext = ctx;
+      const buffer = ctx.createBuffer(1, pcm.length, sampleRate);
+      buffer.getChannelData(0).set(pcm);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      src.start();
+      this.auditionPcmSourceNode = src;
+    } catch {
+      // transient audio context error
+    }
+  }
+
+  private stopAuditionPcm(): void {
+    if (this.auditionPcmSourceNode) {
+      try {
+        this.auditionPcmSourceNode.stop();
+        this.auditionPcmSourceNode.disconnect();
+      } catch {
+        // already stopped
+      }
+      this.auditionPcmSourceNode = null;
+    }
+    if (this.auditionAudioContext) {
+      try {
+        void this.auditionAudioContext.close();
+      } catch {
+        // ignore
+      }
+      this.auditionAudioContext = null;
+    }
+  }
+
+  public async openAudioChopper(): Promise<void> {
+    const activeZone = this.getActiveZone();
+    const isExtended = (this.session?.processConfig.workingMode ?? 'classic') === 'extended';
+    let sampleName = '';
+    if (isExtended) {
+      const extRegId = this.inspector.getSelectedRegionId();
+      const extReg = this.session?.extendedRegions?.find((r) => r.id === extRegId);
+      sampleName = extReg?.sampleName || activeZone?.sampleLow || activeZone?.sampleHigh || '';
+    } else {
+      sampleName = activeZone?.sampleLow || activeZone?.sampleHigh || '';
+    }
+
+    let pcm = new Float32Array(0);
+    let sampleRate = 44100;
+    let filename = sampleName || 'Sample.wav';
+
+    if (sampleName) {
+      try {
+        const buf = this.core.getSampleBuffer(sampleName);
+        if (buf) {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const decoded = await audioCtx.decodeAudioData(buf.slice(0));
+          pcm = decoded.getChannelData(0);
+          sampleRate = decoded.sampleRate;
+        }
+      } catch (err) {
+        toast(`Could not decode sample for chopper: ${err instanceof Error ? err.message : String(err)}`, 'warning');
+      }
+    }
+
+    this.audioChopperModal.open(pcm, sampleRate, filename);
   }
 
   private async handleCoverImageUpload(file: File): Promise<void> {
@@ -1008,7 +1162,7 @@ class App {
     this.navbar.updateSession(this.session, errors, bridgeClient.isConnected());
     this.navbar.updateHistory(this.core.getHistoryState());
     this.ribbon.setZones(this.session.zones, this.selectedZoneId, extRegions, workingMode);
-    this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, workingMode);
+    this.inspector.setZone(activeZone, this.getActiveZoneIndex(), this.session.zones.length, this.session.zones, workingMode, this.session.processConfig.keyMappingMode);
     this.processPanel.setConfig(this.session.processConfig, {
       errors,
       zones: this.session.zones,
@@ -1017,6 +1171,7 @@ class App {
     this.keyboard.setActiveZone(activeZone);
     this.telemetryDrawer.updateAudit(this.session, errors);
     this.updateSpectralView(activeZone);
+    this.modelConfigModal?.updateConfig();
   }
 
   private toggleSpectralPanel(): void {

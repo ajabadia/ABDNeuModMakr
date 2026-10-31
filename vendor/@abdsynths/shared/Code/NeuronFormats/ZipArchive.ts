@@ -402,6 +402,19 @@ export function inflateRaw(compressed: Uint8Array, expectedSize?: number): Uint8
   return out.subarray(0, outPos);
 }
 
+/** S6.2 Zip-Slip: rechaza `..`, rutas absolutas, unidades Windows y NUL. */
+export function isUnsafeZipPath(path: string): boolean {
+  const norm = path.replace(/\\/g, '/');
+  return (
+    norm.length === 0 ||
+    norm.length > 512 ||
+    norm.startsWith('/') ||
+    /^[a-zA-Z]:[\\/]/.test(norm) ||
+    norm.split('/').includes('..') ||
+    norm.includes('\0')
+  );
+}
+
 function isMacOsJunkZipPath(path: string): boolean {
   const norm = path.replace(/\\/g, '/');
   if (norm.startsWith('__MACOSX/') || norm.includes('/__MACOSX/')) return true;
@@ -457,7 +470,7 @@ export function parseZipArchive(zipBytes: Uint8Array): ParsedZipEntry[] {
       const path = decodeUtf8(nameBytes);
       cdPtr += 46 + nameLen + extraLen + commentLen;
 
-      if (path.endsWith('/') || isMacOsJunkZipPath(path)) continue;
+      if (path.endsWith('/') || isMacOsJunkZipPath(path) || isUnsafeZipPath(path)) continue;
       if (localHeaderOffset + 30 > zipBytes.byteLength) continue;
       if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) continue;
 
@@ -507,7 +520,7 @@ export function parseZipArchive(zipBytes: Uint8Array): ParsedZipEntry[] {
     const nameBytes = zipBytes.subarray(ptr + 30, ptr + 30 + nameLen);
     const path = decodeUtf8(nameBytes);
 
-    if (!path.endsWith('/') && !isMacOsJunkZipPath(path)) {
+    if (!path.endsWith('/') && !isMacOsJunkZipPath(path) && !isUnsafeZipPath(path)) {
       if (compSize > MAX_ZIP_ENTRY_BYTES || uncompSize > MAX_ZIP_ENTRY_BYTES) break;
       const rawSlice = zipBytes.subarray(dataStart, dataStart + compSize);
       if (method === 0) {

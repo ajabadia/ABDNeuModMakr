@@ -38,6 +38,12 @@ import {
 import { AudioPreviewService } from '../src/core/audioPreview.ts';
 import { WebAudioPipeline } from '../src/core/WebAudioPipeline.ts';
 import { parseSessionJson } from '../src/core/sessionSchema.ts';
+import {
+  formatGmDrumLabel,
+  listGmDrumEntries,
+  analyzeDrumCollisions,
+  isGmDrumNote,
+} from '../src/core/gmDrumMap.ts';
 import { ImportHandlers, type ImportContext } from '../src/app/importHandlers.ts';
 import { MenuActions, type MenuContext } from '../src/app/menuActions.ts';
 import type { CoreService } from '../src/core/CoreService.ts';
@@ -1650,7 +1656,76 @@ async function runPhase6Tests(): Promise<void> {
   }
   console.log('[PASS] 19. Fase 17 (Doble Nomenclatura: modelName vs expandedName & ExtendedModelMetadata)');
 
-  console.log('=== ALL PHASE 6, 7, 8, 9, 13, 14 & 18 TESTS PASSED ===');
+  // 20. Fase 18 General MIDI Drum Map: Formatter, GM Piece Placement, Collision Detection & Pipeline KeyMappingMode
+  {
+    // 20a. Format GM drum labels with note number and note name in parentheses
+    assert.equal(formatGmDrumLabel(38), 'Acoustic Snare (38 D1)');
+    assert.equal(formatGmDrumLabel(36), 'Bass Drum 1 (36 C1)');
+    assert.equal(formatGmDrumLabel(42), 'Closed Hi-Hat (42 F#1)');
+    assert.equal(formatGmDrumLabel(35), 'Acoustic Bass Drum (35 B0)');
+    assert.equal(formatGmDrumLabel(81), 'Open Triangle (81 A4)');
+    // Non-GM fallback note
+    assert.equal(formatGmDrumLabel(24), 'Custom Perc (24 C0)');
+    assert.equal(isGmDrumNote(38), true);
+    assert.equal(isGmDrumNote(24), false);
+
+    // 20b. Standard GM drum entries list (35..81)
+    const entries = listGmDrumEntries();
+    assert.equal(entries.length, 47);
+    assert.equal(entries[0].note, 35);
+    assert.equal(entries[0].name, 'Acoustic Bass Drum');
+    assert.equal(entries[entries.length - 1].note, 81);
+    assert.equal(entries[entries.length - 1].name, 'Open Triangle');
+
+    // 20c. Drum collision detection: colliding keys with overlapping velocity
+    const collidingItems = [
+      { id: 'reg-1', lowKey: 38, highKey: 38, rootKey: 38, lowVel: 1, highVel: 127 },
+      { id: 'reg-2', lowKey: 38, highKey: 38, rootKey: 38, lowVel: 64, highVel: 127 },
+      { id: 'reg-3', lowKey: 42, highKey: 42, rootKey: 42, lowVel: 1, highVel: 127 },
+    ];
+    const collReport = analyzeDrumCollisions(collidingItems);
+    assert.equal(collReport.totalCollisions, 2);
+    assert.deepEqual(collReport.collidingKeys, [38]);
+    assert.ok(collReport.collisionMap['reg-1']);
+    assert.ok(collReport.collisionMap['reg-2']);
+    assert.equal(collReport.collisionMap['reg-3'], undefined);
+    assert.equal(collReport.collisionMap['reg-1'].drumLabel, 'Acoustic Snare (38 D1)');
+    assert.deepEqual(collReport.collisionMap['reg-1'].peerIndices, [2]);
+
+    // Non-overlapping velocity layers on same key: no collision
+    const velLayerItems = [
+      { id: 'reg-1', lowKey: 38, highKey: 38, rootKey: 38, lowVel: 1, highVel: 63 },
+      { id: 'reg-2', lowKey: 38, highKey: 38, rootKey: 38, lowVel: 64, highVel: 127 },
+    ];
+    const velReport = analyzeDrumCollisions(velLayerItems);
+    assert.equal(velReport.totalCollisions, 0);
+
+    // 20d. WebAudioPipeline keyMappingMode configuration & validation
+    const pipe = new WebAudioPipeline();
+    await pipe.init();
+    await pipe.newSession('DrumTest');
+    const sess = pipe.getSession()!;
+    assert.equal(sess.processConfig.keyMappingMode, undefined);
+
+    pipe.updateProcessConfig({ keyMappingMode: 'drum' });
+    assert.equal(pipe.getSession()!.processConfig.keyMappingMode, 'drum');
+
+    // Invalid mode rejected
+    assert.throws(() => {
+      // @ts-expect-error test invalid mode
+      pipe.updateProcessConfig({ keyMappingMode: 'invalid_mode' });
+    });
+
+    // Session JSON export & roundtrip preserves keyMappingMode
+    const jsonStr = pipe.exportSessionJson();
+    const restored = parseSessionJson(jsonStr);
+    assert.equal(restored.processConfig.keyMappingMode, 'drum');
+
+    pipe.dispose();
+  }
+  console.log('[PASS] 20. Fase 18 (General MIDI Drum Map: Labels, Placement, Collisions & KeyMappingMode)');
+
+  console.log('=== ALL PHASE 6, 7, 8, 9, 13, 14, 17 & 18 TESTS PASSED ===');
 }
 
 runPhase6Tests().catch((err) => {

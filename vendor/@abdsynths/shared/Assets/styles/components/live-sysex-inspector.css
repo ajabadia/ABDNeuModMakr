@@ -11,8 +11,11 @@
   --sysex-text: #e2e8f0;
   --sysex-text-muted: #718096;
   --sysex-accent: var(--color-accent, #00d2ff);
+  --sysex-accent-rgb: 0, 210, 255;
   --sysex-highlight: #00ffaa;
+  --sysex-highlight-rgb: 0, 255, 170;
   --sysex-diff: #f59e0b;
+  --sysex-diff-rgb: 245, 158, 11;
   --sysex-sof: #38bdf8;
   --sysex-eof: #f87171;
   --sysex-mfg: #a78bfa;
@@ -22,7 +25,7 @@
   background: var(--sysex-bg);
   border: 1px solid var(--sysex-border);
   border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--sysex-border);
+  box-shadow: 0 20px 60px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.75), 0 0 0 1px var(--sysex-border);
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--sysex-text);
   overflow: hidden;
@@ -48,7 +51,7 @@
   max-height: 82vh;
   resize: both;
   overflow: hidden;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 210, 255, 0.4);
+  box-shadow: 0 24px 64px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.85), 0 0 1px rgba(var(--sysex-accent-rgb), 0.4);
   backdrop-filter: blur(12px);
 }
 
@@ -104,8 +107,8 @@
 .sysex-inspector__tag {
   display: inline-block;
   padding: 2px 5px;
-  background: rgba(0, 210, 255, 0.12);
-  border: 1px solid rgba(0, 210, 255, 0.35);
+  background: rgba(var(--sysex-accent-rgb), 0.12);
+  border: 1px solid rgba(var(--sysex-accent-rgb), 0.35);
   border-radius: 3px;
   color: var(--sysex-accent);
   font-family: 'Share Tech Mono', monospace;
@@ -136,9 +139,9 @@
 .sysex-inspector__badge--live {
   position: relative;
   padding-left: 14px;
-  background: rgba(0, 255, 170, 0.12);
+  background: rgba(var(--sysex-highlight-rgb), 0.12);
   color: var(--sysex-highlight);
-  border: 1px solid rgba(0, 255, 170, 0.35);
+  border: 1px solid rgba(var(--sysex-highlight-rgb), 0.35);
 }
 
 .sysex-inspector__badge--live::before {
@@ -161,9 +164,9 @@
 }
 
 .sysex-inspector__badge--diff {
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(var(--sysex-diff-rgb), 0.15);
   color: var(--sysex-diff);
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  border: 1px solid rgba(var(--sysex-diff-rgb), 0.4);
 }
 
 .sysex-inspector__badge--size {

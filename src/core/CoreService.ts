@@ -94,6 +94,9 @@ export interface CoreService {
   /** Register an in-memory WAV buffer, decoding and validating header metadata */
   registerSampleBuffer(sampleName: string, wavBuffer: ArrayBuffer): DecodedWav;
 
+  /** Retrieve an in-memory or persisted audio buffer by sample name */
+  getSampleBuffer(sampleName: string): ArrayBuffer | undefined;
+
   /** Get list of unique loaded or referenced sample names */
   getLoadedSampleNames(): string[];
 

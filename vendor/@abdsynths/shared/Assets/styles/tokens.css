@@ -33,6 +33,10 @@
   --color-panel-surface:       #151f2e;   /* Nested panels, module bodies */
   --color-panel-surface-elevated: #1c2a3d; /* Modals, popovers, tooltips */
   --color-bg-elev:            #161b22;   /* Widget-internal elevated bg (widgets.css) */
+  --color-scrim-rgb:          0, 0, 0;   /* rgb form for modal/scrim overlays */
+  --color-bg-base-rgb:         10, 14, 20;  /* rgb forms for translucent overlays */
+  --color-panel-bg-rgb:        15, 22, 32;
+  --color-panel-surface-rgb:   21, 31, 46;
 
   /* =========================================================================
      2. Borders (3 strength levels)
@@ -41,6 +45,8 @@
   --color-panel-border-strong: rgba(0, 195, 255, 0.45);  /* Focused / emphasized */
   --color-panel-border-dim:    rgba(0, 195, 255, 0.1);   /* Barely-visible separators */
   --color-border:              #2c3542;   /* Widget-internal grid/divider line (widgets.css) */
+  --color-border-subtle:       #333a47;   /* Neutral hairline (canoniza uso de widgets.css) */
+  --color-border-subtle-rgb:   51, 58, 71; /* rgb form for alpha overlays */
 
   /* =========================================================================
      3. Accent & Interactive States
@@ -71,7 +77,9 @@
         Text sizes are defined further down.
      ========================================================================= */
   --color-text-main:   #f0f7ff;  /* Primary headings, active labels */
+  --color-text-main-rgb: 240, 247, 255; /* rgb form for alpha overlays */
   --color-text-muted:  #7e9bb5;  /* Body text, descriptions */
+  --color-text-muted-rgb: 126, 155, 181; /* rgb form for alpha overlays */
   --color-text-dim:    #4a637a;  /* Secondary info, placeholders */
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -127,8 +135,14 @@
   --color-warning-rgb: 255, 170, 0;
   --color-danger:      #ff3344;
   --color-danger-rgb:  255, 51, 68;
+  --color-danger-hover: #e03b3b;   /* Hover/active state for danger solids */
+  --color-danger-soft: #fda4af;  /* Soft danger text on dark surfaces */
   --color-success:     #00e676;
   --color-success-rgb: 0, 230, 118;
+  /* "Update available" affordance (distinct from generic success) */
+  --color-update-from: #11998e;
+  --color-update-to:   #38ef7d;
+  --color-update-glow-rgb: 56, 239, 125;
 
   /* Category colors (Harmonious Hartmann & Synthesis Palette) */
   --color-cat-0: var(--color-text-muted);
@@ -374,11 +388,21 @@
   --color-scrollbar-track:        #f1f5f9;
 }
 
+/* Spectral layer colors (visualizers: drone / crest / air / morph).
+   Independent palette — not aliased to cable tokens on purpose. */
+:root {
+  --color-layer-1: #00e676;
+  --color-layer-2: #ffb142;
+  --color-layer-3: #06b6d4;
+  --color-layer-4: #a855f7;
+}
+
 /* Cable colors for Studio Topology (global tokens) */
 :root {
   --color-cable-audio-out: #f59e0b;
   --color-cable-audio-in:  var(--color-accent);
   --color-cable-midi-out:  #a855f7;
+  --color-cable-midi-out-rgb: 168, 85, 247;
   --color-cable-midi-in:   #06b6d4;
 
   /* VU Meter gradient */

@@ -46,6 +46,8 @@ export interface MenuContext {
   setThemeMode?: (mode: 'light' | 'dark') => void;
   toggleThemeMode?: () => void;
   openBatchModal?: () => void;
+  openModelConfig?: (tab?: import('../ui/ModelConfigModal').ModelConfigTab) => void;
+  openAudioChopper?: () => void;
 }
 
 export class MenuActions {
@@ -100,8 +102,71 @@ export class MenuActions {
     this.ctx.refresh();
   }
 
+  private async checkExportPreflight(): Promise<boolean> {
+    if (!this.ctx.session) return false;
+    const targetFormat = this.ctx.session.processConfig.targetFormat ?? 'dual';
+    if (targetFormat === 'modern-neural') return true;
+
+    const issues: string[] = [];
+    const cfg = this.ctx.session.processConfig;
+    const activeName = cfg.expandedName || cfg.modelName;
+
+    // Check Hartmann 11-char name constraint
+    if (activeName.length > 11) {
+      issues.push(
+        `Model name "${activeName}" exceeds classic 11-character hardware limit. It will be clamped to "${activeName.slice(0, 11)}".`
+      );
+    }
+
+    // Check velocity layer constraints (>2 layers)
+    if (cfg.workingMode === 'extended' && this.ctx.session.extendedRegions) {
+      const regions = this.ctx.session.extendedRegions;
+      const keyLayerCount = new Map<number, number>();
+      for (const r of regions) {
+        for (let k = r.lowKey; k <= r.highKey; k++) {
+          keyLayerCount.set(k, (keyLayerCount.get(k) ?? 0) + 1);
+        }
+      }
+      const maxLayers = Math.max(0, ...Array.from(keyLayerCount.values()));
+      if (maxLayers > 2) {
+        issues.push(
+          `Model contains up to ${maxLayers} velocity layers on some keys. Classic Hartmann (.model) format strictly supports 2 velocity layers (Low/High). Regions will be projected into 2 layers using acoustic gain compensation.`
+        );
+      }
+    }
+
+    // Check zone count constraint (>128 zones)
+    if (this.ctx.session.zones.length > 128) {
+      issues.push(
+        `Model has ${this.ctx.session.zones.length} zones. Classic hardware strictly supports up to 128 keyboard zones.`
+      );
+    }
+
+    if (issues.length > 0) {
+      const msg =
+        `Hardware Compatibility Notice for Classic (.model) Export:\n\n` +
+        issues.map((it, i) => `${i + 1}. ${it}`).join('\n\n') +
+        `\n\nThe compiler will automatically adjust parameters to closest hardware limits.\n\nDo you want to proceed with export, or cancel to adjust your model first?`;
+      const ok = await confirmDialog(
+        `Export Compatibility Notice\n\n` + msg,
+        {
+          confirmLabel: 'Proceed with Clamping',
+          cancelLabel: 'Cancel & Adjust',
+        }
+      );
+      return ok;
+    }
+
+    return true;
+  }
+
   async exportModel(): Promise<void> {
     if (!this.ctx.session) return;
+    const ok = await this.checkExportPreflight();
+    if (!ok) {
+      this.ctx.shell.getTelemetry().addLog('Export cancelled by user during hardware compatibility preflight.');
+      return;
+    }
     const slot = this.ctx.session.processConfig.modelNumber;
     const safeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
     await this.ctx.core.exportModel(
@@ -115,6 +180,11 @@ export class MenuActions {
 
   async exportModelAs(): Promise<void> {
     if (!this.ctx.session) return;
+    const ok = await this.checkExportPreflight();
+    if (!ok) {
+      this.ctx.shell.getTelemetry().addLog('Export cancelled by user during hardware compatibility preflight.');
+      return;
+    }
     const slot = this.ctx.session.processConfig.modelNumber;
     const currentSafeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
     const defaultPackName = `NeuronModel_${String(slot).padStart(3, '0')}_${currentSafeName}`;
@@ -132,37 +202,37 @@ export class MenuActions {
     if (!this.ctx.session) return;
     try {
       const res = await this.ctx.core.saveToAxionikDb();
-      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'paquete .axmodel.zip descargado';
+      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'downloaded .axmodel.zip package';
       this.ctx.shell.getTelemetry().addLog(
-        `Guardado en AxionikDB: slug "${res.slug}" (${res.count} archivos en ${where}).`
+        `Saved to AxionikDB: slug "${res.slug}" (${res.count} file(s) in ${where}).`
       );
-      toast(`Guardado en AxionikDB: ${res.slug}`, 'success');
+      toast(`Saved to AxionikDB: ${res.slug}`, 'success');
       this.ctx.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.ctx.shell.getTelemetry().addLog(`Error guardando en AxionikDB: ${msg}`);
-      toast(`Error en AxionikDB: ${msg}`, 'error');
+      this.ctx.shell.getTelemetry().addLog(`Error saving to AxionikDB: ${msg}`);
+      toast(`AxionikDB error: ${msg}`, 'error');
     }
   }
 
   async saveToAxionikDbAs(): Promise<void> {
     if (!this.ctx.session) return;
     const currentName = this.ctx.session.name || 'New Model';
-    const entered = typeof window !== 'undefined' ? window.prompt('Nombre del modelo en AxionikDB:', currentName) : null;
+    const entered = typeof window !== 'undefined' ? window.prompt('Model name in AxionikDB:', currentName) : null;
     if (entered === null) return;
     const newName = entered.trim() || currentName;
     try {
       const res = await this.ctx.core.saveToAxionikDb({ customName: newName, saveAs: true });
-      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'paquete .axmodel.zip descargado';
+      const where = res.isBridge ? `AxionikDB local (${res.path})` : 'downloaded .axmodel.zip package';
       this.ctx.shell.getTelemetry().addLog(
-        `Duplicado / Guardado como en AxionikDB: "${newName}" [slug: ${res.slug}] (${where}).`
+        `Duplicated / Saved as in AxionikDB: "${newName}" [slug: ${res.slug}] (${where}).`
       );
-      toast(`Guardado en AxionikDB como: ${res.slug}`, 'success');
+      toast(`Saved to AxionikDB as: ${res.slug}`, 'success');
       this.ctx.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.ctx.shell.getTelemetry().addLog(`Error guardando como en AxionikDB: ${msg}`);
-      toast(`Error en AxionikDB: ${msg}`, 'error');
+      this.ctx.shell.getTelemetry().addLog(`Error saving as in AxionikDB: ${msg}`);
+      toast(`AxionikDB error: ${msg}`, 'error');
     }
   }
 
@@ -171,8 +241,8 @@ export class MenuActions {
       onNewSession: async () => {
         if (this.ctx.session?.dirty) {
           const ok = await confirmDialog(
-            'Tienes cambios sin guardar en la sesión actual. ¿Deseas descartarlos y crear una nueva sesión?',
-            { confirmLabel: 'Crear Nueva Sesión', cancelLabel: 'Cancelar', danger: true }
+            'You have unsaved changes in the current session. Do you want to discard them and create a new session?',
+            { confirmLabel: 'Create New Session', cancelLabel: 'Cancel', danger: true }
           );
           if (!ok) return;
         }
@@ -216,7 +286,7 @@ export class MenuActions {
       onExportZoneAiff: () => {
         const active = this.ctx.getActiveZone();
         if (!active) {
-          toast('No hay una zona activa seleccionada para exportar.', 'warning');
+          toast('No active zone selected to export.', 'warning');
           return;
         }
         try {
@@ -224,11 +294,11 @@ export class MenuActions {
           this.ctx.shell.getTelemetry().addLog(
             `Exported canonical 44.1 kHz 16-bit Mono AIFF: ${filename} (${bytes.byteLength} bytes)`
           );
-          toast(`Muestra exportada: ${filename}`, 'success');
+          toast(`Exported sample: ${filename}`, 'success');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           this.ctx.shell.getTelemetry().addLog(`AIFF export error: ${msg}`);
-          toast(`Error al exportar AIFF: ${msg}`, 'error');
+          toast(`AIFF export error: ${msg}`, 'error');
         }
       },
       onUndo: () => this.performUndo(),
@@ -319,6 +389,8 @@ export class MenuActions {
         if (willOpen) this.ctx.shell.getTelemetry().close();
       },
       onOpenBatchModal: () => this.ctx.openBatchModal?.(),
+      onOpenModelConfig: () => this.ctx.openModelConfig?.('general'),
+      onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();
         this.ctx.shell.getTelemetry().toggle();
@@ -456,6 +528,13 @@ export class MenuActions {
           e.preventDefault();
           this.ctx.shell.getTelemetry().toggle();
         } else if (key === 'm') {
+          e.preventDefault();
+          if (this.ctx.openModelConfig) {
+            this.ctx.openModelConfig('general');
+          } else {
+            this.ctx.shell.getInspector().toggleDrawer();
+          }
+        } else if (key === 'j') {
           e.preventDefault();
           this.ctx.shell.getInspector().toggleDrawer();
         } else if (key === 'e') {

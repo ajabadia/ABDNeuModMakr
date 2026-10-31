@@ -11,6 +11,8 @@
 
 import type {
   AudioFilePayload,
+  CustomMetadataTag,
+  ExtendedModelMetadata,
   ExtendedRegion,
   Sf2PresetOption,
   SynthArticulationConfig,
@@ -34,6 +36,7 @@ export interface NativeSamplerImportResult {
   classicZones: Zone[];
   velocityLayerGainCompensation: Record<string, { lowGain: number; highGain: number }>;
   articulation: SynthArticulationConfig;
+  metadata?: ExtendedModelMetadata;
 }
 
 interface PhdrRecord {
@@ -75,6 +78,7 @@ interface ShdrRecord {
 }
 
 interface ParsedSf2Archive {
+  info: Record<string, string>;
   smplOffset: number;
   smplByteLength: number;
   sm24Offset: number;
@@ -201,6 +205,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
     throw new Error(`Invalid SF2 header: expected RIFF/sfbk, found ${riff}/${sfbk}`);
   }
 
+  const info: Record<string, string> = {};
   let smplOffset = -1;
   let smplByteLength = 0;
   let sm24Offset = -1;
@@ -229,7 +234,23 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
         const subSize = view.getUint32(sub + 4, true);
         const subData = sub + 8;
 
-        if (listType === 'sdta') {
+        if (listType === 'INFO') {
+          if (subId === 'ifil' || subId === 'iver') {
+            if (subSize >= 4 && subData + 4 <= listEnd) {
+              const major = view.getUint16(subData, true);
+              const minor = view.getUint16(subData + 2, true);
+              info[subId] = `${major}.${minor}`;
+            }
+          } else {
+            const strLen = Math.min(subSize, listEnd - subData);
+            if (strLen > 0) {
+              const str = readAsciiZ(view, subData, strLen).trim();
+              if (str) {
+                info[subId] = str;
+              }
+            }
+          }
+        } else if (listType === 'sdta') {
           if (subId === 'smpl') {
             smplOffset = subData;
             smplByteLength = subSize;
@@ -332,6 +353,7 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
   }
 
   return {
+    info,
     smplOffset,
     smplByteLength,
     sm24Offset,
@@ -968,6 +990,34 @@ export function importSf2PresetToNative(
   const modelName = presetName.replace(/\s+/g, ' ').trim().slice(0, 11) || 'SF2Model';
   const classification = classifyInstrumentAndParameterSet(presetName);
 
+  const info = sf2.info || {};
+  const customAttributes: CustomMetadataTag[] = [];
+  const knownInfoKeys = ['IENG', 'ICOP', 'ICRD', 'ISFT', 'IPRD', 'ICMT', 'isng', 'ifil', 'INAM', 'irom', 'iver'];
+  for (const k of knownInfoKeys) {
+    if (info[k]) {
+      customAttributes.push({ tag: k, value: info[k] });
+    }
+  }
+  for (const [k, v] of Object.entries(info)) {
+    if (!knownInfoKeys.includes(k) && v) {
+      customAttributes.push({ tag: k, value: v });
+    }
+  }
+
+  const rawYear = info['ICRD'] ? (info['ICRD'].match(/\d{4}/)?.[0] || info['ICRD']) : undefined;
+  const metadata: ExtendedModelMetadata = {
+    author: info['IENG'] || undefined,
+    copyright: info['ICOP'] || undefined,
+    license: info['ICOP'] || undefined,
+    description: info['ICMT'] || (info['INAM'] ? `SoundFont Bank: ${info['INAM']}` : undefined),
+    releaseYear: rawYear,
+    vendor: info['ISFT'] || info['IPRD'] || undefined,
+    sourceFormat: 'sf2',
+    sourcePresetName: chosenOption.name,
+    tags: Array.from(new Set(['sf2', classification.category, chosenOption.name, info['INAM'], info['IPRD']].filter((t): t is string => Boolean(t)))),
+    customAttributes: customAttributes.length > 0 ? customAttributes : undefined,
+  };
+
   return {
     sourceFormat: 'sf2',
     presetName,
@@ -979,5 +1029,6 @@ export function importSf2PresetToNative(
     classicZones,
     velocityLayerGainCompensation,
     articulation,
+    metadata,
   };
 }

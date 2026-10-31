@@ -853,14 +853,14 @@
 .bank-shell-flash.is-ok {
   background: var(--color-accent);
   border: 1px solid var(--color-accent);
-  box-shadow: 0 8px 30px var(--color-accent-dim), 0 2px 10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 30px var(--color-accent-dim), 0 2px 10px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.5);
   color: var(--color-bg-base);
 }
 
 .bank-shell-flash.is-working {
   background: var(--color-panel-surface-elevated);
   border: 1px solid var(--color-accent);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 30px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.55);
   color: var(--color-text-main);
 }
 
@@ -875,7 +875,7 @@
 .bank-shell-flash.is-error {
   background: var(--color-panel-surface-elevated);
   border: 1px solid var(--color-danger);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 30px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.55);
   color: var(--color-text-main);
 }
 

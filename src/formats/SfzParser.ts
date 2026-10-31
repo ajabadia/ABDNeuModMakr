@@ -9,6 +9,8 @@
 
 import type {
   AudioFilePayload,
+  CustomMetadataTag,
+  ExtendedModelMetadata,
   ExtendedRegion,
   LoopMode,
   TriggerMode,
@@ -87,6 +89,52 @@ function basenameOfPath(p: string): string {
   const norm = p.replace(/\\/g, '/').trim();
   const idx = norm.lastIndexOf('/');
   return idx >= 0 ? norm.slice(idx + 1) : norm;
+}
+
+function extractSfzMetadata(rawText: string, sfzFileName: string, category: string): ExtendedModelMetadata {
+  const meta: ExtendedModelMetadata = {
+    sourceFormat: 'sfz',
+    sourcePresetName: basenameOfPath(sfzFileName).replace(/\.sfz$/i, '').trim(),
+    tags: ['sfz', category].filter(Boolean),
+  };
+  const customAttributes: CustomMetadataTag[] = [];
+
+  const lines = rawText.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const commentMatch = /^\/\/\s*([a-zA-Z0-9_\s-]+)[:=]\s*(.+)$/i.exec(trimmed);
+    if (commentMatch) {
+      const key = commentMatch[1].trim();
+      const val = commentMatch[2].trim();
+      const keyLower = key.toLowerCase();
+      if (keyLower === 'author' || keyLower === 'sound designer' || keyLower === 'creator') {
+        meta.author = val;
+      } else if (keyLower === 'copyright' || keyLower === '(c)') {
+        meta.copyright = val;
+      } else if (keyLower === 'license') {
+        meta.license = val;
+      } else if (keyLower === 'version') {
+        meta.version = val;
+      } else if (keyLower === 'year' || keyLower === 'date') {
+        meta.releaseYear = val.match(/\d{4}/)?.[0] || val;
+      } else if (keyLower === 'vendor' || keyLower === 'library' || keyLower === 'publisher') {
+        meta.vendor = val;
+      } else if (keyLower === 'url' || keyLower === 'website' || keyLower === 'link') {
+        meta.sourceUrl = val;
+      } else if (keyLower === 'description' || keyLower === 'comment' || keyLower === 'notes') {
+        meta.description = val;
+      } else if (keyLower === 'tags' || keyLower === 'category') {
+        val.split(/[,;\s]+/).forEach((t) => { if (t) meta.tags?.push(t); });
+      } else {
+        customAttributes.push({ tag: key, value: val });
+      }
+    }
+  }
+
+  if (customAttributes.length > 0) {
+    meta.customAttributes = customAttributes;
+  }
+  return meta;
 }
 
 /**
@@ -302,6 +350,8 @@ export function importSfzToNative(
   const modelName = cleanTitle.slice(0, 11);
   const classification = classifyInstrumentAndParameterSet(cleanTitle);
 
+  const metadata = extractSfzMetadata(sfzText, sfzFileName, classification.category);
+
   return {
     sourceFormat: 'sfz',
     presetName: cleanTitle,
@@ -313,5 +363,6 @@ export function importSfzToNative(
     classicZones,
     velocityLayerGainCompensation,
     articulation,
+    metadata,
   };
 }

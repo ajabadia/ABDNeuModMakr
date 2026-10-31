@@ -56,7 +56,7 @@
             font-family: 'JetBrains Mono', monospace;
             font-size: 1.1rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--accent), #3fb950);
+            background: linear-gradient(135deg, var(--accent), var(--success));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -85,7 +85,7 @@
             white-space: nowrap;
         }
         .midi-status:hover { border-color: var(--accent); }
-        .midi-status.connected { border-color: var(--success); background: rgba(63,185,80,0.1); }
+                .midi-status.connected { border-color: var(--success); background: rgba(var(--color-success-rgb, 63, 185, 80), 0.1); }
         .midi-status .midi-dot {
             width: 6px; height: 6px;
             border-radius: 50%;
@@ -375,7 +375,7 @@
             transition: background 0.2s;
         }
         .bank-header.drag-over {
-            background: rgba(0, 212, 255, 0.08);
+            background: rgba(var(--color-accent-rgb, 0, 212, 255), 0.08);
             border: 2px dashed var(--accent);
             border-radius: 8px;
         }
@@ -400,7 +400,7 @@
         .bank-thumb-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(var(--color-scrim-rgb, 0, 0, 0), 0.6);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -592,7 +592,7 @@
         .bank-tag-suggestion:hover {
             border-color: var(--accent);
             color: var(--accent);
-            background: rgba(0,212,255,0.05);
+            background: rgba(var(--color-accent-rgb, 0, 212, 255),0.05);
         }
 
         /* Action bar */
@@ -618,7 +618,7 @@
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                        box-shadow: 0 4px 12px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.3);
             z-index: 100;
             margin-top: 4px;
         }
@@ -747,10 +747,10 @@
         /* Toast */
         #toast-container { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
         .toast { padding: 0.6rem 1rem; border-radius: 8px; font-size: 0.8rem; animation: slideIn 0.3s; max-width: 350px; }
-        .toast.success { background: rgba(63,185,80,0.9); color: #fff; }
-        .toast.error { background: rgba(248,81,73,0.9); color: #fff; }
-        .toast.info { background: rgba(0,212,255,0.9); color: #000; }
-        .toast.warning { background: rgba(210,153,34,0.9); color: #000; }
+        .toast.success { background: rgba(var(--color-success-rgb, 63, 185, 80),0.9); color: #fff; }
+        .toast.error { background: rgba(var(--color-danger-rgb, 248, 81, 73),0.9); color: #fff; }
+        .toast.info { background: rgba(var(--color-accent-rgb, 0, 212, 255),0.9); color: #000; }
+        .toast.warning { background: rgba(var(--color-warning-rgb, 210, 153, 34),0.9); color: #000; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
         /* MF.16 Backup reminder */
@@ -759,8 +759,8 @@
             align-items: center;
             gap: 0.6rem;
             padding: 0.5rem 1.5rem;
-            background: rgba(210,153,34,0.12);
-            border-bottom: 1px solid rgba(210,153,34,0.3);
+            background: rgba(var(--color-warning-rgb, 210, 153, 34),0.12);
+            border-bottom: 1px solid rgba(var(--color-warning-rgb, 210, 153, 34),0.3);
             font-size: 0.82rem;
             color: var(--warning);
             animation: slideDown 0.3s;
@@ -852,16 +852,16 @@
         }
         .hex-editor-byte:focus {
             outline: 1px solid var(--accent);
-            background: rgba(0,212,255,0.15);
+            background: rgba(var(--color-accent-rgb, 0, 212, 255),0.15);
             cursor: text;
         }
         .hex-editor-byte.modified {
-            background: rgba(0,212,255,0.12);
+            background: rgba(var(--color-accent-rgb, 0, 212, 255),0.12);
             color: var(--accent);
             font-weight: 600;
         }
         .hex-editor-byte.invalid {
-            background: rgba(248,81,73,0.15);
+            background: rgba(var(--color-danger-rgb, 248, 81, 73),0.15);
             color: var(--error);
         }
         .hex-editor-byte.selected {
@@ -976,8 +976,8 @@
         .stats-issue {
             font-size: 0.75rem;
             padding: 0.2rem 0.5rem;
-            background: rgba(210,153,34,0.1);
-            border: 1px solid rgba(210,153,34,0.3);
+            background: rgba(var(--color-warning-rgb, 210, 153, 34),0.1);
+            border: 1px solid rgba(var(--color-warning-rgb, 210, 153, 34),0.3);
             border-radius: 4px;
             color: var(--warning);
         }
@@ -1009,7 +1009,7 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.6);
+            background: rgba(var(--color-scrim-rgb, 0, 0, 0), 0.6);
             z-index: 500;
             justify-content: center;
             align-items: center;
@@ -1114,7 +1114,7 @@
             white-space: nowrap;
         }
         .search-result-name mark {
-            background: rgba(0,212,255,0.25);
+            background: rgba(var(--color-accent-rgb, 0, 212, 255),0.25);
             color: var(--accent);
             border-radius: 2px;
             padding: 0 1px;

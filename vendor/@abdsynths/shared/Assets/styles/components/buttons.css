@@ -235,8 +235,8 @@
 }
 
 .btn-danger-solid:hover {
-  background: #e03b3b;
-  border-color: #e03b3b;
+  background: var(--color-danger-hover, #e03b3b);
+  border-color: var(--color-danger-hover, #e03b3b);
   color: #ffffff;
 }
 

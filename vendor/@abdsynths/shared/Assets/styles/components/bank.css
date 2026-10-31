@@ -12,7 +12,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(4, 8, 14, 0.85);
+  background: rgba(var(--color-bg-base-rgb, 4, 8, 14), 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   z-index: 9999;
@@ -43,7 +43,7 @@
   background: var(--color-bg-base, #0d1117);
   border: 1px solid var(--color-panel-border, #30363d);
   border-radius: 10px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 24px 64px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.7), 0 0 0 1px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.4);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -110,15 +110,15 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg-primary, var(--color-bg-base, #0d1117));
-  color: var(--text-primary, var(--color-text-main, #c9d1d9));
+  background: var(--bg-primary, var(--color-bg-base, #0a0e14));
+  color: var(--text-primary, var(--color-text-main, #f0f7ff));
 }
 
 .abdbank-close-floating-btn {
   flex-shrink: 0;
-  background: rgba(16, 27, 34, 0.85);
+  background: rgba(var(--color-panel-bg-rgb, 16, 27, 34), 0.85);
   border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.2));
-  color: var(--color-text-main, #fff);
+  color: var(--color-text-main, #f0f7ff);
   font-size: 18px;
   line-height: 1;
   width: 28px;

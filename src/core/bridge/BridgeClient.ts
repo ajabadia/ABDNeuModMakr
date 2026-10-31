@@ -159,6 +159,14 @@ export class BridgeClient {
     }
   }
 
+  public getBridgeToken(): string {
+    try {
+      return typeof localStorage !== 'undefined' ? (localStorage.getItem(STORAGE_KEY_TOKEN) ?? '') : '';
+    } catch {
+      return '';
+    }
+  }
+
   private authHeaders(base: Record<string, string> = {}): Record<string, string> {
     try {
       const t = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_TOKEN) : null;

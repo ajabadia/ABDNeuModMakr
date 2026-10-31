@@ -9,7 +9,7 @@
 .abd-about-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 8, 14, 0.75);
+  background: rgba(var(--color-bg-base-rgb, 4, 8, 14), 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -47,7 +47,7 @@
   max-width: 440px;
   width: 90%;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 20px rgba(var(--color-accent-rgb, 0, 195, 255), 0.15);
+  box-shadow: 0 20px 60px rgba(var(--color-scrim-rgb, 0, 0, 0), 0.8), 0 0 20px rgba(var(--color-accent-rgb, 0, 195, 255), 0.15);
   animation: abdAboutPop 0.2s cubic-bezier(0, 0, 0.2, 1);
   color: var(--color-text-main, #f0f7ff);
   font-family: var(--font-sans, sans-serif);
@@ -171,21 +171,21 @@
 
 .btn-update-avail {
   display: inline-block;
-  background: linear-gradient(135deg, #11998e, #38ef7d) !important;
+  background: linear-gradient(135deg, var(--color-update-from, #11998e), var(--color-update-to, #38ef7d)) !important;
   color: #000 !important;
   font-weight: 800;
   text-decoration: none;
   font-size: var(--text-xs, 8px);
   padding: 6px 14px;
   border-radius: var(--radius-sm, 2px);
-  box-shadow: 0 0 14px rgba(56, 239, 125, 0.4);
+  box-shadow: 0 0 14px rgba(var(--color-update-glow-rgb, 56, 239, 125), 0.4);
   cursor: pointer;
   transition: transform var(--transition-fast, 0.15s) ease, box-shadow var(--transition-fast, 0.15s) ease;
 }
 
 .btn-update-avail:hover {
   transform: translateY(-1px);
-  box-shadow: 0 0 20px rgba(56, 239, 125, 0.6);
+  box-shadow: 0 0 20px rgba(var(--color-update-glow-rgb, 56, 239, 125), 0.6);
 }
 
 .abd-btn-about-close {
@@ -207,9 +207,9 @@
   overflow: hidden;
   text-align: left !important;
   border-radius: var(--radius-lg, 10px) !important;
-  background: var(--color-panel-bg, #0b1118) !important;
-  border: 1px solid var(--color-panel-border-strong, rgba(0, 230, 118, 0.35)) !important;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85), 0 0 24px rgba(var(--color-accent-rgb, 0, 230, 118), 0.12) !important;
+  background: var(--color-panel-bg, #0f1620) !important;
+  border: 1px solid var(--color-panel-border-strong, rgba(var(--color-success-rgb, 0, 230, 118), 0.35)) !important;
+  box-shadow: 0 24px 70pxrgba(var(--color-scrim-rgb, 0, 0, 0), 0.85), 0 0 24px rgba(var(--color-accent-rgb, 0, 230, 118), 0.12) !important;
 }
 
 .abd-about-media {
@@ -235,7 +235,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(var(--color-scrim-rgb, 0, 0, 0), 0.65);
   border: 1px solid rgba(255, 255, 255, 0.25);
   color: #ffffff;
   font-size: 13px;
@@ -249,7 +249,7 @@
 }
 
 .abd-btn-about-close-icon:hover {
-  background: rgba(0, 0, 0, 0.9);
+  background: rgba(var(--color-scrim-rgb, 0, 0, 0), 0.9);
   border-color: rgba(255, 255, 255, 0.5);
   transform: scale(1.08);
 }
@@ -264,7 +264,7 @@
 }
 
 .abd-about-category {
-  color: var(--color-accent, #00e676);
+  color: var(--color-accent, #00c3ff);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 1.2px;
@@ -276,14 +276,14 @@
   font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  color: var(--color-text-main, #ffffff);
+  color: var(--color-text-main, #f0f7ff);
   margin: 0 0 4px 0;
   text-transform: none;
 }
 
 .abd-about-split .abd-about-sub {
   font-size: 12px;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-muted, #7e9bb5);
   margin: 0 0 14px 0;
   line-height: 1.4;
 }
@@ -291,20 +291,20 @@
 .abd-about-version-line {
   font-size: 11px;
   font-family: var(--font-sans, sans-serif);
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-muted, #7e9bb5);
   margin: 0 0 12px 0;
 }
 
 .abd-about-details {
   font-size: 10px;
   line-height: 1.4;
-  color: var(--color-text-dim, #64748b);
+  color: var(--color-text-dim, #4a637a);
   margin: 0 0 10px 0;
 }
 
 .abd-about-copyright {
   font-size: 10px;
-  color: var(--color-text-dim, #64748b);
+  color: var(--color-text-dim, #4a637a);
   margin: 0 0 20px 0;
 }
 
@@ -316,7 +316,7 @@
 }
 
 .abd-about-footer-row .abd-btn-check-updates {
-  background: var(--color-panel-surface-elevated, #16202c);
+  background: var(--color-panel-surface-elevated, #1c2a3d);
   border: 1px solid var(--color-panel-border, rgba(255, 255, 255, 0.15));
   color: var(--color-text-main, #f0f7ff);
   font-size: 11px;
@@ -327,13 +327,13 @@
 }
 
 .abd-about-footer-row .abd-btn-check-updates:hover {
-  border-color: var(--color-accent, #00e676);
-  color: var(--color-accent, #00e676);
+  border-color: var(--color-accent, #00c3ff);
+  color: var(--color-accent, #00c3ff);
 }
 
 .abd-about-footer-row .abd-about-status {
   font-size: 11px;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-muted, #7e9bb5);
   margin: 0;
 }
 

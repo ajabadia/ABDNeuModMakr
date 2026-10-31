@@ -23,6 +23,8 @@ const TEST_FILES = [
   'phase7_import_robustness.test.ts',
   'phase12_batch.test.ts',
   'security_hardening.test.ts',
+  'zoneTemplates.test.ts',
+  'audioSlicer.test.ts',
 ];
 
 interface TestResult {

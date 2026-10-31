@@ -35,7 +35,7 @@ export interface SettingsModalHandlers {
   onUpdateAiConfig: (config: AiAssistanceConfig) => void;
   onSelectThemeFamily: (family: string) => void;
   onSetThemeMode: (mode: 'light' | 'dark') => void;
-  onSetWorkingMode: (mode: WorkingMode) => void;
+  onSetWorkingMode?: (mode: WorkingMode) => void;
   getCurrentThemeFamily?: () => string;
   getCurrentThemeMode?: () => 'light' | 'dark';
   getCurrentWorkingMode?: () => WorkingMode;
@@ -304,7 +304,6 @@ export class SettingsModal {
   private renderGeneralTab(): string {
     const curFamily = this.handlers.getCurrentThemeFamily?.() ?? 'neuron';
     const curMode = this.handlers.getCurrentThemeMode?.() ?? 'light';
-    const curWorkingMode = this.handlers.getCurrentWorkingMode?.() ?? 'classic';
     const savedAxionikDbPath = localStorage.getItem(STORAGE_KEY_AXIONIK_DB_PATH) || DEFAULT_AXIONIK_DB_PATH;
     const savedNeuronDbPath = localStorage.getItem(STORAGE_KEY_NEURON_DB_PATH) || DEFAULT_NEURON_DB_PATH;
     const savedBankPath = localStorage.getItem(STORAGE_KEY_BANK_PATH) || DEFAULT_BANK_PATH;
@@ -355,52 +354,7 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 2. Working Mode & Keyboard Mapping -->
-        <div class="settings-section-card">
-          <div class="settings-card-header">
-            <h4>${ICONS.piano} Creation &amp; Keyboard Mapping Mode</h4>
-            <span class="text-muted">Defines how keyboard zones and velocity layers are structured.</span>
-          </div>
-          <div class="settings-working-mode-grid">
-            <label class="settings-mode-opt ${curWorkingMode === 'classic' ? 'is-selected' : ''}">
-              <input type="radio" name="opt-working-mode" value="classic" ${curWorkingMode === 'classic' ? 'checked' : ''} />
-              <div class="mode-opt-body">
-                <div class="mode-opt-title">
-                  <strong>Classic Mode (Hartmann Neuron 2002)</strong>
-                  <span class="panel-badge badge-muted">1:1 Hardware Original</span>
-                </div>
-                <p class="text-muted">
-                  Contiguous keyboard <code>0..127</code> columns with no gaps or overlaps. Two velocity layers fixed at value <code>64</code> (Low and High). Model names strictly capped at 11 characters for physical display compatibility.
-                </p>
-              </div>
-            </label>
-
-            <label class="settings-mode-opt ${curWorkingMode === 'extended' ? 'is-selected' : ''}">
-              <input type="radio" name="opt-working-mode" value="extended" ${curWorkingMode === 'extended' ? 'checked' : ''} />
-              <div class="mode-opt-body">
-                <div class="mode-opt-title">
-                  <strong>Extended Mode (Modern Neural / Next-Gen)</strong>
-                  <span class="panel-badge badge-ai-on">HD Multi-Layer</span>
-                </div>
-                <p class="text-muted">
-                  Arbitrary 2D mapping (Key &times; Velocity). Multiple velocity splits, dynamic crossfades, DAHDSR envelopes, ping-pong loops, and 512&times;512 WebP model cover artwork.
-                </p>
-              </div>
-            </label>
-          </div>
-
-          <div class="settings-mode-reassurance-box">
-            <span class="reassurance-icon">${ICONS.check}</span>
-            <div class="reassurance-text">
-              <strong>Safe Non-Destructive Bidirectional Compatibility:</strong>
-              <p>
-                You can switch between Classic and Extended modes at any time. When switching back to Classic Mode, multi-layer velocity regions are <strong>not deleted</strong>: the compiler mathematically projects and compensates relative gains (<span class="math-snippet">10<sup>&Delta;G/20</sup></span>) to preserve exact sonic balance within original hardware constraints.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. Local Library Folders -->
+        <!-- 2. Local Library Folders -->
         <div class="settings-section-card">
           <div class="settings-card-header">
             <h4>${ICONS.folder} Local Library Folders (AxionikDB, NeuronDB &amp; Samples)</h4>
@@ -409,7 +363,7 @@ export class SettingsModal {
 
           <div class="settings-libraries-container">
             <!-- 1. AxionikDB (Advanced Mode) -->
-            <div class="library-path-card">
+            <div class="card card--tight library-path-card">
               <div class="library-path-header">
                 <strong>AxionikDB Library (Advanced / Time-Capsule)</strong>
                 <span class="text-muted">Models with semantic slugs and self-contained Time Capsules (<code>manifest.json</code> + <code>cover.webp</code>).</span>
@@ -423,7 +377,7 @@ export class SettingsModal {
             </div>
 
             <!-- 2. NeuronDB (Classic Mode) -->
-            <div class="library-path-card" style="margin-top: 12px;">
+            <div class="card card--tight stack-gap library-path-card">
               <div class="library-path-header">
                 <strong>NeuronDB Library (Classic / Hartmann 000..511)</strong>
                 <span class="text-muted">Banks compatible with Hartmann Neuron hardware &amp; classic software.</span>
@@ -437,7 +391,7 @@ export class SettingsModal {
             </div>
 
             <!-- 3. SoundFonts / Raw Samples -->
-            <div class="library-path-card" style="margin-top: 12px;">
+            <div class="card card--tight stack-gap library-path-card">
               <div class="library-path-header">
                 <strong>SoundFonts &amp; Raw Sample Collection</strong>
                 <span class="text-muted">Acoustic audio sources (.sf2, .sfz, .wav) for direct sample import.</span>
@@ -668,7 +622,7 @@ export class SettingsModal {
 
       <div class="ai-stages-matrix">
         <!-- 1. Master Wave -->
-        <div class="stage-card">
+        <div class="card stage-card">
           <div class="stage-header">
             <span class="stage-num">1</span>
             <div class="stage-info">
@@ -695,7 +649,7 @@ export class SettingsModal {
         </div>
 
         <!-- 2. Source Separation -->
-        <div class="stage-card">
+        <div class="card stage-card">
           <div class="stage-header">
             <span class="stage-num">2</span>
             <div class="stage-info">
@@ -729,7 +683,7 @@ export class SettingsModal {
         </div>
 
         <!-- 3. Loop Expansion -->
-        <div class="stage-card">
+        <div class="card stage-card">
           <div class="stage-header">
             <span class="stage-num">3</span>
             <div class="stage-info">
@@ -756,7 +710,7 @@ export class SettingsModal {
         </div>
 
         <!-- 4. Classifier -->
-        <div class="stage-card">
+        <div class="card stage-card">
           <div class="stage-header">
             <span class="stage-num">4</span>
             <div class="stage-info">
@@ -790,7 +744,7 @@ export class SettingsModal {
         </div>
 
         <!-- 5. Denoise -->
-        <div class="stage-card">
+        <div class="card stage-card">
           <div class="stage-header">
             <span class="stage-num">5</span>
             <div class="stage-info">
@@ -868,7 +822,7 @@ export class SettingsModal {
         </div>
 
         <!-- BYOK Config Form -->
-        <div class="byok-form-card">
+        <div class="card byok-form-card">
           <div class="byok-header-row">
             <label class="toggle-switch-label" for="byok-enable-toggle">
               <input type="checkbox" id="byok-enable-toggle" ${byok.enabled ? 'checked' : ''} />
@@ -959,11 +913,13 @@ export class SettingsModal {
   private renderBridgeTab(): string {
     const bridge = bridgeClient.getStatus();
     const isOnline = bridge.connected;
+    const bridgeUrl = escAttr(bridgeClient.getUrl());
+    const bridgeToken = escAttr(bridgeClient.getBridgeToken());
 
     return `
       <div class="ai-bridge-tab-container">
         <!-- Status Card -->
-        <div class="bridge-status-card ${isOnline ? 'is-connected' : 'is-disconnected'}">
+        <div class="card bridge-status-card ${isOnline ? 'is-connected' : 'is-disconnected'}">
           <div class="bridge-card-header">
             <div class="bridge-card-title">
               <span class="bridge-dot ${isOnline ? 'dot-online' : 'dot-offline'}"></span>
@@ -1013,15 +969,54 @@ python bridge/server.py</code></pre>
           }
         </div>
 
+        <!-- Bridge Connection Settings (S5: endpoint + token, ambos en localStorage) -->
+        <div class="card bridge-connection-card">
+          <div class="byok-field-group">
+            <label class="byok-field-label" for="bridge-url-input">Bridge Endpoint URL:</label>
+            <div class="byok-input-row">
+              <div class="byok-input-wrap">
+                <input
+                  type="text"
+                  id="bridge-url-input"
+                  class="form-control byok-key-field"
+                  placeholder="http://127.0.0.1:7860"
+                  value="${bridgeUrl}"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-bridge-save-url">Save &amp; Reconnect</button>
+            </div>
+          </div>
+          <div class="byok-field-group">
+            <label class="byok-field-label" for="bridge-token-input">Bridge Token (X-Bridge-Token):</label>
+            <div class="byok-input-row">
+              <div class="byok-input-wrap">
+                <input
+                  type="password"
+                  id="bridge-token-input"
+                  class="form-control byok-key-field"
+                  placeholder="Token impreso por bridge/server.py (vacío = sin auth)"
+                  value="${bridgeToken}"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+              </div>
+              <button type="button" class="btn btn-outline" id="btn-bridge-clear-token" title="Clear token from local browser storage">Clear</button>
+            </div>
+            <small class="text-muted">Se envía como cabecera <code>X-Bridge-Token</code>. El bridge la exige solo si defines <code>ABD_BRIDGE_TOKEN</code>.</small>
+          </div>
+        </div>
+
         <!-- Models Downloader Section -->
-        <div class="bridge-models-section">
+        <div class="card bridge-models-section">
           <div class="models-section-header">
             <div class="header-left">
               <h4>Local Neural Model Catalog</h4>
               <p class="text-muted">
                 Transparent multithreaded model pre-download directly to your local GPU.
                 <br/>
-                <small style="opacity: 0.85;">(Note: Models are also downloaded automatically on first demand if not pre-fetched here).</small>
+                <small class="bridge-note-small">(Note: Models are also downloaded automatically on first demand if not pre-fetched here).</small>
               </p>
             </div>
             <button type="button" class="btn btn-xs btn-outline" id="btn-refresh-models">
@@ -1102,7 +1097,7 @@ python bridge/server.py</code></pre>
                   <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${escAttr(m.id)}">Reset to Official</button>
                   <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${escAttr(m.id)}">Cancel</button>
                 </div>
-                <div class="url-check-feedback" data-id="${escAttr(m.id)}" style="display: none; margin-top: 6px; font-size: 11px; font-family: var(--font-mono);"></div>
+                <div class="url-check-feedback" data-id="${escAttr(m.id)}"></div>
               </div>
             `
                 : ''
@@ -1248,18 +1243,6 @@ python bridge/server.py</code></pre>
     this.backdropEl.querySelector('#btn-set-mode-dark')?.addEventListener('click', () => {
       this.handlers.onSetThemeMode('dark');
       this.render();
-    });
-
-    // Working mode radio
-    this.backdropEl.querySelectorAll<HTMLInputElement>('input[name="opt-working-mode"]').forEach((r) => {
-      r.addEventListener('change', () => {
-        if (r.checked) {
-          const mode = r.value as WorkingMode;
-          this.handlers.onSetWorkingMode(mode);
-          this.render();
-          toast(`Working mode switched to: ${mode === 'classic' ? 'Classic (1:1 Hardware)' : 'Extended (HD Multi-Layer)'}`, 'info');
-        }
-      });
     });
 
     // AxionikDB path scan
@@ -1466,6 +1449,41 @@ python bridge/server.py</code></pre>
 
   private bindBridgeTabEvents(): void {
     if (!this.backdropEl) return;
+
+    this.backdropEl.querySelector('#bridge-url-input')?.addEventListener('change', async () => {
+      const input = this.backdropEl?.querySelector<HTMLInputElement>('#bridge-url-input');
+      const val = input?.value.trim() ?? '';
+      try {
+        bridgeClient.setUrl(val || 'http://127.0.0.1:7860');
+        toast('Bridge endpoint saved. Reconnecting…', 'info');
+      } catch (err) {
+        toast(`Invalid bridge URL: ${String(err)}`, 'error');
+      }
+      await bridgeClient.checkHealth();
+      this.render();
+    });
+    this.backdropEl.querySelector('#btn-bridge-save-url')?.addEventListener('click', async () => {
+      const input = this.backdropEl?.querySelector<HTMLInputElement>('#bridge-url-input');
+      const val = input?.value.trim() ?? '';
+      try {
+        bridgeClient.setUrl(val || 'http://127.0.0.1:7860');
+        toast('Bridge endpoint saved. Reconnecting…', 'info');
+      } catch (err) {
+        toast(`Invalid bridge URL: ${String(err)}`, 'error');
+      }
+      await bridgeClient.checkHealth();
+      this.render();
+    });
+    this.backdropEl.querySelector('#bridge-token-input')?.addEventListener('change', () => {
+      const input = this.backdropEl?.querySelector<HTMLInputElement>('#bridge-token-input');
+      bridgeClient.setBridgeToken(input?.value ?? '');
+      toast('Bridge token saved locally', 'info');
+    });
+    this.backdropEl.querySelector('#btn-bridge-clear-token')?.addEventListener('click', () => {
+      bridgeClient.setBridgeToken('');
+      this.render();
+      toast('Bridge token cleared', 'info');
+    });
 
     this.backdropEl.querySelector('#btn-bridge-retry')?.addEventListener('click', async () => {
       toast('Checking Companion Bridge connection...', 'info');

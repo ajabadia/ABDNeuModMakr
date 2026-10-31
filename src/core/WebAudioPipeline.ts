@@ -41,20 +41,16 @@ import {
   analyzeSingleZone,
   runMultiZonePipeline,
   type ZoneWavPayload,
-  type ZoneBinaryPair,
   type PreservedSourceBinary,
 } from './dsp/PipelineRunner.ts';
 import { SpectralAnalyzer } from './dsp/SpectralAnalyzer.ts';
 import { computeStft } from './dsp/FftEngine.ts';
 import { buildLayerView } from './dsp/GridIndicator.ts';
 import {
-  NEURON_SAMPLE_RATE,
   complexityToLimits,
   resynthesizeModelToPcm,
 } from './dsp/ScapeSphereGenerator.ts';
 import {
-  parseModelFileSet,
-  convertLegacyModelToModern,
   parseNeuronScape,
   parseNeuronSphere,
   resynthesizeNeuronModelSource,
@@ -83,15 +79,10 @@ import {
   classifyAcousticSample,
   extractAcousticDescriptors,
 } from './dsp/AcousticIntelligence.ts';
-import {
-  DEFAULT_MASTER_WAVE_CONFIG,
-  promoteBufferToMasterWave,
-  regenerateMasterWaveFromLegacyBinaries,
-} from './dsp/MasterWaveEnhancer.ts';
+import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
 import { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
 import {
   buildTimeCapsuleEntries,
-  extractTimeCapsuleFromFiles,
   resolvePurestSourceForSample,
 } from './timeCapsule.ts';
 import {
@@ -114,16 +105,10 @@ import {
   persistSessionToLocalStorage,
   restoreSessionFromLocalStorage,
 } from './sessionPersistence.ts';
-import { webNeuralEngine } from './ai/WebNeuralEngine.ts';
 import { AudioPreviewService } from './audioPreview.ts';
 import { BankService, BankLoadError, buildBankLoadPlan } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
 import { createInitialSession, createZone } from './sessionFactory.ts';
-import {
-  DEFAULT_MODEL_NAMES,
-  deriveModelNameFromSample,
-  parseSampleFilenameByName,
-} from './sampleNaming.ts';
 import {
   buildZoneRibbonWaveforms,
   emptyRibbonWaveforms,
@@ -135,6 +120,20 @@ import type {
   WorkerInboundMessage,
   WorkerOutboundMessage,
 } from './worker/analysisWorker.ts';
+import {
+  MAX_IMPORT_FILE_BYTES,
+  MAX_IMPORT_FILES,
+  importAudioFiles,
+  importModelFiles,
+  importSamplesFromFolder,
+  maybeAutoDeriveModelName as autoDeriveModelName,
+  type ModelImportHost,
+} from './import/modelImportService.ts';
+import {
+  promoteAllZonesToMasterWave,
+  promoteZoneToMasterWave,
+  type MasterWaveHost,
+} from './masterWaveService.ts';
 
 /**
  * The 10 official Parameter Sets from the Hartmann Neuron MODELmaker v1.2 manual
@@ -228,9 +227,10 @@ export class WebAudioPipeline implements CoreService {
    * P0.3 import guardrails: a single decoded sample is fully buffered in
    * memory (`decodeWav`), so cap per-file size; cap file count at the
    * maximum meaningful zone count (one single-note zone per MIDI key).
+   * Values live in `core/import/modelImportService.ts`.
    */
-  public static readonly MAX_IMPORT_FILE_BYTES = 50 * 1024 * 1024;
-  public static readonly MAX_IMPORT_FILES = 128;
+  public static readonly MAX_IMPORT_FILE_BYTES = MAX_IMPORT_FILE_BYTES;
+  public static readonly MAX_IMPORT_FILES = MAX_IMPORT_FILES;
 
   // ── Lifecycle ───────────────────────────────────────────
 
@@ -499,6 +499,11 @@ export class WebAudioPipeline implements CoreService {
         throw new Error("Invalid workingMode: must be 'classic' | 'extended'");
       }
     }
+    if (changes.keyMappingMode !== undefined) {
+      if (changes.keyMappingMode !== 'chromatic' && changes.keyMappingMode !== 'drum') {
+        throw new Error("Invalid keyMappingMode: must be 'chromatic' | 'drum'");
+      }
+    }
 
     this.pushHistory(`Change Process Settings (${keys})`, `config:${keys}`);
 
@@ -558,6 +563,9 @@ export class WebAudioPipeline implements CoreService {
         );
         this.session.zones = projected.zones;
       }
+    }
+    if (changes.keyMappingMode !== undefined) {
+      cfg.keyMappingMode = changes.keyMappingMode;
     }
     if (changes.dspAlgorithm !== undefined) {
       cfg.dspAlgorithm = changes.dspAlgorithm === 'enhanced' ? 'enhanced' : 'legacy';
@@ -932,6 +940,10 @@ export class WebAudioPipeline implements CoreService {
     return decoded;
   }
 
+  public getSampleBuffer(sampleName: string): ArrayBuffer | undefined {
+    return this.lookupSampleBuffer(sampleName) ?? this.sampleBuffers.get(sampleName);
+  }
+
   /**
    * Returns 64-point normalized waveform envelopes (0..1) for `ZoneRibbon` watermark rendering:
    * - `lowOriginal`: envelope of `zone.sampleLow`
@@ -1304,730 +1316,76 @@ export class WebAudioPipeline implements CoreService {
 
 
   public async importSamplesFromFolder(_folderPath: string): Promise<Zone[]> {
-    if (!this.session) await this.newSession('Imported Multisample');
-    this.pushHistory('Import Samples Folder');
-    this.session!.zones = [
-      createZone(0, 24, 35, 'Bass_24_C1.wav'),
-      createZone(36, 60, 71, 'Piano_60_C4.wav'),
-      createZone(72, 84, 95, 'Strings_84_C6.wav'),
-      createZone(96, 108, 127, 'Pad_108_C8.wav'),
-    ];
-    this.ensureZoneDemoBuffers(this.session!.zones);
-    this.markDirty();
-    return this.session!.zones;
+    return importSamplesFromFolder(this.importHost(), _folderPath);
   }
 
   /**
    * Imports real binary WAV / AIFF files selected via File Picker or Drag & Drop.
-   *
-   * Supports both original MODELmaker v1.2 workflows:
-   * - `mode === 'samples'` (`Ctrl-I` / Import Samples): reads AIFF `INST` / WAV `smpl`
-   *   embedded metadata (`rootKey`, `lowKey`, `lowVelocity < 64` vs `>= 64`, `detune`),
-   *   with fallback to pitch detection (`detectPitch`) or filename parsing.
-   * - `mode === 'by-name'` (`Ctrl-N` / Import by Name): ignores embedded `INST` metadata
-   *   and parses `name_rootkey_lowkey[_v1|_v2]` / `name-Note[_high]` per `KeyZoneData.class`,
-   *   merges `v1` (Low Velocity) and `v2` (High Velocity) layers sharing the same `lowKey`,
-   *   sorts ascending by `lowKey`, sets `zone[i].highKey = zone[i+1].lowKey - 1`,
-   *   `zone[0].lowKey = 0`, and `zone[last].highKey = 127`.
+   * Logic lives in `core/import/modelImportService.ts`; this only exposes
+   * pipeline state through `ModelImportHost`.
    */
   public async importAudioFiles(
     files: { name: string; buffer: ArrayBuffer }[],
     mode: 'samples' | 'by-name' = 'samples'
   ): Promise<Zone[]> {
-    // Filter out macOS AppleDouble resource forks (._* / __MACOSX) and tiny non-audio stubs
-    const candidateFiles = files.filter((f) => {
-      const normalized = f.name.replace(/\\/g, '/');
-      if (normalized.includes('__MACOSX/')) return false;
-      const base = normalized.split('/').pop() ?? normalized;
-      if (base.startsWith('.') || base.startsWith('._')) return false;
-      return f.buffer && f.buffer.byteLength >= 44;
-    });
-
-    if (candidateFiles.length === 0) return this.getZones();
-    // P0.3: bound memory and zone count before decoding anything.
-    if (candidateFiles.length > WebAudioPipeline.MAX_IMPORT_FILES) {
-      throw new Error(
-        `Too many files for import (${candidateFiles.length}, max ${WebAudioPipeline.MAX_IMPORT_FILES})`
-      );
-    }
-    const oversizedNames = candidateFiles
-      .filter((f) => f.buffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES)
-      .map((f) => f.name);
-    if (oversizedNames.length === candidateFiles.length) {
-      throw new Error(
-        `All ${candidateFiles.length} file(s) exceed the ${WebAudioPipeline.MAX_IMPORT_FILE_BYTES / (1024 * 1024)} MB per-file import limit: ${oversizedNames.slice(0, 3).join(', ')}${oversizedNames.length > 3 ? ', …' : ''}`
-      );
-    }
-    if (!this.session) await this.newSession('Imported Multisample');
-
-    interface ParsedSampleItem {
-      name: string;
-      rootKey: MidiNote;
-      lowKey: MidiNote | null;
-      isHighVelocity: boolean;
-      detune: number;
-    }
-
-    const items: ParsedSampleItem[] = [];
-    const skippedNames: string[] = [...oversizedNames];
-    for (const f of candidateFiles) {
-      if (f.buffer.byteLength > WebAudioPipeline.MAX_IMPORT_FILE_BYTES) {
-        // Skip without decoding: fully buffered in memory by decodeWav
-        continue;
-      }
-      let decoded: ReturnType<typeof this.registerSampleBuffer>;
-      try {
-        decoded = this.registerSampleBuffer(f.name, f.buffer);
-      } catch {
-        // Skip invalid/corrupt or non-audio files in folder imports
-        skippedNames.push(f.name);
-        continue;
-      }
-
-      const baseName = (f.name.split(/[\\/]/).pop() ?? f.name);
-      const byName = parseSampleFilenameByName(baseName, -1 as MidiNote);
-      // Only assign High Velocity (64..127) when deduced from the filename (_v2, _high, etc.)
-      const isHighVelocity = byName.isHighVelocity;
-
-      if (mode === 'by-name') {
-        const rk = byName.rootKey >= 0 && byName.rootKey <= 127 ? byName.rootKey : 60;
-        const lk = byName.lowKey >= 0 && byName.lowKey <= 127 ? byName.lowKey : rk;
-        items.push({
-          name: baseName,
-          rootKey: rk,
-          lowKey: lk,
-          isHighVelocity,
-          detune: 0,
-        });
-        continue;
-      }
-
-      const inst = decoded.instrument;
-      let rootKey: MidiNote;
-      if (byName.rootKey >= 0 && byName.rootKey <= 127) {
-        rootKey = byName.rootKey;
-      } else if (inst && inst.rootKey >= 0 && inst.rootKey <= 127) {
-        rootKey = inst.rootKey;
-      } else {
-        const detectedHz = this.analyzer.detectPitch(
-          decoded.channels[0],
-          decoded.sampleRate
-        );
-        rootKey =
-          detectedHz > 20
-            ? Math.max(
-                0,
-                Math.min(127, Math.round(69 + 12 * Math.log2(detectedHz / 440)))
-              )
-            : 60;
-      }
-
-      const hasExplicitNameLowKey =
-        byName.lowKey >= 0 &&
-        byName.lowKey <= 127 &&
-        byName.lowKey !== byName.rootKey;
-      const hasExplicitInstLowKey =
-        inst !== undefined &&
-        inst.lowKey >= 0 &&
-        inst.lowKey <= 127 &&
-        !(inst.lowKey === 0 && inst.highKey === 127 && candidateFiles.length > 1);
-
-      const lowKey = hasExplicitNameLowKey
-        ? byName.lowKey
-        : hasExplicitInstLowKey
-          ? inst!.lowKey
-          : null;
-
-      items.push({
-        name: baseName,
-        rootKey,
-        lowKey,
-        isHighVelocity,
-        detune: inst?.detune ?? 0,
-      });
-    }
-
-    if (items.length === 0) {
-      const skipped = skippedNames.length > 0 ? ` Skipped: ${skippedNames.slice(0, 3).join(', ')}${skippedNames.length > 3 ? ', …' : ''}.` : '';
-      throw new Error(`No valid WAV or AIFF audio files could be decoded.${skipped}`);
-    }
-
-    this.pushHistory(`Import ${items.length} Sample(s)`);
-
-    items.sort((a, b) => {
-      const keyA = a.lowKey ?? a.rootKey;
-      const keyB = b.lowKey ?? b.rootKey;
-      if (keyA !== keyB) return keyA - keyB;
-      if (a.rootKey !== b.rootKey) return a.rootKey - b.rootKey;
-      return (a.isHighVelocity ? 1 : 0) - (b.isHighVelocity ? 1 : 0);
-    });
-
-    // Only merge two samples into the same zone (Low Vel + High Vel) when they share the same key
-    // AND one of them is explicitly marked as High Velocity in its filename (_v2, _high, etc.).
-    const grouped: {
-      rootKey: MidiNote;
-      lowKey: MidiNote | null;
-      sampleLow: string | null;
-      sampleHigh: string | null;
-      velSplit: number;
-      detune: number;
-    }[] = [];
-
-    for (const item of items) {
-      const itemKey = item.lowKey ?? item.rootKey;
-      const match = grouped.find((g) => {
-        const gKey = g.lowKey ?? g.rootKey;
-        if (gKey !== itemKey) return false;
-        return item.isHighVelocity ? g.sampleHigh === null : g.sampleLow === null;
-      });
-
-      if (match && (item.isHighVelocity || match.sampleLow === null)) {
-        if (item.isHighVelocity) {
-          match.sampleHigh = item.name;
-        } else {
-          match.sampleLow = item.name;
-        }
-      } else {
-        grouped.push({
-          rootKey: item.rootKey,
-          lowKey: item.lowKey,
-          sampleLow: item.isHighVelocity ? null : item.name,
-          sampleHigh: item.isHighVelocity ? item.name : null,
-          velSplit: 64,
-          detune: item.detune,
-        });
-      }
-    }
-
-    // Ensure every zone has a primary sampleLow (if a lone _v2 file had no _v1 pair, promote it to sampleLow)
-    for (const g of grouped) {
-      if (!g.sampleLow && g.sampleHigh) {
-        g.sampleLow = g.sampleHigh;
-        g.sampleHigh = null;
-      }
-    }
-
-    // Compute strictly monotonic lowKeys first, then set highKey[i] = lowKey[i+1] - 1
-    const n = grouped.length;
-    const computedLowKeys: MidiNote[] = new Array(n).fill(0);
-    for (let i = 0; i < n; i++) {
-      if (i === 0) {
-        computedLowKeys[i] = 0;
-      } else {
-        const prev = grouped[i - 1];
-        const curr = grouped[i];
-        const rawLow =
-          curr.lowKey !== null
-            ? curr.lowKey
-            : Math.floor((prev.rootKey + curr.rootKey) / 2) + 1;
-        const minAllowed = computedLowKeys[i - 1] + 1;
-        const maxAllowed = 128 - (n - i);
-        computedLowKeys[i] = Math.max(minAllowed, Math.min(maxAllowed, rawLow));
-      }
-    }
-
-    const newZones: Zone[] = [];
-    for (let i = 0; i < n; i++) {
-      const curr = grouped[i];
-      const lowKey = computedLowKeys[i];
-      const highKey = i === n - 1 ? 127 : computedLowKeys[i + 1] - 1;
-      const rootKey = Math.max(lowKey, Math.min(highKey, curr.rootKey));
-
-      const zone = createZone(lowKey, rootKey, highKey, curr.sampleLow);
-      zone.sampleHigh = curr.sampleHigh;
-      zone.velSplit = curr.velSplit;
-      zone.detune = curr.detune;
-      newZones.push(zone);
-    }
-
-    this.session!.zones = newZones;
-    this.session!.extendedRegions = syncExtendedRegionsFromClassicZones(
-      newZones
-    );
-    if (newZones[0]?.sampleLow) {
-      this.maybeAutoDeriveModelName(newZones[0].sampleLow);
-    }
-    this.markDirty();
-    return newZones;
-  }
-
-  private maybeAutoDeriveModelName(sampleFilename: string): void {
-    if (!this.session) return;
-    const current = this.session.processConfig.modelName.trim();
-    if (!DEFAULT_MODEL_NAMES.has(current)) return;
-    const maxLen =
-      this.session.processConfig.targetFormat === 'modern-neural' ? 32 : 11;
-    const derived = deriveModelNameFromSample(sampleFilename, maxLen);
-    if (derived) {
-      this.session.processConfig.modelName = derived;
-      const baseClean = sampleFilename.replace(/\.[^/.]+$/, '').trim();
-      this.session.processConfig.expandedName = baseClean || derived;
-      if (DEFAULT_MODEL_NAMES.has(this.session.name.trim())) {
-        this.session.name = derived;
-      }
-    }
+    return importAudioFiles(this.importHost(), files, mode);
   }
 
   /**
-   * Imports a legacy Hartmann `.model` file set (`MName`, `map.script`, `%06d.scape`, `%06d.sphere`),
-   * a `.zip` package exported by MODELmaker / NeuronDB, or a `.neuronikmodel` v2.1 JSON file:
-   * - Reconstructs the session zones and process configuration
-   * - Resynthesizes playable 44.1 kHz PCM16 WAV buffers from `.sphere` / `.scape` frames
-   *   so every imported zone can be auditioned and re-analyzed immediately
-   * - Registers the model in the Bank and emits `session-changed`, `process-complete`, and `bank-updated`.
+   * Imports a legacy Hartmann `.model` file set, a `.zip` package or a
+   * `.neuronikmodel` v2.1 JSON file. Logic lives in
+   * `core/import/modelImportService.ts`.
    */
   public async importModelFiles(
     files: { name: string; buffer: ArrayBuffer }[]
   ): Promise<GeneratedModel> {
-    if (files.length === 0) {
-      throw new Error('No model files provided for import');
-    }
+    return importModelFiles(this.importHost(), files);
+  }
 
-    const defaultSlot = this.session?.processConfig.modelNumber ?? 1;
-    const byteFiles = files.map((f) => ({
-      name: f.name,
-      data: new Uint8Array(f.buffer),
-    }));
-    const extracted = extractTimeCapsuleFromFiles(byteFiles);
-    const parseInput =
-      extracted.modelParseFiles.length > 0
-        ? extracted.modelParseFiles
-        : byteFiles;
-    const bundle = parseModelFileSet(parseInput, defaultSlot);
+  private maybeAutoDeriveModelName(sampleFilename: string): void {
+    if (!this.session) return;
+    autoDeriveModelName(this.session, sampleFilename);
+  }
 
-    const hasEmbeddedSamples = Boolean(
-      (bundle.embeddedSamples && bundle.embeddedSamples.size > 0) ||
-        extracted.rawSourceSamples.size > 0 ||
-        extracted.enhancedAudioSamples.size > 0
-    );
-    if (
-      bundle.scapes.size === 0 &&
-      bundle.spheres.size === 0 &&
-      !bundle.neuronikModelJson &&
-      !extracted.extendedModelJson &&
-      !hasEmbeddedSamples
-    ) {
-      if (bundle.hasMNameOrMapScript) {
-        throw new Error(
-          'Only MName or map.script selected without the model .scape and .sphere files.\n\n' +
-            '• When using "Import Model Files / .zip", select ALL files inside the <NNN>.model (Ctrl+A: MName, map.script, *.scape, *.sphere) or a .zip file.\n' +
-            '• Or use "File -> Import Model Folder (<NNN>.model)..." to open the folder directly.'
-        );
-      }
-      throw new Error(
-        'No valid model files (.scape, .sphere, .nmmodel) or audio samples found in the selected files.'
-      );
-    }
-
-    if (bundle.embeddedSamples) {
-      for (const [sName, sBytes] of bundle.embeddedSamples.entries()) {
-        const copy = new Uint8Array(sBytes.byteLength);
-        copy.set(sBytes);
-        try {
-          this.registerSampleBuffer(sName, copy.buffer);
-        } catch {
-          // ignore non-decodable embedded file
-        }
-      }
-    }
-
-    // Hydrate Time Capsule Layer 01 (raw sources) & Layer 03 (enhanced 24b/96k audio)
-    for (const [rawName, rawBuf] of extracted.rawSourceSamples.entries()) {
-      try {
-        this.registerSampleBuffer(rawName, rawBuf);
-      } catch {
-        // ignore invalid raw buffer
-      }
-    }
-    for (const [enhName, enhBuf] of extracted.enhancedAudioSamples.entries()) {
-      try {
-        this.registerSampleBuffer(enhName, enhBuf, {
-          isPromotedEnhanced: true,
-        });
-      } catch {
-        // ignore invalid enhanced buffer
-      }
-    }
-
-    if (!this.session) {
-      await this.newSession(bundle.name);
-    } else {
-      this.pushHistory(`Import Model "${bundle.name}"`);
-    }
-
-    const activeZones =
-      bundle.mapScript.activeZones.length > 0
-        ? bundle.mapScript.activeZones
-        : [createZone(0, 60, 127, '000001.scape')];
-
-    const firstSphere = bundle.spheres.values().next().value;
-    const inferredParamSet =
-      firstSphere?.header.parameterSet ?? bundle.inferredParameterSet ?? 0;
-    const stickModes = firstSphere?.header.stickModes ?? 16;
-    const stickTable = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
-    const complexityIdx = stickTable.findIndex((s) => s >= stickModes);
-    const inferredComplexity =
-      firstSphere !== undefined
-        ? complexityIdx >= 0
-          ? complexityIdx + 1
-          : 8
-        : (bundle.inferredComplexity ?? 8);
-
-    const newZones: Zone[] = [];
-    const zonesAnalysis: ZoneAnalysisSummary[] = [];
-    const sourceSampleNames = new Map<number, string>();
-    const binaryBySampleName = new Map<string, ZoneBinaryPair>();
-
-    const buildResynthSourceWav = (
-      srcIdx: number,
-      zEntry: Zone,
-      zoneIndex: number,
-      suffix = ''
-    ): { sampleName: string; wavBuf: ArrayBuffer } => {
-      const explicitCandidate =
-        suffix === '' ? zEntry.sampleLow : zEntry.sampleHigh;
-      if (
-        explicitCandidate &&
-        bundle.embeddedSamples?.has(explicitCandidate) &&
-        this.sampleBuffers.has(explicitCandidate) &&
-        !bundle.spheres.has(srcIdx) &&
-        !bundle.scapes.has(srcIdx)
-      ) {
-        return {
-          sampleName: explicitCandidate,
-          wavBuf: this.sampleBuffers.get(explicitCandidate)!,
-        };
-      }
-      const existingName = sourceSampleNames.get(srcIdx);
-      if (existingName && this.sampleBuffers.has(existingName)) {
-        return {
-          sampleName: existingName,
-          wavBuf: this.sampleBuffers.get(existingName)!,
-        };
-      }
-      const sampleName = `${bundle.name}_S${String(srcIdx).padStart(2, '0')}_K${String(zEntry.rootKey).padStart(3, '0')}${suffix}.wav`;
-      const parsedSphere = bundle.spheres.get(srcIdx);
-      const parsedScape = bundle.scapes.get(srcIdx);
-
-      let pcmFloat: Float32Array | null = null;
-      if ((parsedSphere && parsedSphere.frames.length > 0) || parsedScape) {
-        pcmFloat = resynthesizeNeuronModelSource(parsedSphere, parsedScape, 44100, 0.22);
-      }
-
-      const wavBuf = pcmFloat
-        ? encodePcm16Wav(pcmFloat, 44100, {
-            rootKey: zEntry.rootKey,
-            lowKey: zEntry.lowKey,
-            highKey: zEntry.highKey,
-            detune: zEntry.detune,
-          })
-        : synthesizeDemoWav('strings', zEntry.rootKey + zoneIndex * 0, 44100, 1.0);
-
-      this.sampleBuffers.set(sampleName, wavBuf);
-      sourceSampleNames.set(srcIdx, sampleName);
-      return { sampleName, wavBuf };
+  /** Mutable-state host exposed to `core/import/*` and `core/masterWaveService` (cf. `BankContext`). */
+  private importHost(): ModelImportHost & MasterWaveHost {
+    return {
+      getSession: () => this.session,
+      ensureSession: async (name: string) => {
+        if (!this.session) await this.newSession(name);
+        return this.session!;
+      },
+      pushHistory: (label: string) => this.pushHistory(label),
+      markDirty: () => this.markDirty(),
+      registerSampleBuffer: (name, buffer, options) =>
+        this.registerSampleBuffer(name, buffer, options),
+      detectPitch: (channel, sampleRate) =>
+        this.analyzer.detectPitch(channel, sampleRate),
+      ensureZoneDemoBuffers: (zones) => this.ensureZoneDemoBuffers(zones),
+      getSampleBuffer: (name: string) => this.sampleBuffers.get(name),
+      setSampleBuffer: (name: string, buffer: ArrayBuffer) => {
+        this.sampleBuffers.set(name, buffer);
+      },
+      hasSampleBuffer: (name: string) => this.sampleBuffers.has(name),
+      getAnalyzer: () => this.analyzer,
+      getAssetStore: () => this.assetStore,
+      getBank: () => this.bank,
+      getImportedBinaries: () => this.importedSourceBinaries,
+      persist: () => this.persistToLocalStorage(),
+      emit: (event) => this.emit(event),
+      loadBank: () => this.loadBank(),
+      getExtendedRegions: () => this.getExtendedRegions(),
+      getProvenance: () => this.getModelProvenance(),
+      computeBufferHash: (buf, tag) => this.computeAudioBufferHash(buf, tag),
+      getEnhancedHash: (name: string) => this.enhancedSourceHashes.get(name),
+      setEnhancedHash: (name: string, hash: string) => {
+        this.enhancedSourceHashes.set(name, hash);
+      },
+      invalidateSpectrum: (zoneId: string) => {
+        this.spectralCache.delete(zoneId);
+      },
+      getSampleBuffers: () => this.sampleBuffers,
     };
-
-    for (let i = 0; i < activeZones.length; i++) {
-      const zEntry = activeZones[i];
-      const srcIdx =
-        parseInt((zEntry.sampleLow ?? `${i + 1}`).replace(/\D+/g, ''), 10) ||
-        i + 1;
-      const { sampleName, wavBuf } = buildResynthSourceWav(srcIdx, zEntry, i);
-
-      let highSampleName: string | null = null;
-      if (zEntry.sampleHigh) {
-        const hiIdx = parseInt(zEntry.sampleHigh.replace(/\D+/g, ''), 10);
-        if (!Number.isNaN(hiIdx) && hiIdx > 0 && hiIdx !== srcIdx) {
-          highSampleName = buildResynthSourceWav(hiIdx, zEntry, i, '_v2').sampleName;
-          const hiScape = bundle.scapeBinaries?.get(hiIdx);
-          const hiSphere = bundle.sphereBinaries?.get(hiIdx);
-          if (hiScape && hiSphere && !binaryBySampleName.has(highSampleName)) {
-            binaryBySampleName.set(highSampleName, {
-              scapeBinary: hiScape,
-              sphereBinary: hiSphere,
-            });
-            this.importedSourceBinaries.set(highSampleName, {
-              scapeBinary: hiScape,
-              sphereBinary: hiSphere,
-              origParameterSet: inferredParamSet,
-              complexity: inferredComplexity,
-              summary: {
-                zoneId: `zone_${i + 1}`,
-                lowKey: zEntry.lowKey,
-                rootKey: zEntry.rootKey,
-                highKey: zEntry.highKey,
-                sampleName: highSampleName,
-                sampleRate: 44100,
-                durationSec: 1.0,
-                detectedF0Hz: 440,
-                targetF0Hz: 440,
-                gridResidualCents: 0,
-                gridObservations: 16,
-                gridBand: 'green',
-                gridNotice: 'Imported .sphere (High Vel preserved)',
-                layerCount: 1,
-                frameCount: 16,
-                activePartials: 64,
-                octaveFoldCents: 0,
-                biGrid: false,
-                amplitudes: new Array<number>(64).fill(0),
-                frequencyOffsets: new Array<number>(64).fill(0),
-              },
-            });
-          }
-        }
-      }
-
-      const rawSphere = bundle.sphereBinaries?.get(srcIdx);
-      const rawScape = bundle.scapeBinaries?.get(srcIdx);
-      const parsedSphere = bundle.spheres.get(srcIdx);
-      const parsedScape = bundle.scapes.get(srcIdx);
-
-      const zone = createZone(
-        zEntry.lowKey,
-        zEntry.rootKey,
-        zEntry.highKey,
-        sampleName
-      );
-      zone.sampleHigh = highSampleName;
-      zone.detune = zEntry.detune;
-      zone.volume = zEntry.volume;
-      zone.pan = zEntry.pan;
-      newZones.push(zone);
-
-      if (rawScape && rawSphere && parsedSphere) {
-        const res = parsedSphere.header.resolution || parsedScape?.header.resolution || 100;
-        const targetF0Hz = Number(midiNoteToHz(zone.rootKey).toFixed(2));
-        const detectedF0Hz = Number((res > 0 ? NEURON_SAMPLE_RATE / res : targetF0Hz).toFixed(2));
-        const midFrame =
-          parsedSphere.frames[Math.floor(parsedSphere.frames.length / 2)] ??
-          parsedSphere.frames[0];
-        const amps = new Array<number>(64).fill(0);
-        const offs = new Array<number>(64).fill(0);
-        if (midFrame) {
-          for (const p of midFrame.partials) {
-            if (p.frequency <= 0 || p.amplitude <= 0) continue;
-            const freqHz = p.frequency * 0.5;
-            const harmIdx = Math.round(freqHz / Math.max(20, detectedF0Hz)) - 1;
-            if (harmIdx >= 0 && harmIdx < 64) {
-              const normAmp = p.amplitude / 65535.0;
-              if (normAmp > amps[harmIdx]) {
-                amps[harmIdx] = normAmp;
-                offs[harmIdx] = Number((freqHz - (harmIdx + 1) * detectedF0Hz).toFixed(2));
-              }
-            }
-          }
-        }
-        const summaryItem: ZoneAnalysisSummary = {
-          zoneId: zone.id,
-          lowKey: zone.lowKey,
-          rootKey: zone.rootKey,
-          highKey: zone.highKey,
-          sampleName,
-          sampleRate: 44100,
-          durationSec: 1.0,
-          detectedF0Hz,
-          targetF0Hz,
-          gridResidualCents: 0,
-          gridObservations: parsedSphere.frames.length,
-          gridBand: 'green',
-          gridNotice: `Imported .sphere (${parsedSphere.frames.length} frames, ${parsedSphere.header.stickModes} modes)`,
-          layerCount: 1,
-          frameCount: parsedSphere.frames.length,
-          activePartials: midFrame?.partialCount ?? 64,
-          octaveFoldCents: 0,
-          biGrid: false,
-          amplitudes: amps,
-          frequencyOffsets: offs,
-        };
-        zonesAnalysis.push(summaryItem);
-        binaryBySampleName.set(sampleName, {
-          scapeBinary: rawScape,
-          sphereBinary: rawSphere,
-        });
-        this.importedSourceBinaries.set(sampleName, {
-          scapeBinary: rawScape,
-          sphereBinary: rawSphere,
-          origParameterSet: parsedSphere.header.parameterSet ?? inferredParamSet,
-          complexity: inferredComplexity,
-          summary: summaryItem,
-        });
-      } else {
-        const analyzed = analyzeSingleZone(
-          { zone, wavBuffer: wavBuf },
-          {
-            modelName: bundle.name,
-            modelNumber: bundle.slot,
-            parameterSet: inferredParamSet,
-            complexity: inferredComplexity,
-            targetFormat: 'legacy-neuron',
-          },
-          this.analyzer
-        );
-
-        zonesAnalysis.push(analyzed.summary);
-        binaryBySampleName.set(sampleName, {
-          scapeBinary: rawScape ?? analyzed.scapeBinary,
-          sphereBinary: rawSphere ?? analyzed.sphereBinary,
-        });
-      }
-    }
-
-    // Build ordered unique source binaries (1..K) matching serializeCanonicalMapScript's sourceMap
-    const zoneBinaries: ZoneBinaryPair[] = [];
-    const seenSamples = new Set<string>();
-    for (const z of newZones) {
-      for (const sName of [z.sampleLow, z.sampleHigh]) {
-        if (sName && !seenSamples.has(sName)) {
-          seenSamples.add(sName);
-          const pair = binaryBySampleName.get(sName);
-          if (pair) {
-            zoneBinaries.push(pair);
-          }
-        }
-      }
-    }
-
-    const neuronikModelJson =
-      extracted.extendedModelJson ??
-      bundle.neuronikModelJson ??
-      convertLegacyModelToModern(bundle);
-
-    // Record Layer 02 (`02_legacy_original`) untouched binaries in NeuronAssetStore
-    const hasRawSourcesInCapsule = extracted.rawSourceSamples.size > 0;
-    if (
-      extracted.legacyOriginalFiles.length > 0 ||
-      (!extracted.isTimeCapsule &&
-        !hasRawSourcesInCapsule &&
-        zoneBinaries.length > 0 &&
-        bundle.spheres.size > 0)
-    ) {
-      for (const [sName, impRec] of this.importedSourceBinaries.entries()) {
-        this.assetStore.setLegacyOriginalSample({
-          sampleName: sName,
-          scapeBinary: impRec.scapeBinary,
-          sphereBinary: impRec.sphereBinary,
-          origParameterSet: impRec.origParameterSet,
-          complexity: impRec.complexity,
-        });
-      }
-      this.assetStore.setLegacyOriginalSlotBundle({
-        slot: bundle.slot,
-        name: bundle.name,
-        zones: newZones,
-        mapScriptVersion: {
-          major: bundle.mapScript.versionMajor,
-          minor: bundle.mapScript.versionMinor,
-          build: bundle.mapScript.versionBuild,
-          lineEnding: '\n',
-        },
-        zoneBinaries,
-      });
-    }
-
-    this.session!.name = extracted.manifest?.modelName ?? bundle.name;
-    this.session!.zones = newZones;
-    if (extracted.manifest?.extendedRegions?.length) {
-      this.session!.extendedRegions = structuredClone(
-        extracted.manifest.extendedRegions
-      );
-    } else {
-      this.session!.extendedRegions =
-        syncExtendedRegionsFromClassicZones(newZones);
-    }
-    if (extracted.manifest?.articulation) {
-      this.session!.articulation = cloneArticulation(
-        extracted.manifest.articulation
-      );
-    }
-    if (extracted.manifest?.detectedInstrumentCategory) {
-      this.session!.detectedInstrumentCategory =
-        extracted.manifest.detectedInstrumentCategory;
-    }
-    this.session!.processConfig = {
-      modelName: extracted.manifest?.modelName ?? bundle.name,
-      modelNumber: bundle.slot,
-      parameterSet:
-        extracted.manifest?.processConfig.parameterSet ?? inferredParamSet,
-      complexity:
-        extracted.manifest?.processConfig.complexity ?? inferredComplexity,
-      targetFormat:
-        extracted.manifest?.processConfig.targetFormat ?? 'legacy-neuron',
-      workingMode: extracted.manifest?.processConfig.workingMode,
-      dspAlgorithm: extracted.manifest?.processConfig.dspAlgorithm,
-      masterWaveConfig: extracted.manifest?.processConfig.masterWaveConfig,
-      commonPlayback: extracted.manifest?.processConfig.commonPlayback,
-      coverArtwork: extracted.manifest?.processConfig.coverArtwork ?? null,
-    };
-
-    const { manifest: builtManifest, provenance: builtProvenance } =
-      buildTimeCapsuleEntries({
-        slot: bundle.slot,
-        modelName: this.session!.name,
-        processConfig: this.session!.processConfig,
-        zones: newZones,
-        extendedRegions: this.session!.extendedRegions,
-        articulation: this.session!.articulation,
-        detectedInstrumentCategory: this.session!.detectedInstrumentCategory,
-        rawSourceSamples: this.assetStore.getAllRawSourcesSync(),
-        legacyOriginalBundle:
-          this.assetStore.getLegacyOriginalSlotBundleSync(bundle.slot),
-        enhancedAudioSamples: this.assetStore.getAllEnhancedAudioSync(),
-        classicEnhancedBinaries: zoneBinaries,
-        mapScriptVersion: {
-          major: bundle.mapScript.versionMajor,
-          minor: bundle.mapScript.versionMinor,
-          build: bundle.mapScript.versionBuild,
-          lineEnding: '\n',
-        },
-        neuronikModelJson,
-        previousProvenance: extracted.provenance ?? undefined,
-      });
-
-    this.session!.provenance = builtProvenance;
-    this.session!.dirty = false;
-    this.session!.modifiedAt = new Date().toISOString();
-
-    this.assetStore.setCapsuleRecord({
-      slot: bundle.slot,
-      modelName: this.session!.name,
-      manifest: builtManifest,
-      provenance: builtProvenance,
-      classicEnhancedBinaries: zoneBinaries,
-      extendedModelJson: neuronikModelJson,
-      updatedAt: builtProvenance.updatedAt,
-    });
-
-    const model: GeneratedModel = {
-      slot: bundle.slot,
-      name: this.session!.name,
-      zoneCount: newZones.length,
-      complexity: this.session!.processConfig.complexity,
-      parameterSet: this.session!.processConfig.parameterSet,
-      createdAt: new Date().toISOString(),
-      path: `Models/${String(bundle.slot).padStart(3, '0')}.model`,
-      targetFormat: 'dual',
-      zonesAnalysis,
-      neuronikModelJson,
-      provenance: builtProvenance,
-      coverWebpDataUrl: this.session!.processConfig.coverArtwork?.webpDataUrl,
-    };
-
-    this.bank.registerImportedBundle(bundle.slot, zoneBinaries, {
-      major: bundle.mapScript.versionMajor,
-      minor: bundle.mapScript.versionMinor,
-      build: bundle.mapScript.versionBuild,
-      lineEnding: '\n',
-    }, model);
-
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: this.session! });
-    this.emit({ type: 'process-complete', model });
-    const bank = await this.loadBank();
-    this.emit({ type: 'bank-updated', bank });
-
-    return model;
   }
 
   /**
@@ -2140,6 +1498,8 @@ export class WebAudioPipeline implements CoreService {
         updatedAt: record.createdAt,
       };
       this.session!.processConfig.workingMode = 'extended';
+    } else if (!record.coverWebpDataUrl) {
+      this.session!.processConfig.coverArtwork = null;
     }
     this.session!.dirty = true;
     this.session!.modifiedAt = new Date().toISOString();
@@ -2465,10 +1825,40 @@ export class WebAudioPipeline implements CoreService {
   }
 
   private applyNativeSamplerImport(imported: NativeSamplerImportResult): Session {
-    if (!this.session) {
-      this.session = createInitialSession(imported.presetName);
+    // Clean slate for new sampler instrument import (SoundFont SF2 / SFZ)
+    this.sampleBuffers.clear();
+    this.importedSourceBinaries.clear();
+    this.assetStore.clearSessionAudioLayers();
+    this.ribbonEnvelopeCache.clear();
+    this.spectralCache.clear();
+
+    const prevWorkingMode = this.session?.processConfig.workingMode ?? 'extended';
+    const prevKeyMappingMode = this.session?.processConfig.keyMappingMode ?? 'chromatic';
+    const prevAiConfig = this.session?.processConfig.aiConfig;
+
+    this.session = createInitialSession(imported.presetName);
+    this.session.processConfig.workingMode = prevWorkingMode;
+    this.session.processConfig.keyMappingMode = prevKeyMappingMode;
+    if (prevAiConfig) {
+      this.session.processConfig.aiConfig = { ...prevAiConfig };
+    }
+    // Explicitly reset cover artwork to null for the new instrument
+    this.session.processConfig.coverArtwork = null;
+
+    // Assign imported tags & metadata cleanly
+    if (imported.metadata) {
+      this.session.processConfig.extendedMetadata = {
+        ...imported.metadata,
+        sourceFormat: imported.sourceFormat,
+        sourcePresetName: imported.presetName,
+        version: imported.metadata.version || '1.0.0',
+      };
     } else {
-      this.pushHistory(`Import ${imported.sourceFormat.toUpperCase()} "${imported.presetName}"`);
+      this.session.processConfig.extendedMetadata = {
+        sourceFormat: imported.sourceFormat,
+        sourcePresetName: imported.presetName,
+        version: '1.0.0',
+      };
     }
 
     for (const audioFile of imported.audioFiles) {
@@ -2489,15 +1879,14 @@ export class WebAudioPipeline implements CoreService {
     const maxLen = this.session.processConfig.targetFormat === 'modern-neural' ? 32 : 11;
     this.session.processConfig.modelName = imported.presetName.slice(0, maxLen) || imported.modelName;
     this.session.processConfig.expandedName = imported.presetName || imported.modelName;
-    if (!this.session.processConfig.extendedMetadata) {
-      this.session.processConfig.extendedMetadata = {};
-    }
-    this.session.processConfig.extendedMetadata.sourceFormat = imported.sourceFormat;
-    this.session.processConfig.extendedMetadata.sourcePresetName = imported.presetName;
     this.session.processConfig.parameterSet = imported.suggestedParameterSet;
 
     this.ensureZoneDemoBuffers(this.session.zones);
-    this.markDirty();
+    this.clearHistory();
+    this.pushHistory(`Import ${imported.sourceFormat.toUpperCase()} "${imported.presetName}"`);
+    this.session.dirty = false;
+    this.persistToLocalStorage();
+    this.emit({ type: 'session-changed', session: this.session });
     return this.session;
   }
 
@@ -2868,222 +2257,14 @@ export class WebAudioPipeline implements CoreService {
     config?: Partial<MasterWaveConfig>,
     options?: { forceRebuild?: boolean; preserveManualLoops?: boolean }
   ): Promise<MasterWaveResult | null> {
-    if (!this.session) return null;
-    const zone =
-      (zoneId ? this.session.zones.find((z) => z.id === zoneId) : null) ??
-      this.session.zones[0];
-    if (!zone) return null;
-
-    this.ensureZoneDemoBuffers([zone]);
-    const currentSampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
-
-    const extRegions = this.getExtendedRegions();
-    const matchReg = extRegions.find(
-      (r) => r.sampleName === currentSampleName || r.id === `ext-${zone.id}-low`
-    );
-
-    const mergedCfg: MasterWaveConfig = {
-      ...DEFAULT_MASTER_WAVE_CONFIG,
-      ...(this.session.processConfig.masterWaveConfig ?? {}),
-      ...(config ?? {}),
-    };
-    this.session.processConfig.masterWaveConfig = mergedCfg;
-
-    // Anti-Photocopy Rule: Always resolve the purest origin layer (`01_raw_source` or `02_legacy_original`)
-    const purest = resolvePurestSourceForSample(
-      currentSampleName,
-      this.assetStore,
-      this.sampleBuffers
-    );
-
-    let promoted: { result: MasterWaveResult; wav24Buffer: ArrayBuffer };
-    let originSampleName = currentSampleName;
-    let sourceLayerUsed: '01_raw_source' | '02_legacy_original' = '01_raw_source';
-
-    // Manual loop detection & preservation
-    const isManualLoop = Boolean(
-      options?.preserveManualLoops ||
-      (matchReg && matchReg.loopEnd > matchReg.loopStart && matchReg.loopMode !== 'no_loop')
-    );
-    const existingLoopStart = matchReg?.loopStart ?? 0;
-    const existingLoopEnd = matchReg?.loopEnd ?? 0;
-    const existingLoopMode = matchReg?.loopMode ?? 'loop_continuous';
-
-    if (purest?.sourceLayer === '02_legacy_original') {
-      sourceLayerUsed = '02_legacy_original';
-      originSampleName = purest.sampleName;
-      promoted = regenerateMasterWaveFromLegacyBinaries(
-        purest.legacyRecord.scapeBinary,
-        purest.legacyRecord.sphereBinary,
-        zone.rootKey,
-        zone.id,
-        originSampleName,
-        mergedCfg
-      );
-    } else {
-      sourceLayerUsed = '01_raw_source';
-      originSampleName = purest?.rawSampleName ?? currentSampleName;
-      const rawBuf =
-        purest?.rawBuffer ??
-        (zone.sampleLow ? this.sampleBuffers.get(zone.sampleLow) : null) ??
-        synthesizeDemoWav('strings', zone.rootKey, 44100, 1.0);
-
-      // Ensure unaltered raw source is stored in `01_raw_source` before promotion
-      if (!this.assetStore.hasRawSource(originSampleName)) {
-        this.assetStore.setRawSource(originSampleName, rawBuf);
-      }
-
-      // Content Hash & Idempotent Cache Check (Dirty Tracking)
-      const cfgTag = `${mergedCfg.promotionMethod}_${mergedCfg.targetSampleRate}_${mergedCfg.channelLayout}_${mergedCfg.enableBandwidthExtension}`;
-      const rawFingerprint = this.computeAudioBufferHash(rawBuf, cfgTag);
-      const baseStem = originSampleName.replace(/\.(wav|aif|aiff)$/i, '');
-      const expectedMasterName = baseStem.endsWith('_96k24b') ? `${baseStem}.wav` : `${baseStem}_96k24b.wav`;
-
-      if (
-        !options?.forceRebuild &&
-        this.enhancedSourceHashes.get(originSampleName) === rawFingerprint &&
-        this.assetStore.hasEnhancedAudio(expectedMasterName)
-      ) {
-        const cachedBuf = this.assetStore.getEnhancedAudioSync(expectedMasterName)!;
-        const decodedRaw = decodeWav(rawBuf);
-        const channelsCount = mergedCfg.channelLayout === 'stereo' ? 2 : mergedCfg.channelLayout === 'quad-surround' ? 4 : 1;
-        promoted = {
-          wav24Buffer: cachedBuf,
-          result: {
-            zoneId: zone.id,
-            sampleName: originSampleName,
-            masterSampleName: expectedMasterName,
-            originalSampleRate: decodedRaw.sampleRate || 44100,
-            masterSampleRate: mergedCfg.targetSampleRate,
-            bitDepth: 24,
-            numChannels: channelsCount,
-            originalDurationSec: Number(decodedRaw.durationSec.toFixed(3)),
-            masterDurationSec: Number(((cachedBuf.byteLength / (3 * channelsCount)) / mergedCfg.targetSampleRate).toFixed(3)),
-            loopExpanded: false,
-            loopStart: existingLoopStart,
-            loopEnd: existingLoopEnd,
-            loopDurationSec: Math.max(0, (existingLoopEnd - existingLoopStart) / mergedCfg.targetSampleRate),
-            zeroCrossingCorrelation: 1.0,
-            promotionMethodUsed: mergedCfg.promotionMethod,
-            aiProviderUsed: undefined,
-          },
-        };
-      } else {
-        let sustainHint: { loopStart: number; loopEnd: number } | undefined;
-        const aiCfg = this.session.processConfig.aiConfig;
-        if (aiCfg?.enabled && aiCfg.loopExpansion === 'ai') {
-          try {
-            const dec = decodeWav(rawBuf);
-            if (dec.channels.length > 0) {
-              const sustainRes = await webNeuralEngine.findSustainWindow(dec.channels[0], dec.sampleRate);
-              if (sustainRes && sustainRes.loopEnd > sustainRes.loopStart + 64) {
-                sustainHint = { loopStart: sustainRes.loopStart, loopEnd: sustainRes.loopEnd };
-              }
-            }
-          } catch {
-            // safe fallback
-          }
-        }
-
-        promoted = await promoteBufferToMasterWave(
-          rawBuf,
-          originSampleName,
-          zone.id,
-          mergedCfg,
-          {
-            rootKey: zone.rootKey,
-            detuneCents: zone.detune,
-            loopStart: matchReg?.loopStart,
-            loopEnd: matchReg?.loopEnd,
-            sustainWindowHint: sustainHint,
-            loopMode:
-              matchReg?.loopMode === 'ping_pong' || matchReg?.loopMode === 'loop_backward'
-                ? 'loop_continuous'
-                : matchReg?.loopMode,
-          }
-        );
-        this.enhancedSourceHashes.set(originSampleName, rawFingerprint);
-      }
-    }
-
-    this.pushHistory(`Promote "${originSampleName}" to 24-bit/96kHz Master Wave`);
-    this.registerSampleBuffer(
-      promoted.result.masterSampleName,
-      promoted.wav24Buffer,
-      {
-        isPromotedEnhanced: true,
-        rawSourceName: originSampleName,
-      }
-    );
-    zone.sampleLow = promoted.result.masterSampleName;
-
-    if (!this.session.extendedRegions || this.session.extendedRegions.length === 0) {
-      this.session.extendedRegions = syncExtendedRegionsFromClassicZones(this.session.zones);
-    }
-    for (const reg of this.session.extendedRegions) {
-      if (
-        reg.sampleName === currentSampleName ||
-        reg.sampleName === originSampleName ||
-        reg.id === `ext-${zone.id}-low`
-      ) {
-        reg.sampleName = promoted.result.masterSampleName;
-        reg.sampleRate = promoted.result.masterSampleRate;
-        reg.numChannels = promoted.result.numChannels;
-
-        if (isManualLoop && existingLoopEnd > existingLoopStart) {
-          // Scale manual loop frame positions proportionally only if sample rate changed
-          const origBuf = purest?.sourceLayer === '01_raw_source' ? purest.rawBuffer : null;
-          const currentRate = matchReg?.sampleRate ?? (origBuf ? decodeWav(origBuf).sampleRate : 44100);
-          const scale =
-            currentRate > 0 && currentRate !== promoted.result.masterSampleRate
-              ? promoted.result.masterSampleRate / currentRate
-              : 1.0;
-          reg.loopStart = Math.round(existingLoopStart * scale);
-          reg.loopEnd = Math.round(existingLoopEnd * scale);
-          reg.loopMode = existingLoopMode;
-        } else {
-          reg.loopStart = promoted.result.loopStart;
-          reg.loopEnd = promoted.result.loopEnd;
-          if (reg.loopMode === 'no_loop' && promoted.result.loopEnd > promoted.result.loopStart) {
-            reg.loopMode = 'loop_continuous';
-          }
-        }
-      }
-    }
-
-    // Record lineage step in session provenance
-    const prevProv = this.getModelProvenance();
-    const step = {
-      timestamp: new Date().toISOString(),
-      sourceLayer: sourceLayerUsed,
-      targetLayer: '03_enhanced_audio' as const,
-      algorithm: `MasterWave-${mergedCfg.promotionMethod}-96kHz-24bit-${promoted.result.numChannels}ch`,
-      details: `Promoted "${originSampleName}" -> "${promoted.result.masterSampleName}" from ${sourceLayerUsed}`,
-    };
-    if (prevProv) {
-      prevProv.history.push(step);
-      prevProv.masterWavePromoted = true;
-      prevProv.activeAnalysisSourceLayer = '03_enhanced_audio';
-      prevProv.updatedAt = step.timestamp;
-      this.session.provenance = prevProv;
-    }
-
-    this.spectralCache.delete(zone.id);
-    this.markDirty();
-    return promoted.result;
+    return promoteZoneToMasterWave(this.importHost(), zoneId, config, options);
   }
 
   public async promoteAllZonesToMasterWave(
     config?: Partial<MasterWaveConfig>,
     options?: { forceRebuild?: boolean; preserveManualLoops?: boolean }
   ): Promise<MasterWaveResult[]> {
-    if (!this.session) return [];
-    const results: MasterWaveResult[] = [];
-    for (const z of this.session.zones) {
-      const res = await this.promoteZoneToMasterWave(z.id, config, options);
-      if (res) results.push(res);
-    }
-    return results;
+    return promoteAllZonesToMasterWave(this.importHost(), config, options);
   }
 
   // ── Phase 9: 5-Layer Time Capsule, Provenance & Zero-Generation-Loss Reprocess ──

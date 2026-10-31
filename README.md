@@ -73,7 +73,26 @@ El proyecto esta optimizado para Vercel:
 
 - **`AppNavbar`**: Barra superior integrada (`SynthNavBar`) con menus de archivo, edicion, modelo, vista y ayuda; HUD central con nombre de ranura, auditor de cobertura MIDI continua (0..127) y pill interactivo de estado de IA; botones rapidos de Undo/Redo, monitor espectral, banco NeuronDB, logs de auditoria y conmutador directo de modo Claro/Oscuro.
 - **`ZoneRibbon`**: Mapa visual bidimensional de las 128 notas MIDI que visualiza la particion de zonas, notas raiz, puntos de cruce de velocidad y asignacion de muestras. Soporta division por doble clic o `Alt+Click`.
-- **`ZoneInspector`**: Editor detallado con pestanas `General` y `Extended`: limites de zona (Low/Root/High Key), asignacion de muestras A/B, afinacion fina (*detune*), ganancia, panorama, DAHDSR, puntos de loop y promocion a Master Wave (24-bit/96kHz).
+- **`ZoneInspector`**: Editor detallado con particion 100% exclusiva para la Zona/Region seleccionada. Organizado en tres sub-pestanas:
+  1. *Mapping & Sample*: Limites de zona y region (Low, Root, High Key; Low/High Velocity en modo extendido), selector de instrumentos de percusion General MIDI Drum Map, asignacion de muestras A/B, y perillas de afinacion fina (*detune*), ganancia y panorama.
+  2. *AutoLoop Editor*: Editor visual de bucles con zoom horizontal continuo (1x a 32x), marcadores arrastrables `L-START`, `L-END` y rampa de crossfade, lupa de empalme de cruce por cero (*Zero-Crossing Magnifier*) y motor inteligente con 4 algoritmos (`pitch_periodic`, `ncc_zc`, `min_seam_energy`, `equal_power_xfade`).
+  3. *AutoSlicer*: Acceso directo al troceador de audio con previsualizacion de metadatos del sample, audicion instantanea y lanzador hacia la estacion interactiva de slicing.
+- **`ModelConfigModal`**: Dialogo modal unificado de configuracion global del modelo (`Model Configuration`):
+  1. *Identidad Dual*: Nombre clasico restringido a 11 caracteres hardware + ranura `#000..#511`, y Nombre Extendido sin limite de longitud para catalogos modernos (preparado para el selector de sublibrerias de la Fase 22).
+  2. *Modo y Motor*: Conmutador Clasico 1:1 vs Extendido HD Multi-Layer (con proyeccion matematica no destructiva), selector de Formato de Exportacion (`Dual`, `Legacy Neuron`, `Modern Neural`) y Algoritmo DSP (`Hartmann Legacy 2002` vs `Modern Neural Resynthesis`).
+  3. *Parametros Fisicos*: Complejidad de analisis 1..10 (1..64 modos) y selector de los 10 Parameter Sets oficiales con iconos vectoriales y colores semanticos canónicos (`--color-cat-0`..`--color-cat-9`).
+  4. *Playback y Articulacion Global*: Modos de bucle por defecto, logica de disparo (Attack, Release, Legato), curvas de fundido y seguimiento de tono (*Pitch Keytrack* 0..200%).
+  5. *Metadatos y Tags*: Importador y editor de etiquetas SoundFont RIFF INFO (IENG, ICOP, ICRD, ISFT, etc.) y campos de procedencia.
+  6. *Arte de Portada*: Gestion de imagen 512×512 WebP, boton integrado para generacion con IA (Fase 20) y placeholder dinamico con icono del Parameter Set o percusion.
+- **`AudioChopperModal` & `AudioSlicerEngine`**: Estacion de troceado inteligente de audio y deteccion de transitorios:
+  - Deteccion de transitorios por flujo espectral (Spectral Flux) y energia instantanea con umbral adaptativo.
+  - Puerta de silencio automatica con longitud minima de silencio para aislar golpes percusivos.
+  - Magnetizado automatico a cruces por cero (*Zero-Crossing Snapping*) en cada frontera para eliminar clics y artefactos de fase.
+  - Mapeo automatico: percusion General MIDI (Kick, Snare, Hi-Hat, Toms, Cymbals) o distribucion cromatica equidistante continua (0..127).
+  - Exportador MIDI integrado: genera archivos SMF Tipo 0 (.mid) arrastrables directamente al timeline del DAW.
+- **`MultiInstrumentModal`**: Detector de SoundFonts y librerias multi-instrumento:
+  - Deteccion automatica de multiples presets en archivos `.sf2` / `.sfz`.
+  - Permite cargar un instrumento individual o procesar todos los instrumentos como lote independiente (*Batch Processing*).
 - **`SpectralView`**: Monitor espectral interactivo con tres vistas:
   1. `2D Spectrogram`: Espectrograma STFT Blackman-Harris con trazas de los 64 parciales armonicos coloreadas por capa.
   2. `64 Partials`: Histograma de magnitudes con espectro FFT de Web Audio en tiempo real.

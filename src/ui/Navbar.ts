@@ -46,6 +46,8 @@ export interface NavbarHandlers {
   onToggleSpectral: () => void;
   onToggleBank: () => void;
   onOpenBatchModal?: () => void;
+  onOpenModelConfig?: () => void;
+  onOpenAudioChopper?: () => void;
   onToggleLogs: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
   onOpenAudit?: () => void;
@@ -121,6 +123,7 @@ export class AppNavbar {
           { id: 1045, label: 'Import Audio by Name (Hartmann)...', action: 'importByName', shortcut: 'Ctrl+N' },
           { id: 105, label: 'Import Audio Folder...', action: 'importFolder' },
           { id: 1055, label: 'Import SoundFont / SFZ (.sf2, .sfz)...', action: 'importSampler' },
+          { id: 1058, label: 'Batch Processor (Multi-Model Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { separator: true },
           { id: 106, label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
@@ -147,7 +150,10 @@ export class AppNavbar {
       {
         name: 'Model',
         items: [
+          { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
+          { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
           { id: 301, label: 'Process Model Now...', action: 'startProcess', shortcut: 'Ctrl+P' },
+          { id: 3015, label: 'Batch Process Models (Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { id: 302, label: 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
           { separator: true },
           {
@@ -174,7 +180,7 @@ export class AppNavbar {
       {
         name: 'View',
         items: [
-          { id: 401, label: 'Zone Metadata Editor Drawer', action: 'toggleZoneDrawer', shortcut: 'Ctrl+M' },
+          { id: 401, label: 'Zone Metadata Editor Drawer', action: 'toggleZoneDrawer', shortcut: 'Ctrl+J' },
           { id: 402, label: 'Spectral & A/B Resynthesis Inspector', action: 'toggleSpectral', shortcut: 'Ctrl+E' },
           { separator: true },
           { id: 403, label: 'NeuronDB Bank Browser', action: 'toggleBank', shortcut: 'Ctrl+B' },
@@ -257,7 +263,7 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon" id="nav-btn-bank" title="NeuronDB Bank Browser (Ctrl+B)">
         ${ICONS.database}
       </button>
-      <button type="button" class="btn btn-hud-icon" id="nav-btn-batch" title="Batch Processor (Phase 12) (Ctrl+Shift+B)">
+      <button type="button" class="btn btn-hud-icon" id="nav-btn-batch" title="Batch Processor &amp; Multi-Model Queue (Ctrl+Shift+B)">
         ${ICONS.layers}
       </button>
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
@@ -589,6 +595,7 @@ export class AppNavbar {
       case 'clearZones': this.handlers.onClearZones(); break;
       case 'autoRepairCoverage': this.handlers.onAutoRepairCoverage(); break;
       case 'startProcess': this.handlers.onStartProcess(); break;
+      case 'openBatchModal': this.handlers.onOpenBatchModal?.(); break;
       case 'validateCoverage': this.handlers.onValidateCoverage(); break;
       case 'setTargetFormat':
         if (value === 'dual' || value === 'legacy-neuron' || value === 'modern-neural') {
@@ -645,6 +652,8 @@ export class AppNavbar {
       case 'manual': this.showDocModal('manual'); break;
       case 'specs': this.showDocModal('specs'); break;
       case 'installPwa': this.handlers.onInstallPwa?.(); break;
+      case 'openModelConfig': this.handlers.onOpenModelConfig?.(); break;
+      case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
     }
   }

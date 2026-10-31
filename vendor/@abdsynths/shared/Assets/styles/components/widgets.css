@@ -469,8 +469,8 @@
 
 .abd-xypad__pad:focus-visible
 {
-    border-color: var(--color-accent, #4aa3ff);
-    box-shadow: 0 0 0 2px var(--color-accent-dim, rgba(74, 163, 255, 0.35));
+    border-color: var(--color-accent, #00c3ff);
+    box-shadow: 0 0 0 2px var(--color-accent-dim, rgba(0, 195, 255, 0.15));
 }
 
 /* Grid: subtle thirds lines. */
@@ -489,7 +489,7 @@
 .abd-xypad__line
 {
     position: absolute;
-    background: var(--color-accent-dim, rgba(74, 163, 255, 0.35));
+    background: var(--color-accent-dim, rgba(0, 195, 255, 0.15));
     pointer-events: none;
 }
 
@@ -514,9 +514,9 @@
     height: 16px;
     margin: -8px 0 0 -8px;
     border-radius: 50%;
-    background: var(--color-accent, #4aa3ff);
+    background: var(--color-accent, #00c3ff);
     border: 2px solid var(--color-bg-base, #0d1117);
-    box-shadow: 0 0 10px var(--color-accent-dim, rgba(74, 163, 255, 0.5));
+    box-shadow: 0 0 10px var(--color-accent-dim, rgba(0, 195, 255, 0.15));
     pointer-events: none;
     transition: left 40ms linear, top 40ms linear;
 }
@@ -1284,7 +1284,7 @@
   font-size: var(--text-xs, 10px);
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--color-accent, #38bdf8);
+  color: var(--color-accent, #00c3ff);
   text-transform: uppercase;
 }
 
@@ -1376,8 +1376,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--color-accent, #38bdf8);
-  box-shadow: 0 0 10px var(--color-accent, #38bdf8), 0 0 2px #fff;
+  background: var(--color-accent, #00c3ff);
+  box-shadow: 0 0 10px var(--color-accent, #00c3ff), 0 0 2px #fff;
   transform: translate(-50%, -50%);
   pointer-events: none;
   left: 50%;
@@ -1469,7 +1469,7 @@
   --color-rotary-cap-stroke: var(--color-panel-border, rgba(0, 195, 255, 0.25));
   --color-rotary-pointer: var(--color-accent, #00c3ff);
   --color-rotary-led-lit: var(--color-accent, #00c3ff);
-  --color-rotary-led-lit-stroke: var(--color-accent, #38bdf8);
+  --color-rotary-led-lit-stroke: var(--color-accent, #00c3ff);
   --color-rotary-led-unlit: var(--color-panel-border-dim, rgba(255, 255, 255, 0.08));
   --color-rotary-led-unlit-stroke: var(--color-panel-border, rgba(255, 255, 255, 0.12));
 }

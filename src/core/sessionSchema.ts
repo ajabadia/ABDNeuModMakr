@@ -21,6 +21,7 @@ import type {
   DspAlgorithmMode,
   ExtendedModelMetadata,
   ExtendedRegion,
+  KeyMappingMode,
   LoopExpansionMethod,
   LoopMode,
   MasterChannelLayout,
@@ -250,6 +251,15 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     workingMode = workingModeRaw;
   }
 
+  const keyMappingModeRaw = cfg['keyMappingMode'];
+  let keyMappingMode: KeyMappingMode | undefined;
+  if (keyMappingModeRaw !== undefined) {
+    if (keyMappingModeRaw !== 'chromatic' && keyMappingModeRaw !== 'drum') {
+      throw fieldError('processConfig.keyMappingMode', "must be 'chromatic' | 'drum'");
+    }
+    keyMappingMode = keyMappingModeRaw;
+  }
+
   const dspAlgorithmRaw = cfg['dspAlgorithm'];
   let dspAlgorithm: DspAlgorithmMode | undefined;
   if (dspAlgorithmRaw !== undefined) {
@@ -410,6 +420,7 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     parameterSet: paramSetNum,
     targetFormat,
     ...(workingMode !== undefined ? { workingMode } : {}),
+    ...(keyMappingMode !== undefined ? { keyMappingMode } : {}),
     ...(dspAlgorithm !== undefined ? { dspAlgorithm } : {}),
     ...(masterWaveConfig !== undefined ? { masterWaveConfig } : {}),
     ...(commonPlayback !== undefined ? { commonPlayback } : {}),

@@ -389,6 +389,9 @@
   - Licencia y autoría: Autor/diseñador sonoro (`author`), librería/distribuidor (`vendor`), versión semántica (`version`, ej. "1.0.0"), tipo de licencia (`license`, ej. "CC-BY 4.0", "CC0", "Comercial") y descripción técnica/acústica (`description`).
   - Atributos libres definidos por el usuario: pares de metadatos `customAttributes: [{ tag: string, value: string }]` con editor dinámico interactivo en la tarjeta de `ProcessPanel.ts` (`+ Add Tag` y eliminación individual).
   - Validación y persistencia en esquema de sesión (`sessionSchema.ts`) y empaquetado transparente en la Cápsula del Tiempo (`manifest.json` y `05_extended_model/extended_map.json`).
+- [ ] **Reubicación UX de Edición de Metadatos/Tags al Drawer de Datos Generales (Model Common & Global)**:
+  - En `ProcessPanel.ts`: Mostrar un resumen visual compacto en modo solo-lectura (chips/etiquetas de Autor, Versión, Licencia y Tags libres, solo si existen) con un botón interactivo `[ ✏ Edit Metadata & Tags ]`.
+  - En el Drawer de datos generales (`Model Common & Global Settings`): Añadir una pestaña dedicada `Metadata & Provenance` donde se aloja el editor completo de todos los campos de autoría, enlaces, descripciones y tags, liberando espacio vertical en el panel de procesado.
 
 ---
 
@@ -413,11 +416,16 @@
 4. **Distribución Multicapa por Volumen / Dinámica (Velocity Layers)**:
    - Medición de amplitud de pico y energía RMS de cada slice correspondiente a un mismo tono o elemento percusivo.
    - Asignación a capas de velocidad ordenadas (ej. suave 1..42, medio 43..85, fuerte 86..127).
-5. **Control de Solapamiento Configurable (*Overlap Policy*)**:
+5. **Control de Solapamiento y Preflight de Exportación con Aviso al Usuario**:
    - Modo por defecto: Partición disjunta y contigua 0..127 sin solapamientos de notas ni velocidades.
    - Opción conmutable de solapamiento: Permitir solape de rangos para crossfading de zonas y velocity switching.
-   - Validación de compatibilidad contra el perfil de exportación activo (e.g. limitación clásica vs libertad extendida).
-6. **Arquitectura Transversal Reutilizable**:
+   - **Preflight & Parámetros Incompatibles**: Si el formato de exportación seleccionado (e.g. Classic Hartmann `.model`) no admite algún parámetro de los slices (e.g. más de 2 capas de velocidad por nota, solapamiento 2D o nombres largos), el sistema ajustará automáticamente al valor soportado más próximo, pero **avisará primero al usuario mediante un diálogo interactivo** con el desglose exacto de ajustes para que pueda decidir si continuar o parar y reconfigurar manualmente.
+6. **Interactive Slicer con MIDI Drag-and-Drop**:
+   - Vista en forma de onda interactiva (similar a la lupa del Editor de Loops) con marcadores de transitorios arrastrables.
+   - Mapeo directo de rebanadas a teclas consecutivas (o GM Drum Map).
+   - Generador en memoria de archivo Standard MIDI (`.mid` Type 0) con el patrón rítmico original del loop rebanado.
+   - Botón arrastrable (`Draggable MIDI Badge`) que permite arrastrar directamente el patrón MIDI al DAW (Ableton, FL Studio, Logic, Reaper, Cubase) para disparar los slices con el timing del audio original.
+7. **Arquitectura Transversal Reutilizable**:
    - Los submódulos de auto-detección tonal y re-distribución equidistante de zonas son utilidades independientes del Core, aplicables a cualquier sesión o lote de importación, no restringidas únicamente al chopper.
 
 ---
@@ -461,6 +469,55 @@
    - Descarga o generación del bitmap resultante.
    - Recorte centrado automático (aspect ratio 1:1) y compresión en cliente a formato `.webp` optimizado (512x512 / 1024x1024).
    - Inserción directa en la Cápsula del Tiempo (`05_extended_model/cover.webp`) y previsualización inmediata en el inspector y las tarjetas de la librería.
+
+---
+
+## Fase 21 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon) [PLANIFICADA]
+
+**Objetivo**: Dotar a ABDNeuModMakr y al motor ABDAxionikVS de las capacidades de expresión, articulación y gestión acústica que distinguen a los samplers insignia de la industria.
+
+### 21.1 Matriz de Funcionalidades
+| Funcionalidad | Descripción e Interés | Prioridad |
+| :--- | :--- | :--- |
+| **Round-Robin (Alternancia de Muestras)** | Disparar tomas alternas (`Take 1`, `Take 2`, etc.) en ciclos ordenados, aleatorios o de true-neighbor para la misma nota/velocidad, eliminando el efecto "ametralladora" en baterías, guitarras y cuerdas. | **Alta** |
+| **Release Triggers / Key-Off** | Muestras que se disparan al soltar la tecla (el apagador de un piano, ruido de trastes en guitarra o golpe mecánico de llaves de órgano). | **Media-Alta** |
+| **Auto-Mapping por Expresión Regular (Filename Regex)** | Al arrastrar 50+ archivos `.wav` sueltos (ej. `Violin_C3_mf_rr1.wav`), reconocer automáticamente la nota, velocidad y capa round-robin por el nombre del archivo y ubicarlos en la celda correspondiente al instante. | **Alta** |
+| **Interactive Slicer con MIDI Drag-and-Drop** | Detección de transitorios en un loop rítmico, corte en rodajas a teclas cromáticas consecutivas y botón arrastrable para transferir el archivo MIDI generado directamente a la pista del DAW. | **Alta** |
+| **Matriz de Modulación MIDI (Mod Matrix)** | Enrutar Rueda de Modulación (CC1), Expresión (CC11), Aftertouch o Velocidad al corte de filtro, volumen, pitch o longitud de loop. | **Media** |
+| **Soporte de Microtuning / Escalas Scala (`.scl`)** | Importación de tablas de afinación alternativas (temperamento mesotónico, cuartos de tono, microtonalismo oriental). | **Media-Baja** |
+
+### 21.2 Integración en Formatos de Exportación
+- En **formato Moderno (`.nmmodel`) y Cápsula del Tiempo**: Se preservan como metadatos nativos de primera clase.
+- En **formato Clásico Hartmann (`.model`)**: Dado que el hardware Neuron original no dispone de round-robin ni release triggers nativos, el preflight exportará la capa primaria y avisará con un diálogo interactivo al usuario antes de proceder a la adaptación.
+
+---
+
+## Fase 22 — Organización Jerárquica de Bancos y Sublibrerías de Modelos Extendidos [PLANIFICADA]
+
+**Objetivo**: Permitir una organización modular y escalable de grandes colecciones sonoras mediante subbancos y sublibrerías diferenciadas en disco, con reordenación interactiva y flujos de destino guiados para exportación y procesado por lotes.
+
+### 22.1 Arquitectura de Carpetas y Sublibrerías
+- **Estructura Modular en Disco**: Cada sublibrería / subbanco dispondrá de su propio directorio físico (`/banks/<SublibraryName>/...`).
+- **Subcarpeta Raíz por Defecto (`Default`)**: Todo el contenido inicial o sin categorización explícita residirá de forma segura y retrocompatible en la subcarpeta `Default`.
+- **Destino Interactivo a lo Largo de la Aplicación**:
+  - Al generar o guardar un modelo individual (`Save Model / Export`), preguntar al usuario en qué sublibrería desea almacenarlo.
+  - En la ventana de configuración del modelo (`Model Configuration`), selector desplegable interactivo para asignar el subbanco al que pertenece el modelo en modo extendido y el número de orden que ocupa dentro de él (sin atarse al límite de 11 caracteres ni al número de slot hardware del modo clásico).
+  - En el **Procesador por Lotes (Batch Processor)**, selector de sublibrería de destino para depositar los modelos resultantes de la extracción o conversión masiva.
+
+### 22.2 Gestión Segura de Sublibrerías
+- **Creación de Sublibrerías**: Diálogo interactivo para crear una nueva sublibrería con nombre, descripción y orden de visualización.
+- **Borrado con Regla de Seguridad Estricta**: Impedir terminantemente el borrado de una sublibrería que contenga modelos. El usuario deberá mover o eliminar primero todos sus modelos para poder dar de baja la sublibrería (evita pérdida accidental de datos).
+- **Mover Modelos entre Sublibrerías**: Capacidad para transferir uno o múltiples modelos de una sublibrería a otra con actualización automática de enlaces y rutas relativas.
+
+### 22.3 Sistema de Ordenación Dinámica y Recalculada
+- **Orden Manual Jerárquico**:
+  - Ordenación de sublibrerías entre sí.
+  - Ordenación de modelos dentro de cada sublibrería.
+  - Métodos de reordenación interactivos: arrastrar y soltar (drag & drop), botones de subir/bajar (`Move Up` / `Move Down`) o asignación de posición ordinal (`#Index`).
+- **Recálculo Dinámico de Posiciones**: El índice de orden no será un campo fijo o fragmentado; el sistema reajustará y reindexará automáticamente las posiciones contiguas al mover o insertar elementos.
+- **Visualización y Filtros**: Posibilidad de alternar en todo momento entre el orden manual de usuario, ordenación alfabética (A-Z / Z-A), fecha de modificación o filtrado en tiempo real por búsqueda y etiquetas.
+
+
 
 
 

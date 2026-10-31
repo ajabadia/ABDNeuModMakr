@@ -18,8 +18,9 @@ import {
   parseZipArchive,
 } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
-import { toast } from '../ui/notify';
+import { toast, confirmDialog } from '../ui/notify';
 import { withLoading } from '../ui/LoadingModal';
+import { MultiInstrumentModal } from '../ui/MultiInstrumentModal';
 
 export interface ImportContext {
   core: CoreService;
@@ -30,6 +31,8 @@ export interface ImportContext {
   readonly bank: BankDrawer;
   readonly neuronDb: NeuronDbModal;
   onDropCoverImage?: (file: File) => Promise<void> | void;
+  onOpenBatchProcessorWithSf2?: (buffer: ArrayBuffer, fileName: string) => void;
+  onOpenBatchProcessor?: () => void;
 }
 
 export class ImportHandlers {
@@ -45,7 +48,7 @@ export class ImportHandlers {
     file: File
   ): Promise<void> {
     try {
-      await withLoading('CARGANDO MUESTRA DE AUDIO...', `Decodificando "${file.name}"...`, async () => {
+      await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${file.name}"...`, async () => {
         const buffer = await file.arrayBuffer();
         const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
         const targetZone = this.ctx.session?.zones.find((z) => z.id === zoneId);
@@ -83,7 +86,7 @@ export class ImportHandlers {
     file: File
   ): Promise<void> {
     try {
-      await withLoading('CARGANDO MUESTRA DE AUDIO...', `Decodificando "${file.name}"...`, async () => {
+      await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${file.name}"...`, async () => {
         const buffer = await file.arrayBuffer();
         const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
         const changes: Parameters<CoreService['updateExtendedRegion']>[1] = {
@@ -144,6 +147,13 @@ export class ImportHandlers {
     fileInput.addEventListener('change', async () => {
       const f = fileInput.files?.[0];
       if (!f) return;
+      if (this.ctx.session?.dirty) {
+        const ok = await confirmDialog(
+          'You have unsaved changes in the current session. Do you want to discard them and open another session?',
+          { confirmLabel: 'Open Session', cancelLabel: 'Cancel', danger: true }
+        );
+        if (!ok) return;
+      }
       try {
         const text = await f.text();
         this.ctx.session = await this.ctx.core.loadSessionFromJson(text);
@@ -937,6 +947,13 @@ export class ImportHandlers {
       }
 
       if (sessionJsonText && expanded.length === 0) {
+        if (this.ctx.session?.dirty) {
+          const ok = await confirmDialog(
+            'You have unsaved changes in the current session. Do you want to discard them and load the new session?',
+            { confirmLabel: 'Discard & Load', cancelLabel: 'Cancel', danger: true }
+          );
+          if (!ok) return;
+        }
         this.ctx.session = await this.ctx.core.loadSessionFromJson(sessionJsonText);
         this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
         this.ctx.log(
@@ -993,43 +1010,127 @@ export class ImportHandlers {
         }
       }
 
+      const isNewInstrument =
+        sf2Files.length > 0 ||
+        sfzFiles.length > 0 ||
+        modelFolders.size > 0 ||
+        looseModelFiles.length > 0 ||
+        audioFiles.length > 1;
+
+      if (isNewInstrument && this.ctx.session) {
+        const hasExistingContent =
+          this.ctx.session.dirty ||
+          this.ctx.session.zones.some((z) => Boolean(z.sampleLow || z.sampleHigh)) ||
+          Boolean(this.ctx.session.extendedRegions && this.ctx.session.extendedRegions.length > 0) ||
+          Boolean(this.ctx.session.processConfig.coverArtwork);
+
+        if (hasExistingContent) {
+          const ok = await confirmDialog(
+            'Loading a new instrument will replace the current session. All unsaved changes, loaded samples, and cover artwork will be reset. Do you want to proceed?',
+            { confirmLabel: 'Discard & Load New Instrument', cancelLabel: 'Cancel', danger: true }
+          );
+          if (!ok) return;
+        }
+
+        // Cleanly execute newSession first to reset all caches, cover artwork, and state!
+        await this.ctx.core.newSession('New Instrument');
+      }
+
       // If SoundFont 2 (.sf2) was provided, convert immediately into our native session format
       if (sf2Files.length > 0) {
         const sf2 = sf2Files[0];
-        await withLoading(
-          'IMPORTANDO SOUNDFONT (.SF2)...',
-          `Procesando "${sf2.name}", decodificando muestras PCM y analizando capas...`,
-          async () => {
-            const presets = this.ctx.core.listSf2Presets(sf2.buffer);
-            const session = await this.ctx.core.importSf2Buffer(sf2.buffer, 0);
-            this.ctx.session = session;
-            this.ctx.selectedZoneId = session.zones[0]?.id || null;
-            this.ctx.log(
-              `${sourceLabel}: imported SF2 "${sf2.name}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones, category: ${session.detectedInstrumentCategory ?? 'Auto'}, ${presets.length} preset(s) in file).`
-            );
-            this.ctx.refresh();
-          }
-        );
+        const presets = this.ctx.core.listSf2Presets(sf2.buffer);
+
+        const loadPreset = async (presetIndex: number, presetName?: string) => {
+          await withLoading(
+            'IMPORTING SOUNDFONT (.SF2)...',
+            `Processing "${sf2.name}"${presetName ? ` (Preset: "${presetName}")` : ''}, decoding PCM samples and analyzing layers...`,
+            async () => {
+              const session = await this.ctx.core.importSf2Buffer(sf2.buffer, presetIndex);
+              this.ctx.session = session;
+              this.ctx.selectedZoneId = session.zones[0]?.id || null;
+              this.ctx.log(
+                `${sourceLabel}: imported SF2 "${sf2.name}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones, category: ${session.detectedInstrumentCategory ?? 'Auto'}).`
+              );
+              this.ctx.refresh();
+            }
+          );
+        };
+
+        if (presets.length > 1) {
+          const multiModal = new MultiInstrumentModal();
+          multiModal.open({
+            fileName: sf2.name,
+            format: 'sf2',
+            items: presets.map((p) => ({
+              id: String(p.index),
+              index: p.index,
+              name: p.name,
+              bank: p.bank,
+              presetNumber: p.presetNumber,
+              regionCount: p.regionCount,
+            })),
+            onSelect: (item) => {
+              void loadPreset(item.index, item.name);
+            },
+            onProcessBatch: () => {
+              if (this.ctx.onOpenBatchProcessorWithSf2) {
+                this.ctx.onOpenBatchProcessorWithSf2(sf2.buffer, sf2.name);
+              } else if (this.ctx.onOpenBatchProcessor) {
+                this.ctx.onOpenBatchProcessor();
+              }
+            },
+          });
+          return;
+        }
+
+        // Single preset
+        await loadPreset(0, presets[0]?.name);
         return;
       }
 
       // If SFZ (.sfz) was provided, convert immediately into our native session format
       if (sfzFiles.length > 0) {
-        const sfz = sfzFiles[0];
-        await withLoading(
-          'IMPORTANDO INSTRUMENTO SFZ...',
-          `Decodificando opcodes de "${sfz.name}" y mapeando muestras...`,
-          async () => {
-            const sfzText = new TextDecoder('utf-8').decode(sfz.buffer);
-            const session = await this.ctx.core.importSfzText(sfzText, sfz.name, audioFiles);
-            this.ctx.session = session;
-            this.ctx.selectedZoneId = session.zones[0]?.id || null;
-            this.ctx.log(
-              `${sourceLabel}: imported SFZ "${sfz.name}" -> "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${audioFiles.length} companion audio file(s)).`
-            );
-            this.ctx.refresh();
-          }
-        );
+        const loadSfzFile = async (chosenSfz: { name: string; buffer: ArrayBuffer }) => {
+          await withLoading(
+            'IMPORTING SFZ INSTRUMENT...',
+            `Decoding opcodes from "${chosenSfz.name}" and mapping regions...`,
+            async () => {
+              const sfzText = new TextDecoder('utf-8').decode(chosenSfz.buffer);
+              const session = await this.ctx.core.importSfzText(sfzText, chosenSfz.name, audioFiles);
+              this.ctx.session = session;
+              this.ctx.selectedZoneId = session.zones[0]?.id || null;
+              this.ctx.log(
+                `${sourceLabel}: imported SFZ "${chosenSfz.name}" -> "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${audioFiles.length} companion audio file(s)).`
+              );
+              this.ctx.refresh();
+            }
+          );
+        };
+
+        if (sfzFiles.length > 1) {
+          const multiModal = new MultiInstrumentModal();
+          multiModal.open({
+            fileName: `${sfzFiles.length} SFZ Definitions`,
+            format: 'sfz',
+            items: sfzFiles.map((sfz, idx) => ({
+              id: sfz.name,
+              index: idx,
+              name: sfz.name.replace(/\.sfz$/i, ''),
+              detail: 'SFZ Instrument',
+            })),
+            onSelect: (item) => {
+              const chosen = sfzFiles[item.index] || sfzFiles[0];
+              void loadSfzFile(chosen);
+            },
+            onProcessBatch: () => {
+              this.ctx.onOpenBatchProcessor?.();
+            },
+          });
+          return;
+        }
+
+        await loadSfzFile(sfzFiles[0]);
         return;
       }
 
@@ -1128,11 +1229,51 @@ export class ImportHandlers {
         return;
       }
 
+      // If a single audio file (.wav / .aif) was loaded and a session is already active,
+      // load it into the active region/zone instead of discarding the session!
+      if (
+        audioFiles.length === 1 &&
+        !hasModelData &&
+        this.ctx.session &&
+        this.ctx.session.zones.length > 0
+      ) {
+        const singleFile = audioFiles[0];
+        const isExtended = this.ctx.session.processConfig.workingMode === 'extended';
+        if (isExtended) {
+          const regId = this.ctx.selectedZoneId || this.ctx.session.extendedRegions?.[0]?.id;
+          if (regId) {
+            await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${singleFile.name}"...`, async () => {
+              this.ctx.core.registerSampleBuffer(singleFile.name, singleFile.buffer);
+              await this.ctx.core.updateExtendedRegion(regId, { sampleName: singleFile.name });
+              this.ctx.session = this.ctx.core.getSession()!;
+              this.ctx.log(`${sourceLabel}: assigned "${singleFile.name}" to region [${regId}].`);
+              this.ctx.refresh();
+            });
+            return;
+          }
+        } else {
+          const activeZone =
+            this.ctx.session.zones.find((z) => z.id === this.ctx.selectedZoneId) ??
+            this.ctx.session.zones[0];
+          if (activeZone) {
+            const slot = activeZone.sampleLow ? 'high' : 'low';
+            await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${singleFile.name}"...`, async () => {
+              this.ctx.core.registerSampleBuffer(singleFile.name, singleFile.buffer);
+              await this.ctx.core.updateZone(activeZone.id, slot === 'low' ? { sampleLow: singleFile.name } : { sampleHigh: singleFile.name });
+              this.ctx.session = this.ctx.core.getSession()!;
+              this.ctx.log(`${sourceLabel}: assigned "${singleFile.name}" to zone #${this.ctx.session.zones.indexOf(activeZone) + 1} (${slot === 'low' ? 'Low' : 'High'} Vel).`);
+              this.ctx.refresh();
+            });
+            return;
+          }
+        }
+      }
+
       // Otherwise, if audio files (.wav / .aif / .aiff) were provided (directly or inside a .zip)
       if (audioFiles.length > 0) {
         await withLoading(
-          'CARGANDO MUESTRAS DE AUDIO...',
-          `Mapeando y decodificando ${audioFiles.length} archivo(s) de audio...`,
+          'LOADING AUDIO SAMPLES...',
+          `Mapping and decoding ${audioFiles.length} audio file(s)...`,
           async () => {
             const zones = await this.ctx.core.importAudioFiles(audioFiles, audioMode);
             this.ctx.session = this.ctx.core.getSession()!;

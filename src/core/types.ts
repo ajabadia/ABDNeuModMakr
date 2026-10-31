@@ -57,6 +57,7 @@ export type TargetFormat = 'dual' | 'legacy-neuron' | 'modern-neural';
  * Can be toggled freely at any time; when exporting to classic ('legacy-neuron' or 'dual'), extended regions are adapted automatically.
  */
 export type WorkingMode = 'classic' | 'extended';
+export type KeyMappingMode = 'chromatic' | 'drum';
 
 /**
  * Fase 7 — Classic DSP Analysis Algorithm:
@@ -374,6 +375,12 @@ export interface ProcessConfig {
    * When exporting to classic formats from extended mode, regions are automatically adapted via extendedAdapter.
    */
   workingMode?: WorkingMode;
+  /**
+   * Keyboard / Zone mapping visualization & assignment mode:
+   * - 'chromatic' (default): Melodic / pitch scale (C-2..G8, note numbers & standard note names).
+   * - 'drum': General MIDI Level 1 Drum Map (pieces named e.g. "Acoustic Snare (38 D1)", collision detection & drum selector).
+   */
+  keyMappingMode?: KeyMappingMode;
   /**
    * Fase 7 — Classic DSP Analysis Algorithm:
    * - 'legacy': Original 2001 NASAnalysis.dll spectral analysis.

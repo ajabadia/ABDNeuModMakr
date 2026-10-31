@@ -553,6 +553,24 @@ export class BatchProcessorModal {
 
   // ── Source Ingestion Helpers ───────────────────────────
 
+  public loadSf2Buffer(buffer: ArrayBuffer, soundFontName: string): void {
+    try {
+      const extracted = extractSf2PresetsToCandidates(buffer, { soundFontName: soundFontName.replace(/\.[^.]+$/, '') });
+      if (extracted.length === 0) {
+        toast(`No presets found in SoundFont "${soundFontName}".`, 'warning');
+        return;
+      }
+      this.open();
+      this.candidates = extracted;
+      this.selectedCandidateIds = new Set(extracted.map((c) => c.id));
+      this.currentStep = 'preflight';
+      this.render();
+      toast(`Discovered ${extracted.length} presets from "${soundFontName}".`, 'success');
+    } catch (err) {
+      toast(`Failed to read SoundFont: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  }
+
   private async handleSf2File(file: File): Promise<void> {
     try {
       const buf = await file.arrayBuffer();

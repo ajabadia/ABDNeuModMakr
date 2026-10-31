@@ -25,11 +25,13 @@ export class SpectralCanvasVisualizer {
     this.showPartialsOverlay = options.showPartialsOverlay ?? true;
     this.minDb = options.minDb ?? -96;
     this.maxDb = options.maxDb ?? 0;
+    // Defaults resolve the shared --color-layer-* tokens (SSOT: tokens.css);
+    // the literal fallbacks keep standalone usage working without shared styles.
     this.layerColors = options.layerColors || [
-      '#00e676', // Layer 1 (Drone / Primary)
-      '#ffb142', // Layer 2 (Crest / Transients)
-      '#06b6d4', // Layer 3 (Inharmonic / Air)
-      '#a855f7', // Layer 4 (Morph)
+      resolveCssToken('--color-layer-1', '#00e676'), // Drone / Primary
+      resolveCssToken('--color-layer-2', '#ffb142'), // Crest / Transients
+      resolveCssToken('--color-layer-3', '#06b6d4'), // Inharmonic / Air
+      resolveCssToken('--color-layer-4', '#a855f7'), // Morph
     ];
   }
 
@@ -63,8 +65,8 @@ export class SpectralCanvasVisualizer {
 
     // Background fill
     const bg = this.displayMode === 'spectrogram'
-      ? resolveCssToken('--color-lcd-bg', '#08120d')
-      : resolveCssToken('--color-panel-surface', '#101721');
+      ? resolveCssToken('--color-lcd-bg', '#102216')
+      : resolveCssToken('--color-panel-surface', '#151f2e');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
 
@@ -205,13 +207,13 @@ export class SpectralCanvasVisualizer {
 
     // Original wave (Cyan)
     if (waveformPeaks && waveformPeaks.max) {
-      ctx.fillStyle = 'rgba(0, 195, 255, 0.35)';
+      ctx.fillStyle = `rgba(${resolveCssToken('--color-accent-rgb', '0, 195, 255')}, 0.35)`;
       this._drawPeaks(ctx, width, midY, ampY, waveformPeaks.max, waveformPeaks.min);
     }
 
     // Resynthesis wave (Emerald Green)
     if (resynthPeaks && resynthPeaks.max) {
-      ctx.fillStyle = 'rgba(0, 230, 118, 0.45)';
+      ctx.fillStyle = `rgba(${resolveCssToken('--color-success-rgb', '0, 230, 118')}, 0.45)`;
       this._drawPeaks(ctx, width, midY, ampY, resynthPeaks.max, resynthPeaks.min);
     }
   }

@@ -48,6 +48,7 @@ Thumbs.db
 # Deployment & Test Runners
 .vercel/
 .playwright-mcp/
+.cloud-attachments/
 
 # Python & AI Checkpoints
 __pycache__/
