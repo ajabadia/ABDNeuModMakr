@@ -1,51 +1,67 @@
 # ABDNeuModMakr
 
-> **Reinterpretacion moderna del Hartmann Neuron MODELmaker (v1.2)**  
-> Estacion de trabajo web autonoma de analisis espectral, remuestreo a 24-bit/96kHz, particion multisample y generacion de modelos neurales Dual-Target (`.model` clasico y `.nmmodel` moderno).
+> **Reinterpretación moderna del Hartmann Neuron MODELmaker (v1.2)**  
+> Estación de trabajo web profesional para análisis espectral, remuestreo a 24-bit/96kHz, partición multisample, troceado inteligente de audio (AutoSlicer) y generación de modelos neurales Dual-Target (`.model` clásico y `.nmmodel` moderno).
 
 ---
 
 ## 1. Arquitectura: "Separado y Web"
 
-A diferencia de un sintetizador en tiempo real (que opera como plugin VST3/CLAP/AU sujeto al hilo de audio estricto del host DAW), **ABDNeuModMakr** es una estacion de preparacion, analisis espectral, restauracion de audio y compilacion de bancos.
+A diferencia de un sintetizador en tiempo real (que opera como plugin VST3/CLAP/AU sujeto al hilo de audio estricto del host DAW), **ABDNeuModMakr** es una estación de preparación, análisis espectral, restauración de audio, troceado rítmico/tonal y compilación de bancos.
 
-### ¿Por que separado del sintetizador?
+### ¿Por qué separado del sintetizador?
 1. **Desacoplamiento total**: No se ata al ciclo de vida de JUCE 9, a hilos de audio en tiempo real ni a las limitaciones de ventana de un DAW.
-2. **Multiplataforma sin dependencias**: Corre directamente en el navegador con tecnologias web estandar (HTML5 / TypeScript / Web Audio API) o como PWA instalable en escritorio, y se despliega directamente en la nube (Vercel).
+2. **Multiplataforma sin dependencias**: Corre directamente en el navegador con tecnologías web estándar (HTML5 / TypeScript / Web Audio API) o como PWA instalable en escritorio, y se despliega directamente en la nube (Vercel).
 3. **Servicio universal a ambos mundos**:
-   - Genera archivos `.model` y `.sound` 100% compatibles con el **Hartmann Neuron hardware** original (2002) y con `NeuronVS` (via tarjetas CompactFlash o carpetas de `NeuronDB`).
-   - Genera y audita los bancos de modelos de alta definicion para la recreacion software moderna **ABDAxionikVS**.
-4. **Pipeline Hibrido Dual-Target**:
-   - **`WebAudioPipeline` (TypeScript nativo)**: Decodificacion WAV/AIFF nativa en navegador, calculo STFT, peak-picking armonico, y extraccion de tramas Scape/Sphere mediante Web Workers sin dependencias externas.
-   - **Estandar de Audio Maestro (`Master Wave Standard`)**: Remuestreo sinc polifasico a **24-bit PCM / 96.000 Hz**, extension de ancho de banda armonica (BWE) hasta 42 kHz, reduccion de ruido y espacializacion multicanal (Mono / Estereo / Quad Surround 4.0).
-   - **Contenedor "Capsula del Tiempo" de 5 Capas**: Almacena `01_raw_source`, `02_legacy_original`, `03_enhanced_audio`, `04_classic_enhanced` y `05_extended_model` con linaje verificable en `manifest.json` y `provenance.json` para evitar el efecto fotocopia.
+   - Genera archivos `.model` y `.sound` 100% compatibles con el **Hartmann Neuron hardware** original (2002) y con `NeuronVS` (vía tarjetas CompactFlash o carpetas de `NeuronDB`).
+   - Genera y audita los bancos de modelos de alta definición para la recreación software moderna **ABDAxionikVS**.
+4. **Pipeline Híbrido Dual-Target**:
+   - **`WebAudioPipeline` (TypeScript nativo)**: Decodificación WAV/AIFF nativa en navegador, cálculo STFT, peak-picking armónico, y extracción de tramas Scape/Sphere mediante Web Workers sin dependencias externas.
+   - **Estándar de Audio Maestro (`Master Wave Standard`)**: Remuestreo sinc polifásico a **24-bit PCM / 96.000 Hz**, extensión de ancho de banda armónica (BWE) hasta 42 kHz, reducción de ruido y espacialización multicanal (Mono / Estéreo / Quad Surround 4.0).
+   - **Contenedor "Cápsula del Tiempo" de 5 Capas**: Almacena `01_raw_source`, `02_legacy_original`, `03_enhanced_audio`, `04_classic_enhanced` y `05_extended_model` con linaje verificable en `manifest.json` y `provenance.json` para evitar la degradación por generaciones ("efecto fotocopia").
 
 ---
 
-## 2. Motor de IA Hibrido (3 Niveles: Navegador, Cloud BYOK y GPU Local)
+## 2. Motor de IA Híbrido (3 Niveles: Navegador, Cloud BYOK y GPU Local)
 
 ABDNeuModMakr implementa una arquitectura de inteligencia artificial flexible, respetuosa con la privacidad y de coste cero para el servidor:
 
 ### Nivel 1: Motor Web Integrado (WebGPU + WebAssembly SIMD — De Serie / 100% Gratis)
-- Corre integramente en el navegador del cliente mediante [`WebNeuralEngine`](src/core/ai/WebNeuralEngine.ts).
-- Detecta aceleracion de hardware en tiempo real: aprovecha GPUs modernas (Direct3D12/Vulkan, ej. NVIDIA RTX 3070 8GB) en milisegundos mediante WebGPU.
-- Fallback automatico a WebAssembly SIMD multihilo y a DSP matematico determinista en maquinas convencionales.
-- Cero costes de computacion, cero instalacion de Python y 100% offline.
+- Corre íntegramente en el navegador del cliente mediante [`WebNeuralEngine`](src/core/ai/WebNeuralEngine.ts).
+- Detecta aceleración de hardware en tiempo real: aprovecha GPUs modernas (Direct3D12/Vulkan, ej. NVIDIA RTX 3070 8GB) en milisegundos mediante WebGPU.
+- Fallback automático a WebAssembly SIMD multihilo y a DSP matemático determinista en máquinas convencionales.
+- Cero costes de computación, cero instalación de Python y 100% offline.
 
 ### Nivel 2: Cloud AI (Bring-Your-Own-Key — BYOK)
-- Conector directo [`CloudByokClient`](src/core/ai/CloudByokClient.ts) para usuarios que desean modelos pesados en la nube (AudioSR 96k, HTDemucs, MusicGen) sin instalar software local.
-- **Garantia Estricta de Privacidad**: Las claves API se almacenan **unica y exclusivamente en el `localStorage` del navegador**. Jamas se envian ni se guardan en ningun servidor propio.
-- **Coste Cero para el Servidor**: Las peticiones viajan directamente desde el cliente hacia el proveedor oficial (Replicate, Hugging Face o Google Gemini), facturandose a la cuenta personal del usuario.
-- Interfaz segura con verificacion de conexion en vivo y ocultacion de credenciales.
+- Conector directo [`CloudByokClient`](src/core/ai/CloudByokClient.ts) para usuarios que desean modelos pesados en la nube sin instalar software local.
+- **Garantía Estricta de Privacidad**: Las claves API se almacenan **única y exclusivamente en el `localStorage` del navegador**. Jamás se envían ni se guardan en ningún servidor propio.
+- **Coste Cero para el Servidor**: Las peticiones viajan directamente desde el cliente hacia el proveedor oficial, facturándose a la cuenta personal del usuario.
+- **Proveedores Soportados**:
+  - **Google Gemini (AI Studio)**: Razonamiento espectral multimodal e Imagen 3 para carátulas.
+  - **OpenAI / ChatGPT**: DALL-E 3 para portadas de alta definición e inferencia de metadatos.
+  - **OpenRouter**: Pasarela universal multimodelo (FLUX.1, Claude 3.5, GPT-4o, Llama-3).
+  - **Anthropic Claude**: Razonamiento acústico avanzado y síntesis de prompts con Sonnet 3.5 / Haiku.
+  - **DeepSeek**: Análisis profundo de timbres y catalogación con DeepSeek-V3 y R1.
+  - **Groq**: Inferencia ultrarrápida a velocidad LPU para refinamiento instantáneo de prompts.
+  - **Mistral AI**: Modelos europeos avanzados (Mistral Large, Codestral, Pixtral).
+  - **Hugging Face**: Checkpoints acelerados serverless (FLUX.1-schnell).
+  - **Replicate**: AudioSR (96kHz Super-Resolution), MusicGen y difusión FLUX/SDXL.
 
 ### Nivel 3: Companion Bridge (GPU Local / VRAM)
 - Servidor ligero en Python (`bridge/server.py`) en `http://127.0.0.1:7860` para usuarios que trabajan en local con su propia GPU dedicada (CUDA / MPS).
-- Descargador transparente de modelos multihilo con barra de progreso en vivo para AudioSR, HTDemucs y BasicPitch.
-- Arranque automatico en segundo plano mediante `start.bat`.
+- **Catálogo Neuronal Integrado de 7 Modelos**:
+  1. `audiosr`: AudioSR (96kHz Bandwidth Extension, 5.8 GB) — Super-resolución por difusión latente.
+  2. `htdemucs`: HTDemucs v4 (Stem Separator & De-bleeder, 80 MB) — Aislamiento de fuentes y desangrado.
+  3. `basicpitch`: Spotify Basic Pitch (Neural F0 / Note Tracker, 1 MB) — Detección polifónica de tono.
+  4. `deepfilter`: DeepFilterNet 3 (Neural Audio Denoiser, 8 MB) — Supresión de ruido en tiempo real.
+  5. `sdturbo`: SD-Turbo (1-Step Synthesizer Cover Artwork, 1.6 GB) — Difusión local directa en GPU.
+  6. `whispertiny`: OpenAI Whisper-tiny (Speech & Phoneme Alignment, 39 MB) — Segmentación fonética para troceado de voces (Fase 23).
+  7. `musicgen`: Meta MusicGen-Small (Timbre Continuation & Infill, 300 MB) — Continuación tímbrica generativa.
+- Descargador transparente multihilo con barra de progreso, comprobador de integridad, desinstalación con liberación de disco y soporte de URLs / mirrors personalizados.
 
 ---
 
-## 3. Inicio Rapido
+## 3. Inicio Rápido
 
 ### Requisitos
 - Node.js (v18+)
@@ -56,83 +72,132 @@ Haz doble clic en `start.bat` o ejecuta:
 ```cmd
 start.bat
 ```
-El script automaticamente:
+El script automáticamente:
 1. Libera cualquier proceso previo en los puertos `8388` (Vite) y `7860` (Companion Bridge).
-2. Arranca el Companion Bridge local en segundo plano (si Python esta disponible).
+2. Arranca el Companion Bridge local en segundo plano (si Python está disponible).
 3. Abre `http://localhost:8388` en tu navegador predeterminado.
 4. Inicia el servidor de desarrollo Vite con recarga en caliente (HMR).
 
 ### Despliegue en la Nube
-El proyecto esta optimizado para Vercel:
-- Despliegue publico: [https://abd-neumodmakr.vercel.app/](https://abd-neumodmakr.vercel.app/)
+El proyecto está optimizado para Vercel:
+- Despliegue público: [https://abd-neumodmakr.vercel.app/](https://abd-neumodmakr.vercel.app/)
 - O compila manualmente con `npm run build` y despliega la carpeta `dist/`.
 
 ---
 
-## 4. Componentes Principales
+## 4. Funcionalidades y Componentes Principales
 
-- **`AppNavbar`**: Barra superior integrada (`SynthNavBar`) con menus de archivo, edicion, modelo, vista y ayuda; HUD central con nombre de ranura, auditor de cobertura MIDI continua (0..127) y pill interactivo de estado de IA; botones rapidos de Undo/Redo, monitor espectral, banco NeuronDB, logs de auditoria y conmutador directo de modo Claro/Oscuro.
-- **`ZoneRibbon`**: Mapa visual bidimensional de las 128 notas MIDI que visualiza la particion de zonas, notas raiz, puntos de cruce de velocidad y asignacion de muestras. Soporta division por doble clic o `Alt+Click`.
-- **`ZoneInspector`**: Editor detallado con particion 100% exclusiva para la Zona/Region seleccionada. Organizado en tres sub-pestanas:
-  1. *Mapping & Sample*: Limites de zona y region (Low, Root, High Key; Low/High Velocity en modo extendido), selector de instrumentos de percusion General MIDI Drum Map, asignacion de muestras A/B, y perillas de afinacion fina (*detune*), ganancia y panorama.
-  2. *AutoLoop Editor*: Editor visual de bucles con zoom horizontal continuo (1x a 32x), marcadores arrastrables `L-START`, `L-END` y rampa de crossfade, lupa de empalme de cruce por cero (*Zero-Crossing Magnifier*) y motor inteligente con 4 algoritmos (`pitch_periodic`, `ncc_zc`, `min_seam_energy`, `equal_power_xfade`).
-  3. *AutoSlicer*: Acceso directo al troceador de audio con previsualizacion de metadatos del sample, audicion instantanea y lanzador hacia la estacion interactiva de slicing.
-- **`ModelConfigModal`**: Dialogo modal unificado de configuracion global del modelo (`Model Configuration`):
-  1. *Identidad Dual*: Nombre clasico restringido a 11 caracteres hardware + ranura `#000..#511`, y Nombre Extendido sin limite de longitud para catalogos modernos (preparado para el selector de sublibrerias de la Fase 22).
-  2. *Modo y Motor*: Conmutador Clasico 1:1 vs Extendido HD Multi-Layer (con proyeccion matematica no destructiva), selector de Formato de Exportacion (`Dual`, `Legacy Neuron`, `Modern Neural`) y Algoritmo DSP (`Hartmann Legacy 2002` vs `Modern Neural Resynthesis`).
-  3. *Parametros Fisicos*: Complejidad de analisis 1..10 (1..64 modos) y selector de los 10 Parameter Sets oficiales con iconos vectoriales y colores semanticos canónicos (`--color-cat-0`..`--color-cat-9`).
-  4. *Playback y Articulacion Global*: Modos de bucle por defecto, logica de disparo (Attack, Release, Legato), curvas de fundido y seguimiento de tono (*Pitch Keytrack* 0..200%).
-  5. *Metadatos y Tags*: Importador y editor de etiquetas SoundFont RIFF INFO (IENG, ICOP, ICRD, ISFT, etc.) y campos de procedencia.
-  6. *Arte de Portada*: Gestion de imagen 512×512 WebP, boton integrado para generacion con IA (Fase 20) y placeholder dinamico con icono del Parameter Set o percusion.
-- **`AudioChopperModal` & `AudioSlicerEngine`**: Estacion de troceado inteligente de audio y deteccion de transitorios:
-  - Deteccion de transitorios por flujo espectral (Spectral Flux) y energia instantanea con umbral adaptativo.
-  - Puerta de silencio automatica con longitud minima de silencio para aislar golpes percusivos.
-  - Magnetizado automatico a cruces por cero (*Zero-Crossing Snapping*) en cada frontera para eliminar clics y artefactos de fase.
-  - Mapeo automatico: percusion General MIDI (Kick, Snare, Hi-Hat, Toms, Cymbals) o distribucion cromatica equidistante continua (0..127).
-  - Exportador MIDI integrado: genera archivos SMF Tipo 0 (.mid) arrastrables directamente al timeline del DAW.
-- **`MultiInstrumentModal`**: Detector de SoundFonts y librerias multi-instrumento:
-  - Deteccion automatica de multiples presets en archivos `.sf2` / `.sfz`.
-  - Permite cargar un instrumento individual o procesar todos los instrumentos como lote independiente (*Batch Processing*).
-- **`SpectralView`**: Monitor espectral interactivo con tres vistas:
-  1. `2D Spectrogram`: Espectrograma STFT Blackman-Harris con trazas de los 64 parciales armonicos coloreadas por capa.
-  2. `64 Partials`: Histograma de magnitudes con espectro FFT de Web Audio en tiempo real.
-  3. `Waveform A/B/C`: Comparador de envolventes de audio (Original vs Legacy DSP vs Enhanced DSP) con puntuacion objetiva de calidad (*Quality Score*).
-- **`Waveform Loop Editor`**: Editor visual de bucles con zoom horizontal continuo (1x a 32x), marcadores arrastrables `L-START`, `L-END` y rampa de crossfade, lupa de empalme de cruce por cero (*Zero-Crossing Magnifier*) y motor inteligente con 4 algoritmos (`pitch_periodic`, `ncc_zc`, `min_seam_energy`, `equal_power_xfade`).
-- **`ProcessPanel`**: Configuracion del modelo de salida (slot 0..511, nombre de hasta 11 caracteres hardware o 32 caracteres extendidos, complejidad 1..10, seleccion de los 10 Parameter Sets oficiales con autodeteccion inteligente y carga de portada `.webp`).
-- **`KeyboardStrip`**: Teclado de piano interactivo impulsado por `@abdsynths/midi-keyb`, con representacion de zonas en vivo, indicador pin iluminado en la nota raiz, limites de zona y soporte tactil/QWERTY.
-- **`SettingsModal`**: Centro unificado de configuracion accesible desde el boton de rueda dentada en el Navbar (`Ctrl+,`):
-  1. *General*: Selector de Hardware Skins (6 familias), Modo Claro/Oscuro, Modo de Trabajo (Clasico vs Extendido con garantia bidireccional no destructiva) y rutas de librerias de bancos locales con exploracion automatica.
-  2. *Motor Web*: Procesamiento de serie en navegador 100% gratuito con WebGPU / WASM y matriz DSP modular de 5 etapas.
-  3. *Cloud BYOK*: Conexiones privadas directas a Replicate, Hugging Face y Gemini con persistencia de clave exclusiva en `localStorage`.
-  4. *Companion Bridge*: Monitor de GPU dedicada (RTX 3070 8GB VRAM / CUDA), catalogo con descarga multihilo transparente, desinstalacion de modelos de disco para liberar espacio y configurador de URLs/mirrors personalizadas.
-- **`NeuronDbModal`**: Navegador modal de modelos de fabrica y de usuario de `NeuronDB`, con filtros rapidos por Parameter Set y Complejidad.
-- **`BankDrawer`**: Cajon retractil para examinar la biblioteca de modelos generados y presets de NeuronDB con exportacion directa a paquete `.zip` Dual-Target.
-- **`TelemetryDrawer`**: Cajon de diagnostico y auditoria de cobertura continua MIDI (0..127) y registro de operaciones.
+### 4.1 Barra Superior y Navegación (`Navbar.ts`)
+- Menús completos: **File**, **Edit**, **Model**, **View** y **Help**.
+- Visualización central HUD: ranura activa (`#000..#511`), nombre de modelo, auditor de cobertura MIDI (0..127) y estado del motor IA (Pure DSP / WebGPU / Cloud BYOK / Companion Bridge).
+- Botones de acción rápida: Undo/Redo con tooltips dinámicos, Monitor Espectral, Biblioteca NeuronDB, Logs de Auditoría, acceso directo a Ajustes (`Ctrl+,`) y conmutador Sol/Luna para Modo Claro/Oscuro.
+
+### 4.2 Inspector de Zonas y Teclado (`ZoneInspector.ts` & `ZoneRibbon.ts`)
+- **`ZoneRibbon`**: Visualización interactiva 2D del teclado (0..127) con notas raíz, límites de zona y velocidades. Soporta división rápida por doble clic o `Alt+Click`.
+- **`KeyboardStrip`**: Teclado de piano impulsado por `@abdsynths/midi-keyb` con pines luminosos de nota raíz y audición multitáctil / QWERTY.
+- **Pestaña Mapping & Sample**: Edición de notas raíz, límites inferior/superior (Low/High Key), rangos de velocidad (1..127), asignación de muestras A/B, desafinación fina (*detune* -99..+99 cents), ganancia (-32..+12 dB), panorama (-50..+50) y asignación a General MIDI Drum Map.
+
+### 4.3 Editor Visual de Bucles (`Waveform Loop Editor`)
+- Canvas de forma de onda con zoom horizontal continuo (1x a 32x).
+- Marcadores interactivos arrastrables de `L-START`, `L-END` y rampa de fundido cruzado (*crossfade*).
+- **Lupa de Empalme de Cruce por Cero (*Zero-Crossing Magnifier*)**: Visualiza los puntos de contacto con curvas fantasma de continuidad y snap automático a 0-X.
+- **AutoLoop Inteligente**: 4 algoritmos de cálculo automático de bucles (`pitch_periodic`, `ncc_zc`, `min_seam_energy`, `equal_power_xfade`).
+- Soporte de modos de bucle: continuo, sustain, ping-pong y marcha atrás (*reverse*).
+
+### 4.4 Troceador Inteligente de Audio (`AudioChopperModal.ts` & `AudioSlicerEngine.ts`)
+- **Detección Avanzada de Transitorios**: Basada en flujo espectral (SuperFlux) con sensibilidad ajustable y puerta dinámica de silencio.
+- **Segmentación de Voces y Frases**: Algoritmo OpenVPI Silence Valley para corte semántico de tomas vocales continuas sin micro-cortes artificiales.
+- **Ajuste y Manipulación Interactiva de Cortes**:
+  - Arrastre directo de marcadores de corte sobre la forma de onda principal.
+  - **Lupa de Ajuste Fino (*Cut Point Magnifier*)**: Zoom a nivel de muestra individual (±256 samples) con micro-ajuste mediante arrastre del ratón.
+  - Botones de **Micro-Nudge** (±1 muestra) y botón de **Snap to 0-X** para magnetizar la frontera al cruce por cero más próximo.
+  - Inserción de nuevos cortes mediante clic en zona libre y menú contextual (botón derecho) para eliminar rebanadas.
+  - **Marcado de Zonas de Silencio**: Posibilidad de silenciar/mutear rebanadas individuales (con patrón visual de rayado diagonal).
+  - Preservación inteligente de cortes y silencios manuales al modificar la sensibilidad de los sliders.
+- **Mapeo Automático Multicapa**:
+  - *Modo Batería (GM Drum Map)*: Clasificación de bombos, cajas, charles, toms y platos con mapeo estándar C1..B2.
+  - *Modo Cromático*: Detección de F0 de cada rebanada y reparto equidistante contiguo en teclas 0..127 sin huecos.
+- **Importador de Formatos de Slices**:
+  - Parser recursivo IFF para archivos **Propellerhead ReCycle 2.0 y 1.x (`.rx2`, `.rex`, `.rcy`)**.
+  - Soporte de definiciones de corte **SFZ (`offset`, `end`)** y pistas de etiquetas de texto **CUE / Audacity**.
+  - Detección de bloques de corte incrustados en archivos WAV (`cue ` / `smpl`) y AIFF (`MARK`).
+- **Exportación de Patrones MIDI**:
+  - Generador en memoria de archivos Standard MIDI (`.mid` Type 0) con el timing exacto del loop original.
+  - Botón arrastrable (*Draggable MIDI Badge*) para transferir el archivo MIDI directamente a cualquier DAW (Ableton, FL Studio, Logic, Reaper, Cubase).
+
+### 4.5 Generador de Carátulas con IA (`AiCoverGeneratorModal.ts` — Fase 20)
+- Generación de portadas oficiales de 512×512 píxeles optimizadas estrictamente en formato **WebP**.
+- **6 Estilos Estéticos Pre-diseñados**: Cyberpunk Synthesizer, 1980s Analog Hardware, Minimalist Bauhaus Vector, Studio Hi-Fi Audiophile, Organic Acoustic Watercolor y Neural Latent Space.
+- **Asistente de Prompt Acústico**: Construye descripciones de alta precisión a partir del nombre, número de modelo, timbre acústico y Parameter Set seleccionado.
+- **Selector de Motores mediante Pills Estándar**:
+  - *Procedural Acoustic*: Renderizado matemático 100% offline derivado de armónicos F0 y envolventes. Instantáneo (0 ms) y gratuito.
+  - *Local Companion Bridge*: Difusión en GPU local mediante el endpoint Python 7860 (modelo SD-Turbo).
+  - *Cloud BYOK*: Conexión directa a Google Gemini (Imagen 3), OpenAI (DALL-E 3), OpenRouter, Claude, Hugging Face (FLUX) o Replicate.
+- Empaquetado automático en la capa `05_extended_model/cover.webp` de la Cápsula del Tiempo y visualización en tarjetas de biblioteca.
+
+### 4.6 Procesador por Lotes (`BatchProcessorModal.ts` & `FolderBatchExtractor.ts` — Fase 12)
+- Extracción inteligente por carpetas: agrupa subdirectorios y ficheros con prefijos de instrumentos en trabajos independientes.
+- Cola asíncrona FIFO con tolerancia a fallos: los archivos corruptos o no conformes se aislan en el registro sin detener el lote.
+- Diálogo interactivo de 4 pasos con **inspección Preflight obligatoria** antes del procesamiento.
+- Exportación masiva a paquete maestro PKZIP (`.zip`) con Cápsulas del Tiempo o sincronización a la librería local `AxionikDB`.
+
+### 4.7 Configuración del Modelo y Metadatos Ricos (`ModelConfigModal.ts` & Fase 17)
+- **Doble Nomenclatura Independiente**:
+  - `modelName`: Nombre clásico de 11 caracteres ASCII estrictos para hardware Hartmann Neuron 2002 / `MName`.
+  - `expandedName`: Nombre sin límite de caracteres para catálogos modernos y presets de `ABDAxionikVS`. Conmutación no destructiva bidireccional.
+- **Metadatos Ricos y Atributos Libres**:
+  - Procedencia: URL de origen del sample/SoundFont con enlace web directo, formato original y nombre del preset.
+  - Licencia y autoría: Autor, distribuidor/vendor, versión semántica y licencia (CC-BY, CC0, Comercial, etc.).
+  - Tags libres: Pares clave-valor (`customAttributes`) editables de forma dinámica.
+
+### 4.8 Monitor Espectral Avanzado (`SpectralView.ts`)
+- **2D Spectrogram**: Espectrograma STFT 37×96 con ventana Blackman-Harris y sobreimpresión de las trayectorias de los 64 parciales armónicos coloreados por capa.
+- **64 Partials**: Histograma de armónicos en tiempo real con analizador FFT de 2048 puntos.
+- **Waveform A/B/C**: Comparativa de envolventes (Original vs DSP Legacy 2002 vs DSP Mejorado) con métrica matemática de calidad acústica (*Quality Score*).
 
 ---
 
-## 5. Sistema de Skins de Hardware y Modo de Apariencia
+## 5. Atajos de Teclado
 
-La aplicacion incluye 6 familias completas de diseno inspiradas en sintetizadores clasicos, cada una con su variante real **Clara** y **Oscura**:
+| Atajo | Acción |
+| :--- | :--- |
+| `Ctrl+Z` | Deshacer (*Undo*) |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Rehacer (*Redo*) |
+| `Ctrl+O` | Abrir sesión (`.nmsession.json`) |
+| `Ctrl+S` | Guardar sesión activa |
+| `Ctrl+I` | Importar archivos de audio (.wav / .aif) |
+| `Ctrl+N` | Importar archivos por convención de nombre Hartmann |
+| `Ctrl+P` | Procesar modelo y sintetizar tramas Scape/Sphere |
+| `Ctrl+T` | Exportar modelo clásico (`.model`) |
+| `Ctrl+Shift+T` | Guardar paquete completo en formato Cápsula del Tiempo (`.zip`) |
+| `Ctrl+Shift+B` | Abrir el Procesador por Lotes (*Batch Processor*) |
+| `Ctrl+,` | Abrir Ajustes Generales, Motores de IA y Companion Bridge |
+| `Insert` | Añadir nueva zona |
+| `Delete` | Eliminar zona seleccionada |
+| `Espacio` | Iniciar / Detener audición en tiempo real |
+
+---
+
+## 6. Sistema de Skins de Hardware
+
+La aplicación incluye 6 familias completas de diseño inspiradas en sintetizadores clásicos, cada una con variantes **Clara** y **Oscura**:
 
 1. **Hartmann Neuron (2002)**: Tema canónico oficial del sintetizador original. *(Por defecto: `neuron-light`)*
-2. **Access Virus Snow (2008)**: Diseno minimalista blanco y negro con acentos celestes y grafito.
-3. **AudioLab Precision**: Aspecto tecnico de instrumental de laboratorio y osciloscopio de precision.
-4. **Korg MS2000**: Estetica azul verdosa y perillas analogicas de modelado fisico.
+2. **Access Virus Snow (2008)**: Diseño minimalista en blanco y negro con acentos celestes y grafito.
+3. **AudioLab Precision**: Aspecto técnico de instrumental de laboratorio y osciloscopio de precisión.
+4. **Korg MS2000**: Estética azul verdosa y controles analógicos de modelado físico.
 5. **Hartmann Advanced**: Variante de alto contraste con tonos plateados y antracita.
-6. **Casio CZ-101**: Estetica clasica ochentera de sintesis por distorsion de fase.
-
-El usuario puede alternar entre temas desde `View -> Hardware Skin` y conmutar instantaneamente entre **Modo Claro** y **Modo Oscuro** con el boton de sol/luna en la cabecera. La preferencia se auto-persiste en `localStorage`.
+6. **Casio CZ-101**: Estética clásica ochentera de síntesis por distorsión de fase.
 
 ---
 
-## 6. Estandares y Politica de Diseno
+## 7. Estándares y Política de Diseño
 
-- **Zero Emojis**: Toda la interfaz de usuario e iconografia cumple estrictamente la politica de cero emojis, empleando exclusivamente iconos vectoriales SVG monocromos (`currentColor`) desde `ABDShared/Assets/icons`.
-- **Tokens de Diseno**: Consume de forma rigurosa `@abdsynths/shared/styles` (`tokens.css` y paletas generadas).
-- **Formatos Soportados**:
-  - Audio: WAV (PCM 8/16/24/32 bits, IEEE Float 32/64 bits, Extensible), AIFF (FORM/COMM/SSND/INST), SF2 (SoundFont 2.04), SFZ.
-  - Modelos: `.model` (Hartmann binario: `.scape`, `.sphere`, `map.script`, `MName`), `.sound` (`sound.script`, `sound.stickrec`), `.nmmodel` (Modern Neural JSON Float32), y paquetes multiformato `.zip`.
+- **Cero Emojis**: Toda la interfaz de usuario, diálogos e iconografía cumplen estrictamente la política de cero emojis, empleando exclusivamente iconos vectoriales SVG monocromos (`currentColor`) sincronizados con `@abdsynths/shared`.
+- **Tokens de Diseño**: Uso estricto de design tokens (`tokens.css` de `@abdsynths/shared/styles`) sin colores hardcodeados.
+- **Formatos de Audio y Modelos**:
+  - *Audio*: WAV (PCM 8/16/24/32 bits, IEEE Float 32/64 bits, Extensible), AIFF (FORM/COMM/SSND/INST), SF2 (SoundFont 2.04), SFZ, ReCycle (`.rx2`, `.rex`, `.rcy`), CUE Label Tracks.
+  - *Modelos*: `.model` (Hartmann binario: `.scape`, `.sphere`, `map.script`, `MName`), `.sound` (`sound.script`, `sound.stickrec`), `.nmmodel` (Modern Neural JSON Float32), y paquetes maestros de Cápsula del Tiempo `.zip`.
 
 ---
 
