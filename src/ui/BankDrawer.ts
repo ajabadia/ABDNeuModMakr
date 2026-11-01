@@ -17,6 +17,7 @@ import { bankChipsHtml, bindBankChips, type BankChipItem } from '@abdsynths/shar
 import { classifyBankCategory } from '@abdsynths/shared/components/bank/bankCategories.js';
 import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/formats/neuron';
 import type { AxionikDbModelEntry } from '../core/bridge/BridgeClient';
+import type { SublibraryInfo } from '../core/types';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
 import { escAttr } from './escape';
 import { isSafeCoverDataUrl } from '../core/bankService';
@@ -67,6 +68,16 @@ export interface BankDrawerHandlers {
   onConfigureAxionikDbFolder?: () => void;
   /** Refresh AxionikDB */
   onRefreshAxionik?: () => Promise<number | null>;
+  /** Fase 23: Live Sub-libraries list */
+  onRequestSublibraries?: () => Promise<SublibraryInfo[]> | SublibraryInfo[];
+  /** Fase 23: Create new sub-library */
+  onCreateSublibrary?: (name: string, description?: string) => Promise<void>;
+  /** Fase 23: Delete empty sub-library */
+  onDeleteSublibrary?: (name: string) => Promise<void>;
+  /** Fase 23: Move model between sub-libraries */
+  onMoveAxionikModel?: (slug: string, targetSublibrary: string) => Promise<void>;
+  /** Fase 23: Reorder models within sub-library */
+  onReorderSublibrary?: (sublibrary: string, orderedSlugs: string[]) => Promise<void>;
 }
 
 export function getPresetCategoryInfo(category: string): { icon: string; catClass: string; paramId: number } {
@@ -100,6 +111,8 @@ export class BankDrawer {
   private selectedLibraryCategory: string = 'all';
   private selectedAxionikSlug: string | null = null;
   private selectedAxionikCategory: string = 'all';
+  private selectedAxionikSublibrary: string = 'all';
+  private axionikSortMode: 'ordinal' | 'name' | 'date' = 'ordinal';
   private chipsUnbind: (() => void) | null = null;
 
   constructor(container: HTMLElement, handlers: BankDrawerHandlers, options?: BankDrawerOptions) {
@@ -781,19 +794,46 @@ export class BankDrawer {
 
     const entries = this.handlers.onRequestAxionik?.() ?? [];
 
+    // Harvest sublibraries from models + Default
+    const sublibSet = new Set<string>(['Default']);
+    for (const e of entries) {
+      if (e.sublibrary && e.sublibrary.trim().length > 0) {
+        sublibSet.add(e.sublibrary.trim());
+      }
+    }
+    const sublibList = Array.from(sublibSet).sort((a, b) => (a === 'Default' ? -1 : b === 'Default' ? 1 : a.localeCompare(b)));
+
+    // Filter by Sub-library
+    const inSublib =
+      this.selectedAxionikSublibrary === 'all'
+        ? entries
+        : entries.filter((e) => (e.sublibrary || 'Default').toLowerCase() === this.selectedAxionikSublibrary.toLowerCase());
+
+    // Filter by Category
     const inCategory =
       this.selectedAxionikCategory === 'all'
-        ? entries
-        : entries.filter((e) => e.category === this.selectedAxionikCategory);
+        ? inSublib
+        : inSublib.filter((e) => e.category === this.selectedAxionikCategory);
 
+    // Filter by Search Query
     const filtered = this.filterQuery
       ? inCategory.filter(
           (e) =>
             (e.name || '').toLowerCase().includes(this.filterQuery.toLowerCase()) ||
             (e.slug || '').toLowerCase().includes(this.filterQuery.toLowerCase()) ||
-            (e.category || '').toLowerCase().includes(this.filterQuery.toLowerCase())
+            (e.category || '').toLowerCase().includes(this.filterQuery.toLowerCase()) ||
+            (e.sublibrary || '').toLowerCase().includes(this.filterQuery.toLowerCase())
         )
       : inCategory;
+
+    // Sort models
+    if (this.axionikSortMode === 'ordinal') {
+      filtered.sort((a, b) => (a.sublibraryOrdinal ?? 999) - (b.sublibraryOrdinal ?? 999));
+    } else if (this.axionikSortMode === 'name') {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (this.axionikSortMode === 'date') {
+      filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    }
 
     this.shell.setBadge(
       filtered.length === entries.length
@@ -819,25 +859,83 @@ export class BankDrawer {
       return;
     }
 
+    const currentSubModelsCount = entries.filter(
+      (e) => (e.sublibrary || 'Default').toLowerCase() === this.selectedAxionikSublibrary.toLowerCase()
+    ).length;
+    const canDeleteSub =
+      this.selectedAxionikSublibrary !== 'all' &&
+      this.selectedAxionikSublibrary.toLowerCase() !== 'default' &&
+      currentSubModelsCount === 0;
+
+    const sublibOptionsHtml = sublibList
+      .map((s) => {
+        const count = entries.filter((e) => (e.sublibrary || 'Default').toLowerCase() === s.toLowerCase()).length;
+        return `<option value="${escAttr(s)}" ${s.toLowerCase() === this.selectedAxionikSublibrary.toLowerCase() ? 'selected' : ''}>${escAttr(s)} (${count})</option>`;
+      })
+      .join('');
+
+    const toolbarHtml = `
+      <div class="axionik-sublib-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--color-border); border-radius: 6px; font-size: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--color-text-muted); font-weight: 500;">Sub-library:</span>
+          <select id="sel-axionik-sublib" class="form-control" style="padding: 2px 6px; font-size: 12px; height: 26px;">
+            <option value="all" ${this.selectedAxionikSublibrary === 'all' ? 'selected' : ''}>All Sub-libraries (${entries.length})</option>
+            ${sublibOptionsHtml}
+          </select>
+          <button type="button" class="btn btn-xs btn-outline" id="btn-axionik-new-sublib" title="Create new sub-library">
+            ${ICONS.plus || '+'} New
+          </button>
+          <button type="button" class="btn btn-xs btn-outline" id="btn-axionik-del-sublib" title="Delete current sub-library (must be empty)" ${canDeleteSub ? '' : 'disabled style="opacity: 0.5;"'}>
+            ${ICONS.trash || '✕'} Delete
+          </button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: var(--color-text-muted); font-weight: 500;">Sort:</span>
+          <select id="sel-axionik-sort" class="form-control" style="padding: 2px 6px; font-size: 12px; height: 26px;">
+            <option value="ordinal" ${this.axionikSortMode === 'ordinal' ? 'selected' : ''}>Ordinal # (Manual)</option>
+            <option value="name" ${this.axionikSortMode === 'name' ? 'selected' : ''}>Name (A-Z)</option>
+            <option value="date" ${this.axionikSortMode === 'date' ? 'selected' : ''}>Recent Date</option>
+          </select>
+        </div>
+      </div>
+    `;
+
     if (filtered.length === 0) {
       const emptyMsg = this.filterQuery
         ? `No AxionikDB models matching "${this.filterQuery}"`
-        : 'No AxionikDB models in this category yet';
+        : `No AxionikDB models in ${this.selectedAxionikSublibrary === 'all' ? 'this category' : `sub-library "${this.selectedAxionikSublibrary}"`}`;
       container.innerHTML = `
+        ${toolbarHtml}
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.database}</span>
           <span class="empty-msg">${emptyMsg}</span>
         </div>
       `;
+      this.bindAxionikToolbarEvents(sublibList);
       return;
     }
 
     container.innerHTML = `
+      ${toolbarHtml}
       <div class="ndb-grid axionik-grid">
         ${filtered
           .map((e, idx) => {
             const catClass = `cat-${e.parameterSet ?? 0}`;
             const iconKey = (`param${e.parameterSet ?? 0}` as keyof typeof ICONS);
+            const subLabel = e.sublibrary || 'Default';
+            const ordLabel = e.sublibraryOrdinal ? `#${e.sublibraryOrdinal}` : `#${idx + 1}`;
+
+            const cardActions = [
+              { id: 'load', label: 'Load', title: `Load Model "${e.name}" into the editor` },
+              { id: 'duplicate', label: 'Duplicate', title: `Duplicate / Save As...`, iconHtml: ICONS.layers },
+              { id: 'move', label: 'Move...', title: `Move to another sub-library`, iconHtml: ICONS.folder },
+            ];
+
+            if (this.axionikSortMode === 'ordinal') {
+              cardActions.push({ id: 'up', label: '▲', title: 'Move Up in ordinal order' });
+              cardActions.push({ id: 'down', label: '▼', title: 'Move Down in ordinal order' });
+            }
+
             return bankCardHtml({
               slot: idx,
               catClass,
@@ -845,21 +943,20 @@ export class BankDrawer {
               name: e.name,
               iconHtml: ICONS[iconKey] || ICONS.database,
               badges: [
-                e.slug,
+                `${subLabel} (${ordLabel})`,
                 `${e.zoneCount} Zones`,
                 `Set ${e.parameterSet}`,
                 e.hasCover ? 'Cover OK' : 'No Cover',
               ],
-              actions: [
-                { id: 'load', label: 'Load', title: `Load Model "${e.name}" into the editor` },
-                { id: 'duplicate', label: 'Duplicate', title: `Duplicate / Save As...`, iconHtml: ICONS.layers },
-              ],
+              actions: cardActions,
               selected: e.slug === this.selectedAxionikSlug,
             });
           })
           .join('')}
       </div>
     `;
+
+    this.bindAxionikToolbarEvents(sublibList);
 
     this.bindCards({
       onCardClick: (slot) => {
@@ -876,16 +973,112 @@ export class BankDrawer {
           this.handlers.onPickAxionik?.(item.slug);
         }
       },
-      onAction: ({ slot, action }) => {
+      onAction: async ({ slot, action }) => {
         const item = filtered[slot];
         if (!item) return;
         this.selectedAxionikSlug = item.slug;
+
         if (action === 'load') {
           this.handlers.onPickAxionik?.(item.slug);
         } else if (action === 'duplicate') {
           this.handlers.onDuplicateAxionik?.(item.slug);
+        } else if (action === 'move') {
+          const currentSub = item.sublibrary || 'Default';
+          const entered = typeof window !== 'undefined'
+            ? window.prompt(`Move "${item.name}" to sub-library (e.g. Default, Pads, Lead):`, currentSub)
+            : null;
+          if (!entered || !entered.trim() || entered.trim() === currentSub) return;
+          const targetSub = entered.trim();
+          try {
+            await this.handlers.onMoveAxionikModel?.(item.slug, targetSub);
+            item.sublibrary = targetSub;
+            this.renderAxionik();
+            toast(`Moved "${item.name}" to "${targetSub}"`, 'success');
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            toast(`Failed to move model: ${msg}`, 'error');
+          }
+        } else if (action === 'up' && slot > 0) {
+          const prev = filtered[slot - 1];
+          const curOrd = item.sublibraryOrdinal ?? (slot + 1);
+          const prevOrd = prev.sublibraryOrdinal ?? slot;
+          item.sublibraryOrdinal = prevOrd;
+          prev.sublibraryOrdinal = curOrd;
+          const currentSub = item.sublibrary || 'Default';
+          const orderedSlugs = filtered.map((m) => m.slug);
+          // Swap
+          orderedSlugs[slot] = prev.slug;
+          orderedSlugs[slot - 1] = item.slug;
+          await this.handlers.onReorderSublibrary?.(currentSub, orderedSlugs);
+          this.renderAxionik();
+        } else if (action === 'down' && slot < filtered.length - 1) {
+          const next = filtered[slot + 1];
+          const curOrd = item.sublibraryOrdinal ?? (slot + 1);
+          const nextOrd = next.sublibraryOrdinal ?? (slot + 2);
+          item.sublibraryOrdinal = nextOrd;
+          next.sublibraryOrdinal = curOrd;
+          const currentSub = item.sublibrary || 'Default';
+          const orderedSlugs = filtered.map((m) => m.slug);
+          // Swap
+          orderedSlugs[slot] = next.slug;
+          orderedSlugs[slot + 1] = item.slug;
+          await this.handlers.onReorderSublibrary?.(currentSub, orderedSlugs);
+          this.renderAxionik();
         }
       },
+    });
+  }
+
+  private bindAxionikToolbarEvents(_sublibList: string[]): void {
+    if (!this.shell) return;
+    const container = this.shell.contentEl;
+
+    const selSub = container.querySelector<HTMLSelectElement>('#sel-axionik-sublib');
+    selSub?.addEventListener('change', () => {
+      this.selectedAxionikSublibrary = selSub.value;
+      this.renderAxionik();
+    });
+
+    const selSort = container.querySelector<HTMLSelectElement>('#sel-axionik-sort');
+    selSort?.addEventListener('change', () => {
+      this.axionikSortMode = selSort.value as 'ordinal' | 'name' | 'date';
+      this.renderAxionik();
+    });
+
+    container.querySelector('#btn-axionik-new-sublib')?.addEventListener('click', async () => {
+      const entered = typeof window !== 'undefined' ? window.prompt('Enter new Sub-library name:', '') : null;
+      if (!entered || !entered.trim()) return;
+      const clean = entered.trim();
+      try {
+        await this.handlers.onCreateSublibrary?.(clean);
+        this.selectedAxionikSublibrary = clean;
+        this.renderAxionik();
+        toast(`Created sub-library "${clean}"`, 'success');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`Failed to create sub-library: ${msg}`, 'error');
+      }
+    });
+
+    container.querySelector('#btn-axionik-del-sublib')?.addEventListener('click', async () => {
+      if (this.selectedAxionikSublibrary === 'all' || this.selectedAxionikSublibrary.toLowerCase() === 'default') {
+        return;
+      }
+      const subName = this.selectedAxionikSublibrary;
+      const confirmed = await confirmDialog(
+        `Are you sure you want to delete the empty sub-library "${subName}"?`,
+        { confirmLabel: 'Delete Sub-library', cancelLabel: 'Cancel' }
+      );
+      if (!confirmed) return;
+      try {
+        await this.handlers.onDeleteSublibrary?.(subName);
+        this.selectedAxionikSublibrary = 'all';
+        this.renderAxionik();
+        toast(`Deleted sub-library "${subName}"`, 'success');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`Cannot delete sub-library: ${msg}`, 'error');
+      }
     });
   }
 

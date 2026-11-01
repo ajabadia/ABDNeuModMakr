@@ -290,15 +290,17 @@ ABDNeuModMakr/
    - Soporte de Microtuning / Escalas Scala (`.scl`).
 
 ### 5.3 Organizacion, IA Semantica y Sintesis en Tiempo Real
-4. **Fase 23 — Organizacion Jerarquica de Bancos y Sublibrerias de Modelos Extendidos**:
+4. ~~**Fase 23 — Organizacion Jerarquica de Bancos y Sublibrerias de Modelos Extendidos** [COMPLETADA]~~:
    - Sublibrerias fisicas en disco bajo `/banks/<SublibraryName>/...`.
    - Asignacion de modelos a subbancos en el dialogo de configuracion y en el Batch Processor.
    - Regla de seguridad estricta para impedir borrado de sublibrerias que contengan modelos.
    - Reordenacion manual jerarquica con recalculo dinamico de posiciones.
-5. **Fase 24 — Segmentacion y Corte Semantico de Audio con IA (AI Semantic Slicing)**:
-   - Modelos ligeros de alineacion fonetica (vocal/speech) para cortar por palabras o silabas naturales (OpenAI Whisper-tiny).
-   - Separacion de stems pre-troceado (vocal vs base ritmica con Demucs via Bridge).
-   - **Single-Active Heavy Model con Auto-Offload**: Politica en el Companion Bridge para no superar 1 modelo pesado en VRAM simultaneamente (descarga automatica a CPU o liberacion con `gc.collect()` y `torch.cuda.empty_cache()`). Desacoplamiento de Whisper-tiny a CPU/ONNX Runtime.
+   - 15 tests unitarios en `tests/phase23_sublibraries.test.ts` (15/15 PASS).
+   - Conectado en `src/main.ts`: `sublibraries[]`, refresh en `refreshAxionikModels()`, 5 handlers en `BankDrawer`, 2 callbacks en `ModelConfigModal`.
+5. **Fase 29 — Equivalencia Transparente .ZIP como Carpeta e Importacion Inteligente Polimorfica Mixta con Triaje Batch**:
+   - Tratamiento de cualquier archivo `.zip` como carpeta fisica transparente (Virtual Zip Filesystem).
+   - Descubrimiento polimorfico recursivo de colecciones mixtas heterogeneas (SoundFonts, SFZ, Decent Sampler, Kontakt, Bitwig, REX2, Sample Chains, WAVs sueltos).
+   - Compuerta Preflight de triaje interactivo: cuando se detecta mas de un instrumento/formato mixto, avisa al usuario, muestra el desglose y permite seleccionar con checkboxes que procesar por lotes (Batch Processor).
 6. **Fase 11.4 & Fase 19 — Motor de Sintesis en Tiempo Real ABDAxionikVS (C++ / JUCE 9)**:
    - Motor software de reproduccion en tiempo real en plugin VST3/CLAP/AU.
    - **Modo Rompler Puro (Fase 19)**: Reproduccion directa de audio PCM de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, con filtros analogicos modelados y capas hibridas Rompler + Resintesis Neuronal.

@@ -25,6 +25,8 @@ export interface ModelConfigModalHandlers {
   getConfig: () => ProcessConfig;
   onConfigChange: (config: ProcessConfig) => void;
   getParameterSets: () => ParameterSetInfo[];
+  getSublibraries?: () => import('../core/types.ts').SublibraryInfo[] | string[];
+  onCreateSublibrary?: (name: string) => Promise<void>;
   onSelectCoverImage?: (file: File) => void;
   onRemoveCoverImage?: () => void;
   onReprocessFromPurestSource?: () => void;
@@ -235,6 +237,16 @@ export class ModelConfigModal {
     const activeSet = pSets.find((p) => p.id === config.parameterSet) || pSets[0];
     const recDepth = STICK_MODES_BY_COMPLEXITY[Math.max(0, Math.min(9, config.complexity - 1))] ?? 32;
 
+    const currentSub = config.sublibrary || 'Default';
+    const sublibsRaw = this.handlers.getSublibraries?.() ?? ['Default'];
+    const sublibNames = sublibsRaw.map((s) => (typeof s === 'string' ? s : s.name));
+    if (!sublibNames.includes('Default')) sublibNames.unshift('Default');
+    if (!sublibNames.includes(currentSub)) sublibNames.push(currentSub);
+
+    const sublibOptionsHtml = sublibNames
+      .map((name) => `<option value="${escAttr(name)}" ${name === currentSub ? 'selected' : ''}>${escHtml(name)}</option>`)
+      .join('');
+
     return `
       <div class="model-cfg-grid">
         <!-- 1. Identity & Slot -->
@@ -302,12 +314,27 @@ export class ModelConfigModal {
               </div>
               <div class="form-group form-group-subbank-preview">
                 <div class="label-with-val">
-                  <label>SUB-LIBRARY (Fase 22)</label>
-                  <span class="val-pill">Default</span>
+                  <label for="sel-cfg-sublibrary">SUB-LIBRARY (Fase 23)</label>
+                  <span class="val-pill" id="val-cfg-sublib-ordinal">#${config.sublibraryOrdinal ?? 1}</span>
                 </div>
-                <select class="form-control" disabled title="Sub-library and bank placement selector (Roadmap Phase 22)">
-                  <option selected>Default Sub-library (Ordinal #1)</option>
-                </select>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <select id="sel-cfg-sublibrary" class="form-control" style="flex: 1;" title="Assign model to sub-library in AxionikDB">
+                    ${sublibOptionsHtml}
+                  </select>
+                  <button type="button" class="btn btn-outline btn-xs" id="btn-cfg-new-sublibrary" title="Create new sub-library..." style="padding: 4px 8px;">
+                    ${ICONS.folder || '+'}
+                  </button>
+                  <input
+                    type="number"
+                    id="inp-cfg-sublib-ordinal"
+                    class="form-control"
+                    min="1"
+                    max="999"
+                    value="${config.sublibraryOrdinal ?? 1}"
+                    title="Ordinal position index in sub-library"
+                    style="width: 58px; text-align: center;"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -885,6 +912,42 @@ export class ModelConfigModal {
         config.modelNumber = num;
         if (slotBadge) slotBadge.textContent = `#${String(num).padStart(3, '0')}`;
         this.handlers.onConfigChange({ ...config });
+      }
+    });
+
+    // Sub-library assignment (Fase 23)
+    const selSub = this.backdropEl.querySelector<HTMLSelectElement>('#sel-cfg-sublibrary');
+    selSub?.addEventListener('change', () => {
+      config.sublibrary = selSub.value;
+      this.handlers.onConfigChange({ ...config });
+    });
+
+    // Sub-library ordinal index (Fase 23)
+    const inpOrdinal = this.backdropEl.querySelector<HTMLInputElement>('#inp-cfg-sublib-ordinal');
+    const valOrdinal = this.backdropEl.querySelector<HTMLElement>('#val-cfg-sublib-ordinal');
+    inpOrdinal?.addEventListener('input', () => {
+      const ord = parseInt(inpOrdinal.value, 10);
+      if (!isNaN(ord) && ord > 0) {
+        config.sublibraryOrdinal = ord;
+        if (valOrdinal) valOrdinal.textContent = `#${ord}`;
+        this.handlers.onConfigChange({ ...config });
+      }
+    });
+
+    // New Sub-library creation button (Fase 23)
+    this.backdropEl.querySelector('#btn-cfg-new-sublibrary')?.addEventListener('click', async () => {
+      const entered = typeof window !== 'undefined' ? window.prompt('Enter new Sub-library name:', '') : null;
+      if (!entered || !entered.trim()) return;
+      const clean = entered.trim();
+      try {
+        await this.handlers.onCreateSublibrary?.(clean);
+        config.sublibrary = clean;
+        this.handlers.onConfigChange({ ...config });
+        this.render();
+        toast(`Created sub-library "${clean}"`, 'success');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`Error creating sub-library: ${msg}`, 'error');
       }
     });
 

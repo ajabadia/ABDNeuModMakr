@@ -162,12 +162,29 @@ export interface CoreService {
   /** Export a generated model to a path */
   exportModel(slot: number, targetPath: string): Promise<void>;
 
-  /** Save active model/session to modern AxionikDB library (Fase 11) */
+  /** Save active model/session to modern AxionikDB library (Fase 11 / Fase 23) */
   saveToAxionikDb(options?: {
     customSlug?: string;
     customName?: string;
     saveAs?: boolean;
-  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }>;
+    sublibrary?: string;
+    sublibraryOrdinal?: number;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number; sublibrary: string }>;
+
+  /** Fase 23: List all hierarchical sub-libraries */
+  listSublibraries(): Promise<import('./types.ts').SublibraryInfo[]>;
+
+  /** Fase 23: Create a new sub-library */
+  createSublibrary(name: string, description?: string, order?: number): Promise<import('./types.ts').SublibraryInfo>;
+
+  /** Fase 23: Delete an empty sub-library (strict safety rule: fails if non-empty) */
+  deleteSublibrary(name: string): Promise<void>;
+
+  /** Fase 23: Move a model to a target sub-library */
+  moveModelToSublibrary(slugOrSlot: string | number, targetSublibrary: string): Promise<void>;
+
+  /** Fase 23: Reorder models in sub-library with sequential contiguous ordinals */
+  reorderModelsInSublibrary(sublibrary: string, orderedSlugsOrSlots: Array<string | number>): Promise<void>;
 
   /** Import a model from a path into a slot */
   importModel(sourcePath: string, slot: number): Promise<GeneratedModel>;

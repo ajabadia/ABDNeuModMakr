@@ -348,10 +348,13 @@ export class BatchQueue {
             content_b64: this.uint8ArrayToBase64(e.data),
           };
         });
+        const targetSub = job.sublibrary || config.destinationSublibrary || 'Default';
         await bridgeClient.saveAxionikModel(
           config.axionikDbPath || 'd:\\desarrollos\\ABDSynths\\AxionikDB',
           job.slug,
-          filesToSave
+          filesToSave,
+          30000,
+          targetSub
         );
       } else {
         // Fallback: collect into master zip if bridge offline

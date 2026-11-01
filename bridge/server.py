@@ -190,9 +190,13 @@ ALLOWED_DOWNLOAD_HOSTS = frozenset([
     'dl.fbaipublicfiles.com',
 ])
 SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-_]{0,63}$')
+SUBLIBRARY_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_\. ]{0,63}$')
 
 def is_safe_slug(v):
     return isinstance(v, str) and bool(SLUG_RE.match(v))
+
+def is_safe_sublibrary(v):
+    return isinstance(v, str) and bool(SUBLIBRARY_RE.match(v.strip())) and not '..' in v
 
 def safe_join(base, *parts):
     joined = os.path.abspath(os.path.join(base, *parts))
@@ -343,7 +347,8 @@ def get_system_capabilities():
         "fs-direct-access",
         "decode-rx2",
         "stem-separation",
-        "phoneme-alignment"
+        "phoneme-alignment",
+        "hierarchical-sublibraries"
     ]
     if gpu_available:
         caps.extend(["cuda-acceleration", "audiosr-ready", "demucs-ready"])
@@ -1010,43 +1015,139 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if path in ('/api/fs/scan_axionik', '/fs/scan_axionik'):
+        if path in ('/api/fs/scan_axionik', '/fs/scan_axionik', '/api/fs/list_sublibraries', '/fs/list_sublibraries'):
             query = parse_qs(parsed.query)
             target_dir = query.get('path', [os.path.join(os.getcwd(), 'AxionikDB')])[0]
             models_dir = os.path.join(target_dir, 'Models') if os.path.exists(os.path.join(target_dir, 'Models')) else target_dir
+            banks_dir = os.path.join(target_dir, 'Banks')
+
+            sublib_meta_file = os.path.join(target_dir, 'sublibraries.json')
+            sublib_metadata = {}
+            if os.path.exists(sublib_meta_file):
+                try:
+                    with open(sublib_meta_file, 'r', encoding='utf-8') as f:
+                        for entry in json.load(f):
+                            if isinstance(entry, dict) and 'name' in entry:
+                                sublib_metadata[entry['name']] = entry
+                except Exception:
+                    pass
+
+            sublib_map = {
+                'Default': {
+                    'name': 'Default',
+                    'description': sublib_metadata.get('Default', {}).get('description', 'Default root sub-library'),
+                    'order': sublib_metadata.get('Default', {}).get('order', 1),
+                    'modelCount': 0,
+                    'isDefault': True
+                }
+            }
 
             results = []
+            seen_slugs = set()
+
+            def process_model_folder(m_folder, inferred_sublib='Default'):
+                manifest_path = os.path.join(m_folder, 'manifest.json')
+                if not os.path.exists(manifest_path):
+                    return None
+                try:
+                    with open(manifest_path, 'r', encoding='utf-8') as mf:
+                        mdata = json.load(mf)
+                    cfg = mdata.get('processConfig', {})
+                    sublib_name = cfg.get('sublibrary') or inferred_sublib or 'Default'
+                    slug_name = os.path.basename(m_folder)
+                    cover_path = os.path.join(m_folder, '05_extended_model', 'cover.webp')
+                    has_cover = os.path.exists(cover_path)
+
+                    if sublib_name not in sublib_map:
+                        meta = sublib_metadata.get(sublib_name, {})
+                        sublib_map[sublib_name] = {
+                            'name': sublib_name,
+                            'description': meta.get('description', f'Sub-library: {sublib_name}'),
+                            'order': meta.get('order', len(sublib_map) + 1),
+                            'modelCount': 0,
+                            'isDefault': False
+                        }
+                    sublib_map[sublib_name]['modelCount'] += 1
+
+                    return {
+                        'slug': slug_name,
+                        'name': mdata.get('modelName') or cfg.get('modelName') or slug_name,
+                        'category': cfg.get('category') or mdata.get('category') or 'Complex Hybrid',
+                        'parameterSet': cfg.get('parameterSet', 0),
+                        'zoneCount': len(mdata.get('zones', [])),
+                        'complexity': cfg.get('complexity', 8),
+                        'hasCover': has_cover,
+                        'createdAt': mdata.get('createdAt', ''),
+                        'updatedAt': mdata.get('updatedAt', ''),
+                        'folderPath': m_folder,
+                        'sublibrary': sublib_name,
+                        'sublibraryOrdinal': cfg.get('sublibraryOrdinal', sublib_map[sublib_name]['modelCount'])
+                    }
+                except Exception:
+                    return None
+
+            # 1. Escanear modelos en target_dir/Banks/<Sublibrary>/<slug>
+            if os.path.exists(banks_dir) and os.path.isdir(banks_dir):
+                for b_item in sorted(os.listdir(banks_dir)):
+                    b_sub = os.path.join(banks_dir, b_item)
+                    if os.path.isdir(b_sub):
+                        if b_item not in sublib_map:
+                            meta = sublib_metadata.get(b_item, {})
+                            sublib_map[b_item] = {
+                                'name': b_item,
+                                'description': meta.get('description', f'Sub-library: {b_item}'),
+                                'order': meta.get('order', len(sublib_map) + 1),
+                                'modelCount': 0,
+                                'isDefault': False
+                            }
+                        for m_cand in sorted(os.listdir(b_sub)):
+                            m_path = os.path.join(b_sub, m_cand)
+                            if os.path.isdir(m_path):
+                                if m_cand == 'Models':
+                                    for sub_m in sorted(os.listdir(m_path)):
+                                        sub_p = os.path.join(m_path, sub_m)
+                                        if os.path.isdir(sub_p):
+                                            item_res = process_model_folder(sub_p, b_item)
+                                            if item_res and item_res['slug'] not in seen_slugs:
+                                                seen_slugs.add(item_res['slug'])
+                                                results.append(item_res)
+                                else:
+                                    item_res = process_model_folder(m_path, b_item)
+                                    if item_res and item_res['slug'] not in seen_slugs:
+                                        seen_slugs.add(item_res['slug'])
+                                        results.append(item_res)
+
+            # 2. Escanear models_dir (legacy o Default)
             if os.path.exists(models_dir) and os.path.isdir(models_dir):
                 for item in sorted(os.listdir(models_dir)):
                     sub_path = os.path.join(models_dir, item)
                     if os.path.isdir(sub_path):
-                        manifest_path = os.path.join(sub_path, 'manifest.json')
-                        if os.path.exists(manifest_path):
-                            try:
-                                with open(manifest_path, 'r', encoding='utf-8') as mf:
-                                    mdata = json.load(mf)
-                                cover_path = os.path.join(sub_path, '05_extended_model', 'cover.webp')
-                                has_cover = os.path.exists(cover_path)
-                                cfg = mdata.get('processConfig', {})
-                                results.append({
-                                    'slug': item,
-                                    'name': mdata.get('modelName') or cfg.get('modelName') or item,
-                                    'category': cfg.get('category') or mdata.get('category') or 'Complex Hybrid',
-                                    'parameterSet': cfg.get('parameterSet', 0),
-                                    'zoneCount': len(mdata.get('zones', [])),
-                                    'complexity': cfg.get('complexity', 8),
-                                    'hasCover': has_cover,
-                                    'createdAt': mdata.get('createdAt', ''),
-                                    'updatedAt': mdata.get('updatedAt', ''),
-                                    'folderPath': sub_path
-                                })
-                            except Exception:
-                                pass
+                        if os.path.exists(os.path.join(sub_path, 'manifest.json')):
+                            item_res = process_model_folder(sub_path, 'Default')
+                            if item_res and item_res['slug'] not in seen_slugs:
+                                seen_slugs.add(item_res['slug'])
+                                results.append(item_res)
+                        else:
+                            sublib_folder_name = item
+                            for deep_item in sorted(os.listdir(sub_path)):
+                                deep_path = os.path.join(sub_path, deep_item)
+                                if os.path.isdir(deep_path) and os.path.exists(os.path.join(deep_path, 'manifest.json')):
+                                    item_res = process_model_folder(deep_path, sublib_folder_name)
+                                    if item_res and item_res['slug'] not in seen_slugs:
+                                        seen_slugs.add(item_res['slug'])
+                                        results.append(item_res)
+
+            sorted_sublibs = sorted(
+                list(sublib_map.values()),
+                key=lambda s: (0 if s.get('isDefault') else 1, s.get('order', 999), s.get('name', ''))
+            )
+
             body = json.dumps({
                 'status': 'ok',
                 'library_path': target_dir,
                 'total_models': len(results),
-                'models': results
+                'models': results,
+                'sublibraries': sorted_sublibs
             }, indent=2).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
@@ -1343,6 +1444,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     pass
             library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
             slug = payload.get('slug', 'model')
+            sublibrary = payload.get('sublibrary', 'Default')
+            if not is_safe_sublibrary(sublibrary):
+                sublibrary = 'Default'
             files = payload.get('files', [])
             if not is_safe_slug(slug) or not isinstance(files, list) or len(files) > 128:
                 err = json.dumps({'error': 'invalid slug (^[a-z0-9][a-z0-9-_]{0,63}$) o demasiados ficheros (max 128)'}).encode('utf-8')
@@ -1354,7 +1458,11 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(err)
                 return
 
-            target_model_dir = safe_join(library_path, 'Models', slug)
+            if sublibrary == 'Default':
+                target_model_dir = safe_join(library_path, 'Models', slug)
+            else:
+                target_model_dir = safe_join(library_path, 'Banks', sublibrary, slug)
+
             if target_model_dir is None:
                 err = json.dumps({'error': 'library_path fuera de rango'}).encode('utf-8')
                 self.send_response(400)
@@ -1396,6 +1504,312 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 'folder': target_model_dir,
                 'files_written': written
             }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/fs/create_sublibrary', '/fs/create_sublibrary'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            sub_name = (payload.get('name') or payload.get('sublibrary_name') or '').strip()
+            desc = payload.get('description', f'Sub-library: {sub_name}')
+            order = payload.get('order', 10)
+
+            if not is_safe_sublibrary(sub_name):
+                err = json.dumps({'error': 'Invalid sublibrary name'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            sub_dir = safe_join(library_path, 'Banks', sub_name)
+            if sub_dir is None:
+                err = json.dumps({'error': 'Path out of bounds'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            os.makedirs(sub_dir, exist_ok=True)
+
+            meta_file = safe_join(library_path, 'sublibraries.json')
+            if meta_file:
+                try:
+                    meta_list = []
+                    if os.path.exists(meta_file):
+                        with open(meta_file, 'r', encoding='utf-8') as f:
+                            meta_list = json.load(f)
+                    existing = [s for s in meta_list if s.get('name') == sub_name]
+                    if not existing:
+                        meta_list.append({
+                            'name': sub_name,
+                            'description': desc,
+                            'order': order,
+                            'isDefault': sub_name == 'Default'
+                        })
+                        with open(meta_file, 'w', encoding='utf-8') as f:
+                            json.dump(meta_list, f, indent=2)
+                except Exception:
+                    pass
+
+            res = json.dumps({'status': 'ok', 'name': sub_name, 'folder': sub_dir}).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/fs/delete_sublibrary', '/fs/delete_sublibrary'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            sub_name = (payload.get('name') or payload.get('sublibrary_name') or '').strip()
+
+            if not is_safe_sublibrary(sub_name) or sub_name.lower() == 'default':
+                err = json.dumps({'error': 'Cannot delete Default or invalid sublibrary name'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            sub_dir = safe_join(library_path, 'Banks', sub_name)
+            if not sub_dir or not os.path.exists(sub_dir):
+                sub_dir = safe_join(library_path, 'Models', sub_name)
+
+            if not sub_dir or not os.path.exists(sub_dir):
+                err = json.dumps({'error': f'Sublibrary "{sub_name}" does not exist'}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            # REGLA DE SEGURIDAD ESTRICTA: Impedir terminantemente borrar si contiene modelos
+            has_models = False
+            for root, dirs, files in os.walk(sub_dir):
+                if 'manifest.json' in files:
+                    has_models = True
+                    break
+
+            if has_models:
+                err = json.dumps({'error': f'Cannot delete non-empty sublibrary "{sub_name}". Move or delete its models first.'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            try:
+                shutil.rmtree(sub_dir)
+                meta_file = safe_join(library_path, 'sublibraries.json')
+                if meta_file and os.path.exists(meta_file):
+                    try:
+                        with open(meta_file, 'r', encoding='utf-8') as f:
+                            s_list = json.load(f)
+                        s_list = [s for s in s_list if s.get('name') != sub_name]
+                        with open(meta_file, 'w', encoding='utf-8') as f:
+                            json.dump(s_list, f, indent=2)
+                    except Exception:
+                        pass
+                res = json.dumps({'status': 'ok', 'name': sub_name}).encode('utf-8')
+                self.send_response(200)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(res)))
+                self.end_headers()
+                self.wfile.write(res)
+                return
+            except Exception as e:
+                err = json.dumps({'error': str(e)}).encode('utf-8')
+                self.send_response(500)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+        if path in ('/api/fs/move_axionik_model', '/fs/move_axionik_model'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            slug = payload.get('slug', '')
+            target_sub = (payload.get('target_sublibrary') or 'Default').strip()
+            source_sub = (payload.get('source_sublibrary') or '').strip()
+
+            if not is_safe_slug(slug) or not is_safe_sublibrary(target_sub):
+                err = json.dumps({'error': 'Invalid slug or sublibrary name'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            candidate_sources = []
+            if source_sub:
+                if source_sub == 'Default':
+                    candidate_sources.append(safe_join(library_path, 'Models', slug))
+                else:
+                    candidate_sources.append(safe_join(library_path, 'Banks', source_sub, slug))
+                    candidate_sources.append(safe_join(library_path, 'Banks', source_sub, 'Models', slug))
+                    candidate_sources.append(safe_join(library_path, 'Models', source_sub, slug))
+            candidate_sources.extend([
+                safe_join(library_path, 'Models', slug),
+                safe_join(library_path, 'Banks', target_sub, slug),
+            ])
+            banks_dir = safe_join(library_path, 'Banks')
+            if banks_dir and os.path.exists(banks_dir):
+                for b_item in os.listdir(banks_dir):
+                    candidate_sources.append(safe_join(banks_dir, b_item, slug))
+                    candidate_sources.append(safe_join(banks_dir, b_item, 'Models', slug))
+
+            source_dir = None
+            for cand in candidate_sources:
+                if cand and os.path.exists(cand) and os.path.isdir(cand) and os.path.exists(os.path.join(cand, 'manifest.json')):
+                    source_dir = cand
+                    break
+
+            if not source_dir:
+                err = json.dumps({'error': f'Model "{slug}" not found in library'}).encode('utf-8')
+                self.send_response(404)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            if target_sub == 'Default':
+                target_dir = safe_join(library_path, 'Models', slug)
+            else:
+                target_dir = safe_join(library_path, 'Banks', target_sub, slug)
+
+            if target_dir is None:
+                err = json.dumps({'error': 'Target path out of bounds'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            if os.path.abspath(source_dir) != os.path.abspath(target_dir):
+                os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+                shutil.move(source_dir, target_dir)
+
+            manifest_file = os.path.join(target_dir, 'manifest.json')
+            if os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, 'r', encoding='utf-8') as mf:
+                        mdata = json.load(mf)
+                    if 'processConfig' not in mdata:
+                        mdata['processConfig'] = {}
+                    mdata['processConfig']['sublibrary'] = target_sub
+                    with open(manifest_file, 'w', encoding='utf-8') as mf:
+                        json.dump(mdata, mf, indent=2)
+                except Exception:
+                    pass
+
+            res = json.dumps({
+                'status': 'ok',
+                'slug': slug,
+                'target_sublibrary': target_sub,
+                'folder': target_dir
+            }).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(res)))
+            self.end_headers()
+            self.wfile.write(res)
+            return
+
+        if path in ('/api/fs/reorder_sublibrary', '/fs/reorder_sublibrary'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            sub_name = (payload.get('sublibrary') or 'Default').strip()
+            ordered_slugs = payload.get('ordered_slugs', [])
+
+            reordered_count = 0
+            for idx, s in enumerate(ordered_slugs):
+                if not is_safe_slug(s):
+                    continue
+                cand_paths = [
+                    safe_join(library_path, 'Banks', sub_name, s),
+                    safe_join(library_path, 'Banks', sub_name, 'Models', s),
+                    safe_join(library_path, 'Models', sub_name, s),
+                    safe_join(library_path, 'Models', s)
+                ]
+                for p in cand_paths:
+                    if p and os.path.exists(os.path.join(p, 'manifest.json')):
+                        try:
+                            mf_path = os.path.join(p, 'manifest.json')
+                            with open(mf_path, 'r', encoding='utf-8') as mf:
+                                mdata = json.load(mf)
+                            if 'processConfig' not in mdata:
+                                mdata['processConfig'] = {}
+                            mdata['processConfig']['sublibraryOrdinal'] = idx + 1
+                            mdata['processConfig']['sublibrary'] = sub_name
+                            with open(mf_path, 'w', encoding='utf-8') as mf:
+                                json.dump(mdata, mf, indent=2)
+                            reordered_count += 1
+                        except Exception:
+                            pass
+                        break
+
+            res = json.dumps({'status': 'ok', 'sublibrary': sub_name, 'reordered': reordered_count}).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
             self.send_header('Content-Type', 'application/json')

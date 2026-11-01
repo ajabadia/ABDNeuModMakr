@@ -364,6 +364,10 @@ export interface ProcessConfig {
   modelNumber: ModelSlot;     // 0..511
   modelName: string;          // max 11 characters (Classic Hartmann MName)
   expandedName?: string;      // Unrestricted full name for Extended Mode & ABDAxionikVS
+  /** Fase 23: Hierarchical sub-library folder name (e.g. 'Default', 'Ambient Pads') */
+  sublibrary?: string;
+  /** Fase 23: Ordinal position index within the sub-library (1, 2, 3...) */
+  sublibraryOrdinal?: number;
   complexity: number;         // 1..10, default 8
   parameterSet: number;       // 0..9
   targetFormat?: TargetFormat; // default 'dual'
@@ -431,6 +435,10 @@ export interface ExtendedModelMetadata {
   description?: string;       // Usage notes, musical description, performance instructions
   tags?: string[];            // Category tags / keywords
   customAttributes?: CustomMetadataTag[]; // Arbitrary user-defined tag/value pairs
+  /** Fase 23: Assigned sub-library name in hierarchical banks */
+  sublibrary?: string;
+  /** Fase 23: Ordinal sorting index within sub-library */
+  sublibraryOrdinal?: number;
 }
 
 /**
@@ -530,6 +538,21 @@ export interface GeneratedModel {
   provenance?: ModelProvenance;
   /** Fase 14: Optional `.webp` cover data URL for Extended models */
   coverWebpDataUrl?: string;
+  /** Fase 23: Sub-library folder name in AxionikDB / hierarchical banks */
+  sublibrary?: string;
+  /** Fase 23: Ordinal sorting index within sub-library */
+  sublibraryOrdinal?: number;
+}
+
+/**
+ * Fase 23 — Hierarchical sub-library descriptor.
+ */
+export interface SublibraryInfo {
+  name: string;
+  description?: string;
+  order: number;
+  modelCount: number;
+  isDefault?: boolean;
 }
 
 /**

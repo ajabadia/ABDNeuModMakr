@@ -57,6 +57,16 @@ export interface AxionikDbModelEntry {
   createdAt?: string;
   updatedAt?: string;
   folderPath: string;
+  sublibrary?: string;
+  sublibraryOrdinal?: number;
+}
+
+export interface SublibraryInfo {
+  name: string;
+  description?: string;
+  order: number;
+  modelCount: number;
+  isDefault?: boolean;
 }
 
 export interface AxionikSaveFileEntry {
@@ -711,7 +721,8 @@ export class BridgeClient {
     libraryPath: string,
     slug: string,
     files: AxionikSaveFileEntry[],
-    timeoutMs = 30000
+    timeoutMs = 30000,
+    sublibrary = 'Default'
   ): Promise<{ status: string; slug: string; folder: string; files_written: number }> {
     if (!this.currentStatus.connected) {
       throw new Error('Local companion bridge is offline.');
@@ -728,6 +739,7 @@ export class BridgeClient {
         body: JSON.stringify({
           library_path: libraryPath,
           slug,
+          sublibrary,
           files,
         }),
         signal: controller.signal,
@@ -738,6 +750,190 @@ export class BridgeClient {
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
       return (await res.json()) as { status: string; slug: string; folder: string; files_written: number };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Lists all hierarchical sub-libraries in the AxionikDB repository.
+   */
+  public async listSublibraries(libraryPath: string, timeoutMs = 10000): Promise<SublibraryInfo[]> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/list_sublibraries?path=${encodeURIComponent(libraryPath)}`, {
+        method: 'GET',
+        headers: this.authHeaders({ Accept: 'application/json' }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { sublibraries?: SublibraryInfo[] };
+      return data.sublibraries ?? [{ name: 'Default', description: 'Default root sub-library', order: 1, modelCount: 0, isDefault: true }];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Creates a new hierarchical sub-library on disk with optional metadata.
+   */
+  public async createSublibrary(
+    libraryPath: string,
+    name: string,
+    description?: string,
+    order?: number,
+    timeoutMs = 10000
+  ): Promise<{ status: string; name: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/create_sublibrary`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          library_path: libraryPath,
+          name,
+          description,
+          order,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; name: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Deletes an empty sub-library. Rejects with an error if it contains models (strict safety rule).
+   */
+  public async deleteSublibrary(
+    libraryPath: string,
+    name: string,
+    timeoutMs = 10000
+  ): Promise<{ status: string; name: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/delete_sublibrary`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          library_path: libraryPath,
+          name,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; name: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Moves a model between sub-libraries, updating folder structures and manifest metadata.
+   */
+  public async moveAxionikModel(
+    libraryPath: string,
+    slug: string,
+    targetSublibrary: string,
+    sourceSublibrary?: string,
+    timeoutMs = 15000
+  ): Promise<{ status: string; slug: string; target_sublibrary: string }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/move_axionik_model`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          library_path: libraryPath,
+          slug,
+          target_sublibrary: targetSublibrary,
+          source_sublibrary: sourceSublibrary,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; slug: string; target_sublibrary: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Reorders models within a sub-library, dynamically assigning contiguous ordinal indexes.
+   */
+  public async reorderSublibrary(
+    libraryPath: string,
+    sublibrary: string,
+    orderedSlugs: string[],
+    timeoutMs = 10000
+  ): Promise<{ status: string; sublibrary: string; reordered: number }> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/reorder_sublibrary`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          library_path: libraryPath,
+          sublibrary,
+          ordered_slugs: orderedSlugs,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; sublibrary: string; reordered: number };
     } finally {
       clearTimeout(timer);
     }

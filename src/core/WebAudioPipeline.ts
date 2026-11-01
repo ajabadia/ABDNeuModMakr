@@ -2476,8 +2476,30 @@ export class WebAudioPipeline implements CoreService {
     customSlug?: string;
     customName?: string;
     saveAs?: boolean;
-  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }> {
+    sublibrary?: string;
+    sublibraryOrdinal?: number;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number; sublibrary: string }> {
     return this.bank.saveToAxionikDb(options);
+  }
+
+  public async listSublibraries(): Promise<import('./types.ts').SublibraryInfo[]> {
+    return this.bank.listSublibraries();
+  }
+
+  public async createSublibrary(name: string, description?: string, order?: number): Promise<import('./types.ts').SublibraryInfo> {
+    return this.bank.createSublibrary(name, description, order);
+  }
+
+  public async deleteSublibrary(name: string): Promise<void> {
+    return this.bank.deleteSublibrary(name);
+  }
+
+  public async moveModelToSublibrary(slugOrSlot: string | number, targetSublibrary: string): Promise<void> {
+    return this.bank.moveModelToSublibrary(slugOrSlot, targetSublibrary);
+  }
+
+  public async reorderModelsInSublibrary(sublibrary: string, orderedSlugsOrSlots: Array<string | number>): Promise<void> {
+    return this.bank.reorderModelsInSublibrary(sublibrary, orderedSlugsOrSlots);
   }
 
   public exportZoneAsAiff(zoneId: string): { filename: string; bytes: Uint8Array } {

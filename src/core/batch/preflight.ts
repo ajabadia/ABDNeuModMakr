@@ -117,8 +117,9 @@ export function buildBatchPreflightSummary(
   let destinationPathOrName = config.outputMasterZipName || `BatchExport_${new Date().toISOString().slice(0, 10)}.zip`;
 
   if (config.destination === 'axionikdb') {
-    destinationLabel = 'AxionikDB Local Repository';
-    destinationPathOrName = config.axionikDbPath || 'd:\\desarrollos\\ABDSynths\\AxionikDB\\Models';
+    const sub = config.destinationSublibrary || 'Default';
+    destinationLabel = `AxionikDB (Sub-library: "${sub}")`;
+    destinationPathOrName = `${config.axionikDbPath || 'd:\\desarrollos\\ABDSynths\\AxionikDB'}\\Banks\\${sub}`;
   } else if (config.destination === 'neurondb') {
     destinationLabel = 'Classic NeuronDB Bank';
     destinationPathOrName = config.neuronDbPath || 'Models/000.model .. 511.model';

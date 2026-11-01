@@ -44,6 +44,10 @@ export interface BatchModelCandidate {
   classicZones?: Zone[];
   extendedRegions?: ExtendedRegion[];
   articulation?: SynthArticulationConfig;
+  /** Fase 23: Target sub-library folder name */
+  sublibrary?: string;
+  /** Fase 23: Ordinal position within sub-library */
+  sublibraryOrdinal?: number;
 }
 
 export type BatchComplexityStrategy = 'auto' | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -58,6 +62,8 @@ export interface BatchConfig {
   outputMasterZipName?: string;
   axionikDbPath?: string;
   neuronDbPath?: string;
+  /** Fase 23: Target sub-library for AxionikDB destination (default: 'Default') */
+  destinationSublibrary?: string;
   concurrency?: number;
 }
 

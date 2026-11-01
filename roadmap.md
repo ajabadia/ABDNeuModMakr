@@ -691,6 +691,41 @@
 
 ---
 
+## Fase 29 — Equivalencia Transparente de Contenedores .ZIP como Carpeta e Importación Inteligente Polimórfica Mixta con Triaje Batch [PLANIFICADA]
+
+**Objetivo**: Tratar cualquier archivo `.zip` depositado en la aplicación con total equivalencia a una carpeta física en disco, permitiendo la ingesta desatendida o guiada de colecciones complejas. Implementar un motor de descubrimiento recursivo capaz de explorar carpetas o archivos comprimidos heterogéneos con múltiples formatos, instrumentos y presets entremezclados, clasificando lo que hay y presentando una compuerta interactiva de triaje previo que informe detalladamente al usuario y le permita seleccionar qué procesar por lotes.
+
+### 29.1 Equivalencia Transparente .ZIP = Carpeta (Virtual Zip Filesystem)
+- **Tratamiento Unificado de Entrada**:
+  - Toda función de importación (arrastrar a la ventana, selector de archivos, importación universal, batch processor) aceptará indistintamente un directorio del sistema de archivos o un archivo `.zip`.
+  - Desempaquetado virtual en memoria / streaming mediante `ZipArchive.ts`, exponiendo un árbol de rutas virtuales normalizadas (`virtual_fs`) sin necesidad de descompresión física previa en el disco duro del usuario.
+  - Soporte para ZIPs anidados (ZIP que contiene dentro otros ZIPs, presets o SoundFonts empaquetados).
+
+### 29.2 Descubrimiento Polimórfico de Contenidos Mixtos (Multi-Asset Discovery Engine)
+- **Inspección Recursiva Multiformato**:
+  - Escaneo en profundidad de todas las ramas del árbol de directorios (físico o virtual dentro de un `.zip`), identificando simultáneamente:
+    - Bancos y Presets SoundFont 2 (`.sf2`).
+    - Instrumentos SFZ (`.sfz` con sus muestras asociadas).
+    - Presets de Decent Sampler (`.dspreset`).
+    - Patches de Native Instruments Kontakt (`.nki`).
+    - Multisamples de Bitwig (`.multisample`).
+    - Loops rebanados ReCycle (`.rx2`, `.rex`, `.rcy`).
+    - Cadenas de audio lineal con marcadores CUE / sample-chains (`.wav`).
+    - Carpetas de muestras sueltas agrupadas por instrumento, afinación o prefijo.
+- **Diferenciación y Aislamiento de Entidades**:
+  - Detección de colisiones y límites de instrumento: separar de forma limpia cuándo dos carpetas pertenecen a instrumentos distintos aunque compartan nombres de notas o directorios raíz.
+
+### 29.3 Compuerta Preflight de Triaje y Selección Batch Interactiva
+- **Detección de Casos Múltiples**:
+  - Si el árbol de entrada contiene un único instrumento o preset homogéneo, se ofrece la importación directa a la sesión activa.
+  - Si se detecta **más de un caso** (ej. varios presets SF2, combinación de un `.dspreset` y carpetas de WAVs, o múltiples librerías mezcladas):
+    - **Aviso y Diagnóstico Previo**: La aplicación detiene el procesamiento automático y despliega un diálogo modal de triaje claro e interactivo.
+    - **Desglose Estructurado**: Muestra una tabla jerárquica con todo lo detectado (Tipo de formato, Nombre de instrumento/preset, Número de muestras, Cobertura estimada, Tamaño en disco y Ruta relativa).
+    - **Control Granular del Usuario**: Checkboxes individuales y por grupo ("Seleccionar todo", "Deseleccionar todo", "Filtrar por formato") para que el usuario decida con exactitud qué elementos desea convertir y cuáles ignorar.
+    - **Derivación al Procesador por Lotes**: Los elementos aprobados por el usuario se inyectan directamente en la cola del `BatchProcessor` con su perfil de destino y configuración de síntesis (Classic / Extended) preconfigurada.
+
+---
+
 ## Revisión pendiente — NeuronDB Bank Browser (capturas aportadas, no tocar ahora) [PLANIFICADA]
 
 **Situación**: el usuario aportó 7 capturas del panel `NEURONDB BANK BROWSER` (visto en `localhost:5320`) sin pedir un cambio concreto. Se deja esta tarea al final del roadmap para revisarla cuando se llegue aquí; es muy posible que para entonces ya no haga falta porque la UI ya habrá evolucionado o el BankDrawer/BankManager ya cubrirá lo necesario.

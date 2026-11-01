@@ -70,6 +70,7 @@ class App {
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
+  private sublibraries: import('./core/types').SublibraryInfo[] = [];
   private auditionPcmSourceNode: AudioBufferSourceNode | null = null;
   private auditionAudioContext: AudioContext | null = null;
 
@@ -94,6 +95,11 @@ class App {
         self.updateSpectralView(self.getActiveZone());
       },
       getParameterSets: () => self.core.getParameterSets(),
+      getSublibraries: () => self.sublibraries,
+      onCreateSublibrary: async (name: string) => {
+        await self.core.createSublibrary(name);
+        await self.refreshAxionikModels();
+      },
       onSelectCoverImage: (file) => {
         void self.handleCoverImageUpload(file);
       },
@@ -544,6 +550,7 @@ class App {
         : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
     try {
       this.axionikModels = await bridgeClient.scanAxionikDb(libPath);
+      this.sublibraries = await this.core.listSublibraries();
     } catch {
       // transient ignore
     }
@@ -1076,6 +1083,28 @@ class App {
         } catch (err) {
           toast(`Error al duplicar modelo: ${String(err)}`, 'error');
         }
+      },
+      // ── Fase 23: Sub-library handlers ─────────────────────
+      onRequestSublibraries: () => this.sublibraries,
+      onCreateSublibrary: async (name: string) => {
+        await this.core.createSublibrary(name);
+        await this.refreshAxionikModels();
+        this.bankDrawer.refreshBank();
+      },
+      onDeleteSublibrary: async (name: string) => {
+        await this.core.deleteSublibrary(name);
+        await this.refreshAxionikModels();
+        this.bankDrawer.refreshBank();
+      },
+      onMoveAxionikModel: async (slug: string, targetSublibrary: string) => {
+        await this.core.moveModelToSublibrary(slug, targetSublibrary);
+        await this.refreshAxionikModels();
+        this.bankDrawer.refreshBank();
+      },
+      onReorderSublibrary: async (sublibrary: string, orderedSlugs: string[]) => {
+        await this.core.reorderModelsInSublibrary(sublibrary, orderedSlugs);
+        await this.refreshAxionikModels();
+        this.bankDrawer.refreshBank();
       },
     },
     // NeuModMakr serves models + classic library + axionikdb advanced

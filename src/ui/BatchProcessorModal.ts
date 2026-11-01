@@ -48,6 +48,7 @@ export class BatchProcessorModal {
     this.activeConfig = {
       targetFormat: initialProc.targetFormat || 'dual',
       destination: 'axionikdb',
+      destinationSublibrary: 'Default',
       complexityStrategy: 'auto',
       dspAlgorithm: initialProc.dspAlgorithm || 'legacy',
       autoAcousticClassification: true,
@@ -264,6 +265,12 @@ export class BatchProcessorModal {
             <div class="profile-item">
               <span class="profile-label">Destination:</span>
               <strong class="profile-val">${escHtml(summary.executionProfile.destinationLabel)} (<code>${escHtml(summary.executionProfile.destinationPathOrName)}</code>)</strong>
+            </div>
+            <div class="profile-item">
+              <span class="profile-label">Destination Sub-library:</span>
+              <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+                <input type="text" id="inp-batch-target-sublib" class="nmm-input" style="padding: 2px 6px; font-size: 0.85rem; max-width: 180px;" value="${escAttr(this.activeConfig.destinationSublibrary || 'Default')}" placeholder="Default" />
+              </div>
             </div>
             <div class="profile-item">
               <span class="profile-label">Estimated Duration:</span>
@@ -504,6 +511,11 @@ export class BatchProcessorModal {
     this.backdropEl.querySelector('#btn-preflight-back')?.addEventListener('click', () => {
       this.currentStep = 'discover';
       this.render();
+    });
+
+    const sublibInput = this.backdropEl.querySelector('#inp-batch-target-sublib') as HTMLInputElement | null;
+    sublibInput?.addEventListener('input', (e) => {
+      this.activeConfig.destinationSublibrary = (e.target as HTMLInputElement).value.trim() || 'Default';
     });
 
     this.backdropEl.querySelector('#btn-preflight-start')?.addEventListener('click', async () => {

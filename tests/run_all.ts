@@ -31,6 +31,7 @@ const TEST_FILES = [
   'phase24_semantic_slicing.test.ts',
   'phase26_rex2_decode.test.ts',
   'phase27_byok_text.test.ts',
+  'phase23_sublibraries.test.ts',
 ];
 
 interface TestResult {

@@ -40,11 +40,13 @@ import type {
   ProcessProgress,
   ProvenanceStep,
   Session,
+  SublibraryInfo,
   Zone,
   ZoneAnalysisSummary,
 } from './types.ts';
 
 const STORAGE_BANK_KEY = 'abd_neumodmakr_bank_v1';
+const STORAGE_SUBLIBRARIES_KEY = 'abd_neumodmakr_sublibraries_v1';
 
 /** S4: allowlist para covers persistidos — frena `javascript:` y SVG con script. */
 export function isSafeCoverDataUrl(v: unknown): v is string {
@@ -134,9 +136,13 @@ export class BankService {
   private readonly modelMapScriptVersions: Map<number, MapScriptVersion> = new Map();
   private generatedModels: GeneratedModel[] = [...INITIAL_MODELS];
   private bankPresets = [...INITIAL_PRESETS];
+  private sublibraries: SublibraryInfo[] = [
+    { name: 'Default', description: 'Default root sub-library', order: 1, modelCount: 0, isDefault: true },
+  ];
 
   constructor(ctx: BankContext) {
     this.ctx = ctx;
+    this.restoreSublibraries();
   }
 
   public setBankPresets(presets: BankSummary['presets']): void {
@@ -445,7 +451,9 @@ export class BankService {
     customSlug?: string;
     customName?: string;
     saveAs?: boolean;
-  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number }> {
+    sublibrary?: string;
+    sublibraryOrdinal?: number;
+  }): Promise<{ slug: string; path: string; isBridge: boolean; count: number; sublibrary: string }> {
     const session = this.ctx.getSession();
     const activeSlot = session?.processConfig.modelNumber ?? 0;
     const model = this.generatedModels.find((m) => m.slot === activeSlot);
@@ -562,10 +570,17 @@ export class BankService {
       includeTopLevelCompatibility: true,
     });
 
+    const sublibrary = options?.sublibrary ?? session?.processConfig.sublibrary ?? model?.sublibrary ?? 'Default';
+    const sublibraryOrdinal = options?.sublibraryOrdinal ?? session?.processConfig.sublibraryOrdinal ?? model?.sublibraryOrdinal;
+
     if (session) {
       session.provenance = provenance;
       session.axionikSlug = slug;
       session.processConfig.modelName = modelName;
+      session.processConfig.sublibrary = sublibrary;
+      if (sublibraryOrdinal !== undefined) {
+        session.processConfig.sublibraryOrdinal = sublibraryOrdinal;
+      }
       session.name = modelName;
       session.dirty = false;
     }
@@ -574,11 +589,13 @@ export class BankService {
       slot: activeSlot,
       name: modelName,
       slug,
+      sublibrary,
+      sublibraryOrdinal,
       zoneCount: zones.length,
       complexity: effectiveCfg.complexity,
       parameterSet: effectiveCfg.parameterSet,
       createdAt: model?.createdAt ?? new Date().toISOString(),
-      path: `AxionikDB/Models/${slug}`,
+      path: sublibrary === 'Default' ? `AxionikDB/Models/${slug}` : `AxionikDB/Banks/${sublibrary}/${slug}`,
       targetFormat: 'dual',
       provenance,
     };
@@ -607,7 +624,7 @@ export class BankService {
         return { path: e.path, content_b64: btoa(binary) };
       });
 
-      const res = await bridgeClient.saveAxionikModel(libPath, slug, files);
+      const res = await bridgeClient.saveAxionikModel(libPath, slug, files, 30000, sublibrary);
       isBridge = true;
       savedPath = res.folder;
       filesWritten = res.files_written;
@@ -649,6 +666,7 @@ export class BankService {
       path: savedPath,
       isBridge,
       count: filesWritten,
+      sublibrary,
     };
   }
 
@@ -816,6 +834,8 @@ export class BankService {
       zonesAnalysis,
       neuronikModelJson,
       provenance,
+      sublibrary: config.sublibrary || 'Default',
+      sublibraryOrdinal: config.sublibraryOrdinal,
       coverWebpDataUrl:
         config.workingMode === 'extended'
           ? config.coverArtwork?.webpDataUrl
@@ -891,6 +911,194 @@ export class BankService {
     } catch {
       // Ignore malformed localStorage state
     }
+  }
+
+  public persistSublibraries(): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_SUBLIBRARIES_KEY, JSON.stringify(this.sublibraries));
+    } catch {
+      // ignore
+    }
+  }
+
+  public restoreSublibraries(): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(STORAGE_SUBLIBRARIES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const list = parsed.filter((s) => s && typeof s.name === 'string');
+          if (!list.some((s) => s.name === 'Default')) {
+            list.unshift({ name: 'Default', description: 'Default root sub-library', order: 1, modelCount: 0, isDefault: true });
+          }
+          this.sublibraries = list;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Returns all available sub-libraries, including model counts and display ordering.
+   */
+  public async listSublibraries(): Promise<SublibraryInfo[]> {
+    if (bridgeClient.isConnected()) {
+      try {
+        const libPath =
+          (typeof localStorage !== 'undefined'
+            ? localStorage.getItem('abd_axionikdb_path')
+            : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+        const bridgeSubs = await bridgeClient.listSublibraries(libPath);
+        if (bridgeSubs && bridgeSubs.length > 0) return bridgeSubs;
+      } catch {
+        // Fallback to local
+      }
+    }
+
+    const counts = new Map<string, number>();
+    for (const m of this.generatedModels) {
+      const sub = m.sublibrary || 'Default';
+      counts.set(sub, (counts.get(sub) || 0) + 1);
+    }
+
+    return this.sublibraries
+      .map((s) => ({
+        ...s,
+        modelCount: counts.get(s.name) || 0,
+      }))
+      .sort((a, b) => (a.isDefault ? -1 : b.isDefault ? 1 : a.order - b.order));
+  }
+
+  /**
+   * Creates a new sub-library in AxionikDB / local storage.
+   */
+  public async createSublibrary(name: string, description?: string, order?: number): Promise<SublibraryInfo> {
+    const cleanName = name.trim();
+    if (!cleanName || cleanName.length > 64) {
+      throw new Error('Invalid sub-library name (1-64 characters allowed).');
+    }
+
+    if (bridgeClient.isConnected()) {
+      try {
+        const libPath =
+          (typeof localStorage !== 'undefined'
+            ? localStorage.getItem('abd_axionikdb_path')
+            : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+        await bridgeClient.createSublibrary(libPath, cleanName, description, order);
+      } catch (err) {
+        console.warn('Bridge createSublibrary warning:', err);
+      }
+    }
+
+    const existing = this.sublibraries.find((s) => s.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) return existing;
+
+    const newSub: SublibraryInfo = {
+      name: cleanName,
+      description: description || `Sub-library: ${cleanName}`,
+      order: order ?? this.sublibraries.length + 1,
+      modelCount: 0,
+      isDefault: cleanName === 'Default',
+    };
+    this.sublibraries.push(newSub);
+    this.persistSublibraries();
+    return newSub;
+  }
+
+  /**
+   * Deletes a sub-library with STRICT safety rule:
+   * Throws an error if the sub-library contains any models.
+   */
+  public async deleteSublibrary(name: string): Promise<void> {
+    const cleanName = name.trim();
+    if (cleanName.toLowerCase() === 'default') {
+      throw new Error('Cannot delete Default root sub-library.');
+    }
+
+    const modelsInSub = this.generatedModels.filter(
+      (m) => (m.sublibrary || 'Default').toLowerCase() === cleanName.toLowerCase()
+    );
+    if (modelsInSub.length > 0) {
+      throw new Error(
+        `Cannot delete sub-library "${cleanName}": it contains ${modelsInSub.length} model(s). Move or delete its models first.`
+      );
+    }
+
+    if (bridgeClient.isConnected()) {
+      const libPath =
+        (typeof localStorage !== 'undefined'
+          ? localStorage.getItem('abd_axionikdb_path')
+          : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+      await bridgeClient.deleteSublibrary(libPath, cleanName);
+    }
+
+    this.sublibraries = this.sublibraries.filter((s) => s.name.toLowerCase() !== cleanName.toLowerCase());
+    this.persistSublibraries();
+  }
+
+  /**
+   * Transfers a model to another sub-library and recalculates ordinal positions.
+   */
+  public async moveModelToSublibrary(slugOrSlot: string | number, targetSublibrary: string): Promise<void> {
+    const targetSub = targetSublibrary.trim() || 'Default';
+    const model = this.generatedModels.find((m) => m.slug === slugOrSlot || m.slot === slugOrSlot);
+    if (!model) throw new Error(`Model not found: ${slugOrSlot}`);
+
+    const sourceSub = model.sublibrary || 'Default';
+    if (sourceSub === targetSub) return;
+
+    if (model.slug && bridgeClient.isConnected()) {
+      try {
+        const libPath =
+          (typeof localStorage !== 'undefined'
+            ? localStorage.getItem('abd_axionikdb_path')
+            : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+        await bridgeClient.moveAxionikModel(libPath, model.slug, targetSub, sourceSub);
+      } catch (err) {
+        console.warn('Bridge moveAxionikModel error:', err);
+      }
+    }
+
+    model.sublibrary = targetSub;
+    const targetModels = this.generatedModels.filter((m) => (m.sublibrary || 'Default') === targetSub);
+    model.sublibraryOrdinal = targetModels.length;
+    this.persistBank();
+  }
+
+  /**
+   * Reorders models within a sub-library, assigning sequential contiguous ordinals (1, 2, 3...).
+   */
+  public async reorderModelsInSublibrary(
+    sublibrary: string,
+    orderedSlugsOrSlots: Array<string | number>
+  ): Promise<void> {
+    const sub = sublibrary.trim() || 'Default';
+    const slugs: string[] = [];
+
+    orderedSlugsOrSlots.forEach((id, idx) => {
+      const model = this.generatedModels.find((m) => m.slug === id || m.slot === id);
+      if (model && (model.sublibrary || 'Default') === sub) {
+        model.sublibraryOrdinal = idx + 1;
+        if (model.slug) slugs.push(model.slug);
+      }
+    });
+
+    if (slugs.length > 0 && bridgeClient.isConnected()) {
+      try {
+        const libPath =
+          (typeof localStorage !== 'undefined'
+            ? localStorage.getItem('abd_axionikdb_path')
+            : null) || 'd:\\desarrollos\\ABDSynths\\AxionikDB';
+        await bridgeClient.reorderSublibrary(libPath, sub, slugs);
+      } catch (err) {
+        console.warn('Bridge reorderSublibrary error:', err);
+      }
+    }
+
+    this.persistBank();
   }
 }
 
