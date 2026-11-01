@@ -26,6 +26,7 @@ export interface AiCoverGeneratorModalContext {
   getConfig: () => ProcessConfig;
   onApplyCover: (artwork: ModelCoverArtwork) => void;
   onOpenSettings?: () => void;
+  getSampleNames?: () => string[];
 }
 
 export interface ArtworkProviderOption {
@@ -154,12 +155,14 @@ export class AiCoverGeneratorModal {
     const expandedName = config.expandedName || modelName;
     const pSet = config.parameterSet ?? 0;
     const category = config.extendedMetadata?.category ?? 'Synthesizer';
+    const sampleNames = this.context.getSampleNames ? this.context.getSampleNames() : [];
 
     const promptText = buildAcousticArtworkPrompt({
       modelName,
       expandedName,
       parameterSet: pSet,
       category,
+      sampleNames,
       style: this.selectedStyle,
       customPrompt: this.customPrompt,
     });
@@ -346,9 +349,9 @@ export class AiCoverGeneratorModal {
           <button type="button" class="btn btn-outline" id="btn-ai-cover-cancel" ${this.isGenerating ? 'disabled' : ''}>
             Close
           </button>
-          <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating ? 'disabled' : ''}>
+          <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating || !providerKeyStatus.isReady ? 'disabled' : ''} title="${!providerKeyStatus.isReady ? 'Please configure provider credentials in Settings before generating' : 'Generate 512×512 WebP Artwork'}">
             ${this.isGenerating ? ICONS.spinner : ICONS.sparkle || ICONS.ai}
-            ${this.isGenerating ? 'Generating Artwork...' : 'Generate Artwork'}
+            ${this.isGenerating ? 'Generating Artwork...' : !providerKeyStatus.isReady ? 'Setup Required' : 'Generate Artwork'}
           </button>
         </footer>
       </div>
@@ -371,12 +374,14 @@ export class AiCoverGeneratorModal {
     message: string;
     statusClass: string;
     showSettingsLink: boolean;
+    isReady: boolean;
   } {
     if (provider === 'procedural') {
       return {
         message: 'Direct mathematical canvas rendering. 100% offline, zero latency, zero cost.',
         statusClass: 'status-ok',
         showSettingsLink: false,
+        isReady: true,
       };
     }
     if (provider === 'bridge') {
@@ -384,6 +389,7 @@ export class AiCoverGeneratorModal {
         message: 'Companion Bridge active at http://127.0.0.1:7860.',
         statusClass: 'status-ok',
         showSettingsLink: false,
+        isReady: true,
       };
     }
 
@@ -394,12 +400,14 @@ export class AiCoverGeneratorModal {
           message: 'Google Gemini API Key is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'Google Gemini API Key is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
     if (provider === 'openai') {
@@ -408,12 +416,14 @@ export class AiCoverGeneratorModal {
           message: 'OpenAI API Key is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'OpenAI API Key is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
     if (provider === 'openrouter') {
@@ -422,12 +432,14 @@ export class AiCoverGeneratorModal {
           message: 'OpenRouter API Key is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'OpenRouter API Key is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
     if (provider === 'claude') {
@@ -436,12 +448,14 @@ export class AiCoverGeneratorModal {
           message: 'Anthropic Claude API Key is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'Anthropic Claude API Key is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
     if (provider === 'huggingface') {
@@ -450,12 +464,14 @@ export class AiCoverGeneratorModal {
           message: 'Hugging Face Token is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'Hugging Face Token is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
     if (provider === 'replicate') {
@@ -464,16 +480,18 @@ export class AiCoverGeneratorModal {
           message: 'Replicate Token is configured in BYOK storage.',
           statusClass: 'status-ok',
           showSettingsLink: false,
+          isReady: true,
         };
       }
       return {
         message: 'Replicate API Token is not configured.',
         statusClass: 'status-warn',
         showSettingsLink: true,
+        isReady: false,
       };
     }
 
-    return { message: '', statusClass: '', showSettingsLink: false };
+    return { message: '', statusClass: '', showSettingsLink: false, isReady: false };
   }
 
   private bindEvents(): void {
@@ -562,6 +580,7 @@ export class AiCoverGeneratorModal {
     const expandedName = config.expandedName || modelName;
     const pSet = config.parameterSet ?? 0;
     const category = config.extendedMetadata?.category ?? 'Synthesizer';
+    const sampleNames = this.context.getSampleNames ? this.context.getSampleNames() : [];
 
     this.isGenerating = true;
     this.generationError = null;
@@ -573,6 +592,7 @@ export class AiCoverGeneratorModal {
       expandedName,
       parameterSet: pSet,
       category,
+      sampleNames,
       style: this.selectedStyle,
       customPrompt: this.customPrompt,
       provider: this.selectedProvider,

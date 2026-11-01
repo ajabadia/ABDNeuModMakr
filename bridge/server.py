@@ -312,7 +312,8 @@ def get_system_capabilities():
         "harmonic-bwe",
         "spectral-denoise",
         "loop-expansion",
-        "fs-direct-access"
+        "fs-direct-access",
+        "decode-rx2"
     ]
     if gpu_available:
         caps.extend(["cuda-acceleration", "audiosr-ready", "demucs-ready"])
@@ -1324,6 +1325,57 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+
+        if path in ('/api/decode-rx2', '/decode-rx2'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            raw_b64 = payload.get("rx2_base64", "")
+            filename = payload.get("filename", "loop.rx2")
+            if not raw_b64:
+                err = json.dumps({"error": "Missing 'rx2_base64' in request payload"}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            try:
+                rx2_bytes = base64.b64decode(raw_b64)
+                from dwop_decompress import decompress_rx2
+                decomp_res = decompress_rx2(rx2_bytes)
+                wav_b64 = base64.b64encode(decomp_res['wav_bytes']).decode('ascii')
+                resp_payload = {
+                    "status": "ok",
+                    "filename": filename,
+                    "wav_base64": wav_b64,
+                    "info": decomp_res['info'],
+                    "decoded_frames": decomp_res['decoded_frames']
+                }
+                body = json.dumps(resp_payload).encode('utf-8')
+                self.send_response(200)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            except Exception as e:
+                err = json.dumps({"error": f"Failed to decompress REX2 audio: {str(e)}"}).encode('utf-8')
+                self.send_response(500)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
 
         self.send_response(404)
         self.send_cors_headers()

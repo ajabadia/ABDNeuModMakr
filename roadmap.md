@@ -430,13 +430,16 @@
    - Botón arrastrable (`Draggable MIDI Badge`) que permite arrastrar directamente el patrón MIDI al DAW (Ableton, FL Studio, Logic, Reaper, Cubase) para disparar los slices con el timing del audio original.
 7. **Arquitectura Transversal Reutilizable**:
    - Los submódulos de auto-detección tonal y re-distribución equidistante de zonas son utilidades independientes del Core, aplicables a cualquier sesión o lote de importación, no restringidas únicamente al chopper.
-8. **Punto de Entrada Unificado de Importación Inteligente (Universal Smart Import desde Menú File / Edit)**:
-   - Fusión de las entradas fragmentadas del menú `File` (`Import Audio Files`, `Import SoundFont / SFZ`, etc.) en un único acceso universal:
-     `Import Audio, Bank or Slices (WAV, AIFF, SF2, SFZ, REX, RX2, CUE)...` (con atajo unificado `Ctrl+I`).
-   - Detección automática del formato de archivo por firma binaria y cabeceras:
-     - Si es `.sf2` / `.sfz`: ejecuta el conversor e importador nativo de SoundFont/SFZ mapeando capas de velocidad y envolventes.
-     - Si es un archivo de bucle troceado (`.rx2`, `.rex`, `.rcy` o audio con `cue`/markers incrustados): detecta que es un loop con rebanadas y lo abre directamente en el **Audio Chopper / AutoSlicer** con todos los puntos de corte pre-cargados listos para afinar o mapear.
-     - Si es un archivo de audio WAV / AIFF estándar: si es una toma continua o loop, ofrece la opción de mapeo directo o paso por el Chopper según las preferencias del usuario.
+8. **Punto de Entrada Unificado de Importación Inteligente (Universal Smart Import desde Menú File / Edit)** [COMPLETADO]:
+   - Las entradas fragmentadas del menú `File` (`Import Audio Files`, `Import SoundFont / SFZ`, etc.) se han reorganizado bajo una única entrada principal **Universal Smart Import (Ctrl+I)** con las opciones individuales reagrupadas en un submenú **Advanced Import**.
+   - Auto-detección del formato de archivo por firma binaria y cabecera:
+     - `.sf2` / `.sfz`: conversor nativo SoundFont/SFZ con mapeo de capas de velocidad y envolventes.
+     - `.dspreset`, `.nki`, `.vstpreset`, `.multisample`: parsers Fase 18.8 (Decent Sampler, Kontakt XML, HALion, Bitwig).
+     - `.rx2`, `.rex`, `.rcy`, audio con `cue`/markers: abre el Audio Chopper con puntos de corte pre-cargados.
+     - `.wav`, `.aif` múltiples o carpeta: importación directa de muestras o lote por nombre Hartmann.
+     - `.zip`: desempaqueta y auto-detecta el formato del contenido.
+   - Motor de Preflight interactivo (`importPreflight.ts`) con checkboxes de adaptación (extend zones to 0..127, adapt velocity layers, switch to Extended Mode).
+   - Entrada duplicada en menú `Edit` (Ctrl+I) para coherencia de acceso rápido.
 
 ---
 
@@ -484,11 +487,31 @@
 
 ---
 
-## Fase 21 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon) [PLANIFICADA]
+## Fase 21 — Diagnóstico de Salud del Sistema y Onboarding Interactivo (Config Health Modal) [COMPLETADA]
+
+**Objetivo**: Guiar al usuario en el primer arranque y verificar de forma proactiva la configuración del entorno (rutas físicas de librerías, estado del servidor Companion Bridge local y credenciales de IA Cloud BYOK), señalando qué elementos faltan y restringiendo de forma segura las funciones que dependan de ellos hasta su configuración.
+
+### 21.1 Diagnóstico Integral de Subsistemas
+- [x] **Comprobación Automática en Arranque (`configHealth.ts`)**:
+  - Detección de configuración obligatoria (*Mandatory*): ruta base de la librería local NeuronDB (`NeuronDB/Models`), ruta de destino AxionikDB y conectividad con el almacenamiento persistente IndexedDB.
+  - Detección de configuración opcional (*Optional*): conectividad con el Companion Bridge local (`http://127.0.0.1:7860`) y claves privadas de API (OpenAI, Gemini, Claude, OpenRouter, Hugging Face, Replicate).
+  - Cálculo de índice de salud global (`status: 'healthy' | 'warning' | 'error'`).
+- [x] **Modal Interactivo de Diagnóstico y Onboarding (`ConfigHealthModal.ts`)**:
+  - Desglose visual por tarjetas con estado (Configurado, No Configurado, Sin Conexión).
+  - Enlaces directos `[ Configure... ]` que abren la pestaña exacta de ajustes (`SettingsModal` o `ModelConfigModal`) para resolver cada elemento sin fricción.
+  - Opción de supresión de alerta en próximos arranques con almacenamiento persistente en `localStorage`.
+- [x] **Indicadores Visuales Globales y Puertas de Acceso**:
+  - Punto dinámico de estado en el icono de rueda dentada de la barra de navegación (verde/ámbar/rojo según el diagnóstico).
+  - Acceso directo en el menú superior: `Help -> System Configuration Health...`.
+  - Compuerta de funciones (`isFeatureGated`): desactivación preventiva de exportación directa a AxionikDB si falta la ruta, y fallback a procedural en carátulas si no hay claves ni bridge.
+
+---
+
+## Fase 22 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon) [PLANIFICADA]
 
 **Objetivo**: Dotar a ABDNeuModMakr y al motor ABDAxionikVS de las capacidades de expresión, articulación y gestión acústica que distinguen a los samplers insignia de la industria.
 
-### 21.1 Matriz de Funcionalidades
+### 22.1 Matriz de Funcionalidades
 | Funcionalidad | Descripción e Interés | Prioridad |
 | :--- | :--- | :--- |
 | **Round-Robin (Alternancia de Muestras)** | Disparar tomas alternas (`Take 1`, `Take 2`, etc.) en ciclos ordenados, aleatorios o de true-neighbor para la misma nota/velocidad, eliminando el efecto "ametralladora" en baterías, guitarras y cuerdas. | **Alta** |
@@ -498,17 +521,17 @@
 | **Matriz de Modulación MIDI (Mod Matrix)** | Enrutar Rueda de Modulación (CC1), Expresión (CC11), Aftertouch o Velocidad al corte de filtro, volumen, pitch o longitud de loop. | **Media** |
 | **Soporte de Microtuning / Escalas Scala (`.scl`)** | Importación de tablas de afinación alternativas (temperamento mesotónico, cuartos de tono, microtonalismo oriental). | **Media-Baja** |
 
-### 21.2 Integración en Formatos de Exportación
+### 22.2 Integración en Formatos de Exportación
 - En **formato Moderno (`.nmmodel`) y Cápsula del Tiempo**: Se preservan como metadatos nativos de primera clase.
 - En **formato Clásico Hartmann (`.model`)**: Dado que el hardware Neuron original no dispone de round-robin ni release triggers nativos, el preflight exportará la capa primaria y avisará con un diálogo interactivo al usuario antes de proceder a la adaptación.
 
 ---
 
-## Fase 22 — Organización Jerárquica de Bancos y Sublibrerías de Modelos Extendidos [PLANIFICADA]
+## Fase 23 — Organización Jerárquica de Bancos y Sublibrerías de Modelos Extendidos [PLANIFICADA]
 
 **Objetivo**: Permitir una organización modular y escalable de grandes colecciones sonoras mediante subbancos y sublibrerías diferenciadas en disco, con reordenación interactiva y flujos de destino guiados para exportación y procesado por lotes.
 
-### 22.1 Arquitectura de Carpetas y Sublibrerías
+### 23.1 Arquitectura de Carpetas y Sublibrerías
 - **Estructura Modular en Disco**: Cada sublibrería / subbanco dispondrá de su propio directorio físico (`/banks/<SublibraryName>/...`).
 - **Subcarpeta Raíz por Defecto (`Default`)**: Todo el contenido inicial o sin categorización explícita residirá de forma segura y retrocompatible en la subcarpeta `Default`.
 - **Destino Interactivo a lo Largo de la Aplicación**:
@@ -516,12 +539,12 @@
   - En la ventana de configuración del modelo (`Model Configuration`), selector desplegable interactivo para asignar el subbanco al que pertenece el modelo en modo extendido y el número de orden que ocupa dentro de él (sin atarse al límite de 11 caracteres ni al número de slot hardware del modo clásico).
   - En el **Procesador por Lotes (Batch Processor)**, selector de sublibrería de destino para depositar los modelos resultantes de la extracción o conversión masiva.
 
-### 22.2 Gestión Segura de Sublibrerías
+### 23.2 Gestión Segura de Sublibrerías
 - **Creación de Sublibrerías**: Diálogo interactivo para crear una nueva sublibrería con nombre, descripción y orden de visualización.
 - **Borrado con Regla de Seguridad Estricta**: Impedir terminantemente el borrado de una sublibrería que contenga modelos. El usuario deberá mover o eliminar primero todos sus modelos para poder dar de baja la sublibrería (evita pérdida accidental de datos).
 - **Mover Modelos entre Sublibrerías**: Capacidad para transferir uno o múltiples modelos de una sublibrería a otra con actualización automática de enlaces y rutas relativas.
 
-### 22.3 Sistema de Ordenación Dinámica y Recalculada
+### 23.3 Sistema de Ordenación Dinámica y Recalculada
 - **Orden Manual Jerárquico**:
   - Ordenación de sublibrerías entre sí.
   - Ordenación de modelos dentro de cada sublibrería.
@@ -531,14 +554,14 @@
 
 ---
 
-## Fase 23 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing) [PLANIFICADA]
+## Fase 24 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing) [PLANIFICADA]
 
 **Objetivo**: Integrar modelos neuronales de análisis y segmentación semántica de audio para el troceado inteligente de muestras complejas (vocales, frases habladas, loops polifónicos, baterías densas), siguiendo escrupulosamente los estándares de IA establecidos en la aplicación:
 - **Arquitectura Local-First**: Inferencia mediante ONNX Runtime Web / WebAudio Worker local, con fallback al Companion Bridge Python local (`aiBridgeEndpoint`) si se requiere mayor precisión o modelos más pesados.
 - **Filosofía No Destructiva**: La IA propone los puntos de corte, etiquetas fonéticas/instrumentales y zonas candidatas, pero el usuario mantiene el control total para arrastrar marcadores, ajustar en el Cut Point Magnifier (±256 smp) y forzar cruces por cero.
 - **Desactivable / Opcional**: El usuario puede alternar en cualquier momento entre algoritmos DSP deterministas (SuperFlux, OpenVPI Silence Valley, Grid) y la asistencia por IA con un solo clic.
 
-### 23.1 Modelos y Capacidades Previstas
+### 24.1 Modelos y Capacidades Previstas
 - **Vocal & Speech Phoneme/Word Alignment**: Modelos ligeros de segmentación fonética (estilo CTC / Whisper-tiny / Wav2Vec2) para detectar comienzos exactos de palabras, sílabas y respiraciones naturales, evitando cortes a mitad de consonante o en formantes mantenidos.
 - **Separación de Stems Pre-Troceado (Demucs / MDX-Net via Bridge)**: Capacidad para aislar la voz de la base rítmica antes de trocear, permitiendo rebanar el loop de batería y la frase vocal de un sample compuesto de forma totalmente independiente.
 - **Clasificación Semántica Automática de Slices**: Etiquetado neuronal de piezas de percusión y articulaciones tímbricas (Kick, Snare, Ghost Note, Open/Closed Hat, Ride Bell, Vocal Chop, Ad-lib, Sung Word) para mapeo instantáneo a notas MIDI y capas de velocidad (velocity switching).
@@ -546,19 +569,93 @@
 
 ---
 
-## Fase 24 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer) [PLANIFICADA]
+## Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer) [PLANIFICADA]
 
-**Objetivo**: Integrar la tecnología de troceado automático y mapeo multicapa dentro del motor de procesamiento por lotes (`BatchProcessorModal.ts` y `FolderBatchExtractor.ts`), permitiendo procesar masivamente carpetas completas de loops rítmicos, frases vocales y archivos ReCycle (`.rx2` / `.rex` / WAV) de forma 100% desatendida.
+**Objetivo**: Integrar la tecnología de troceado automático y mapeo multicapa dentro del motor de procesamiento por lotes (`BatchProcessorModal.ts` y `FolderBatchExtractor.ts`), permitiendo procesar masivamente carpetas completas de loops rítmicos, frases vocales y archivos ReCycle (`.rx2` / `.rex` / WAV) de forma 100% desatendida y plenamente integrada en el resto de flujos batch de la aplicación.
 
-### 24.1 Capacidades y Flujo en Lote
+### 25.1 Capacidades y Flujo en Lote Integrado
 - **Detección Automática de Loops y Rebanadas en Lote**:
-  - El extractor inspecciona recursivamente la carpeta de entrada y detecta si los archivos contienen marcas CUE, cabeceras ReCycle o transitorios rítmicos marcados.
+  - El extractor de carpetas inspecciona recursivamente la entrada y clasifica los archivos según contengan marcas CUE, cabeceras ReCycle o transitorios rítmicos de alta densidad.
 - **Perfiles de Troceado Masivo Configurables**:
   - **Batch Slicer -> Drum Kits (GM Drum Map)**: Convierte cada loop rítmico en un kit percusivo asignado a C1..B2 con hasta 128 zonas por modelo.
   - **Batch Slicer -> Chromatic Equidistant Maps**: Trocea frases melódicas o vocales, detecta la nota raíz de cada fragmento y distribuye zonas contiguas 0..127 sin huecos.
   - **Batch ReCycle / CUE Converter**: Procesa masivamente archivos `.rx2`, `.rex` o audio con pistas CUE, extrayendo los slices a muestras independientes o generando directamente el paquete `.nmmodel` / Cápsula del Tiempo por cada archivo.
 - **Exportación Masiva de Patrones MIDI**:
   - Generación automática de archivos `.mid` Type 0 con el groove original por cada loop procesado, empaquetados junto a los parches en el archivo maestro ZIP o exportados a la librería local `AxionikDB`.
+
+---
+
+## Fase 26 — Descompresión de Audio REX2 (.rx2) en Companion Bridge y Emparejamiento Automático [COMPLETADA]
+
+**Objetivo**: Resolver la limitación de decodificación en navegador de archivos ReCycle 2.0 (`.rx2`) cuyo bloque de audio `SDAT` emplea compresión propietaria de Reason Studios, permitiendo su uso integral (audio + slices) tanto en el Audio Chopper como en la importación directa.
+
+### 26.1 Arquitectura de Decodificación y Fallback
+- [x] **Diagnóstico y Parser del Formato**:
+  - NeuModMakr decodifica con precisión en TypeScript puro la estructura IFF/CAT `REX2` (`SliceFileParser.ts`), extrayendo los marcadores de corte `SLCE`, tempo BPM, sample rate y metadatos de compás.
+  - Implementación limpia en Python (`bridge/dwop_decompress.py`) del algoritmo de descompresión por entropía con predictor adaptativo de 5 estados para flujos DWOP mono y estéreo (canal izquierdo + canal diferencia).
+- [x] **Descompresión Asistida vía Companion Bridge (`POST /api/decode-rx2`)**:
+  - Servidor local Python (puerto 7860) expone el endpoint `POST /api/decode-rx2` recibiendo `{ rx2_base64, filename }` y retornando `{ status, wav_base64, info, decoded_frames }`.
+  - Capacidad `'decode-rx2'` reportada en el endpoint `/api/health`.
+  - Método `decodeRx2Audio(rx2Buffer, filename)` integrado en `BridgeClient.ts` con conversión binaria Base64 automática.
+  - Integración en `AudioChopperModal.ts` (`openWithAudioBuffer` y `loadAudioFile`) para cargar el loop con su audio real descompromprimido y todos los cortes mapeados.
+- [x] **Universal Smart Import con Detección REX2**:
+  - `rawSamplerParsers.ts` (`parseRex2Sampler`) procesa archivos `.rx2`, `.rex` y `.rcy` extrayendo slices y generando regiones de teclado.
+  - `UniversalImportModal.ts` decodifica de forma transparente con el bridge en segundo plano o asiste en la apertura en Audio Chopper.
+- [x] **Asistente de Emparejamiento en Navegador (Modo Desconectado)**:
+  - Si el Companion Bridge está apagado, `showRx2PairingAssistantModal` muestra una ventana interactiva con tres opciones:
+    1. Emparejar con un archivo de audio WAV/AIFF existente conservando los cortes `SLCE` originales.
+    2. Comprobar conexión con el Companion Bridge y reintentar la descompresión automática al instante.
+    3. Inspección en modo de previsualización acústica sintética sin requerir audio.
+- [x] **Batería de Pruebas Automatizadas**:
+  - `tests/phase26_rex2_decode.test.ts` valida la descompresión DWOP de 58.623 frames en mono 44.1 kHz 24-bit, mapeo cromático de cortes, reporte de preflight y alertas en modo desconectado. Integrado en `tests/run_all.ts`.
+
+---
+
+## Fase 27 — Ampliación de Proveedores BYOK (Claude, OpenRouter, ChatGPT) y Estandarización UI en Pills [PLANIFICADA]
+
+**Objetivo**: Ampliar la conectividad Cloud BYOK en navegador a los principales modelos de lenguaje y razonamiento para el análisis de timbre, sugerencia de articulaciones y prompting acústico avanzado, unificando la interfaz de selección según los estándares de diseño del proyecto.
+
+### 27.1 Proveedores y Motores de Texto / Visión
+- **Conectores Directos en `CloudByokClient`**:
+  - **Anthropic Claude**: Endpoint `v1/messages` (Claude 3.5 Sonnet / Haiku) para análisis tímbrico profundo, descriptores acústicos y notas de programa de presets.
+  - **OpenRouter**: Acceso unificado multi-modelo a través de endpoint compatible OpenAI con soporte de modelos abiertos y propietarios.
+  - **OpenAI (ChatGPT / GPT-4o)**: Generación estructurada de metadatos, tags acústicos y sugerencias de asignación tímbrica.
+- **Normalización de Interfaz (Pills UI)**:
+  - Reemplazo de los menús desplegables (`<select>`) en el generador de carátulas (`AiCoverGeneratorModal.ts`) y en los paneles de IA por el componente estándar de píldoras (`PillSelector` / `tab-pill`) presente en el resto de la aplicación.
+- **Catálogo Modular del Companion Bridge**:
+  - Reorganización del catálogo de modelos locales conforme a la especificación estándar de `ABDShared/Docs/architecture/MODULAR_PACKAGES_STANDARD.md` para empaquetado y pre-descarga desacoplada.
+
+---
+
+## Fase 28 — Estudio en Profundidad de Decent Sampler y Compatibilidad de Librerías Kontakt (Encriptadas vs Sin Encriptar) [PLANIFICADA]
+
+**Objetivo**: Realizar un análisis exhaustivo de paridad del ecosistema Decent Sampler (`.dspreset`) y explorar la viabilidad técnica, límites criptográficos y arquitecturas de extracción para librerías de Native Instruments Kontakt (`.nki`, contenedores monolíticos `.nksn`/`.nkx` y compresión de audio `.ncw`).
+
+### 28.1 Auditoría y Extensión de Paridad de Decent Sampler (`.dspreset`)
+- **Análisis de la Especificación Completa del Formato**:
+  - Evaluación frente a los repositorios de referencia (`DecentSamples/DecentSampler-Sample-Library-Examples` y `J0rgeSerran0/SF2ToDSConverter`).
+  - **Mapeo Avanzado de Articulaciones**:
+    - Round-Robin multinivel: atributos `<group seqMode="round_robin"|"random"|"true_random">` y `<sample seqPosition="N">`.
+    - Triggers dinámicos: `<group trigger="attack"|"release"|"first"|"legato">` con control `pitchKeyTrack="0"` para muestras de apagadores de tecla (key-off dampers) y ruidos mecánicos.
+    - Curvas de atenuación de release: `releaseDecay` (duración de nota sostenida versus volumen de apagador).
+  - **Estructura de Controles de Interfaz Gráfica (`<ui>`)**:
+    - Verificación de generadores de knobs, sliders, menús de selección de microfonía/articulación y etiquetas de visualización en presets exportados.
+  - **Efectos y Rutas de Modulación (`<effects>`, `<modulators>`)**:
+    - Filtros paso-bajo/alto modelados, reverbs convolutivas con respuestas impulsionales (IR), delay estéreo, chorus y generadores de envolvente DAHDSR / LFO.
+
+### 28.2 Estudio de Viabilidad: Librerías Kontakt Estándar (Sin Encriptar vs Encriptadas)
+- **Librerías Kontakt Sin Encriptar (Standard / Open NKI)**:
+  - **Estado actual**: NeuModMakr ya detecta y procesa definiciones estructuradas XML y esquemas abiertos de Kontakt (`parseKontaktNki`).
+  - **Objetivo de extensión**:
+    - Integrar parser binario para versiones anteriores de Kontakt (v1 a v4) basado en flujos zlib y estructuras de fragmentos (`nkitool`).
+    - Decodificación del formato de audio comprimido sin pérdidas de Native Instruments **NCW (Native Compressed Wave)**: adaptación o llamada al algoritmo de descompresión DPCM / mid-side (especificación `monomadic/ncw`) para convertir automáticamente muestras `.ncw` a WAV PCM utilizables por el motor de síntesis.
+- **Librerías Kontakt Encriptadas / Propietarias (Protected / Encrypted NI Containers)**:
+  - **Diagnóstico Criptográfico**:
+    - Las librerías comerciales "Kontakt Player" (con licencia de Native Instruments) emplean contenedores propietarios encriptados mediante claves asimétricas RSA/AES ligadas a la activación por hardware y al Native Access / Service Center.
+    - La carga directa de patches encriptados de terceros sin la clave privada de Native Instruments es legal y técnicamente inviable por ingeniería inversa directa de solo software.
+  - **Estrategia Práctica y Amigable en NeuModMakr**:
+    - **Detección temprana en Preflight**: Al arrastrar un archivo `.nki` o contenedor con firmas encriptadas (`\x2A\x47\x24\x4E` o bloques protegidos), el importador no crashea ni se cuelga; emite de inmediato un diagnóstico informativo detallando que la librería está cifrada por DRM de Native Instruments.
+    - **Pasarela de Conversión y Exportación Recomendada**: Guía integrada para el usuario sobre cómo convertir presets a través de Kontakt estándar (ej. guardar como "Patch + Samples" no comprimidos o exportar mapas SFZ / WAV con utilidades del ecosistema) para su ingesta inmediata en NeuModMakr.
 
 ---
 

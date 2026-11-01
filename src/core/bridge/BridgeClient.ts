@@ -791,6 +791,62 @@ export class BridgeClient {
       clearTimeout(timer);
     }
   }
+
+  /**
+   * Decompresses a Reason Studios / Propellerhead ReCycle 2 (.rx2) audio stream
+   * via the Companion Bridge's native DWOP decompressor and returns a pure PCM WAV ArrayBuffer.
+   */
+  public async decodeRx2Audio(
+    rx2Buffer: ArrayBuffer,
+    filename = 'loop.rx2',
+    timeoutMs = 15000
+  ): Promise<{ wavBuffer: ArrayBuffer; info: any; decodedFrames: number }> {
+    // 1. Convert buffer to Base64
+    const uint8 = new Uint8Array(rx2Buffer);
+    let binary = '';
+    const len = uint8.byteLength;
+    for (let i = 0; i < len; i += 8192) {
+      const chunk = uint8.subarray(i, Math.min(i + 8192, len));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    const b64 = btoa(binary);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/decode-rx2`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          rx2_base64: b64,
+          filename,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status} from /api/decode-rx2`);
+      }
+      const data = await res.json();
+      // Decode wav_base64 back to ArrayBuffer
+      const wavBinary = atob(data.wav_base64);
+      const wavUint8 = new Uint8Array(wavBinary.length);
+      for (let i = 0; i < wavBinary.length; i++) {
+        wavUint8[i] = wavBinary.charCodeAt(i);
+      }
+      return {
+        wavBuffer: wavUint8.buffer as ArrayBuffer,
+        info: data.info,
+        decodedFrames: data.decoded_frames,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 /** Global singleton instance for the application */

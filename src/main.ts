@@ -33,6 +33,9 @@ import { AiCoverGeneratorModal } from './ui/AiCoverGeneratorModal';
 import { AudioChopperModal } from './ui/AudioChopperModal';
 import { LoopEditorModal } from './ui/LoopEditorModal';
 import { RawSamplerExportModal } from './ui/RawSamplerExportModal';
+import { UniversalImportModal } from './ui/UniversalImportModal';
+import { ConfigHealthModal } from './ui/ConfigHealthModal';
+import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { createUniqueModelSlug } from './core/modelSlug';
@@ -62,6 +65,8 @@ class App {
   private audioChopperModal!: AudioChopperModal;
   private loopEditorModal!: LoopEditorModal;
   private rawSamplerExportModal!: RawSamplerExportModal;
+  private universalImportModal!: UniversalImportModal;
+  private configHealthModal!: ConfigHealthModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
   private axionikModels: AxionikDbModelEntry[] = [];
@@ -116,6 +121,15 @@ class App {
 
     this.aiCoverModal = new AiCoverGeneratorModal({
       getConfig: () => self.session?.processConfig ?? self.core.getSession()!.processConfig,
+      getSampleNames: () => {
+        if (!self.session) return [];
+        const names = new Set<string>();
+        for (const z of self.session.zones) {
+          if (z.sampleLow) names.add(z.sampleLow);
+          if (z.sampleHigh) names.add(z.sampleHigh);
+        }
+        return Array.from(names);
+      },
       onApplyCover: (artwork) => {
         if (!self.session) return;
         self.session = self.core.setModelCoverArtwork(artwork);
@@ -228,6 +242,42 @@ class App {
       },
     });
 
+    this.universalImportModal = new UniversalImportModal({
+      getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
+      onInjectBank: (data) => {
+        if (!self.session) return;
+        for (const [name, buf] of data.audioBuffers.entries()) {
+          self.core.registerSampleBuffer(name, buf);
+        }
+        self.session.name = data.modelName;
+        self.session.processConfig.modelName = data.modelName;
+        self.session.processConfig.expandedName = data.presetName;
+        self.session.processConfig.parameterSet = data.parameterSet;
+        self.session.processConfig.workingMode = data.workingMode;
+        self.session.zones = data.classicZones;
+        self.session.extendedRegions = data.extendedRegions;
+        self.session.dirty = true;
+        self.selectedZoneId = data.classicZones[0]?.id ?? null;
+        self.telemetryDrawer.addLog(
+          `Universal Import: Injected bank "${data.presetName}" (${data.classicZones.length} zones, mode: ${data.workingMode}).`
+        );
+        self.refreshUI();
+      },
+      onOpenInAudioChopper: (audioBuf, filename, sliceFrames) => {
+        self.audioChopperModal.openWithAudioBuffer(audioBuf, filename, sliceFrames);
+      },
+      onImportRawAudioFiles: (files) => {
+        // FileList | File[] – cast to FileList (importMixedFilesOrZip iterates by index)
+        void self.imports.importMixedFilesOrZip(files as FileList, 'audio', 'samples', 'Universal Import');
+      },
+    });
+
+    this.configHealthModal = new ConfigHealthModal({
+      onOpenSettings: (tab) => {
+        self.settingsModal.open(tab, self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG);
+      },
+    });
+
     this.settingsModal = new SettingsModal({
       onUpdateAiConfig: (config) => {
         if (!self.session) return;
@@ -321,6 +371,8 @@ class App {
       openAudioChopper: () => void self.openAudioChopper(),
       openLoopEditor: () => self.openLoopEditor(),
       openRawSamplerExport: () => self.rawSamplerExportModal.open(),
+      openUniversalImportModal: () => self.universalImportModal.open(),
+      openConfigHealthModal: () => self.configHealthModal.open(),
     });
   }
 
@@ -434,6 +486,29 @@ class App {
     this.initSubsystems();
     this.bindCoreEvents();
     this.refreshUI();
+    this.checkStartupConfigHealth();
+  }
+
+  private checkStartupConfigHealth(): void {
+    const health = evaluateConfigHealth();
+    this.navbar.updateConfigHealthBadge(health.hasMissingMandatory, health.hasMissingOptional);
+
+    const showOnBoot =
+      typeof localStorage !== 'undefined'
+        ? localStorage.getItem(STORAGE_KEY_CONFIG_HEALTH_ON_BOOT) !== 'false'
+        : true;
+
+    const alreadyShownSession =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('neumodmakr_boot_health_shown') === 'true'
+        : false;
+
+    if (health.hasMissingMandatory || (showOnBoot && !alreadyShownSession && health.hasMissingOptional)) {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('neumodmakr_boot_health_shown', 'true');
+      }
+      this.configHealthModal.open();
+    }
   }
 
   private buildDom(): void {

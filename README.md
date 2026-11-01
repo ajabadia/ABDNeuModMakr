@@ -170,6 +170,26 @@ El proyecto está optimizado para Vercel:
   - Opciones completas de resolución (Original, 16-bit, 24-bit), frecuencia de muestreo (Original, 44.1k, 48k, 96k), normalización (Off, 0 dBFS, -0.3 dBFS) y estructura monolítica vs ZIP con `Samples/`.
 - Acceso directo: Menú `File -> Export Sampler / Multi-Format Bank...` o mediante atajo de teclado **`Ctrl+Shift+E`**.
 
+### 4.10 Entrada Universal de Importación Inteligente y Preflight (`UniversalImportModal.ts` & `rawSamplerParsers.ts` — Fase 18.8)
+- **Punto de Entrada Unificado (`Ctrl+I`)**: Reemplaza y consolida las importaciones dispersas en un único diálogo drag-and-drop con soporte para:
+  - Formatos multisample y presets: SoundFont 2 (`.sf2`), SFZ (`.sfz`), Decent Sampler (`.dspreset`), Kontakt XML (`.nki` sin encriptar), HALion (`.vstpreset`), Bitwig (`.multisample`) y paquetes `.zip`.
+  - Bucles rebanados y slices: ReCycle (`.rx2`, `.rex`, `.rcy`), pistas CUE (`.cue`), y sample chains lineales (WAV/AIFF con marcas `cue ` / `smpl`). Detección automática que ofrece abrir directamente en el **Audio Chopper**.
+  - Audio crudo multizona: Lotes de archivos `.wav`, `.aif`, `.flac`.
+- **Motor de Inspección Preflight de Entrada (`importPreflight.ts`)**:
+  - Detección automática de huecos de teclado (cobertura incompleta de notas MIDI 0..127).
+  - Alertas sobre capas de velocidad incompatibles con el modo clásico Hartmann (más de 2 capas).
+  - Detección de contenedores propietarios o encriptados (ej. Kontakt monolith comprimido) con advertencia clara y explicativa.
+  - Validación de muestras faltantes o referencias de audio huérfanas en el preset.
+- **Adaptaciones Interactivas con un Clic**:
+  - Auto-extensión de zonas exteriores hacia 0 y 127 para garantizar cobertura continua sin silencios.
+  - Adaptación de multicapa a modelo clásico de 2 capas (Low 1..63, High 64..127) con compensación de ganancia.
+  - Conmutación automática a Modo Extendido para preservar todas las capas y regiones dinámicas 2D.
+
+### 4.11 Diagnóstico de Salud del Sistema y Onboarding (`ConfigHealthModal.ts` — Fase 21)
+- Verificación automática al inicio del estado de configuración del entorno (rutas NeuronDB/AxionikDB, Companion Bridge local y API Keys BYOK).
+- Distinción visual clara entre requisitos obligatorios y opcionales con botones directos para configurar cada apartado.
+- Indicador visual dinámico (badge y punto de estado) en la barra de navegación y en el acceso de ajustes.
+
 ---
 
 ## 5. Atajos de Teclado
@@ -180,7 +200,7 @@ El proyecto está optimizado para Vercel:
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Rehacer (*Redo*) |
 | `Ctrl+O` | Abrir sesión (`.nmsession.json`) |
 | `Ctrl+S` | Guardar sesión activa |
-| `Ctrl+I` | Importar archivos de audio (.wav / .aif) |
+| `Ctrl+I` | Universal Smart Import (Audio, Bancos, Slices, Sample Chains) |
 | `Ctrl+N` | Importar archivos por convención de nombre Hartmann |
 | `Ctrl+P` | Procesar modelo y sintetizar tramas Scape/Sphere |
 | `Ctrl+T` | Exportar modelo clásico (`.model`) |

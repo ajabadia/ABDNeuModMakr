@@ -92,11 +92,443 @@ export interface ArtworkGenerationRequest {
   parameterSet?: number;
   parameterSetName?: string;
   category?: string;
+  sampleNames?: string[];
   style: ArtworkStylePreset;
   customPrompt?: string;
   provider: ArtworkProvider;
   detectedF0Hz?: number;
   apiKey?: string;
+}
+
+export interface DetectedAcousticMotif {
+  instrument: string;
+  category: string;
+  visualCue: string;
+}
+
+/**
+ * Intelligent acoustic & instrument motif extractor.
+ * Scans model names, expanded descriptions, category tags, and sample filenames
+ * (e.g. "Violin_Strad_C4.wav", "Steinway_Grand_Piano.aif", "TB303_Acid_Saw.wav")
+ * and extracts the semantic instrument identity and an evocative visual cue.
+ */
+export function extractAcousticInstrumentMotif(
+  sources: (string | undefined | null)[]
+): DetectedAcousticMotif | null {
+  const combined = sources
+    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+    .join(' ')
+    .toLowerCase()
+    .replace(/[_\-\.]+/g, ' ');
+
+  if (!combined.trim()) return null;
+
+  // Ordered match rules: more specific matches first
+  const rules: Array<{
+    patterns: RegExp[];
+    instrument: string;
+    category: string;
+    visualCue: string;
+  }> = [
+    // Bowed Strings
+    {
+      patterns: [/\bviol[ií]n\b/i, /\bfiddle\b/i, /\bstradivarius\b/i, /\bguarneri\b/i],
+      instrument: 'Violin',
+      category: 'Bowed Strings',
+      visualCue:
+        'harmoniously featuring an artistic stylized silhouette and elegant acoustic wooden curves of a violin integrated into the composition',
+    },
+    {
+      patterns: [/\bviola\b/i],
+      instrument: 'Viola',
+      category: 'Bowed Strings',
+      visualCue:
+        'harmoniously featuring the warm acoustic silhouette and wooden f-hole contours of a viola integrated into the composition',
+    },
+    {
+      patterns: [/\bcello\b/i, /\bvioloncello\b/i],
+      instrument: 'Cello',
+      category: 'Bowed Strings',
+      visualCue:
+        'harmoniously featuring the graceful, resonant wooden silhouette of a cello integrated into the composition',
+    },
+    {
+      patterns: [/\bcontrabass\b/i, /\bdouble\s*bass\b/i, /\bupright\s*bass\b/i, /\bcontrabajo\b/i],
+      instrument: 'Upright Double Bass',
+      category: 'Bowed Strings',
+      visualCue:
+        'harmoniously featuring the deep, majestic silhouette of an acoustic upright double bass integrated into the composition',
+    },
+    {
+      patterns: [/\bstrings\b/i, /\borchestral\s*strings\b/i, /\bcuerdas\b/i, /\bpizzicato\b/i],
+      instrument: 'Orchestral Strings',
+      category: 'Bowed Strings',
+      visualCue:
+        'harmoniously featuring flowing orchestral string body curves and resonant wooden instrument contours',
+    },
+
+    // Pianos & Keyboards
+    {
+      patterns: [/\bgrand\s*piano\b/i, /\bpiano\s*de\s*cola\b/i, /\bsteinway\b/i, /\bbosendorfer\b/i, /\bconcert\s*grand\b/i],
+      instrument: 'Concert Grand Piano',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the sweeping concert grand piano lid silhouette and ivory acoustic key geometry',
+    },
+    {
+      patterns: [/\bupright\s*piano\b/i, /\bpiano\s*vertical\b/i, /\bacoustic\s*piano\b/i, /\bpiano\b/i],
+      instrument: 'Acoustic Piano',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the warm acoustic upright piano cabinet and felt hammer geometry',
+    },
+    {
+      patterns: [/\brhodes\b/i, /\bfender\s*rhodes\b/i, /\belectric\s*piano\b/i, /\bepiano\b/i, /\be-piano\b/i],
+      instrument: 'Rhodes Electric Piano',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the iconic electric piano silhouette, vintage tine resonance bars and warm 70s keyboard styling',
+    },
+    {
+      patterns: [/\bwurlitzer\b/i, /\bwurly\b/i],
+      instrument: 'Wurlitzer Electric Piano',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the classic Wurlitzer reed piano silhouette and vintage analog vibrato aesthetic',
+    },
+    {
+      patterns: [/\bclavinet\b/i, /\bclav\b/i],
+      instrument: 'Clavinet',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the funk clavinet keyboard profile and rocker switch geometry',
+    },
+    {
+      patterns: [/\bhammond\b/i, /\btonewheel\b/i, /\bb3\b/i, /\bleslie\b/i],
+      instrument: 'Hammond Organ',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the dual-manual organ drawbar console and revolving Leslie horn aesthetic',
+    },
+    {
+      patterns: [/\bpipe\s*organ\b/i, /\bchurch\s*organ\b/i, /\b[oó]rgano\b/i],
+      instrument: 'Cathedral Pipe Organ',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring majestic cathedral organ pipes and polished acoustic flutes',
+    },
+    {
+      patterns: [/\baccordion\b/i, /\bacorde[oó]n\b/i],
+      instrument: 'Accordion',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring folding acoustic accordion bellows and pearloid treble grill contours',
+    },
+    {
+      patterns: [/\bharpsichord\b/i, /\bclavecin\b/i, /\bclavicordio\b/i],
+      instrument: 'Harpsichord',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring delicate baroque harpsichord plucking jacks and ornate acoustic soundboard inlay',
+    },
+    {
+      patterns: [/\bcelesta\b/i],
+      instrument: 'Celesta',
+      category: 'Keyboard',
+      visualCue:
+        'harmoniously featuring the delicate bell-piano silhouette and steel tone plate mechanism',
+    },
+
+    // Plucked Strings & Guitars
+    {
+      patterns: [/\bharp\b/i, /\barpa\b/i],
+      instrument: 'Concert Harp',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the sweeping golden pillar, pedal box and ascending string array of a concert pedal harp',
+    },
+    {
+      patterns: [/\bsitar\b/i],
+      instrument: 'Sitar',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the resonant gourd silhouette, curved frets and sympathetic strings of an acoustic sitar',
+    },
+    {
+      patterns: [/\bkoto\b/i, /\bshamisen\b/i],
+      instrument: 'Koto',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the elongated paulownia wood soundboard and movable bridge array of a Japanese koto',
+    },
+    {
+      patterns: [/\bbanjo\b/i],
+      instrument: 'Banjo',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the circular parchment head, wooden rim and five-string tailpiece of an acoustic banjo',
+    },
+    {
+      patterns: [/\bmandolin\b/i, /\bmandolina\b/i],
+      instrument: 'Mandolin',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the arched teardrop scroll, f-holes and dual brass strings of an acoustic mandolin',
+    },
+    {
+      patterns: [/\bukulele\b/i, /\bukelele\b/i],
+      instrument: 'Ukulele',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the compact wooden acoustic ukulele body and nylon string silhouette',
+    },
+    {
+      patterns: [/\bacoustic\s*guitar\b/i, /\bnylon\s*guitar\b/i, /\bclassical\s*guitar\b/i, /\bguitarra\s*ac[uú]stica\b/i],
+      instrument: 'Acoustic Guitar',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the warm curves of a wooden acoustic guitar body, rosette soundhole and fretboard geometry',
+    },
+    {
+      patterns: [/\belectric\s*guitar\b/i, /\bstratocaster\b/i, /\btelecaster\b/i, /\bles\s*paul\b/i, /\bguitar\b/i, /\bguitarra\b/i],
+      instrument: 'Electric Guitar',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the iconic sculpted contours of an electric guitar body and magnetic pickup pole pieces',
+    },
+    {
+      patterns: [/\belectric\s*bass\b/i, /\bbass\s*guitar\b/i, /\bjazz\s*bass\b/i, /\bprecision\s*bass\b/i],
+      instrument: 'Bass Guitar',
+      category: 'Plucked Strings',
+      visualCue:
+        'harmoniously featuring the solid-body electric bass outline and heavy nickel-wound string contours',
+    },
+
+    // Woodwinds
+    {
+      patterns: [/\bflute\b/i, /\bpiccolo\b/i, /\bflauta\b/i],
+      instrument: 'Flute',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the sleek silver acoustic flute silhouette and circular embouchure key mechanism',
+    },
+    {
+      patterns: [/\bclarinet\b/i, /\bclarinete\b/i],
+      instrument: 'Clarinet',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the black African blackwood clarinet body, silver key ring cluster and flared bell',
+    },
+    {
+      patterns: [/\boboe\b/i],
+      instrument: 'Oboe',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the slender conical oboe body, double reed cane contour and silver keywork',
+    },
+    {
+      patterns: [/\bbassoon\b/i, /\bfagot\b/i],
+      instrument: 'Bassoon',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the curved maple wood bassoon wing joint, bocal crook and dual reed mechanism',
+    },
+    {
+      patterns: [/\bsaxophone\b/i, /\bsax\b/i, /\bsaxo\b/i],
+      instrument: 'Saxophone',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the gleaming brass curves, pearloid key buttons and flared bell of an acoustic saxophone',
+    },
+    {
+      patterns: [/\bduduk\b/i],
+      instrument: 'Duduk',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the ancient Armenian apricot wood duduk body and broad cane reed silhouette',
+    },
+    {
+      patterns: [/\bshakuhachi\b/i],
+      instrument: 'Shakuhachi',
+      category: 'Woodwinds',
+      visualCue:
+        'harmoniously featuring the root-end bamboo shakuhachi flute silhouette and angled blowing edge',
+    },
+
+    // Brass
+    {
+      patterns: [/\btrumpet\b/i, /\btrompeta\b/i, /\bcornet\b/i, /\bflugelhorn\b/i],
+      instrument: 'Trumpet',
+      category: 'Brass',
+      visualCue:
+        'harmoniously featuring the brilliant brass trumpet bell, piston valve casing and spiral tubing silhouette',
+    },
+    {
+      patterns: [/\bfrench\s*horn\b/i, /\bcorno\b/i, /\btrompa\b/i],
+      instrument: 'French Horn',
+      category: 'Brass',
+      visualCue:
+        'harmoniously featuring the majestic circular brass french horn tubing loop and wide acoustic bell flair',
+    },
+    {
+      patterns: [/\btrombone\b/i, /\btromb[oó]n\b/i],
+      instrument: 'Trombone',
+      category: 'Brass',
+      visualCue:
+        'harmoniously featuring the cylindrical brass slide, counterweight and resonant trombone bell silhouette',
+    },
+    {
+      patterns: [/\btuba\b/i, /\bsousaphone\b/i],
+      instrument: 'Tuba',
+      category: 'Brass',
+      visualCue:
+        'harmoniously featuring the massive low-brass tuba bell and gleaming acoustic brass coil silhouette',
+    },
+    {
+      patterns: [/\bbrass\b/i, /\bmetales\b/i, /\bhorn\s*section\b/i],
+      instrument: 'Brass Section',
+      category: 'Brass',
+      visualCue:
+        'harmoniously featuring gleaming horn flares and sculptural acoustic brass contours',
+    },
+
+    // Mallets & Percussion
+    {
+      patterns: [/\bmarimba\b/i],
+      instrument: 'Marimba',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring stepped wooden acoustic rosewood tone bars and descending acoustic resonators',
+    },
+    {
+      patterns: [/\bvibraphone\b/i, /\bvibes\b/i],
+      instrument: 'Vibraphone',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring polished metallic vibraphone bars and spinning damper flutter discs',
+    },
+    {
+      patterns: [/\bxylophone\b/i, /\bxil[oó]fono\b/i],
+      instrument: 'Xylophone',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring bright acoustic wooden mallet bars and struck tone geometry',
+    },
+    {
+      patterns: [/\bglockenspiel\b/i, /\bchimes\b/i, /\bcarillon\b/i],
+      instrument: 'Glockenspiel',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring bright tuned steel bells and crystalline mallet percussion geometry',
+    },
+    {
+      patterns: [/\bkalimba\b/i, /\bmbira\b/i, /\bthumb\s*piano\b/i],
+      instrument: 'Kalimba',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring mounted steel spring tines and hardwood soundboard cavity of an acoustic kalimba',
+    },
+    {
+      patterns: [/\btimpani\b/i, /\bkettledrum\b/i],
+      instrument: 'Timpani',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring gleaming copper hemispherical timpani bowls and tension tuning rods',
+    },
+    {
+      patterns: [/\b808\b/i, /\bsub\s*bass\b/i],
+      instrument: '808 Sub Bass',
+      category: 'Electronic Percussion',
+      visualCue:
+        'harmoniously featuring low-frequency acoustic sine pressure waves and analog drum machine waveform iconography',
+    },
+    {
+      patterns: [/\bsnare\b/i, /\bredoblante\b/i],
+      instrument: 'Snare Drum',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring circular acoustic drum tension hoops, wooden snare shell and metallic rim silhouette',
+    },
+    {
+      patterns: [/\bkick\s*drum\b/i, /\bbombo\b/i],
+      instrument: 'Kick Drum',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring massive low-end circular acoustic drum head geometry and beater impact waves',
+    },
+    {
+      patterns: [/\bconga\b/i, /\bbongo\b/i, /\bdjembe\b/i],
+      instrument: 'Hand Percussion',
+      category: 'Percussion',
+      visualCue:
+        'harmoniously featuring the hand-carved hardwood shell and stretched rawhide skin of acoustic percussion',
+    },
+
+    // Synthesizers & Electronic Hardware
+    {
+      patterns: [/\bmoog\b/i, /\bminimoog\b/i],
+      instrument: 'Moog Synthesizer',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring the iconic angled wooden synthesis panel, ladder filter knobs and heavy rotary switch silhouette',
+    },
+    {
+      patterns: [/\btb-?303\b/i, /\bacid\b/i],
+      instrument: 'TB-303 Bassline',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring the silver acid bassline box silhouette, stepped pattern matrix and resonance knob styling',
+    },
+    {
+      patterns: [/\bjupiter\b/i, /\bjuno\b/i],
+      instrument: 'Analog Poly Synth',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring the vintage analog synth slider array, bender lever and rainbow chassis graphics',
+    },
+    {
+      patterns: [/\bprophet\b/i, /\bsequential\b/i],
+      instrument: 'Sequential Prophet',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring walnut synth side cheeks, matrix LED buttons and analog potentiometer knobs',
+    },
+    {
+      patterns: [/\bmodular\b/i, /\beurorack\b/i],
+      instrument: 'Modular Synthesizer',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring modular patch cables, knurled 3.5mm jacks and precision CV attenuator dials',
+    },
+    {
+      patterns: [/\bfm\s*synth\b/i, /\bdx7\b/i, /\boperator\b/i],
+      instrument: 'FM Synthesizer',
+      category: 'Synthesizer',
+      visualCue:
+        'harmoniously featuring algorithmic operator algorithms, crisp LCD grid matrices and complex wavetable topological surfaces',
+    },
+
+    // Vocal & Choral
+    {
+      patterns: [/\bchoir\b/i, /\bchoral\b/i, /\bvocal\b/i, /\bsoprano\b/i, /\btenor\b/i, /\bcoro\b/i, /\bvoice\b/i, /\bvox\b/i],
+      instrument: 'Vocal Choir',
+      category: 'Voice',
+      visualCue:
+        'harmoniously featuring expressive ethereal human vocal formants, acoustic singing profile and glowing choral resonance waves',
+    },
+  ];
+
+  for (const rule of rules) {
+    if (rule.patterns.some((pat) => pat.test(combined))) {
+      return {
+        instrument: rule.instrument,
+        category: rule.category,
+        visualCue: rule.visualCue,
+      };
+    }
+  }
+
+  return null;
 }
 
 export interface ArtworkGenerationResult {
@@ -110,6 +542,7 @@ export interface ArtworkGenerationResult {
 
 /**
  * Automatically crafts a rich, evocative acoustic prompt from model identity and timbre.
+ * Seamlessly incorporates acoustic instrument visual motifs detected from model name or sample files.
  */
 export function buildAcousticArtworkPrompt(params: {
   modelName: string;
@@ -117,6 +550,7 @@ export function buildAcousticArtworkPrompt(params: {
   parameterSet?: number;
   parameterSetName?: string;
   category?: string;
+  sampleNames?: string[];
   style: ArtworkStylePreset;
   customPrompt?: string;
 }): string {
@@ -128,6 +562,18 @@ export function buildAcousticArtworkPrompt(params: {
   let prompt = `Square album cover art for an electronic music synthesizer instrument named "${title}" ${categoryStr}. `;
   prompt += `Acoustic timbre identity: ${paramSetName}. `;
   prompt += `${styleInfo.keywords}. `;
+
+  // Extract semantic acoustic / instrument motif from title, category and sample filenames
+  const sampleText = (params.sampleNames || []).join(' ');
+  const motif = extractAcousticInstrumentMotif([
+    params.expandedName,
+    params.modelName,
+    params.category,
+    sampleText,
+  ]);
+  if (motif) {
+    prompt += `${motif.visualCue}. `;
+  }
 
   if (params.customPrompt?.trim()) {
     prompt += `${params.customPrompt.trim()}. `;

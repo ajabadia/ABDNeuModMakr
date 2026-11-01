@@ -13,7 +13,7 @@ import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
-import { encodePcm16Wav } from '../core/dsp/WavDecoder.ts';
+import { encodePcm16Wav, decodeWav, decodeAiff } from '../core/dsp/WavDecoder.ts';
 import {
   computeZoomedWaveformEnvelope,
   snapFrameToNearestZeroCrossing,
@@ -35,6 +35,7 @@ import {
   type ManualSilenceRange,
 } from '../core/dsp/AudioSlicerEngine.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
+import { bridgeClient } from '../core/bridge/BridgeClient.ts';
 import type { Zone, ExtendedRegion, WorkingMode } from '../core/types.ts';
 import { midiToNoteName } from './ZoneRibbon.ts';
 
@@ -106,7 +107,12 @@ export class AudioChopperModal {
     this.context = context;
   }
 
-  public open(pcm: Float32Array, sampleRate: number, sourceFilename: string = ''): void {
+  public open(
+    pcm: Float32Array,
+    sampleRate: number,
+    sourceFilename: string = '',
+    sliceFrames?: number[]
+  ): void {
     if (this.backdropEl) return;
     this.pcm = pcm;
     this.sampleRate = Math.max(1, sampleRate);
@@ -115,17 +121,48 @@ export class AudioChopperModal {
     this.viewCenterNorm = 0.5;
     this.selectedSliceId = null;
     this.activeBoundaryIndex = 1;
-    this.manualCutFrames.clear();
     this.manualSilenceRanges = [];
     this.manualCutsPolicy = 'prompt';
 
-    if (this.pcm.length > 0) {
-      this.recomputeSlices();
+    if (sliceFrames && sliceFrames.length > 1) {
+      this.manualCutFrames = new Set(sliceFrames.filter((f) => f > 0 && f < this.pcm.length));
+      this.currentResult = buildSlicesFromBoundaries(
+        this.pcm,
+        this.sampleRate,
+        sliceFrames,
+        this.options
+      );
+      this.selectedSliceId = this.currentResult.slices[0]?.id ?? null;
     } else {
-      this.currentResult = null;
+      this.manualCutFrames.clear();
+      if (this.pcm.length > 0) {
+        this.recomputeSlices();
+      } else {
+        this.currentResult = null;
+      }
     }
 
     this.render();
+  }
+
+  public openWithAudioBuffer(arrayBuf: ArrayBuffer, filename: string, sliceFrames?: number[]): void {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.rx2') || lower.endsWith('.rex') || lower.endsWith('.rcy')) {
+      void this._handleRx2Buffer(arrayBuf, filename, sliceFrames);
+      return;
+    }
+    const isAif = lower.endsWith('.aif') || lower.endsWith('.aiff');
+    const decoded = isAif ? decodeAiff(arrayBuf) : decodeWav(arrayBuf);
+    let mono: Float32Array;
+    if (decoded.channels.length === 1) {
+      mono = decoded.channels[0];
+    } else {
+      mono = new Float32Array(decoded.channels[0].length);
+      for (let i = 0; i < mono.length; i++) {
+        mono[i] = (decoded.channels[0][i] + decoded.channels[1][i]) * 0.5;
+      }
+    }
+    this.open(mono, decoded.sampleRate, filename, sliceFrames);
   }
 
   public close(): void {
@@ -144,8 +181,14 @@ export class AudioChopperModal {
     try {
       const arrayBuf = await file.arrayBuffer();
 
-      // Check if it's a slice marker or ReCycle file first (.rx2, .rex, .rcy, .sfz, .cue, .txt)
-      const isSliceFileExt = /\.(rx2|rex|rcy|sfz|cue|txt)$/i.test(file.name);
+      // Check if it's a ReCycle file (.rx2, .rex, .rcy)
+      if (/\.(rx2|rex|rcy)$/i.test(file.name)) {
+        await this._handleRx2Buffer(arrayBuf, file.name);
+        return;
+      }
+
+      // Check if it's a slice marker or CUE/SFZ file (.sfz, .cue, .txt)
+      const isSliceFileExt = /\.(sfz|cue|txt)$/i.test(file.name);
       if (isSliceFileExt) {
         const parsed = parseSliceFile(arrayBuf, file.name, this.sampleRate);
         if (parsed && parsed.sliceFrames.length > 0) {
@@ -457,6 +500,181 @@ export class AudioChopperModal {
       if (remember) this.manualCutsPolicy = 'keep';
       this.closeConfirmModal();
       onKeep();
+    });
+  }
+
+  private async _handleRx2Buffer(
+    arrayBuf: ArrayBuffer,
+    filename: string,
+    providedSliceFrames?: number[]
+  ): Promise<void> {
+    const parsed = parseSliceFile(arrayBuf, filename, this.sampleRate);
+    const sliceFrames =
+      providedSliceFrames && providedSliceFrames.length > 0
+        ? providedSliceFrames
+        : (parsed?.sliceFrames ?? []);
+
+    if (bridgeClient.isConnected()) {
+      try {
+        toast('Decompressing REX2 audio via Companion Bridge...', 'info');
+        const { wavBuffer, info } = await bridgeClient.decodeRx2Audio(arrayBuf, filename);
+        const wavName = filename.replace(/\.(rx2|rex|rcy)$/i, '.wav');
+        this.context.onRegisterSampleBuffer?.(wavName, wavBuffer);
+
+        const decoded = decodeWav(wavBuffer);
+        let mono: Float32Array;
+        if (decoded.channels.length === 1) {
+          mono = decoded.channels[0];
+        } else {
+          mono = new Float32Array(decoded.channels[0].length);
+          for (let i = 0; i < mono.length; i++) {
+            mono[i] = (decoded.channels[0][i] + decoded.channels[1][i]) * 0.5;
+          }
+        }
+
+        this.open(mono, decoded.sampleRate, wavName, sliceFrames);
+        toast(
+          `Decompressed ${sliceFrames.length} slices from ${filename} (${info.channels === 2 ? 'Stereo' : 'Mono'}, ${info.sample_rate} Hz)`,
+          'success'
+        );
+        return;
+      } catch (err) {
+        console.warn('Companion Bridge REX2 decode failed, falling back to pairing dialog:', err);
+        this.showRx2PairingAssistantModal(filename, sliceFrames, arrayBuf, parsed?.sampleRate);
+        return;
+      }
+    }
+
+    // Bridge is offline
+    this.showRx2PairingAssistantModal(filename, sliceFrames, arrayBuf, parsed?.sampleRate);
+  }
+
+  public showRx2PairingAssistantModal(
+    rx2Filename: string,
+    sliceFrames: number[],
+    rx2Buffer?: ArrayBuffer,
+    detectedSampleRate: number = 44100
+  ): void {
+    this.closeConfirmModal();
+
+    const modal = document.createElement('div');
+    modal.className = 'nmm-modal-backdrop nmm-confirm-backdrop';
+    modal.id = 'rx2-pairing-modal';
+    modal.innerHTML = `
+      <div class="nmm-modal-window nmm-confirm-window" style="max-width: 560px; z-index: 100010;">
+        <header class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
+            <span class="nmm-modal-header-icon" style="color: var(--color-primary, #3b82f6);">${ICONS.wave}</span>
+            <h2>REX2 Audio Pairing Assistant</h2>
+          </div>
+          <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close">${ICONS.close || '✕'}</button>
+        </header>
+
+        <div class="nmm-modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; line-height: 1.5;">
+          <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--color-primary, #3b82f6); padding: 10px 14px; border-radius: 4px;">
+            <strong style="color: var(--color-text-main);">Proprietary DWOP Audio Compression Detected</strong>
+            <p style="margin: 4px 0 0 0; color: var(--color-text-muted);">
+              File <code>${escHtml(rx2Filename)}</code> contains <strong>${sliceFrames.length} slice markers</strong>, but its audio uses Reason Studios' DWOP compression format which cannot be decompressed in standard browsers without the Companion Bridge.
+            </p>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
+              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 1: Pair with Equivalent WAV / AIFF (Recommended)</strong>
+              <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-text-muted);">
+                Select the uncompressed audio file exported alongside this loop. All ${sliceFrames.length} slice boundaries will be mapped precisely onto it.
+              </p>
+              <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" style="display: none;" />
+              <button type="button" class="btn btn-primary" id="btn-rx2-browse-wav" style="width: 100%;">
+                ${ICONS.folder || ICONS.wave} Select Companion Audio File...
+              </button>
+            </div>
+
+            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
+              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 2: Native Companion Bridge Decompression</strong>
+              <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--color-text-muted);">
+                Start the local Python Companion Bridge (<code>python bridge/server.py</code> on port 7860). When active, REX2 files decompress automatically in the background.
+              </p>
+              <button type="button" class="btn btn-outline" id="btn-rx2-retry-bridge" style="width: 100%;">
+                ${ICONS.refresh || '⟳'} Check Bridge Connection &amp; Retry
+              </button>
+            </div>
+
+            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
+              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 3: Inspect Slices with Synthetic Impulse Preview</strong>
+              <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--color-text-muted);">
+                Generate synthetic transient impulses at slice boundaries to inspect, edit, or export slice points without audio.
+              </p>
+              <button type="button" class="btn btn-secondary" id="btn-rx2-use-synthetic" style="width: 100%;">
+                Open Slices in Synthetic Mode
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" id="btn-rx2-pairing-cancel">Cancel</button>
+        </footer>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    this.activeConfirmModalEl = modal;
+
+    modal.querySelector('#btn-rx2-pairing-close')?.addEventListener('click', () => {
+      this.closeConfirmModal();
+    });
+    modal.querySelector('#btn-rx2-pairing-cancel')?.addEventListener('click', () => {
+      this.closeConfirmModal();
+    });
+
+    const fileInp = modal.querySelector('#inp-rx2-companion-wav') as HTMLInputElement | null;
+    modal.querySelector('#btn-rx2-browse-wav')?.addEventListener('click', () => {
+      fileInp?.click();
+    });
+
+    fileInp?.addEventListener('change', async () => {
+      const companionFile = fileInp.files?.[0];
+      if (!companionFile) return;
+      try {
+        const cBuf = await companionFile.arrayBuffer();
+        this.closeConfirmModal();
+        this.openWithAudioBuffer(cBuf, companionFile.name, sliceFrames);
+        toast(`Paired "${rx2Filename}" slices with audio "${companionFile.name}"!`, 'success');
+      } catch (err) {
+        toast(`Failed to load companion audio: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    });
+
+    modal.querySelector('#btn-rx2-retry-bridge')?.addEventListener('click', async () => {
+      if (rx2Buffer) {
+        await bridgeClient.checkHealth();
+        if (bridgeClient.isConnected()) {
+          this.closeConfirmModal();
+          await this._handleRx2Buffer(rx2Buffer, rx2Filename, sliceFrames);
+        } else {
+          toast('Companion Bridge is still offline at http://127.0.0.1:7860.', 'warning');
+        }
+      } else {
+        toast('No REX2 buffer stored to retry. Please reload the file.', 'warning');
+      }
+    });
+
+    modal.querySelector('#btn-rx2-use-synthetic')?.addEventListener('click', () => {
+      this.closeConfirmModal();
+      const sr = detectedSampleRate || 44100;
+      const maxFrame = sliceFrames.length > 0 ? Math.max(...sliceFrames) : sr;
+      const totalLen = Math.max(maxFrame + 22050, Math.round(sr * 2));
+      const synthPcm = new Float32Array(totalLen);
+      for (const f of sliceFrames) {
+        if (f < synthPcm.length) {
+          synthPcm[f] = 0.8;
+          if (f + 1 < synthPcm.length) synthPcm[f + 1] = -0.5;
+          if (f + 2 < synthPcm.length) synthPcm[f + 2] = 0.2;
+        }
+      }
+      this.open(synthPcm, sr, rx2Filename, sliceFrames);
+      toast(`Loaded ${sliceFrames.length} REX2 slice markers with synthetic impulse waveform.`, 'info');
     });
   }
 

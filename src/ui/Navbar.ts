@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Navbar Module
 // Integrates with ABDShared's SynthNavBar (`onAction`, `activeValues`, `aboutDialog`)
 // ─────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ export interface NavbarHandlers {
   onSaveToAxionikDb?: () => void;
   onSaveToAxionikDbAs?: () => void;
   onImportSamples: () => void;
+  onUniversalSmartImport?: () => void;
   onImportSampler?: () => void;
   onImportFolder: () => void;
   onImportByName: () => void;
@@ -31,6 +32,7 @@ export interface NavbarHandlers {
   onInstallPwa?: () => void;
   onOpenAiEngineModal?: () => void;
   onOpenSettingsModal?: (tab?: SettingsModalTab) => void;
+  onOpenConfigHealthModal?: () => void;
   onToggleAiAssistance?: () => void;
   onOpenBridgeModal?: () => void;
   onUndo: () => void;
@@ -122,15 +124,22 @@ export class AppNavbar {
             ],
           },
           { separator: true },
-          { id: 104, label: 'Import Audio Files (.wav / .aif)...', action: 'importSamples', shortcut: 'Ctrl+I' },
-          { id: 1045, label: 'Import Audio by Name (Hartmann)...', action: 'importByName', shortcut: 'Ctrl+N' },
-          { id: 105, label: 'Import Audio Folder...', action: 'importFolder' },
-          { id: 1055, label: 'Import SoundFont / SFZ (.sf2, .sfz)...', action: 'importSampler' },
+          { id: 104, label: 'Universal Smart Import (Audio, Bank, Slices, Chains)...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
+          {
+            name: 'Advanced Import',
+            submenu: [
+              { id: 1041, label: 'Import Audio Files (.wav / .aif / .flac)...', action: 'importSamples' },
+              { id: 1045, label: 'Import Audio by Name (Hartmann convention)...', action: 'importByName', shortcut: 'Ctrl+N' },
+              { id: 105,  label: 'Import Audio Folder...', action: 'importFolder' },
+              { separator: true },
+              { id: 1055, label: 'Import SoundFont / SFZ (.sf2, .sfz)...', action: 'importSampler' },
+            ],
+          },
           { id: 1058, label: 'Batch Processor (Multi-Model Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { separator: true },
-          { id: 106, label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
+          { id: 106,  label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
-          { id: 107, label: 'Import Model Files / .zip...', action: 'importModel' },
+          { id: 107,  label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
           { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
           { id: 1056, label: 'Export Sampler / Multi-Format Bank...', action: 'exportSampler', shortcut: 'Ctrl+Shift+E' },
@@ -141,6 +150,8 @@ export class AppNavbar {
         items: [
           { id: 201, label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
           { id: 202, label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+          { separator: true },
+          { id: 2005, label: 'Universal Smart Import (Audio, Bank, Slices)...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
           { separator: true },
           { id: 203, label: 'New Zone (Split at Root Key)', action: 'addZone', shortcut: 'Insert' },
           { id: 204, label: 'Remove Selected Zone', action: 'removeZone', shortcut: 'Delete' },
@@ -222,6 +233,7 @@ export class AppNavbar {
           { id: 901, label: 'Hartmann MODELmaker User Guide...', action: 'manual', shortcut: 'F1' },
           { id: 902, label: 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
+          { id: 9005, label: 'System Configuration Health & Diagnostics...', action: 'openConfigHealth' },
           { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
           { id: 905, label: 'Settings & General Preferences...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
           { id: 906, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
@@ -283,6 +295,7 @@ export class AppNavbar {
       </button>
       <button type="button" class="btn btn-hud-icon btn-settings-toggle" id="nav-btn-settings" title="General Settings &amp; AI Configuration (Ctrl+,)">
         <span class="settings-icon">${ICONS.settings}</span>
+        <span class="nav-health-dot is-hidden" id="nav-settings-dot"></span>
       </button>
     `;
 
@@ -526,14 +539,14 @@ export class AppNavbar {
         <div class="doc-modal-content">
           <h4>1. Canonical Key Zone Table (MIDI 0 C-2 .. 127 G8)</h4>
           <p>Every Neuron model requires continuous coverage of all 128 MIDI keys (<code>0 C-2</code> through <code>127 G8</code>) with no gaps or overlaps. Each row in the canonical Zone Table defines 9 fields: <strong>Zone</strong>, <strong>Low Key</strong>, <strong>Root Key</strong>, <strong>High Key</strong>, <strong>Low Vel</strong>, <strong>High Vel</strong>, <strong>Detune</strong> (<code>-99..+99</code>), <strong>Volume</strong> (<code>-32dB..+12dB</code>), and <strong>Pan</strong> (<code>-50..+50</code>).</p>
-          <h4>2. Importing Audio Samples & Folders</h4>
+          <h4>2. Importing Audio Samples &amp; Banks</h4>
           <ul>
-            <li><strong>Import Samples (Ctrl+I) / Import Folder</strong>: Reads embedded AIFF <code>INST</code> or WAV <code>smpl</code> pitch/key/velocity metadata (<code>lowVelocity &lt; 64</code> → Low Vel, <code>&ge; 64</code> → High Vel), with automatic pitch detection fallback.</li>
-            <li><strong>Import by Name (Ctrl+N)</strong>: Parses the Hartmann naming convention <code>name_rrr_lll_v1.aif</code> / <code>_v2.aif</code> (where <code>rrr</code> is Root Key <code>000..127</code> and <code>lll</code> is Low Key <code>000..127</code>).</li>
-            <li><strong>Export Active Zone as Legacy AIFF</strong>: Converts any loaded WAV/AIFF zone to a canonical <code>44.1 kHz, 16-bit, Mono Big-Endian FORM/AIFF</code> with <code>INST</code> chunk for legacy hardware tools.</li>
+            <li><strong>Universal Smart Import (Ctrl+I)</strong>: Single entry point for all import formats. Drop or browse <code>.wav</code>, <code>.aif</code>, <code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, <code>.nki</code>, <code>.vstpreset</code>, <code>.multisample</code>, <code>.rx2</code>/<code>.rex</code>, <code>.cue</code>, <code>.zip</code>. Auto-detects by binary header and routes to: SoundFont/SFZ importer, Decent Sampler/Kontakt/HALion parser, or Audio Chopper (REX/slice files). Interactive Preflight panel for incompatibilities and auto-adaptations.</li>
+            <li><strong>Advanced Import submenu</strong>: Direct access to legacy paths: Import Audio Files, Import by Name (Hartmann <code>name_rrr_lll_v1.aif</code>), Import Folder, Import SoundFont/SFZ.</li>
+            <li><strong>Export Active Zone as Legacy AIFF</strong>: Converts any loaded zone to <code>44.1 kHz / 16-bit / Mono Big-Endian FORM/AIFF</code> with <code>INST</code> chunk for legacy hardware tools.</li>
           </ul>
           <h4>3. Keyboard Shortcuts</h4>
-          <p><code>Ctrl+O</code> Open Session &bull; <code>Ctrl+S</code> Save Session &bull; <code>Ctrl+I</code> Import Samples &bull; <code>Ctrl+N</code> Import by Name &bull; <code>Ctrl+Z / Ctrl+Y</code> Undo / Redo &bull; <code>Insert</code> New Zone &bull; <code>Delete</code> Remove Zone &bull; <code>Ctrl+P</code> Process Model &bull; <code>Ctrl+T</code> Export ZIP &bull; <code>Space</code> Play/Stop Audition.</p>
+          <p><code>Ctrl+O</code> Open Session &bull; <code>Ctrl+S</code> Save Session &bull; <code>Ctrl+I</code> Universal Smart Import &bull; <code>Ctrl+N</code> Import by Name &bull; <code>Ctrl+Z / Ctrl+Y</code> Undo / Redo &bull; <code>Insert</code> New Zone &bull; <code>Delete</code> Remove Zone &bull; <code>Ctrl+P</code> Process Model &bull; <code>Ctrl+T</code> Export ZIP &bull; <code>Space</code> Play/Stop Audition.</p>
         </div>
       `
       : `
@@ -656,6 +669,8 @@ export class AppNavbar {
           this.handlers.onOpenBridgeModal?.();
         }
         break;
+      case 'universalSmartImport': this.handlers.onUniversalSmartImport?.(); break;
+      case 'openConfigHealth': this.handlers.onOpenConfigHealthModal?.(); break;
       case 'manual': this.showDocModal('manual'); break;
       case 'specs': this.showDocModal('specs'); break;
       case 'installPwa': this.handlers.onInstallPwa?.(); break;
@@ -664,6 +679,25 @@ export class AppNavbar {
       case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
       case 'openLoopEditor': this.handlers.onOpenLoopEditor?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
+    }
+  }
+
+  public updateConfigHealthBadge(hasMissingMandatory: boolean, hasMissingOptional: boolean): void {
+    const dot = this.container.querySelector<HTMLElement>('#nav-settings-dot');
+    const btn = this.container.querySelector<HTMLElement>('#nav-btn-settings');
+    if (!dot) return;
+
+    if (hasMissingMandatory) {
+      dot.className = 'nav-health-dot dot-err';
+      dot.title = 'Configuration Alert: Mandatory settings required';
+      btn?.setAttribute('title', 'Configuration Alert: Mandatory settings required. Click to check.');
+    } else if (hasMissingOptional) {
+      dot.className = 'nav-health-dot dot-warn';
+      dot.title = 'Configuration Recommendation: Optional AI accelerators available';
+      btn?.setAttribute('title', 'General Settings & AI Configuration (Optional features pending). Click to check.');
+    } else {
+      dot.className = 'nav-health-dot is-hidden';
+      btn?.setAttribute('title', 'General Settings & AI Configuration (Ctrl+,)');
     }
   }
 }

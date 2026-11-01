@@ -27,6 +27,8 @@ const TEST_FILES = [
   'audioSlicer.test.ts',
   'phase20_artwork.test.ts',
   'phase16_raw_export.test.ts',
+  'phase18_universal_import.test.ts',
+  'phase26_rex2_decode.test.ts',
 ];
 
 interface TestResult {

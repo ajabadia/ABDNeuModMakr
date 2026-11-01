@@ -51,6 +51,8 @@ export interface MenuContext {
   openAudioChopper?: () => void;
   openLoopEditor?: () => void;
   openRawSamplerExport?: () => void;
+  openUniversalImportModal?: () => void;
+  openConfigHealthModal?: () => void;
 }
 
 export class MenuActions {
@@ -258,7 +260,14 @@ export class MenuActions {
       onSaveSession: () => void this.saveSession(),
       onSaveSessionAs: () => void this.saveSessionAs(),
       onSaveToAxionikDb: () => void this.saveToAxionikDb(),
-      onSaveToAxionikDbAs: () => void this.saveToAxionikDbAs(),
+       onSaveToAxionikDbAs: () => void this.saveToAxionikDbAs(),
+      onUniversalSmartImport: () => {
+        if (this.ctx.openUniversalImportModal) {
+          this.ctx.openUniversalImportModal();
+        } else {
+          this.ctx.imports.triggerAudioImport('samples');
+        }
+      },
       onImportSamples: () => this.ctx.imports.triggerAudioImport('samples'),
       onImportSampler: () => this.ctx.imports.triggerSamplerImport?.(),
       onImportFolder: () => this.ctx.imports.triggerFolderImport(),
@@ -409,6 +418,7 @@ export class MenuActions {
         this.ctx.shell.getTelemetry().open();
       },
       onOpenSettingsModal: (tab) => this.ctx.openSettingsModal?.(tab),
+      onOpenConfigHealthModal: () => this.ctx.openConfigHealthModal?.(),
       onOpenAiEngineModal: () => this.ctx.openAiEngineModal?.(),
       onToggleAiAssistance: () => this.ctx.toggleAiAssistance?.(),
       onOpenBridgeModal: () => this.ctx.openBridgeModal?.(),
@@ -513,7 +523,11 @@ export class MenuActions {
           this.ctx.imports.triggerOpenSession();
         } else if (key === 'i') {
           e.preventDefault();
-          this.ctx.imports.triggerAudioImport('samples');
+          if (this.ctx.openUniversalImportModal) {
+            this.ctx.openUniversalImportModal();
+          } else {
+            this.ctx.imports.triggerAudioImport('samples');
+          }
         } else if (key === 'n') {
           e.preventDefault();
           this.ctx.imports.triggerAudioImport('by-name');
