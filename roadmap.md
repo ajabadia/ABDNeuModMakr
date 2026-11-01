@@ -589,15 +589,16 @@
 
 **Objetivo**: Resolver la limitación de decodificación en navegador de archivos ReCycle 2.0 (`.rx2`) cuyo bloque de audio `SDAT` emplea compresión propietaria de Reason Studios, permitiendo su uso integral (audio + slices) tanto en el Audio Chopper como en la importación directa.
 
-### 26.1 Arquitectura de Decodificación y Fallback
-- [x] **Diagnóstico y Parser del Formato**:
-  - NeuModMakr decodifica con precisión en TypeScript puro la estructura IFF/CAT `REX2` (`SliceFileParser.ts`), extrayendo los marcadores de corte `SLCE`, tempo BPM, sample rate y metadatos de compás.
-  - Implementación limpia en Python (`bridge/dwop_decompress.py`) del algoritmo de descompresión por entropía con predictor adaptativo de 5 estados para flujos DWOP mono y estéreo (canal izquierdo + canal diferencia).
+### 26.1 Arquitectura de Decodificación Dual y Fallback (Vercel-Ready)
+- [x] **Motor Nativo en TypeScript Puro (`DwopDecompressor.ts`)**:
+  - Algoritmo de descompresión DWOP adaptativo de 5 estados portado a TypeScript puro (`src/core/dsp/DwopDecompressor.ts`).
+  - Funciona 100% en el cliente dentro del navegador (cero llamadas de red, cero dependencias backend, listo para Vercel).
+  - Integrado de forma preferente en `AudioChopperModal.ts` y en `rawSamplerParsers.ts`.
 - [x] **Descompresión Asistida vía Companion Bridge (`POST /api/decode-rx2`)**:
-  - Servidor local Python (puerto 7860) expone el endpoint `POST /api/decode-rx2` recibiendo `{ rx2_base64, filename }` y retornando `{ status, wav_base64, info, decoded_frames }`.
-  - Capacidad `'decode-rx2'` reportada en el endpoint `/api/health`.
-  - Método `decodeRx2Audio(rx2Buffer, filename)` integrado en `BridgeClient.ts` con conversión binaria Base64 automática.
-  - Integración en `AudioChopperModal.ts` (`openWithAudioBuffer` y `loadAudioFile`) para cargar el loop con su audio real descompromprimido y todos los cortes mapeados.
+  - Servidor local Python (`bridge/dwop_decompress.py` en puerto 7860) como motor de respaldo opcional.
+  - Endpoint `POST /api/decode-rx2` recibiendo Base64 y retornando WAV PCM limpio de 16/24-bit.
+  - Capacidad `'decode-rx2'` reportada en `/api/health`.
+  - Método `decodeRx2Audio(rx2Buffer, filename)` en `BridgeClient.ts`.
 - [x] **Universal Smart Import con Detección REX2**:
   - `rawSamplerParsers.ts` (`parseRex2Sampler`) procesa archivos `.rx2`, `.rex` y `.rcy` extrayendo slices y generando regiones de teclado.
   - `UniversalImportModal.ts` decodifica de forma transparente con el bridge en segundo plano o asiste en la apertura en Audio Chopper.

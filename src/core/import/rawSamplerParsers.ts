@@ -13,6 +13,7 @@
 
 import { decodeWav, decodeAiff, encodeWavPcm16 } from '../dsp/WavDecoder.ts';
 import { parseSliceFile, type ParsedSliceMarker } from '../dsp/SliceFileParser.ts';
+import { decompressRx2Audio, isRx2Buffer } from '../dsp/DwopDecompressor.ts';
 import type { LoopMode } from '../types.ts';
 import { parseZipArchive } from '../../formats/ZipArchive.ts';
 
@@ -765,8 +766,18 @@ export function parseRex2Sampler(
   const regions: ParsedImportRegion[] = [];
   const audioBuffers = new Map<string, ArrayBuffer>();
 
-  if (decodedWavBuffer && decodedWavBuffer.byteLength > 44) {
-    const decoded = decodeWav(decodedWavBuffer);
+  let activeWav = decodedWavBuffer;
+  if (!activeWav && isRx2Buffer(buffer)) {
+    try {
+      const decompressed = decompressRx2Audio(buffer);
+      activeWav = decompressed.wavBuffer;
+    } catch {
+      // Audio remains offline/empty if DWOP chunk is missing
+    }
+  }
+
+  if (activeWav && activeWav.byteLength > 44) {
+    const decoded = decodeWav(activeWav);
     const totalFrames = decoded.channels[0].length;
     const baseMidi = 36; // C1 starting note
 

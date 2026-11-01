@@ -35,6 +35,7 @@ import {
   type ManualSilenceRange,
 } from '../core/dsp/AudioSlicerEngine.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
+import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
 import type { Zone, ExtendedRegion, WorkingMode } from '../core/types.ts';
 import { midiToNoteName } from './ZoneRibbon.ts';
@@ -514,6 +515,36 @@ export class AudioChopperModal {
         ? providedSliceFrames
         : (parsed?.sliceFrames ?? []);
 
+    // 1. Direct in-browser client-side TypeScript decompression (100% offline, Vercel-ready)
+    if (isRx2Buffer(arrayBuf)) {
+      try {
+        const decompressed = decompressRx2Audio(arrayBuf);
+        const wavName = filename.replace(/\.(rx2|rex|rcy)$/i, '.wav');
+        this.context.onRegisterSampleBuffer?.(wavName, decompressed.wavBuffer);
+
+        let mono: Float32Array;
+        if (decompressed.channels.length === 1) {
+          mono = decompressed.channels[0];
+        } else {
+          mono = new Float32Array(decompressed.channels[0].length);
+          for (let i = 0; i < mono.length; i++) {
+            mono[i] = (decompressed.channels[0][i] + decompressed.channels[1][i]) * 0.5;
+          }
+        }
+
+        const effectiveSlices = sliceFrames.length > 0 ? sliceFrames : decompressed.sliceFrames;
+        this.open(mono, decompressed.sampleRate, wavName, effectiveSlices);
+        toast(
+          `Decompressed ${effectiveSlices.length} slices from ${filename} (${decompressed.channels.length === 2 ? 'Stereo' : 'Mono'}, ${decompressed.sampleRate} Hz) in browser`,
+          'success'
+        );
+        return;
+      } catch (tsErr) {
+        console.warn('In-browser DWOP decompression failed, attempting Bridge fallback:', tsErr);
+      }
+    }
+
+    // 2. Fallback to Companion Bridge if local daemon is running
     if (bridgeClient.isConnected()) {
       try {
         toast('Decompressing REX2 audio via Companion Bridge...', 'info');
@@ -534,18 +565,16 @@ export class AudioChopperModal {
 
         this.open(mono, decoded.sampleRate, wavName, sliceFrames);
         toast(
-          `Decompressed ${sliceFrames.length} slices from ${filename} (${info.channels === 2 ? 'Stereo' : 'Mono'}, ${info.sample_rate} Hz)`,
+          `Decompressed ${sliceFrames.length} slices from ${filename} (${info.channels === 2 ? 'Stereo' : 'Mono'}, ${info.sample_rate} Hz) via Bridge`,
           'success'
         );
         return;
       } catch (err) {
         console.warn('Companion Bridge REX2 decode failed, falling back to pairing dialog:', err);
-        this.showRx2PairingAssistantModal(filename, sliceFrames, arrayBuf, parsed?.sampleRate);
-        return;
       }
     }
 
-    // Bridge is offline
+    // 3. Fallback to pairing assistant dialog
     this.showRx2PairingAssistantModal(filename, sliceFrames, arrayBuf, parsed?.sampleRate);
   }
 
