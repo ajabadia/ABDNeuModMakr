@@ -13,6 +13,9 @@ import { snapFrameToNearestZeroCrossing } from './LoopEditorTools.ts';
 import { detectPitchYinMpm, hzToMidiAndCents } from './AcousticIntelligence.ts';
 import { GM_DRUM_MAP } from '../gmDrumMap.ts';
 import { midiToNoteName } from '../../ui/ZoneRibbon.ts';
+import type { PhonemeWord } from '../bridge/BridgeClient.ts';
+
+export type { PhonemeWord };
 
 export type SlicerMode = 'drums' | 'chromatic' | 'vocals' | 'grid';
 export type GridDivision = '1/4' | '1/8' | '1/16' | '1/32';
@@ -40,6 +43,8 @@ export interface SlicerOptions {
   chromaticBaseNote: number;
   /** Minimum slice distance in milliseconds (default: 45ms for drums, 250ms for vocals) */
   minSliceMs?: number;
+  /** Custom phonetic/semantic words from Whisper-tiny alignment */
+  phoneticWords?: Array<{ word: string; startFrame: number; endFrame: number; confidence?: number }>;
 }
 
 export interface DetectedSlice {
@@ -636,6 +641,67 @@ export function buildSlicesFromBoundaries(
 }
 
 /**
+ * Constructs slices directly from aligned phonetic words (e.g. from Whisper-tiny).
+ * Labels slices with the recognized syllables/words and distributes across the keybed.
+ */
+export function buildSlicesFromPhoneticWords(
+  pcm: Float32Array,
+  sampleRate: number,
+  words: Array<{ word: string; startFrame: number; endFrame: number; confidence?: number }>,
+  options: Partial<SlicerOptions> = {}
+): SlicerResult {
+  const opts: SlicerOptions = { ...DEFAULT_SLICER_OPTIONS, ...options, mode: 'vocals' };
+  const totalFrames = pcm.length;
+
+  if (!words || words.length === 0) {
+    return buildSlicesFromBoundaries(pcm, sampleRate, [0, totalFrames], opts);
+  }
+
+  // Ensure boundaries cover the entire file without gaps
+  const sortedWords = [...words].sort((a, b) => a.startFrame - b.startFrame);
+  const boundaries: number[] = [0];
+
+  for (const w of sortedWords) {
+    const s = clamp(Math.round(w.startFrame), 0, totalFrames);
+    const e = clamp(Math.round(w.endFrame), 0, totalFrames);
+    if (s > boundaries[boundaries.length - 1]) boundaries.push(s);
+    if (e > boundaries[boundaries.length - 1]) boundaries.push(e);
+  }
+  if (boundaries[boundaries.length - 1] < totalFrames) {
+    boundaries.push(totalFrames);
+  }
+
+  // Use base slice builder for RMS, peak, zero-crossing and audio slicing
+  const baseResult = buildSlicesFromBoundaries(pcm, sampleRate, boundaries, opts);
+
+  // Overlay phonetic words as labels
+  let curNote = clamp(opts.chromaticBaseNote || 48, 0, 127);
+  for (let i = 0; i < baseResult.slices.length; i++) {
+    const sl = baseResult.slices[i];
+    if (sl.isSilence) continue;
+
+    // Match slice to word that overlaps its midpoint
+    const midFrame = (sl.startFrame + sl.endFrame) / 2;
+    const matchingWord = sortedWords.find((w) => midFrame >= w.startFrame && midFrame <= w.endFrame);
+
+    if (matchingWord) {
+      sl.label = `Vocal: "${matchingWord.word}" (${(sl.durationSec * 1000).toFixed(0)} ms)`;
+      sl.category = 'vocals';
+    } else {
+      sl.label = `Vocal Phrase #${sl.index} (${(sl.durationSec * 1000).toFixed(0)} ms)`;
+      sl.category = 'vocals';
+    }
+
+    sl.rootKey = curNote;
+    sl.lowKey = curNote;
+    sl.highKey = curNote;
+    curNote = Math.min(127, curNote + 1);
+  }
+
+  return baseResult;
+}
+
+/**
  * Automatically segments audio using SuperFlux (drums), OpenVPI Silence Valley (vocals), or Grid.
  */
 export function sliceAudioBuffer(
@@ -648,6 +714,11 @@ export function sliceAudioBuffer(
 
   if (totalFrames <= 128) {
     return buildSlicesFromBoundaries(pcm, sampleRate, [0, totalFrames], opts);
+  }
+
+  // Check if explicit phonetic words are supplied (Whisper alignment)
+  if (opts.phoneticWords && opts.phoneticWords.length > 0) {
+    return buildSlicesFromPhoneticWords(pcm, sampleRate, opts.phoneticWords, opts);
   }
 
   // 1. Vocals & Speech: OpenVPI Slicer algorithm (RMS silence gap + lowest energy valley)

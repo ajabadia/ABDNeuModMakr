@@ -65,6 +65,35 @@ export interface AxionikSaveFileEntry {
   content_b64?: string;
 }
 
+export interface StemSeparationResult {
+  status: string;
+  stems: Record<string, ArrayBuffer>;
+  sampleRate: number;
+  durationSec: number;
+  success?: boolean;
+  error?: string;
+}
+
+export interface PhonemeWord {
+  word: string;
+  startSec: number;
+  endSec: number;
+  startFrame: number;
+  endFrame: number;
+  confidence?: number;
+}
+
+export interface PhonemeAlignmentResult {
+  status: string;
+  words: PhonemeWord[];
+  boundaries: number[];
+  sampleRate: number;
+  totalFrames: number;
+  durationSec?: number;
+  success?: boolean;
+  error?: string;
+}
+
 export interface BridgeEnhanceOptions {
   targetSampleRate?: number;
   targetLoopSec?: number;
@@ -846,6 +875,165 @@ export class BridgeClient {
         wavBuffer: wavUint8.buffer as ArrayBuffer,
         info: data.info,
         decodedFrames: data.decoded_frames,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Separates an audio buffer into distinct musical stems (e.g. vocals vs instrumental, or drums/bass/vocals/other)
+   * using the companion bridge (HTDemucs v4 or high-fidelity DSP separation).
+   */
+  public async separateStems(
+    audioBuffer: ArrayBuffer,
+    options?: { stems?: string[]; filename?: string; timeoutMs?: number }
+  ): Promise<StemSeparationResult> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+
+    const uint8 = new Uint8Array(audioBuffer);
+    let binary = '';
+    const len = uint8.byteLength;
+    for (let i = 0; i < len; i += 8192) {
+      const chunk = uint8.subarray(i, Math.min(i + 8192, len));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    const b64 = btoa(binary);
+
+    const stems = options?.stems ?? ['vocals', 'instrumental'];
+    const timeoutMs = options?.timeoutMs ?? 30000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${this.url}/api/separate-stems`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          audio_base64: b64,
+          stems,
+          filename: options?.filename ?? 'sample.wav',
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status} from /api/separate-stems`);
+      }
+
+      const data = (await res.json()) as {
+        status: string;
+        stems: Record<string, string>;
+        sample_rate: number;
+        duration_sec: number;
+      };
+
+      const resultStems: Record<string, ArrayBuffer> = {};
+      for (const [stemName, stemB64] of Object.entries(data.stems || {})) {
+        const stemBin = atob(stemB64);
+        const stemUint8 = new Uint8Array(stemBin.length);
+        for (let i = 0; i < stemBin.length; i++) {
+          stemUint8[i] = stemBin.charCodeAt(i);
+        }
+        resultStems[stemName] = stemUint8.buffer as ArrayBuffer;
+      }
+
+      return {
+        status: data.status,
+        stems: resultStems,
+        sampleRate: data.sample_rate || 44100,
+        durationSec: data.duration_sec || 0,
+        success: data.status === 'ok',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Aligns vocal speech and phonemes to extract syllable/word boundaries
+   * using OpenAI Whisper-tiny or syllabic spectral analysis via the companion bridge.
+   */
+  public async alignPhonemes(
+    audioBuffer: ArrayBuffer,
+    options?: { filename?: string; timeoutMs?: number }
+  ): Promise<PhonemeAlignmentResult> {
+    if (!this.currentStatus.connected) {
+      throw new Error('Local companion bridge is offline.');
+    }
+
+    const uint8 = new Uint8Array(audioBuffer);
+    let binary = '';
+    const len = uint8.byteLength;
+    for (let i = 0; i < len; i += 8192) {
+      const chunk = uint8.subarray(i, Math.min(i + 8192, len));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    const b64 = btoa(binary);
+
+    const timeoutMs = options?.timeoutMs ?? 20000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${this.url}/api/align-phonemes`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({
+          audio_base64: b64,
+          filename: options?.filename ?? 'vocal.wav',
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error || `HTTP ${res.status} from /api/align-phonemes`);
+      }
+
+      const data = (await res.json()) as {
+        status: string;
+        words: Array<{
+          word: string;
+          start_sec: number;
+          end_sec: number;
+          start_frame: number;
+          end_frame: number;
+          confidence?: number;
+        }>;
+        boundaries: number[];
+        sample_rate: number;
+        total_frames: number;
+      };
+
+      const mappedWords: PhonemeWord[] = (data.words || []).map((w) => ({
+        word: w.word,
+        startSec: w.start_sec,
+        endSec: w.end_sec,
+        startFrame: w.start_frame,
+        endFrame: w.end_frame,
+        confidence: w.confidence,
+      }));
+
+      return {
+        status: data.status,
+        words: mappedWords,
+        boundaries: data.boundaries || [],
+        sampleRate: data.sample_rate || 44100,
+        totalFrames: data.total_frames || 0,
+        durationSec: (data.total_frames || 0) / (data.sample_rate || 44100),
+        success: data.status === 'ok',
       };
     } finally {
       clearTimeout(timer);

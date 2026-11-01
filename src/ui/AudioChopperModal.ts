@@ -22,6 +22,7 @@ import {
   sliceAudioBuffer,
   sliceAudioBufferPreservingManualCuts,
   buildSlicesFromBoundaries,
+  buildSlicesFromPhoneticWords,
   moveSliceBoundary,
   splitSliceAtFrame,
   deleteSlice,
@@ -819,6 +820,12 @@ export class AudioChopperModal {
                     <span>${(this.pcm.length / this.sampleRate).toFixed(2)}s (${this.pcm.length.toLocaleString()} frames)</span>
                     <span class="val-pill">${validCount} Active Slices</span>
                   </div>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-whisper-align" title="Align vocal phrases and syllables with OpenAI Whisper-tiny">
+                    ${ICONS.sparkle || ICONS.ai} AI Vocal Align
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
+                    ${ICONS.wave} Separate Stems
+                  </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-import-cues" title="Import ReCycle (.rx2, .rex, .rcy), SFZ, or CUE text slice marker file">
                     ${ICONS.database} Import ReCycle / Cues...
                   </button>
@@ -1681,6 +1688,13 @@ export class AudioChopperModal {
     this.backdropEl.querySelector('#btn-chopper-change-file')?.addEventListener('click', () => fileInp?.click());
     this.backdropEl.querySelector('#btn-chopper-import-cues')?.addEventListener('click', () => markerInp?.click());
 
+    this.backdropEl.querySelector('#btn-chopper-whisper-align')?.addEventListener('click', () => {
+      void this.runWhisperVocalAlignment();
+    });
+    this.backdropEl.querySelector('#btn-chopper-demucs-split')?.addEventListener('click', () => {
+      this.showStemSeparationModal();
+    });
+
     this.backdropEl.querySelector('#btn-chopper-demo-beat')?.addEventListener('click', () => {
       this.loadTestDemoBeat();
     });
@@ -2488,5 +2502,219 @@ export class AudioChopperModal {
     }
 
     this.close();
+  }
+
+  private async runWhisperVocalAlignment(): Promise<void> {
+    if (this.pcm.length === 0) {
+      toast('Please load or drop an audio file before aligning vocal phonemes.', 'warning');
+      return;
+    }
+
+    const btn = this.backdropEl?.querySelector('#btn-chopper-whisper-align') as HTMLButtonElement | null;
+    if (btn) btn.disabled = true;
+
+    toast('Analyzing vocal phonemes with Whisper-tiny...', 'info');
+
+    try {
+      const wavBuf = encodePcm16Wav(this.pcm, this.sampleRate);
+      const res = await bridgeClient.alignPhonemes(wavBuf);
+
+      if (!res.success || !res.words || res.words.length === 0) {
+        toast(`Whisper alignment: ${res.error || 'No distinct vocal phonemes or words detected in audio.'}`, 'warning');
+        return;
+      }
+
+      this.options.mode = 'vocals';
+      this.manualSilenceRanges = [];
+      this.manualCutsPolicy = 'prompt';
+
+      this.currentResult = buildSlicesFromPhoneticWords(
+        this.pcm,
+        this.sampleRate,
+        res.words,
+        this.options
+      );
+
+      this.manualCutFrames = new Set(
+        this.currentResult.slices
+          .map((s) => s.startFrame)
+          .filter((f) => f > 0 && f < this.pcm.length)
+      );
+
+      this.selectedSliceId = this.currentResult.slices[0]?.id ?? null;
+      this.activeBoundaryIndex = 1;
+
+      this.render();
+      toast(
+        `Aligned ${res.words.length} vocal segments via Whisper-tiny (${((res.durationSec ?? 0) * 1000).toFixed(0)}ms total)!`,
+        'success'
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast(`Whisper alignment error: ${msg}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  private showStemSeparationModal(): void {
+    if (this.pcm.length === 0) {
+      toast('Please load an audio file first before separating stems.', 'warning');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'nmm-modal-backdrop nmm-stem-split-backdrop';
+    modal.innerHTML = `
+      <div class="nmm-modal-window" style="max-width: 580px; z-index: 100020;">
+        <header class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
+            <span class="nmm-modal-header-icon" style="color: var(--color-accent);">${ICONS.wave}</span>
+            <h2>Demucs AI Stem Separation</h2>
+          </div>
+          <button type="button" class="nmm-modal-close" id="btn-stem-close">${ICONS.close || '✕'}</button>
+        </header>
+        <div class="nmm-modal-body" style="padding: 16px 20px; font-size: 13px; line-height: 1.5;">
+          <p style="margin-bottom: 12px; color: var(--color-text-main);">
+            Isolate vocal lines or instrument stems using Demucs neural stem separation (or high-fidelity Mid/Side DSP fallback) before slicing.
+          </p>
+          <div style="background: var(--color-surface-dim, rgba(255,255,255,0.03)); border: 1px solid var(--color-border); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;">
+            <div style="font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">Stems to Separate:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="chk-stem-vocals" checked />
+                <span>Vocals (Acapella)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="chk-stem-drums" checked />
+                <span>Drums (Percussion)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="chk-stem-bass" checked />
+                <span>Bass (Low-End)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="chk-stem-instrumental" checked />
+                <span>Instrumental (Other)</span>
+              </label>
+            </div>
+          </div>
+          <div id="stem-results-container" style="display: none; margin-bottom: 16px;">
+            <div style="font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">Separated Audio Stems:</div>
+            <div id="stem-buttons-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          </div>
+          <div id="stem-processing-indicator" style="display: none; align-items: center; gap: 10px; color: var(--color-accent); font-weight: 500; margin-bottom: 16px;">
+            <span class="nmm-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+            <span>Running Demucs stem separation via Companion Bridge...</span>
+          </div>
+        </div>
+        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
+          <button type="button" class="btn btn-outline" id="btn-stem-cancel">Close</button>
+          <button type="button" class="btn btn-primary" id="btn-stem-run">${ICONS.sparkle || ICONS.ai} Run Separation</button>
+        </footer>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('#btn-stem-close')?.addEventListener('click', closeModal);
+    modal.querySelector('#btn-stem-cancel')?.addEventListener('click', closeModal);
+
+    const runBtn = modal.querySelector('#btn-stem-run') as HTMLButtonElement | null;
+    const processingEl = modal.querySelector('#stem-processing-indicator') as HTMLElement | null;
+    const resultsContainer = modal.querySelector('#stem-results-container') as HTMLElement | null;
+    const listEl = modal.querySelector('#stem-buttons-list') as HTMLElement | null;
+
+    runBtn?.addEventListener('click', async () => {
+      const stems: string[] = [];
+      if ((modal.querySelector('#chk-stem-vocals') as HTMLInputElement)?.checked) stems.push('vocals');
+      if ((modal.querySelector('#chk-stem-drums') as HTMLInputElement)?.checked) stems.push('drums');
+      if ((modal.querySelector('#chk-stem-bass') as HTMLInputElement)?.checked) stems.push('bass');
+      if ((modal.querySelector('#chk-stem-instrumental') as HTMLInputElement)?.checked) stems.push('instrumental');
+
+      if (stems.length === 0) {
+        toast('Select at least one stem to separate.', 'warning');
+        return;
+      }
+
+      if (runBtn) runBtn.disabled = true;
+      if (processingEl) processingEl.style.display = 'flex';
+
+      try {
+        const wavBuf = encodePcm16Wav(this.pcm, this.sampleRate);
+        const res = await bridgeClient.separateStems(wavBuf, { stems });
+
+        if (!res.success) {
+          toast(`Demucs separation failed: ${res.error || 'Unknown error'}`, 'error');
+          return;
+        }
+
+        if (resultsContainer && listEl) {
+          resultsContainer.style.display = 'block';
+          listEl.innerHTML = '';
+
+          const stemEntries = Object.entries(res.stems);
+          if (stemEntries.length === 0) {
+            listEl.innerHTML = '<div style="color: var(--color-text-dim);">No stems were returned.</div>';
+          }
+
+          for (const [name, buf] of stemEntries) {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.padding = '8px 12px';
+            row.style.background = 'rgba(255,255,255,0.02)';
+            row.style.border = '1px solid var(--color-border)';
+            row.style.borderRadius = '4px';
+
+            const label = document.createElement('span');
+            label.style.fontWeight = '500';
+            label.style.textTransform = 'capitalize';
+            label.textContent = `${name} (${(buf.byteLength / 1024).toFixed(1)} KB)`;
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.style.display = 'flex';
+            actionsDiv.style.gap = '6px';
+
+            const loadBtn = document.createElement('button');
+            loadBtn.type = 'button';
+            loadBtn.className = 'btn btn-xs btn-primary';
+            loadBtn.textContent = 'Load into Slicer';
+            loadBtn.addEventListener('click', () => {
+              try {
+                const decoded = decodeWav(buf);
+                this.pcm = decoded.mono || decoded.channels[0];
+                this.sampleRate = decoded.sampleRate;
+                const baseName = (this.sourceFilename || 'audio').replace(/\.[^/.]+$/, '');
+                this.sourceFilename = `${baseName}_${name}.wav`;
+                this.context.onRegisterSampleBuffer?.(this.sourceFilename, buf);
+                this.recomputeSlices(true);
+                this.render();
+                closeModal();
+                toast(`Loaded "${name}" stem into Audio Chopper!`, 'success');
+              } catch (e: unknown) {
+                const errStr = e instanceof Error ? e.message : String(e);
+                toast(`Failed to load stem: ${errStr}`, 'error');
+              }
+            });
+
+            actionsDiv.appendChild(loadBtn);
+            row.appendChild(label);
+            row.appendChild(actionsDiv);
+            listEl.appendChild(row);
+          }
+        }
+
+        toast('Stem separation completed successfully!', 'success');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`Stem separation error: ${msg}`, 'error');
+      } finally {
+        if (runBtn) runBtn.disabled = false;
+        if (processingEl) processingEl.style.display = 'none';
+      }
+    });
   }
 }

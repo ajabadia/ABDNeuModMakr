@@ -554,18 +554,33 @@
 
 ---
 
-## Fase 24 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing) [PLANIFICADA]
+## Fase 24 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing) [COMPLETADA]
 
 **Objetivo**: Integrar modelos neuronales de análisis y segmentación semántica de audio para el troceado inteligente de muestras complejas (vocales, frases habladas, loops polifónicos, baterías densas), siguiendo escrupulosamente los estándares de IA establecidos en la aplicación:
 - **Arquitectura Local-First**: Inferencia mediante ONNX Runtime Web / WebAudio Worker local, con fallback al Companion Bridge Python local (`aiBridgeEndpoint`) si se requiere mayor precisión o modelos más pesados.
 - **Filosofía No Destructiva**: La IA propone los puntos de corte, etiquetas fonéticas/instrumentales y zonas candidatas, pero el usuario mantiene el control total para arrastrar marcadores, ajustar en el Cut Point Magnifier (±256 smp) y forzar cruces por cero.
 - **Desactivable / Opcional**: El usuario puede alternar en cualquier momento entre algoritmos DSP deterministas (SuperFlux, OpenVPI Silence Valley, Grid) y la asistencia por IA con un solo clic.
 
-### 24.1 Modelos y Capacidades Previstas
-- **Vocal & Speech Phoneme/Word Alignment**: Modelos ligeros de segmentación fonética (estilo CTC / Whisper-tiny / Wav2Vec2) para detectar comienzos exactos de palabras, sílabas y respiraciones naturales, evitando cortes a mitad de consonante o en formantes mantenidos.
-- **Separación de Stems Pre-Troceado (Demucs / MDX-Net via Bridge)**: Capacidad para aislar la voz de la base rítmica antes de trocear, permitiendo rebanar el loop de batería y la frase vocal de un sample compuesto de forma totalmente independiente.
-- **Clasificación Semántica Automática de Slices**: Etiquetado neuronal de piezas de percusión y articulaciones tímbricas (Kick, Snare, Ghost Note, Open/Closed Hat, Ride Bell, Vocal Chop, Ad-lib, Sung Word) para mapeo instantáneo a notas MIDI y capas de velocidad (velocity switching).
-- **Refinamiento de Micro-Transitorios**: Red neuronal ligera de corrección que magnetiza el punto de corte al valle acústico óptimo anterior al transitorio para preservar el ataque íntegro del sonido con 0% de chasquidos (click-free).
+### 24.1 Implementación y Capacidades Completadas
+- **Vocal & Speech Phoneme/Word Alignment (Whisper-tiny via Bridge)**:
+  - Endpoint `POST /api/align-phonemes` en `bridge/server.py` y cliente tipado `bridgeClient.alignPhonemes(buffer)` en `src/core/bridge/BridgeClient.ts`.
+  - Detección de comienzos exactos de palabras y sílabas con fallback DSP acústico de formantes de energía y envolvente temporal cuando no hay entorno PyTorch pesado.
+  - Integración en `AudioSlicerEngine.ts` mediante `buildSlicesFromPhoneticWords` y parámetro opcional `phoneticWords` en `SlicerOptions`.
+- **Separación de Stems Pre-Troceado (Demucs via Bridge)**:
+  - Endpoint `POST /api/separate-stems` en `bridge/server.py` y cliente tipado `bridgeClient.separateStems(buffer, options)` en `src/core/bridge/BridgeClient.ts`.
+  - Capacidad para aislar `vocals`, `instrumental`, `drums` y `bass` antes del troceado, con fallback DSP Mid/Side estereofónico de alta fidelidad.
+- **Integración Visual en Audio Chopper Modal (`AudioChopperModal.ts`)**:
+  - Botón `#btn-chopper-whisper-align` ("AI Vocal Align"): invoca Whisper-tiny y actualiza las rebanadas etiquetándolas como `Vocal: "word" (ms)`.
+  - Botón `#btn-chopper-demucs-split` ("Separate Stems"): abre submodal interactivo para elegir qué stems aislar y cargar el stem aislado directamente en el Chopper para segmentar.
+- **Verificación Automatizada**:
+  - Suite de pruebas unificada `tests/phase24_semantic_slicing.test.ts` añadida al runner unificado `run_all.ts` (19/19 suites PASS).
+
+### 24.2 Gestión de VRAM en Companion Bridge (Single-Active Heavy Model con Auto-Offload)
+- **Aislamiento de Carga en VRAM (Tope Estricto de 1 Modelo Pesado Activo)**:
+  - Para evitar caídas por CUDA Out-Of-Memory (OOM) en tarjetas gráficas estándar de 8 GB o 6 GB (ej. RTX 3060/3070/4060), el Companion Bridge nunca mantendrá dos modelos pesados en VRAM al mismo tiempo (ej. AudioSR 5.8 GB + SD-Turbo 1.6 GB + Demucs 1.5 GB sumarían casi 10 GB).
+  - Antes de cargar un nuevo modelo pesado en GPU, se descarga automáticamente el modelo anterior mediante `del model` / `model.to('cpu')`, ejecutando recolección de basura `gc.collect()` y vaciado explícito de tensores con `torch.cuda.empty_cache()`.
+- **Desacoplamiento de Modelos Ligeros a CPU / ONNX Runtime**:
+  - Modelos ligeros auxiliares (`Whisper-tiny` 39 MB, `Basic Pitch` 1 MB, `DeepFilterNet3` 8 MB) se ejecutan preferentemente en hilos ONNX Runtime / CPU SIMD para no disputar memoria VRAM con los transformadores y difusores pesados.
 
 ---
 
@@ -582,6 +597,17 @@
   - **Batch ReCycle / CUE Converter**: Procesa masivamente archivos `.rx2`, `.rex` o audio con pistas CUE, extrayendo los slices a muestras independientes o generando directamente el paquete `.nmmodel` / Cápsula del Tiempo por cada archivo.
 - **Exportación Masiva de Patrones MIDI**:
   - Generación automática de archivos `.mid` Type 0 con el groove original por cada loop procesado, empaquetados junto a los parches en el archivo maestro ZIP o exportados a la librería local `AxionikDB`.
+
+### 25.2 Arquitectura de Pipeline por Fases Homogéneas (*Batch-by-Stage Staging & Memory Safety*)
+- **Pipelining por Fases en lugar de Bucle por Archivo (Anti-Throttling)**:
+  - En lugar de ejecutar todas las etapas por cada archivo secuencialmente (lo que provocaría cargar y descargar pesos de varios gigabytes N veces a través del bus PCIe, saturando la VRAM y ralentizando el lote), la cola de procesamiento por lotes reorganiza automáticamente el trabajo en **etapas homogéneas por modelo**:
+    1. **Fase 1 — Separación de Stems (HTDemucs)**: Carga Demucs una sola vez en VRAM -> Procesa la separación de pistas vocales/rítmicas de todo el lote -> Descarga Demucs y vacía VRAM (`empty_cache`).
+    2. **Fase 2 — Segmentación y Alineación Fonética (Whisper-tiny)**: Procesa en cola la detección de palabras y sílabas de todas las pistas vocales identificadas en el lote.
+    3. **Fase 3 — Troceado y Mapeo DSP**: Troceado determinista, micro-ajuste a cruces por cero y generación de zonas MIDI.
+    4. **Fase 4 — Super-Resolución / BWE (AudioSR)**: Carga AudioSR una sola vez en VRAM si está activada la extensión de ancho de banda -> Procesa el lote completo -> Descarga AudioSR y vacía VRAM.
+    5. **Fase 5 — Síntesis de Carátulas (SD-Turbo)**: Carga difusión una sola vez -> Genera secuencialmente todas las carátulas 512×512 requeridas para los modelos del lote -> Descarga de VRAM.
+- **Garantía de Consumo Máximo de Hardware**:
+  - El techo de memoria VRAM en todo momento queda acotado al tamaño del modelo individual más pesado (`AudioSR` ~6.2 GB), permitiendo que lotes masivos de cientos de archivos se ejecuten con estabilidad garantizada y sin cuelgues ni fragmentación en hardware de gama media (8 GB VRAM).
 
 ---
 

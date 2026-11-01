@@ -28,6 +28,7 @@ const TEST_FILES = [
   'phase20_artwork.test.ts',
   'phase16_raw_export.test.ts',
   'phase18_universal_import.test.ts',
+  'phase24_semantic_slicing.test.ts',
   'phase26_rex2_decode.test.ts',
   'phase27_byok_text.test.ts',
 ];

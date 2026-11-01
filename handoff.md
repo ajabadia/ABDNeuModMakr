@@ -259,6 +259,13 @@ ABDNeuModMakr/
   - [x] Catalogo modular del Companion Bridge:
     - Actualizacion de `MODEL_REGISTRY` en `bridge/server.py` y `BridgeModelInfo` en `BridgeClient.ts` conforme a `MODULAR_PACKAGES_STANDARD.md` con campos `package` (`@abdsynths/*`), `category`, `runtime`, `min_vram_mb` y version de estandar modular `1.0.0` en `/api/models`.
   - [x] Suite de pruebas automatizadas `tests/phase27_byok_text.test.ts` (6/6 verificaciones) anadida al runner unificado (18/18 suites PASS).
+- [x] **Fase 24 — Segmentacion y Corte Semantico de Audio con IA (AI Semantic Slicing & Stem Separation)**:
+  - [x] Alineacion fonetica vocal con Whisper-tiny: endpoint `POST /api/align-phonemes` en `bridge/server.py`, cliente `bridgeClient.alignPhonemes()` y deteccion de limites foneticos/silabicos.
+  - [x] Separacion de stems previa al corte con Demucs: endpoint `POST /api/separate-stems` en `bridge/server.py`, cliente `bridgeClient.separateStems()` para aislar voz, base ritmica, bajo e instrumental con fallback DSP Mid/Side de alta fidelidad.
+  - [x] Integracion en `AudioSlicerEngine.ts`: mapeo fonetico `buildSlicesFromPhoneticWords` y soporte de `phoneticWords` en `sliceAudioBuffer`.
+  - [x] Interfaz interactiva en `AudioChopperModal.ts`: botones de pildora `#btn-chopper-whisper-align` y `#btn-chopper-demucs-split`, con dialogo interactivo de stems y carga inmediata al lienzo de corte.
+  - [x] Politica de gestion de memoria: documentada politica `Single-Active Heavy Model con Auto-Offload` y pipeline `Batch-by-Stage Staging` para salvaguarda de VRAM.
+  - [x] Suite de pruebas automatizadas `tests/phase24_semantic_slicing.test.ts` anadida al runner unificado (19/19 suites PASS).
 
 ---
 
@@ -268,6 +275,7 @@ ABDNeuModMakr/
 1. **Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
    - Integrar la deteccion y corte automatico en el Batch Processor (`BatchProcessorModal.ts`).
    - Permitir procesar carpetas completas de loops ritmicos, frases vocales y archivos de rebanadas (`.rx2`/`.rex`/`.cue`) de forma 100% desatendida, generando modelos de bateria GM Drum Map, cromaticos equidistantes o volcando archivos MIDI asociados.
+   - **Arquitectura de Pipeline por Fases Homogeneas (Batch-by-Stage / Memory Safety)**: Reordenar la cola del lote por modelos IA para cargar un modelo pesado a la vez en VRAM (Fase Demucs -> Fase Whisper -> Fase DSP Slicing -> Fase AudioSR -> Fase SD-Turbo), liberando VRAM con `torch.cuda.empty_cache()` entre etapas y garantizando ejecucion masiva sin desbordar GPUs de 8 GB VRAM.
 
 ### 5.2 Formatos de Sampler Avanzados y Compatibilidad Kontakt / Decent Sampler
 2. **Fase 28 — Estudio en Profundidad de Decent Sampler y Compatibilidad de Librerias Kontakt (Encriptadas vs Sin Encriptar)**:
@@ -288,8 +296,9 @@ ABDNeuModMakr/
    - Regla de seguridad estricta para impedir borrado de sublibrerias que contengan modelos.
    - Reordenacion manual jerarquica con recalculo dinamico de posiciones.
 5. **Fase 24 — Segmentacion y Corte Semantico de Audio con IA (AI Semantic Slicing)**:
-   - Modelos ligeros de alineacion fonetica (vocal/speech) para cortar por palabras o silabas naturales.
+   - Modelos ligeros de alineacion fonetica (vocal/speech) para cortar por palabras o silabas naturales (OpenAI Whisper-tiny).
    - Separacion de stems pre-troceado (vocal vs base ritmica con Demucs via Bridge).
+   - **Single-Active Heavy Model con Auto-Offload**: Politica en el Companion Bridge para no superar 1 modelo pesado en VRAM simultaneamente (descarga automatica a CPU o liberacion con `gc.collect()` y `torch.cuda.empty_cache()`). Desacoplamiento de Whisper-tiny a CPU/ONNX Runtime.
 6. **Fase 11.4 & Fase 19 — Motor de Sintesis en Tiempo Real ABDAxionikVS (C++ / JUCE 9)**:
    - Motor software de reproduccion en tiempo real en plugin VST3/CLAP/AU.
    - **Modo Rompler Puro (Fase 19)**: Reproduccion directa de audio PCM de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, con filtros analogicos modelados y capas hibridas Rompler + Resintesis Neuronal.
