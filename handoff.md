@@ -243,6 +243,22 @@ ABDNeuModMakr/
   - [x] Asistente de Emparejamiento REX2 (`showRx2PairingAssistantModal`): ventana interactiva en modo desconectado con 3 opciones (emparejar con WAV/AIFF existente, reintentar conexion con el bridge, o previsualizacion con impulsos acusticos sinteticos).
   - [x] Integracion en Universal Smart Import (`rawSamplerParsers.ts` y `UniversalImportModal.ts`) con generacion de regiones cortadas y preflight adaptativo.
   - [x] Suite de pruebas automatizadas `tests/phase26_rex2_decode.test.ts` anadida al runner unificado (17/17 suites PASS).
+- [x] **Fase 27 - Ampliacion de Proveedores BYOK (Claude, OpenRouter, ChatGPT) y Estandarizacion UI en Pills**:
+  - [x] Conectores directos de texto y razonamiento en `CloudByokClient`:
+    - Anthropic Claude (`v1/messages` con `claude-3-5-haiku-20241022`, headers `dangerously-allow-browser: true`).
+    - OpenRouter (gateway multi-modelo OpenAI-compatible con atribucion de cabeceras).
+    - OpenAI ChatGPT (`v1/chat/completions` con `gpt-4o-mini`).
+    - Gemini (`generateContent`), Groq LPU, DeepSeek (`deepseek-chat`) y Mistral AI.
+  - [x] Metodos de dominio acustico de alto nivel:
+    - `generateAcousticTimbreDescription(...)` para analisis timbrico y descriptores sonoros de presets.
+    - `generatePresetTagsAndNotes(...)` para etiquetado semantico.
+    - `enhancePromptWithByokLlm(...)` para enriquecimiento de prompts de artwork con metaforas sensoriales.
+  - [x] Estandarizacion visual en Pills:
+    - Selector de proveedores en `SettingsModal.ts` redisenado con chips/pills interactivas, badges de especialidad (`AudioSR GPU`, `Serverless`, `Multimodal`, `GPT-4o & DALL-E`, `Sonnet & Haiku`, `Multi-Model`, etc.) y estado seleccionado coherente con los tokens del sistema.
+    - Boton rapido de enriquecimiento con LLM (`#btn-enhance-prompt-llm`) en `AiCoverGeneratorModal.ts`.
+  - [x] Catalogo modular del Companion Bridge:
+    - Actualizacion de `MODEL_REGISTRY` en `bridge/server.py` y `BridgeModelInfo` en `BridgeClient.ts` conforme a `MODULAR_PACKAGES_STANDARD.md` con campos `package` (`@abdsynths/*`), `category`, `runtime`, `min_vram_mb` y version de estandar modular `1.0.0` en `/api/models`.
+  - [x] Suite de pruebas automatizadas `tests/phase27_byok_text.test.ts` (6/6 verificaciones) anadida al runner unificado (18/18 suites PASS).
 
 ---
 
@@ -252,10 +268,6 @@ ABDNeuModMakr/
 1. **Fase 25 Ã¢ÂÂ Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
    - Integrar la detecciÃÂ³n y corte automÃÂ¡tico en el Batch Processor (`BatchProcessorModal.ts`).
    - Permitir procesar carpetas completas de loops rÃÂ­tmicos, frases vocales y archivos de rebanadas (`.rx2`/`.rex`/`.cue`) de forma 100% desatendida, generando modelos de baterÃÂ­a GM Drum Map, cromÃÂ¡ticos equidistantes o volcando archivos MIDI asociados.
-2. **Fase 27 Ã¢ÂÂ AmpliaciÃÂ³n de Proveedores BYOK (Claude, OpenRouter, ChatGPT) y EstandarizaciÃÂ³n UI en Pills**:
-   - Integrar endpoints de chat/razonamiento en `CloudByokClient` para enriquecimiento de prompts y anÃÂ¡lisis acÃÂºstico.
-   - Sustituir selectores desplegables por el componente estÃÂ¡ndar de Pills en los diÃÂ¡logos de IA.
-   - ActualizaciÃÂ³n del catÃÂ¡logo local del Companion Bridge segÃÂºn la especificaciÃÂ³n modular de `ABDShared/Docs/architecture/MODULAR_PACKAGES_STANDARD.md`.
 
 ### 5.2 Funcionalidades Avanzadas de Sampler e IntegraciÃÂ³n de Sintetizador
 4. **Fase 22 Ã¢ÂÂ Suite de Funcionalidades Avanzadas de Sampler Profesional (EstÃÂ¡ndar Kontakt / HALion / Falcon)**:

@@ -20,6 +20,7 @@ export interface ProceduralArtworkOptions {
   parameterSetName?: string;
   category?: string;
   style: ArtworkStylePreset;
+  customPrompt?: string;
   detectedF0Hz?: number;
   width?: number;
   height?: number;

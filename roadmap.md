@@ -612,19 +612,24 @@
 
 ---
 
-## Fase 27 — Ampliación de Proveedores BYOK (Claude, OpenRouter, ChatGPT) y Estandarización UI en Pills [PLANIFICADA]
+## Fase 27 — Ampliación de Proveedores BYOK (Claude, OpenRouter, ChatGPT) y Estandarización UI en Pills [COMPLETADA]
 
 **Objetivo**: Ampliar la conectividad Cloud BYOK en navegador a los principales modelos de lenguaje y razonamiento para el análisis de timbre, sugerencia de articulaciones y prompting acústico avanzado, unificando la interfaz de selección según los estándares de diseño del proyecto.
 
 ### 27.1 Proveedores y Motores de Texto / Visión
-- **Conectores Directos en `CloudByokClient`**:
-  - **Anthropic Claude**: Endpoint `v1/messages` (Claude 3.5 Sonnet / Haiku) para análisis tímbrico profundo, descriptores acústicos y notas de programa de presets.
-  - **OpenRouter**: Acceso unificado multi-modelo a través de endpoint compatible OpenAI con soporte de modelos abiertos y propietarios.
-  - **OpenAI (ChatGPT / GPT-4o)**: Generación estructurada de metadatos, tags acústicos y sugerencias de asignación tímbrica.
-- **Normalización de Interfaz (Pills UI)**:
-  - Reemplazo de los menús desplegables (`<select>`) en el generador de carátulas (`AiCoverGeneratorModal.ts`) y en los paneles de IA por el componente estándar de píldoras (`PillSelector` / `tab-pill`) presente en el resto de la aplicación.
-- **Catálogo Modular del Companion Bridge**:
-  - Reorganización del catálogo de modelos locales conforme a la especificación estándar de `ABDShared/Docs/architecture/MODULAR_PACKAGES_STANDARD.md` para empaquetado y pre-descarga desacoplada.
+- [x] **Conectores Directos en `CloudByokClient`**:
+  - [x] **Anthropic Claude**: Endpoint `v1/messages` (Claude 3.5 Sonnet / Haiku) con headers `x-api-key`, `anthropic-version: 2023-06-01` y `dangerously-allow-browser: true` para análisis tímbrico profundo, descriptores acústicos y notas de programa de presets.
+  - [x] **OpenRouter**: Acceso unificado multi-modelo a través de endpoint compatible OpenAI (`api/v1/chat/completions`) con cabeceras `HTTP-Referer` y `X-Title` para acceso a FLUX, Claude y GPT.
+  - [x] **OpenAI (ChatGPT / GPT-4o)**: Generación estructurada de metadatos, tags acústicos y sugerencias de asignación tímbrica vía `v1/chat/completions`.
+  - [x] **Soporte Universal Adicional**: Conectores LLM en navegador para Google Gemini (`generateContent`), Groq LPU, DeepSeek (`deepseek-chat`) y Mistral AI.
+  - [x] **Métodos de Alto Nivel de Dominio**: `generateAcousticTimbreDescription(...)` y `generatePresetTagsAndNotes(...)` con fallbacks gracefully en fallos de red.
+- [x] **Normalización de Interfaz (Pills UI)**:
+  - [x] Píldoras estandarizadas en paneles de IA (`.btn-style-pill`, `.btn-provider-pill`, `.byok-provider-opt`) con badges de capacidades (`AudioSR GPU`, `Serverless`, `Multimodal`, `GPT-4o & DALL-E`, `Sonnet & Haiku`, `Multi-Model`, etc.).
+  - [x] Acción rápida de enriquecimiento con LLM en `AiCoverGeneratorModal.ts` (`#btn-enhance-prompt-llm`) que integra `enhancePromptWithByokLlm(...)` para enriquecer prompts acústicos con metáforas sensoriales tímbricas.
+- [x] **Catálogo Modular del Companion Bridge**:
+  - [x] Reorganización del catálogo de modelos locales conforme a la especificación estándar de `ABDShared/Docs/architecture/MODULAR_PACKAGES_STANDARD.md` para empaquetado y pre-descarga desacoplada con campos `package` (`@abdsynths/*`), `category`, `runtime`, `min_vram_mb` y versión `1.0.0` en `/api/models`.
+- [x] **Batería de Pruebas Automatizadas**:
+  - [x] `tests/phase27_byok_text.test.ts` (6/6 verificaciones) integrado en `tests/run_all.ts` (18/18 suites PASS).
 
 ---
 

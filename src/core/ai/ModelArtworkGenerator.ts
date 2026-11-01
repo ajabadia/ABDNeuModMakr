@@ -797,6 +797,37 @@ async function generateWithOpenRouter(
 }
 
 /**
+ * Uses a configured BYOK language model (Claude, OpenRouter, ChatGPT, Gemini, Groq, etc.)
+ * to enrich and expand an acoustic artwork prompt with vivid sensory timbre metaphors.
+ */
+export async function enhancePromptWithByokLlm(
+  basePrompt: string,
+  modelName: string,
+  category: string,
+  parameterSetName: string
+): Promise<string> {
+  const provider = cloudByokClient.getFirstAvailableTextProvider();
+  if (!provider) return basePrompt;
+
+  const systemPrompt =
+    'You are a visual artist and synthesizer sound curator. Enrich the input sound prompt into a vivid, single-paragraph image generation prompt for an album cover. Focus on lighting, physical materials, acoustic waves, and futuristic aesthetic. Do not output markdown, preambles or greetings, only the prompt.';
+
+  const prompt = `Synthesizer patch: "${modelName}" (${category}), set: "${parameterSetName}". Base concept: "${basePrompt}". Expand into a rich visual prompt:`;
+
+  try {
+    const res = await cloudByokClient.generateText(prompt, {
+      provider,
+      maxTokens: 120,
+      temperature: 0.7,
+      systemPrompt,
+    });
+    return res.text ? `${basePrompt}, ${res.text}` : basePrompt;
+  } catch {
+    return basePrompt;
+  }
+}
+
+/**
  * Anthropic Claude (Acoustic Prompt Reasoning & Synthesis).
  */
 async function generateWithClaude(
@@ -808,7 +839,23 @@ async function generateWithClaude(
     throw new Error('Anthropic Claude API Key is missing. Please configure it in Settings (BYOK).');
   }
 
-  // Claude synthesizes deterministic acoustic geometry rendered to 512x512 WebP
+  // Claude synthesizes acoustic reasoning to drive the visual direction
+  let visualDirection: string | null = null;
+  try {
+    const response = await cloudByokClient.generateText(
+      `Synthesizer patch: "${request.modelName}" (${request.category}). Aesthetic style: "${request.style}". Generate an ultra-vivid 2-sentence description of an album cover visualizing its sonic resonance and harmonics.`,
+      {
+        provider: 'claude',
+        maxTokens: 100,
+        temperature: 0.6,
+        systemPrompt: 'You are an acoustic album cover designer. Keep it under 2 sentences, focused on texture and light.',
+      }
+    );
+    visualDirection = response.text;
+  } catch {
+    // Non-fatal: procedural rendering proceeds
+  }
+
   return await generateProceduralArtwork({
     modelName: request.modelName,
     expandedName: request.expandedName,
@@ -816,6 +863,7 @@ async function generateWithClaude(
     parameterSetName: request.parameterSetName,
     category: request.category,
     style: request.style,
+    customPrompt: visualDirection || request.customPrompt,
     detectedF0Hz: request.detectedF0Hz,
     width: 512,
     height: 512,

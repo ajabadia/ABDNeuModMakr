@@ -11,6 +11,7 @@
 import {
   ARTWORK_STYLES,
   buildAcousticArtworkPrompt,
+  enhancePromptWithByokLlm,
   generateModelArtwork,
   type ArtworkProvider,
   type ArtworkStylePreset,
@@ -106,6 +107,7 @@ export class AiCoverGeneratorModal {
   private customPrompt: string = '';
   private currentArtwork: ModelCoverArtwork | null = null;
   private isGenerating: boolean = false;
+  private isEnhancingPrompt: boolean = false;
   private generationError: string | null = null;
   private generationStatusText: string = '';
 
@@ -284,9 +286,20 @@ export class AiCoverGeneratorModal {
               <div class="ai-ctrl-card">
                 <div class="ai-ctrl-header">
                   <label for="txt-ai-prompt"><strong>${ICONS.edit} Acoustic Prompt</strong></label>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="Reset prompt to acoustic default">
-                    ${ICONS.refresh} Reset to Default
-                  </button>
+                  <div class="ai-prompt-actions" style="display: flex; gap: 6px; align-items: center;">
+                    <button
+                      type="button"
+                      class="btn btn-xs btn-outline"
+                      id="btn-enhance-prompt-llm"
+                      title="Enrich prompt with sensory timbre descriptors using BYOK LLM (Claude/GPT/OpenRouter)"
+                      ${this.isEnhancingPrompt ? 'disabled' : ''}
+                    >
+                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle || ICONS.ai} Enhance with LLM`}
+                    </button>
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="Reset prompt to acoustic default">
+                      ${ICONS.refresh} Reset
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   id="txt-ai-prompt"
@@ -537,6 +550,40 @@ export class AiCoverGeneratorModal {
     this.backdropEl.querySelector('#btn-reset-prompt')?.addEventListener('click', () => {
       this.customPrompt = '';
       this.render();
+    });
+
+    // Enhance prompt with BYOK LLM button
+    this.backdropEl.querySelector('#btn-enhance-prompt-llm')?.addEventListener('click', async () => {
+      const activeTextProvider = cloudByokClient.getFirstAvailableTextProvider();
+      if (!activeTextProvider) {
+        toast('No BYOK language model key found. Configure Claude, OpenRouter, or OpenAI in Settings.', 'info');
+        return;
+      }
+
+      this.isEnhancingPrompt = true;
+      this.render();
+
+      try {
+        const config = this.context.getConfig();
+        const modelName = config.modelName?.trim() || 'Neural Synthesizer';
+        const pSet = config.parameterSet ?? 0;
+        const category = config.extendedMetadata?.category ?? 'Synthesizer';
+        const promptSeed = this.customPrompt.trim() || buildAcousticArtworkPrompt({
+          modelName,
+          category,
+          parameterSet: pSet,
+          style: this.selectedStyle,
+        });
+
+        const enhanced = await enhancePromptWithByokLlm(promptSeed, modelName, category, `Set ${pSet + 1}`);
+        this.customPrompt = enhanced;
+        toast(`Prompt enriched with ${activeTextProvider.toUpperCase()} acoustic descriptors.`, 'success');
+      } catch (err) {
+        toast(`Failed to enrich prompt: ${String(err)}`, 'error');
+      } finally {
+        this.isEnhancingPrompt = false;
+        this.render();
+      }
     });
 
     // Prompt textarea change

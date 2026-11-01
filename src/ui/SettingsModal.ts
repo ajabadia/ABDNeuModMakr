@@ -883,50 +883,77 @@ export class SettingsModal {
           <div class="byok-field-group">
             <label class="byok-field-label">Preferred Cloud Provider:</label>
             <div class="byok-provider-grid">
+              <label class="byok-provider-opt ${byok.provider === 'claude' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="claude" ${byok.provider === 'claude' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">Anthropic Claude</span>
+                  <span class="provider-pill-badge">Sonnet &amp; Haiku</span>
+                </div>
+                <span class="provider-desc">Deep acoustic reasoning, timbre characterization &amp; prompt synthesis.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'openrouter' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="openrouter" ${byok.provider === 'openrouter' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">OpenRouter</span>
+                  <span class="provider-pill-badge">Multi-Model</span>
+                </div>
+                <span class="provider-desc">Universal gateway to FLUX.1, Claude, GPT-4o, Llama-3 &amp; open models.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'openai' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="openai" ${byok.provider === 'openai' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">OpenAI / ChatGPT</span>
+                  <span class="provider-pill-badge">GPT-4o &amp; DALL-E</span>
+                </div>
+                <span class="provider-desc">Neural album artwork, structured metadata &amp; timbre tagging.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'gemini' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="gemini" ${byok.provider === 'gemini' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">Google Gemini</span>
+                  <span class="provider-pill-badge">Flash &amp; Imagen 3</span>
+                </div>
+                <span class="provider-desc">Multimodal spectral analysis, reasoning &amp; Imagen 3 artwork.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'groq' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="groq" ${byok.provider === 'groq' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">Groq (LPU Speed)</span>
+                  <span class="provider-pill-badge">LPU Real-time</span>
+                </div>
+                <span class="provider-desc">Ultra-fast token inference for instant prompt refinement.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'deepseek' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="deepseek" ${byok.provider === 'deepseek' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">DeepSeek</span>
+                  <span class="provider-pill-badge">R1 Reasoning</span>
+                </div>
+                <span class="provider-desc">DeepSeek-V3 &amp; R1 deep reasoning for timbre analysis.</span>
+              </label>
+              <label class="byok-provider-opt ${byok.provider === 'mistral' ? 'is-selected' : ''}">
+                <input type="radio" name="byok-provider" value="mistral" ${byok.provider === 'mistral' ? 'checked' : ''} />
+                <div class="provider-title-row">
+                  <span class="provider-title">Mistral AI</span>
+                  <span class="provider-pill-badge">European AI</span>
+                </div>
+                <span class="provider-desc">European AI models (Mistral Large, Codestral &amp; Pixtral).</span>
+              </label>
               <label class="byok-provider-opt ${byok.provider === 'replicate' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="replicate" ${byok.provider === 'replicate' ? 'checked' : ''} />
-                <span class="provider-title">Replicate</span>
+                <div class="provider-title-row">
+                  <span class="provider-title">Replicate</span>
+                  <span class="provider-pill-badge">AudioSR GPU</span>
+                </div>
                 <span class="provider-desc">Best for AudioSR (96kHz Super-Resolution) and MusicGen models.</span>
               </label>
               <label class="byok-provider-opt ${byok.provider === 'huggingface' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="huggingface" ${byok.provider === 'huggingface' ? 'checked' : ''} />
-                <span class="provider-title">Hugging Face (Inference API)</span>
+                <div class="provider-title-row">
+                  <span class="provider-title">Hugging Face</span>
+                  <span class="provider-pill-badge">Serverless</span>
+                </div>
                 <span class="provider-desc">Access to open checkpoints and serverless accelerated inference.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'gemini' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="gemini" ${byok.provider === 'gemini' ? 'checked' : ''} />
-                <span class="provider-title">Google Gemini (AI Studio)</span>
-                <span class="provider-desc">Multimodal spectral analysis, reasoning &amp; Imagen 3 artwork.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'openai' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="openai" ${byok.provider === 'openai' ? 'checked' : ''} />
-                <span class="provider-title">OpenAI / ChatGPT</span>
-                <span class="provider-desc">DALL-E 3 high-definition neural album artwork &amp; synth cover art.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'claude' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="claude" ${byok.provider === 'claude' ? 'checked' : ''} />
-                <span class="provider-title">Anthropic Claude</span>
-                <span class="provider-desc">Sonnet 3.5 / Haiku for acoustic prompt synthesis &amp; reasoning.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'openrouter' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="openrouter" ${byok.provider === 'openrouter' ? 'checked' : ''} />
-                <span class="provider-title">OpenRouter</span>
-                <span class="provider-desc">Universal multi-model gateway (FLUX.1, Claude, GPT-4o, Llama-3).</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'deepseek' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="deepseek" ${byok.provider === 'deepseek' ? 'checked' : ''} />
-                <span class="provider-title">DeepSeek</span>
-                <span class="provider-desc">DeepSeek-V3 &amp; R1 deep reasoning for timbre analysis.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'groq' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="groq" ${byok.provider === 'groq' ? 'checked' : ''} />
-                <span class="provider-title">Groq (LPU Speed)</span>
-                <span class="provider-desc">Ultra-fast token inference for instant prompt refinement.</span>
-              </label>
-              <label class="byok-provider-opt ${byok.provider === 'mistral' ? 'is-selected' : ''}">
-                <input type="radio" name="byok-provider" value="mistral" ${byok.provider === 'mistral' ? 'checked' : ''} />
-                <span class="provider-title">Mistral AI</span>
-                <span class="provider-desc">European AI models (Mistral Large, Codestral &amp; Pixtral).</span>
               </label>
             </div>
           </div>

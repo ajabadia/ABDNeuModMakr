@@ -77,6 +77,10 @@ export interface BridgeModelInfo {
   id: string;
   name: string;
   task: string;
+  category?: string;
+  package?: string;
+  runtime?: 'onnx' | 'pytorch' | 'safetensors';
+  min_vram_mb?: number;
   filename: string;
   size_mb: number;
   description: string;
