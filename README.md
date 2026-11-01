@@ -155,6 +155,21 @@ El proyecto está optimizado para Vercel:
 - **64 Partials**: Histograma de armónicos en tiempo real con analizador FFT de 2048 puntos.
 - **Waveform A/B/C**: Comparativa de envolventes (Original vs DSP Legacy 2002 vs DSP Mejorado) con métrica matemática de calidad acústica (*Quality Score*).
 
+### 4.9 Utilidad Universal de Exportación Multi-Formato Raw (`RawSamplerExportModal.ts` & `RawSamplerExporter.ts` — Fase 16)
+- Exportación directa de muestras y zonas originales (`01_raw_source`) de forma pura e intacta, **sin pasar por los transformadores espectrales Scape/Sphere** de Neuron.
+- **7 Estándares de la Industria Soportados**:
+  - **SoundFont 2 (`.sf2`)**: Generador binario RIFF `sfbk` v2.04 completo con bloques `INFO`, banco contiguo PCM16 `sdta` con holgura de 46 muestras anti-click, y jerarquía `pdta` (`phdr`/`pbag`/`pmod`/`pgen` → `inst`/`ibag`/`imod`/`igen` → `shdr`).
+  - **SFZ Format (`.sfz` + carpeta `Samples/` en `.zip`)**: Definición estándar de texto plano con `<control>`, `<global>` y `<region>` compatible con Sforzando, Cakewalk y LinuxSampler.
+  - **Decent Sampler (`.dspreset` + carpeta `Samples/` en `.zip`)**: Definición XML nativa con interfaz gráfica interactiva (knobs de Attack, Release, Tone y Volume), mapeo de grupos y samples.
+  - **Bitwig Studio Multisample (`.multisample`)**: Archivo empaquetado nativo con `multisample.xml` y carpeta de audio directamente reconocible por Bitwig Studio.
+  - **Native Instruments Kontakt (`.nki.zip`)**: Definición estructurada XML con grupos, zonas, clave raíz, rangos de teclas y velocidades.
+  - **Steinberg HALion (`.vstpreset.zip`)**: Archivo de programa HALion XML/vstpreset con capas de zonas y mapeo tímbrico.
+  - **Linear Sample Chain con Cue Markers (`.wav`)**: Archivo de audio continuo lineal de 16-bit o 24-bit PCM con marcas de división RIFF `cue ` incrustadas y etiquetas `LIST adtl` para grooves y samplers hardware (Elektron Octatrack, Roland SP-404 MKII, Korg electribe, OP-1/OP-Z), acompañado de mapa de marcas en texto (`_slices.txt`).
+- **Compuerta de Preflight e Inspección Técnica (`rawSamplerPreflight.ts`)**:
+  - Detección preventiva de incompatibilidades técnicas: clamps automáticos de 24-bit a 16-bit PCM con dither TPDF para SF2, simplificación de envolventes DAHDSR a ADSR estándar, conversión de bucles complejos ping-pong a forward continuo, y bloqueo si faltan buffers en memoria.
+  - Opciones completas de resolución (Original, 16-bit, 24-bit), frecuencia de muestreo (Original, 44.1k, 48k, 96k), normalización (Off, 0 dBFS, -0.3 dBFS) y estructura monolítica vs ZIP con `Samples/`.
+- Acceso directo: Menú `File -> Export Sampler / Multi-Format Bank...` o mediante atajo de teclado **`Ctrl+Shift+E`**.
+
 ---
 
 ## 5. Atajos de Teclado
@@ -170,6 +185,7 @@ El proyecto está optimizado para Vercel:
 | `Ctrl+P` | Procesar modelo y sintetizar tramas Scape/Sphere |
 | `Ctrl+T` | Exportar modelo clásico (`.model`) |
 | `Ctrl+Shift+T` | Guardar paquete completo en formato Cápsula del Tiempo (`.zip`) |
+| `Ctrl+Shift+E` | Abrir exportador de bancos sampler multi-formato raw (*Raw Sampler Export*) |
 | `Ctrl+Shift+B` | Abrir el Procesador por Lotes (*Batch Processor*) |
 | `Ctrl+,` | Abrir Ajustes Generales, Motores de IA y Companion Bridge |
 | `Insert` | Añadir nueva zona |
@@ -197,7 +213,8 @@ La aplicación incluye 6 familias completas de diseño inspiradas en sintetizado
 - **Tokens de Diseño**: Uso estricto de design tokens (`tokens.css` de `@abdsynths/shared/styles`) sin colores hardcodeados.
 - **Formatos de Audio y Modelos**:
   - *Audio*: WAV (PCM 8/16/24/32 bits, IEEE Float 32/64 bits, Extensible), AIFF (FORM/COMM/SSND/INST), SF2 (SoundFont 2.04), SFZ, ReCycle (`.rx2`, `.rex`, `.rcy`), CUE Label Tracks.
-  - *Modelos*: `.model` (Hartmann binario: `.scape`, `.sphere`, `map.script`, `MName`), `.sound` (`sound.script`, `sound.stickrec`), `.nmmodel` (Modern Neural JSON Float32), y paquetes maestros de Cápsula del Tiempo `.zip`.
+  - *Samplers y Bancos Raw*: SoundFont 2 (`.sf2`), SFZ Format (`.sfz`), Decent Sampler (`.dspreset`), Bitwig Studio Multisample (`.multisample`), Native Instruments Kontakt (`.nki`), Steinberg HALion (`.vstpreset`) y Linear Sample Chains con RIFF `cue ` chunks.
+  - *Modelos Neuron*: `.model` (Hartmann binario: `.scape`, `.sphere`, `map.script`, `MName`), `.sound` (`sound.script`, `sound.stickrec`), `.nmmodel` (Modern Neural JSON Float32), y paquetes maestros de Cápsula del Tiempo `.zip`.
 
 ---
 

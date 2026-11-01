@@ -1,6 +1,6 @@
 # ABDNeuModMakr - Handoff
 
-> Estado del proyecto a **2026-10-30**. Lee este archivo al inicio de cualquier conversacion nueva para obtener contexto completo.
+> Estado del proyecto a **2026-11-01**. Lee este archivo al inicio de cualquier conversacion nueva para obtener contexto completo.
 
 ---
 
@@ -202,30 +202,64 @@ ABDNeuModMakr/
   - [x] Interfaz de usuario (`BatchProcessorModal.ts`), botón en Navbar y atajo de teclado `Ctrl+Shift+B`.
   - [x] Suite de pruebas automatizadas `phase12_batch.test.ts` con 11/11 suites pasando en el runner continuo `run_all.ts`.
 
+- [x] **Fase 16 — Utilidad Universal de Exportación Multi-Formato Raw (`RawSamplerExporter.ts`)**:
+  - [x] Exportación pura de muestras y mapeos intactos (`01_raw_source`) sin resíntesis Scape/Sphere.
+  - [x] 7 formatos: SoundFont 2 (`.sf2` RIFF sfbk binario), SFZ Format (`.sfz.zip`), Decent Sampler (`.dspreset.zip`), Bitwig Studio Multisample (`.multisample`), Kontakt (`.nki.zip`), HALion (`.vstpreset.zip`), y Linear Sample Chains con RIFF `cue ` markers (`.wav`).
+  - [x] Compuerta de Preflight interactiva (`rawSamplerPreflight.ts`) con clamps automáticos (16-bit PCM en SF2, ADSR, loops) y modal dedicado (`RawSamplerExportModal.ts` con atajo `Ctrl+Shift+E`).
+- [x] **Fase 17 — Evolución Conjunta con ABDAxionikVS (Metadatos Ricos y Doble Nomenclatura)**:
+  - [x] Doble denominación bidireccional no destructiva: `modelName` (11 caracteres clásicos) vs `expandedName` (ilimitado moderno).
+  - [x] Metadatos ricos de procedencia, licencia, autoría y tags libres (`customAttributes`).
+  - [x] Reubicación UX de edición completa a la pestaña *Metadata & Tags* de `ModelConfigModal.ts` con visor compacto en `ProcessPanel.ts`.
+- [x] **Fase 18 — Troceador de Audio Interactivo (Audio Chopper / AutoSlicer Core)**:
+  - [x] Algoritmos SuperFlux (transitorios) y OpenVPI Silence Valley (vocal/frases) con trimming de silencio dinámico.
+  - [x] Manipulación interactiva en forma de onda, lupa de ajuste fino de cortes (±256 samples), micro-nudge (±1 sample) y snap a cruce por cero (0-X).
+  - [x] Inserción de cortes manuales, menú contextual de borrado y silenciamiento/muteo individual de rebanadas con preservación ante cambios de sensibilidad.
+  - [x] Mapeo automático a GM Drum Map (C1..B2) y Modo Cromático equidistante continuo 0..127 sin huecos.
+  - [x] Parser recursivo IFF para archivos ReCycle 2.0 y 1.x (`.rx2`, `.rex`, `.rcy`), pistas CUE/Audacity y bloques WAV `cue `/`smpl`.
+  - [x] Generador de patrones Standard MIDI (`.mid` Type 0) con timing original y botón arrastrable al DAW.
+- [x] **Fase 20 — Autocarátula Asistida por IA (Model Cover Artwork Generator)**:
+  - [x] Generación de carátulas cuadradas 512×512 en formato WebP con 6 estilos artísticos pre-diseñados.
+  - [x] 3 vías de generación: Procedural Espectral (100% offline y gratis), Companion Bridge local (FastAPI 7860), y Cloud BYOK para 9 proveedores (Gemini, DALL-E 3, Claude, OpenRouter, DeepSeek, Groq, Mistral, HuggingFace FLUX, Replicate).
+  - [x] Integración en `ProcessConfig.coverArtwork` y empaquetado en la capa `05_extended_model/cover.webp` de la Cápsula del Tiempo.
+
 ---
 
-## 5. Que FALTA por hacer (Siguientes Fases)
+## 5. Que FALTA por hacer (Siguientes Fases y Tareas Pendientes)
 
-### 5.1 ABDAxionikVS -- Sintetizador C++ / JUCE 9 (Fase 11.4 & Fase 19)
-- [x] Doble denominacion de modelo en la integracion con ABDAxionikVS:
-  - `modelName`: 11 caracteres ASCII estrictos para compatibilidad con el hardware Hartmann original (archivo MName y display LCD de 2002).
-  - `expandedName`: Nombre sin limite de caracteres para presets modernos, visualizacion en ABDAxionikVS y metadatos JSON de AxionikDB.
-- [ ] Implementar el motor sintetizador software de reproduccion en tiempo real.
-- [ ] **Modo Rompler Puro (Fase 19)**: Cargar y reproducir directamente la materia prima intacta de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, aprovechando filtros analógicos modelados, DAHDSR y loops calibrados. Posibilidad de capas híbridas Rompler + Resíntesis Neuronal.
-- [ ] Resynators con morphing vectorial 2D continuo en joysticks Scape/Sphere.
-- [ ] Disparo hibrido de transitorios PCM de micro-ataque fundidos con el cuerpo aditivo.
-- [ ] Modos de salida Surround 4.0 / 5.1 e interpolacion matricial multi-modelo.
+### 5.1 Tareas Inmediatas de Frontend & Preparación de Muestras
+1. **Fase 18 (Punto 8) — Punto de Entrada Unificado de Importación Inteligente (Universal Smart Import)**:
+   - Fusionar las entradas dispersas del menú (`Import Audio Files`, `Import SoundFont / SFZ`) en un único acceso universal:
+     `Import Audio, Bank or Slices (WAV, AIFF, SF2, SFZ, REX, RX2, CUE)...` (`Ctrl+I`).
+   - Detección automática del formato de archivo por cabecera binaria:
+     - Si es `.sf2` / `.sfz`: ejecuta el conversor e importador nativo de SoundFont/SFZ.
+     - Si es un archivo de bucle troceado (`.rx2`, `.rex`, `.rcy` o audio con `cue`/markers): abre directamente el Audio Chopper con las marcas cargadas.
+     - Si es WAV / AIFF estándar: pregunta o mapea directamente según el material.
+2. **Fase 24 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
+   - Integrar la detección y corte automático en el Batch Processor (`BatchProcessorModal.ts`).
+   - Permitir procesar carpetas completas de loops rítmicos, frases vocales y archivos ReCycle (`.rx2`/`.rex`) de forma 100% desatendida, generando modelos de batería GM Drum Map, cromáticos equidistantes o volcando archivos MIDI asociados.
 
-### 5.2 Utilidades de Exportación y Preparación de Muestras (Fases 16 & 18)
-- [ ] **Utilidad Universal de Exportación Multi-Formato (Fase 16)**: Exportación desde menú `File` de zonas e instrumentos raw originales a SoundFont 2 (`.sf2`), SFZ, Kontakt 5 (`.nki`), HALion, SampleTank y cadena de audio contigua (Sample Chain WAV/AIFF).
-- [ ] **Audio Chopper / Slicer Inteligente & Auto-Mapeo Multicapa (Fase 18)**:
-  - Trimming de silencios y división de audio continua (WAV/AIFF) en slices discretos.
-  - Modo Drums con clasificación asistida por IA/espectral y mapeo a General MIDI (GM Drum Map).
-  - Modo Cromático con autodetección de tono y reparto equidistante (rootKey centrado).
-  - Distribución multicapa por volumen/dinámica (Velocity Layers) y control opcional de solapamientos según compatibilidad del formato destino.
-
-### 5.3 Pruebas End-to-End
-- [ ] Suite de pruebas automatizadas con Playwright para verificacion de flujos de interfaz completos.
+### 5.2 Funcionalidades Avanzadas de Sampler e Integración de Sintetizador
+3. **Fase 21 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon)**:
+   - Round-Robin (alternancia de muestras para evitar efecto ametralladora).
+   - Release Triggers / Key-Off (muestras disparadas al soltar tecla: apagadores, ruidos de traste).
+   - Auto-Mapping por expresiones regulares en nombres de fichero (ej. `Violin_C3_mf_rr1.wav`).
+   - Matriz de Modulación MIDI (CC1, CC11, Aftertouch).
+   - Soporte de Microtuning / Escalas Scala (`.scl`).
+4. **Fase 22 — Organización Jerárquica de Bancos y Sublibrerías de Modelos Extendidos**:
+   - Sublibrerías físicas en disco bajo `/banks/<SublibraryName>/...`.
+   - Asignación de modelos a subbancos en el diálogo de configuración y en el Batch Processor.
+   - Regla de seguridad estricta para impedir borrado de sublibrerías que contengan modelos.
+   - Reordenación manual jerárquica con recálculo dinámico de posiciones.
+5. **Fase 23 — Segmentación y Corte Semántico de Audio con IA (AI Semantic Slicing)**:
+   - Modelos ligeros de alineación fonética (vocal/speech) para cortar por palabras o sílabas naturales.
+   - Separación de stems pre-troceado (vocal vs base rítmica con Demucs vía Bridge).
+6. **Fase 11.4 & Fase 19 — Motor de Síntesis en Tiempo Real ABDAxionikVS (C++ / JUCE 9)**:
+   - Motor software de reproducción en tiempo real en plugin VST3/CLAP/AU.
+   - **Modo Rompler Puro (Fase 19)**: Reproducción directa de audio PCM de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, con filtros analógicos modelados y capas híbridas Rompler + Resíntesis Neuronal.
+   - Resynators con morphing vectorial 2D en joysticks Scape/Sphere.
+   - Modos de salida Surround 4.0 / 5.1.
+7. **Revisión final — NeuronDB Bank Browser**:
+   - Revisión del panel de navegación de librerías según las capturas históricas de `localhost:5320` para confirmar si se requieren ajustes o si la UI actual de BankDrawer/BankManager ya lo cubre de forma superior.
 
 ---
 
