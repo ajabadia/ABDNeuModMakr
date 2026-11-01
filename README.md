@@ -190,6 +190,17 @@ El proyecto está optimizado para Vercel:
 - Distinción visual clara entre requisitos obligatorios y opcionales con botones directos para configurar cada apartado.
 - Indicador visual dinámico (badge y punto de estado) en la barra de navegación y en el acceso de ajustes.
 
+### 4.12 Descompresión de Audio REX2 Dual (`DwopDecompressor.ts` & Companion Bridge — Fase 26)
+- **Motor 100% In-Browser en TypeScript Puro**: Descompresión directa de streams de audio DWOP con predictor adaptativo de 5 estados para archivos `.rx2`, `.rex` y `.rcy`. Cero backend, cero dependencias nativas, listo para Vercel.
+- **Respaldo con Companion Bridge**: Endpoint `POST /api/decode-rx2` en Python en el puerto 7860 como acelerador local.
+- **Asistente de Emparejamiento REX2 (`Rx2PairingAssistantModal.ts`)**: Ventana interactiva que asiste al usuario cuando falta audio o se desea emparejar con archivos WAV/AIFF existentes o previsualizar con impulsos acústicos sintéticos.
+
+### 4.13 Ampliación de Proveedores BYOK y Estandarización UI en Pills (Fase 27)
+- **Conectores de Texto y Razonamiento**: Conectores directos desde el cliente browser en `CloudByokClient` para Anthropic Claude (`v1/messages` con Sonnet/Haiku), OpenRouter (gateway OpenAI-compatible), OpenAI GPT-4o (`v1/chat/completions`), Google Gemini (`generateContent`), Groq LPU, DeepSeek y Mistral AI.
+- **Análisis Tímbrico y Prompting Acústico**: Extracción automática de descriptores acústicos armónicos (`generateAcousticTimbreDescription`) y enriquecimiento de prompts de carátulas (`enhancePromptWithByokLlm`) con metáforas sensoriales.
+- **Estandarización UI en Pills**: Selectores de proveedores de IA y estilos unificados bajo componentes de píldora interactiva (`.btn-style-pill`, `.byok-provider-opt`) con badges de capacidades (`AudioSR GPU`, `Multimodal`, `GPT-4o & DALL-E`, `Sonnet & Haiku`, etc.).
+- **Catálogo Modular del Bridge**: Especificación según `MODULAR_PACKAGES_STANDARD.md` con metadatos de paquetes (`@abdsynths/*`), categorías y requisitos de VRAM en `/api/models`.
+
 ---
 
 ## 5. Atajos de Teclado

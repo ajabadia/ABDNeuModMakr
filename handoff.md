@@ -264,37 +264,40 @@ ABDNeuModMakr/
 
 ## 5. Que FALTA por hacer (Siguientes Fases y Tareas Pendientes)
 
-### 5.1 Tareas Inmediatas de Frontend & PreparaciÃÂ³n de Muestras
-1. **Fase 25 Ã¢ÂÂ Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
-   - Integrar la detecciÃÂ³n y corte automÃÂ¡tico en el Batch Processor (`BatchProcessorModal.ts`).
-   - Permitir procesar carpetas completas de loops rÃÂ­tmicos, frases vocales y archivos de rebanadas (`.rx2`/`.rex`/`.cue`) de forma 100% desatendida, generando modelos de baterÃÂ­a GM Drum Map, cromÃÂ¡ticos equidistantes o volcando archivos MIDI asociados.
+### 5.1 Tareas Inmediatas de Frontend & Preparacion de Muestras
+1. **Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
+   - Integrar la deteccion y corte automatico en el Batch Processor (`BatchProcessorModal.ts`).
+   - Permitir procesar carpetas completas de loops ritmicos, frases vocales y archivos de rebanadas (`.rx2`/`.rex`/`.cue`) de forma 100% desatendida, generando modelos de bateria GM Drum Map, cromaticos equidistantes o volcando archivos MIDI asociados.
 
-### 5.2 Funcionalidades Avanzadas de Sampler e IntegraciÃÂ³n de Sintetizador
-4. **Fase 22 Ã¢ÂÂ Suite de Funcionalidades Avanzadas de Sampler Profesional (EstÃÂ¡ndar Kontakt / HALion / Falcon)**:
+### 5.2 Formatos de Sampler Avanzados y Compatibilidad Kontakt / Decent Sampler
+2. **Fase 28 — Estudio en Profundidad de Decent Sampler y Compatibilidad de Librerias Kontakt (Encriptadas vs Sin Encriptar)**:
+   - **Paridad integral con `.dspreset`**: Round-Robin multinivel (`seqMode="round_robin"|"random"`), Release Triggers con `pitchKeyTrack="0"`, `releaseDecay`, controles UI, filtros y efectos.
+   - **Kontakt sin encriptar**: parser binario legado (v1..v4) y descompresion de audio `.ncw` a WAV PCM.
+   - **Kontakt encriptado**: deteccion temprana en Preflight de contenedores monoliticos cifrados por DRM de Native Instruments con diagnostico explicativo y vias de conversion.
+3. **Fase 22 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estandar Kontakt / HALion / Falcon)**:
    - Round-Robin (alternancia de muestras para evitar efecto ametralladora).
    - Release Triggers / Key-Off (muestras disparadas al soltar tecla: apagadores, ruidos de traste).
    - Auto-Mapping por expresiones regulares en nombres de fichero (ej. `Violin_C3_mf_rr1.wav`).
-   - Matriz de ModulaciÃÂ³n MIDI (CC1, CC11, Aftertouch).
+   - Matriz de Modulacion MIDI (CC1, CC11, Aftertouch).
    - Soporte de Microtuning / Escalas Scala (`.scl`).
-5. **Fase 23 Ã¢ÂÂ OrganizaciÃÂ³n JerÃÂ¡rquica de Bancos y SublibrerÃÂ­as de Modelos Extendidos**:
-   - SublibrerÃÂ­as fÃÂ­sicas en disco bajo `/banks/<SublibraryName>/...`.
-   - AsignaciÃÂ³n de modelos a subbancos en el diÃÂ¡logo de configuraciÃÂ³n y en el Batch Processor.
-   - Regla de seguridad estricta para impedir borrado de sublibrerÃÂ­as que contengan modelos.
-   - ReordenaciÃÂ³n manual jerÃÂ¡rquica con recÃÂ¡lculo dinÃÂ¡mico de posiciones.
-6. **Fase 24 Ã¢ÂÂ SegmentaciÃÂ³n y Corte SemÃÂ¡ntico de Audio con IA (AI Semantic Slicing)**:
-   - Modelos ligeros de alineaciÃÂ³n fonÃÂ©tica (vocal/speech) para cortar por palabras o sÃÂ­labas naturales.
-   - SeparaciÃÂ³n de stems pre-troceado (vocal vs base rÃÂ­tmica con Demucs vÃÂ­a Bridge).
-7. **Fase 11.4 & Fase 19 Ã¢ÂÂ Motor de SÃÂ­ntesis en Tiempo Real ABDAxionikVS (C++ / JUCE 9)**:
-   - Motor software de reproducciÃÂ³n en tiempo real en plugin VST3/CLAP/AU.
-   - **Modo Rompler Puro (Fase 19)**: ReproducciÃÂ³n directa de audio PCM de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, con filtros analÃÂ³gicos modelados y capas hÃÂ­bridas Rompler + ResÃÂ­ntesis Neuronal.
+
+### 5.3 Organizacion, IA Semantica y Sintesis en Tiempo Real
+4. **Fase 23 — Organizacion Jerarquica de Bancos y Sublibrerias de Modelos Extendidos**:
+   - Sublibrerias fisicas en disco bajo `/banks/<SublibraryName>/...`.
+   - Asignacion de modelos a subbancos en el dialogo de configuracion y en el Batch Processor.
+   - Regla de seguridad estricta para impedir borrado de sublibrerias que contengan modelos.
+   - Reordenacion manual jerarquica con recalculo dinamico de posiciones.
+5. **Fase 24 — Segmentacion y Corte Semantico de Audio con IA (AI Semantic Slicing)**:
+   - Modelos ligeros de alineacion fonetica (vocal/speech) para cortar por palabras o silabas naturales.
+   - Separacion de stems pre-troceado (vocal vs base ritmica con Demucs via Bridge).
+6. **Fase 11.4 & Fase 19 — Motor de Sintesis en Tiempo Real ABDAxionikVS (C++ / JUCE 9)**:
+   - Motor software de reproduccion en tiempo real en plugin VST3/CLAP/AU.
+   - **Modo Rompler Puro (Fase 19)**: Reproduccion directa de audio PCM de la capa `01_raw_source` (o `03_enhanced_audio` en 24b/96k) sin procesar por Scape/Sphere, con filtros analogicos modelados y capas hibridas Rompler + Resintesis Neuronal.
    - Resynators con morphing vectorial 2D en joysticks Scape/Sphere.
    - Modos de salida Surround 4.0 / 5.1.
-8. **Fase 28 - Estudio en Profundidad de Decent Sampler y Compatibilidad de Librerias Kontakt (Encriptadas vs Sin Encriptar)**:
-   - Paridad integral con `.dspreset` (Round-Robin multinivel, Release Triggers con pitchKeyTrack="0", releaseDecay, controles UI, filtros y efectos).
-   - Kontakt sin encriptar: parser binario legado (v1..v4) y descompresion de audio `.ncw` a WAV PCM.
-   - Kontakt encriptado: deteccion temprana en Preflight de contenedores monoliticos cifrados por DRM de Native Instruments con diagnostico explicativo y vias de conversion.
-9. **Revision final - NeuronDB Bank Browser**:
+7. **Revision final — NeuronDB Bank Browser**:
    - Revision del panel de navegacion de librerias segun las capturas historicas de localhost:5320 para confirmar si se requieren ajustes o si la UI actual de BankDrawer/BankManager ya lo cubre de forma superior.
+
 ---
 
 ## 6. Convenciones y reglas del proyecto
