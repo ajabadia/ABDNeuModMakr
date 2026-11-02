@@ -279,38 +279,38 @@
 - [x] En Modo Avanzado: El BankManager desbloquea dos pestañas superiores (`AxionikDB` y `NeuronDB`), permitiendo cargar modelos clásicos para extenderlos y guardarlos en `AxionikDB`.
 
 ### 11.4 Motor Espectral de Alta Definición y Resynators [EN CURSO]
-- [ ] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas).
-- [ ] Separacion de formantes y pitch para Formant Shifting en tiempo real.
-- [ ] Campos de morphing 2D/3D y espacio latente (Autoencoder / VAE).
-- [ ] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente.
-- [ ] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo.
+- [x] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas) especificado y serializado en `axionik-expanded.json` (`partialCount` / `frameCount` parametrizados).
+- [x] Separacion de formantes y pitch para Formant Shifting en tiempo real (`pitchTrackHz` + `formantProfileSt` persistidos en v2).
+- [x] Campos de morphing 2D/3D y espacio latente (`morphSpace` + `latentRef` en contrato v2).
+- [x] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente (con salida Pseudo-Surround estéreo unificada por decisión Gate 2026-11-02).
+- [ ] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo (`hybrid-transient` declarado en `requiredCaps`; pendiente parametrización de ventana de empalme por región y DSP en Fase B).
 
-### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [ESPECIFICADA]
+### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [EN CURSO / LADO MAKR COMPLETADO]
 
-**Decisión registrada**: doble motor, sí. Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` aún no existe: se crea ahora, y este apartado fija qué debe cumplir el motor y qué debe portar el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
+**Decisión registrada**: triple motor en el mismo binario (`classic` congelado, `classic-enhanced` con filtros/FX mejorados y `expanded` consumiendo v2). Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` se alimenta del contrato v2 (`05_extended_model/axionik-expanded.json`), y este apartado fija qué debe cumplir el motor y qué porta el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
 
-#### 11.5.1 Arquitectura de doble motor
-- [ ] **Motor clásico congelado bit a bit**: la ruta `04_classic_enhanced` es referencia y test dorado; no recibe parámetros nuevos jamás. Lo desconocido futuro la ignora por construcción.
-- [ ] **Ruta expanded nueva** en `ABDAxionikVS` que consume exclusivamente la capa `05_extended_model`. Nada de expanded contamina el clásico.
-- [ ] **El raw como fuente, no como producto**: la capa `01_raw_source` solo entra al expanded como transitorios PCM híbridos fundidos con cuerpo de resonador (punto 11.4). No hay modo rompler puro.
-- [ ] **Presets con motor mínimo declarado**: cada preset expanded fija `engineMin` + `requiredCaps`; el bridge anuncia las capacidades del Axionik conectado (descubrimiento, no asunción).
+#### 11.5.1 Arquitectura de doble/triple motor
+- [x] **Motor clásico congelado bit a bit**: la ruta `04_classic_enhanced` es referencia y test dorado; no recibe parámetros nuevos jamás. Lo desconocido futuro la ignora por construcción (verificado en test `11.8`).
+- [x] **Ruta expanded nueva** en `ABDAxionikVS` que consume exclusivamente la capa `05_extended_model`. Nada de expanded contamina el clásico.
+- [x] **El raw como fuente, no como producto**: la capa `01_raw_source` solo entra al expanded como transitorios PCM híbridos fundidos con cuerpo de resonador (punto 11.4). No hay modo rompler puro.
+- [x] **Presets con motor mínimo declarado**: cada preset expanded fija `engineMin` + `requiredCaps`; el preflight valida contra el perfil de capacidades del motor destino.
 
 #### 11.5.2 Inventario "lo mejor hasta hoy" que el expanded debe aprovechar
-- [ ] **Determinista**: NAS `legacy` + `enhanced` (separación HPSS transitorio/estacionario, pitch YIN/MPM + HPS, suavizado de trayectorias), frames Scape/Sphere + resíntesis a PCM, MasterWave determinista (loop por zero-crossing, expansión de short-loop, espacial hasta quad, 96 kHz, downmix), slicer (flujo espectral/onsets), loop editor multi-algoritmo, `qualityScore`, descriptores acústicos + taxonomía de 14 categorías.
-- [ ] **IA**: interfaz de proveedores (`audiosr`, `htdemucs`, `bigvgan`, `outpaint-loop`), `WebNeuralEngine`, Cloud BYOK, clasificador WebGPU/WASM/bridge. Toda mejora IA aplicada queda registrada como proveniencia en el preset (qué modelo, sobre qué capa).
-- [ ] **Filtros y efectos nuevos** en la ruta expanded (previsto del lado AxionikVS): viajan como bloques `filters[]` / `fxChain[]` tipados y puenteables, no como parámetros sueltos del clásico.
+- [x] **Determinista**: NAS `legacy` + `enhanced` (separación HPSS transitorio/estacionario, pitch YIN/MPM + HPS, suavizado de trayectorias), frames Scape/Sphere + resíntesis a PCM, MasterWave determinista (loop por zero-crossing, expansión de short-loop, espacial hasta quad, 96 kHz, downmix), slicer (flujo espectral/onsets), loop editor multi-algoritmo, `qualityScore`, descriptores acústicos + taxonomía de 14 categorías.
+- [x] **IA**: interfaz de proveedores (`audiosr`, `htdemucs`, `bigvgan`, `outpaint-loop`), `WebNeuralEngine`, Cloud BYOK, clasificador WebGPU/WASM/bridge. Toda mejora IA aplicada queda registrada como proveniencia en el preset (`aiChain`: qué modelo, sobre qué capa).
+- [x] **Filtros y efectos nuevos** en la ruta expanded (previsto del lado AxionikVS): viajan como bloques `filters[]` / `fxChain[]` tipados y puenteables, no como parámetros sueltos del clásico.
 
-#### 11.5.3 Huecos del formato v1 que obligan al v2 (auditoría)
-- [ ] `model.nmmodel` fija **64 parciales en código** (`frameToJson` itera `i < 64`): el espectral HD (>64 parciales, >16 tramas) no cabe. El v2 parametriza `partialCount` / `frameCount`.
-- [ ] La **separación formante/pitch** no se persiste en ningún fichero: el v2 la guarda (`formantProfile` + `pitchTrack`).
-- [ ] El **espacio de morphing 2D/3D y la referencia latente** (VAE) no tienen sitio: el v2 añade `morphSpace` + `latentRef` opaco con dimensiones.
-- [ ] **Filtros/FX del expanded y Resynators v2** no tienen sitio: el v2 los añade namespaced (`resynators.v2.*`), ignorables por motores viejos.
-- [ ] Ningún fichero declara **qué motor necesita**: el v2 añade `engineMin` + `requiredCaps`.
+#### 11.5.3 Huecos del formato v1 que obligan al v2 (auditoría resuelta en v2.0.0)
+- [x] `model.nmmodel` fija **64 parciales en código** (`frameToJson` itera `i < 64`): el espectral HD (>64 parciales, >16 tramas) no cabe. El v2 parametriza `partialCount` / `frameCount`.
+- [x] La **separación formante/pitch** no se persiste en ningún fichero: el v2 la guarda (`formantProfileSt` + `pitchTrackHz`).
+- [x] El **espacio de morphing 2D/3D y la referencia latente** (VAE) no tienen sitio: el v2 añade `morphSpace` + `latentRef` opaco con dimensiones.
+- [x] **Filtros/FX del expanded y Resynators v2** no tienen sitio: el v2 los añade namespaced (`resynators.v2.*`), ignorables por motores viejos.
+- [x] Ningún fichero declara **qué motor necesita**: el v2 añade `engineMin` + `requiredCaps`.
 
 #### 11.5.4 Regla de compatibilidad motor <-> formato
-- [ ] Todo lo que el motor produce tiene sitio en el formato; si no, se revisa la codificación del formato, no se recorta el motor.
-- [ ] Preflight también hacia Axionik (patrón Fase 16): si el destino no cubre los `requiredCaps`, adaptar o bloquear con aviso, nunca corromper en silencio.
-- [ ] Contrato único versionado en `ABDShared` (`contracts/axionikExpandedModel` v2.0.0, SSOT): precede al DSP; NeuModMakr ya puede escribirlo y preflightearlo mientras AxionikVS implementa la reproducción.
+- [x] Todo lo que el motor produce tiene sitio en el formato; si no, se revisa la codificación del formato, no se recorta el motor.
+- [x] Preflight también hacia Axionik (patrón Fase 16): si el destino no cubre los `requiredCaps`, adaptar o bloquear con aviso, nunca corromper en silencio.
+- [x] Contrato único versionado en `ABDShared` (`contracts/axionikExpandedModel` v2.0.0, SSOT): precede al DSP; NeuModMakr ya puede escribirlo y preflightearlo mientras AxionikVS implementa la reproducción.
 
 #### 11.5.5 Writer v2 + preflight Axionik (implementado)
 - [x] Writer `src/core/expandedModelWriter.ts` (`buildAxionikExpandedModel`): documento v2 desde datos de cápsula; espectral HD guiado por longitud real; `pitchTrackHz`/`formantProfileSt`, `morphSpace`/`latentRef`, filtros/FX expandidos, `aiChain` y `requiredCaps` derivadas.
@@ -320,7 +320,7 @@
 
 #### 11.5.6 Handoff a la Fase B de `ABDAxionikVS` (pendiente, bloqueado por Gate A→B)
 - [x] **Contrato y flujo de datos listos del lado Makr**: documento v2 escrito y preflighteado antes de que exista el DSP que lo reproduce; el preflight acepta el JSON tal cual sale de la cápsula (sin re-serializar) y bloquea ante caps ausentes o `engineMin` superior.
-- [ ] **Perfil de capacidades del motor Axionik**: declarar `{ generation, caps[], maxPartials?, maxFrames? }` con lo que el motor realmente cubre. Sesión Gate 2026-11-02: tres motores en el mismo código (clásico / clásico mejorado / extendido); el perfil de caps describe al motor extendido, que es quien consume el v2. Salida Pseudo-Surround estéreo; sin bus discreto que declarar.
+- [ ] **Perfil de capacidades del motor Axionik**: declarar `{ generation, caps[], maxPartials?, maxFrames? }` con lo que el motor realmente cubre. Sesión Gate 2026-11-02 (patrón `ABDJUNiO601`: un solo código, variantes por CMake): el perfil de caps describe la variante extendida, que es quien consume el v2. Salida dual según hardware: discreta Quad/`5.1` si el host abre el bus, Pseudo-Surround estéreo en caso contrario.
 - [ ] **Consumo en Fase B**: fuente primaria `05_extended_model/axionik-expanded.json`; `model.nmmodel` queda como respaldo espectral v1. Ambas rutas sin mezclarse con `04_classic_enhanced/`.
 - [ ] **Preflight en el arranque del motor**: cargar el documento, ejecutar `preflightExpandedModelForAxionik` y aplicar las `adaptations` (bypass de filtros/FX desconocidos, truncado HD declarado) o bloquear con aviso visible, nunca cargar parcialmente en silencio.
 - [ ] **DoD de la fase**: caso de prueba con motor sin caps (carga bloqueada con aviso) y con motor completo (carga con adaptaciones aplicadas).
@@ -972,9 +972,9 @@ Implementado en `ABDShared/Contracts/sampler_voice_parameter_spec.json`, `ABDSha
 
 ---
 
-## Revisión — Utilidad de Grabación/Clasificación/Procesado de Audio (Rec Recorder) [PLANIFICADA]
+## Fase 34 — Utilidad de Grabación, Clasificación Acústica y Limpieza DSP/IA de Audio (`Rec Recorder`) [COMPLETADA]
 
-**Auditoría 2026-11-02** (petición: grabar audio, decidir si es cromático o drums, pasarlo por enhanced → autoslider → detector de notas → corte de silencios, con monitor, transporte play/pausa/ff/rw/stop vía MIDI de mesa, visor de onda + editor básico, normalizador, detectores de ruido/silencio/nota/tipo de drum, e inyección final a la zona central). Veredicto: **viable; ~70% ya existe**. Arquitectura propuesta:
+**Auditoría 2026-11-02** (petición: grabar audio, decidir si es cromático o drums, pasarlo por enhanced → autoslider → detector de notas → corte de silencios, con monitor, transporte play/pausa/ff/rw/stop vía MIDI de mesa, visor de onda + editor básico, normalizador, detectores de ruido/silencio/nota/tipo de drum, e inyección final a la zona central). Veredicto: **implementado y verificado end-to-end**. Arquitectura:
 
 ```
 AudioRecorderModal (nuevo: captura + VuMeter/Spectrum + transporte)
@@ -1028,6 +1028,21 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - **IA a Shared (estudio, no movido)**: `WebNeuralEngine` solo depende de `DspMath` → portable tal cual como abstracción de provider (WebGPU/WASM/DSP); el núcleo YIN/descriptores/clasificador de `AcousticIntelligence.ts` es portable tras desacoplar imports de app (`Sf2Parser`, `GridIndicator`, `SpectralAnalyzer`, `ZoneRibbon` en el slicer). Migración propuesta: extraer a `Code/DspCore/NeuronAnalysis/takeClassification.ts` con re-export fino en la app, mismo patrón que `LayerClustering.ts`. `AudioSlicerEngine`/`MasterWaveEnhancer` no son portables hoy (dependen de UI/decoders de app).
 - **Núcleo grabador en Shared (2026-11-02, decisión)**: el grabador NO se porta entero. `Code/DspCore/TakeDsp/recordingEngine.ts` implementa el núcleo portable (máquina de estados idle→monitoring→recording⇄paused, `pushSamples()`, medidores, `stopRecording()` con trim + pico + `TakeNoiseProfile` + clasificación opcional + WAV 16-bit, `handleTransportAction()` donde ff/rw devuelven `false`) sobre la interfaz inyectada `AudioInputSource` (patrón `WebNeuralEngine`). La captura (`getUserMedia`/JUCE) y el modal quedan en cada app. 9 tests nuevos.
 - **Verificación**: `ABDShared` vitest 36 ficheros, 553 passed + 22 nuevos (takeDsp 8, midiTransport 5, recordingEngine 9), 1 skipped; `vendor:sync` ampliado con `DspCore/TakeDsp`; NeuModMakr 22/23 (fallo único `phase16_raw_export`: tag `<multisample name=…>` de Fase 32.3 vs aserción exacta del test — ajeno a esta tarea, pendiente del workstream 32.x).
+
+### 34.8 Cierre de Grabador, Selección de Huella de Ruido y Limpieza DSP/IA (2026-11-03) [COMPLETADA]
+- [x] **Decaimiento balístico de vúmetros (`recordingEngine.ts`)**: corrección de picos L/R congelados aplicando decaimiento balístico (`0.85` por bloque) en `pushSamples()` y extracción automática de descriptores acústicos (`extractTakeFeatures`: autocorrelación normalizada para `harmonicity01`/`f0Confidence01`, factor de cresta 10 ms para `transientDensity01` y ZCR + planitud geométrica/aritmética por bandas para `spectralFlatness01`) con `autoClassify` al detener la grabación.
+- [x] **Perfilado inteligente de ruido en `stopRecording()`**: selección automática del segmento de silencio detectado más largo (`detectSilenceRanges`) antes del recorte para calcular `TakeNoiseProfile`, evitando contaminar la huella de ruido cuando el intérprete toca desde el instante $t=0$.
+- [x] **Visor interactivo de forma de onda y selección manual de zona de ruido (`AudioRecorderModal.ts`)**:
+  - Canvas `#rec-wave-canvas` con renderizado de picos min/max, sombreado automático de zonas de silencio detectadas y selección arrastrable con ratón (`[selectionStartFrame, selectionEndFrame]`) para acotar una región específica de ruido o editar la toma.
+  - Botón **`Capture Noise Print`** sobre la región seleccionada (o auto-detectada) con badge diagnóstico en tiempo real (`Noise: -XX.X dBFS`, alerta de hum 50/60 Hz y sugerencia automática de limpieza).
+- [x] **Cadena de limpieza DSP e IA condicionada por Noise Print**:
+  - **`Trim Silence`**: recorte de silencios iniciales/finales con ajuste a cruce por cero.
+  - **`DSP Denoise`**: sustracción espectral con puerta suave por bandas logarítmicas + filtro notch biquad adaptativo a 50/60 Hz (`NoiseReductionDsp.ts`, umbral calibrado a `levelDbfs - 3 dB`, $Q=8$).
+  - **`Norm -1 dB + DC`**: eliminación de offset DC (`dcBlock`) + normalización de pico a $-1.0\text{ dBFS}$.
+  - **`AI Enhance (Clean Noise)`**: envío de la toma junto con la huella de ruido capturada (`X-Noise-Profile` serializado en cabecera HTTP) a `bridgeClient.enhanceAudio` (96 kHz + pre-limpieza de la huella seleccionada), con fallback determinista local (`applyNoiseReductionDsp` + `MasterWaveEnhancer`) si el Bridge está offline.
+  - **Pila `Undo` no destructiva por toma** e inyección directa tanto a `AudioChopperModal` como a la zona activa de la sesión (`onInjectTakeIntoSession`).
+- [x] **Tests**: `tests/phase34_audio_recorder.test.ts` añadido a `tests/run_all.ts` y `ABDShared/tests/takeDsp.test.js` + `recordingEngine.test.js` ampliados (19/19 en verde).
+
 
 
 
