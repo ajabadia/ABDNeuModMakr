@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const TEST_FILES = [
   'phase0_canonical_contract.test.ts',
+  'phase11_expanded_model.test.ts',
   'phase1_pipeline.test.ts',
   'phase2_formats.test.ts',
   'phase3_files.test.ts',

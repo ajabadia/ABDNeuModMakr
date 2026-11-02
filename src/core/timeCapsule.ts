@@ -49,6 +49,11 @@ import {
   parseWebpDimensions,
   webpBytesToDataUrl,
 } from './coverArtwork.ts';
+import type { AxionikExpandedModel } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+import {
+  EXPANDED_MODEL_V2_CAPSULE_PATH,
+  serializeExpandedModel,
+} from './expandedModelWriter.ts';
 
 export const ALL_CAPSULE_LAYERS: readonly CapsuleLayerId[] = [
   '01_raw_source',
@@ -82,6 +87,13 @@ export interface TimeCapsuleBuildInput {
   };
   /** Layer 05: High-resolution `.nmmodel` Float32 JSON string */
   neuronikModelJson?: string;
+  /**
+   * Fase 11.5: Axionik Expanded Model v2 document (object or pre-serialized
+   * JSON). When present it is stored as
+   * `05_extended_model/axionik-expanded.json`; absent by default so existing
+   * capsules are byte-identical.
+   */
+  expandedModelV2?: AxionikExpandedModel | string;
   /** Optional safe parameter overrides for `Sounds/<NNN>.sound/sound.script` */
   soundParameterOverrides?: Record<string, number>;
   /** Previous provenance record (to preserve `createdAt`, `reprocessCount`, and `history`) */
@@ -254,6 +266,15 @@ export function buildTimeCapsuleEntries(
     path: '05_extended_model/model.nmmodel',
     data: nmModelJson,
   });
+  if (input.expandedModelV2 !== undefined) {
+    layerEntries['05_extended_model'].push({
+      path: EXPANDED_MODEL_V2_CAPSULE_PATH,
+      data:
+        typeof input.expandedModelV2 === 'string'
+          ? input.expandedModelV2
+          : serializeExpandedModel(input.expandedModelV2),
+    });
+  }
   layerEntries['05_extended_model'].push({
     path: '05_extended_model/extended_map.json',
     data: JSON.stringify(
@@ -501,6 +522,8 @@ export interface ExtractedTimeCapsule {
   enhancedAudioSamples: Map<string, ArrayBuffer>;
   classicEnhancedFiles: { name: string; data: Uint8Array }[];
   extendedModelJson: string | null;
+  /** Fase 11.5: `05_extended_model/axionik-expanded.json` text if present */
+  expandedModelV2Json: string | null;
   /** Fase 14: Extracted `05_extended_model/cover.webp` binary if present */
   coverWebpBytes: Uint8Array | null;
   /** Top-level compatibility files (or synthesizable fallback files from 04_classic_enhanced / 02_legacy_original) for `parseModelFileSet` */
@@ -552,6 +575,7 @@ export function extractTimeCapsuleFromFiles(
   const enhancedAudioSamples = new Map<string, ArrayBuffer>();
   const classicEnhancedFiles: { name: string; data: Uint8Array }[] = [];
   let extendedModelJson: string | null = null;
+  let expandedModelV2Json: string | null = null;
   let coverWebpBytes: Uint8Array | null = null;
   const topLevelModelFiles: { name: string; data: Uint8Array }[] = [];
 
@@ -628,6 +652,8 @@ export function extractTimeCapsuleFromFiles(
         lowerBase.endsWith('.neuronikmodel')
       ) {
         extendedModelJson = new TextDecoder().decode(f.data);
+      } else if (normPath === EXPANDED_MODEL_V2_CAPSULE_PATH) {
+        expandedModelV2Json = new TextDecoder().decode(f.data);
       } else if (lowerBase === 'cover.webp') {
         coverWebpBytes = new Uint8Array(f.data);
       }
@@ -644,7 +670,8 @@ export function extractTimeCapsuleFromFiles(
     legacyOriginalFiles.length > 0 ||
     enhancedAudioSamples.size > 0 ||
     classicEnhancedFiles.length > 0 ||
-    extendedModelJson !== null;
+    extendedModelJson !== null ||
+    expandedModelV2Json !== null;
 
   // Determine the files to pass to `parseModelFileSet`
   let modelParseFiles = topLevelModelFiles;
@@ -689,6 +716,7 @@ export function extractTimeCapsuleFromFiles(
     enhancedAudioSamples,
     classicEnhancedFiles,
     extendedModelJson,
+    expandedModelV2Json,
     coverWebpBytes,
     modelParseFiles,
   };

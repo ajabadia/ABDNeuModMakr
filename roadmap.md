@@ -312,6 +312,12 @@
 - [ ] Preflight también hacia Axionik (patrón Fase 16): si el destino no cubre los `requiredCaps`, adaptar o bloquear con aviso, nunca corromper en silencio.
 - [ ] Contrato único versionado en `ABDShared` (`contracts/axionikExpandedModel` v2.0.0, SSOT): precede al DSP; NeuModMakr ya puede escribirlo y preflightearlo mientras AxionikVS implementa la reproducción.
 
+#### 11.5.5 Writer v2 + preflight Axionik (implementado)
+- [x] Writer `src/core/expandedModelWriter.ts` (`buildAxionikExpandedModel`): documento v2 desde datos de cápsula; espectral HD guiado por longitud real; `pitchTrackHz`/`formantProfileSt`, `morphSpace`/`latentRef`, filtros/FX expandidos, `aiChain` y `requiredCaps` derivadas.
+- [x] Preflight `preflightExpandedModelForAxionik`: bloquea ante caps ausentes o `engineMin` superior; degradables como `adaptations` explícitas, nunca en silencio.
+- [x] Cápsula: `expandedModelV2?` en `TimeCapsuleBuildInput` escribe `05_extended_model/axionik-expanded.json`; extractor simétrico (`expandedModelV2Json`). Sin v2, la cápsula es idéntica a la anterior.
+- [x] Tests `tests/phase11_expanded_model.test.ts` registrados en `tests/run_all.ts`.
+
 ---
 
 ## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [COMPLETADA]
