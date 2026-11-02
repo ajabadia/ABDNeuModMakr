@@ -985,6 +985,25 @@ class App {
       },
       onNoteRelease: (note) => {
         this.inspector.releaseNote(note);
+        if (this.session && this.session.processConfig.workingMode === 'extended') {
+          // Check for release trigger samples (Key-Off)
+          const releaseTargets = resolveExtendedNoteTargets(
+            this.core.getExtendedRegions(),
+            note,
+            80,
+            'release'
+          );
+          if (releaseTargets.sampleName) {
+            const found = this.session.zones.find((z) => note >= z.lowKey && note <= z.highKey) ?? this.session.zones[0];
+            if (found) {
+              const override = {
+                sampleName: releaseTargets.sampleName,
+                rootKey: releaseTargets.rootKey ?? found.rootKey,
+              };
+              void this.core.auditionZoneComparison(found.id, 'original', note, override);
+            }
+          }
+        }
       }
     });
     this.keyboard.setZones(this.session!.zones, this.selectedZoneId);

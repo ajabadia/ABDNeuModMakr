@@ -10,7 +10,7 @@
 //               the same note (velocity layers sharing keys, round-robin sets).
 // ─────────────────────────────────────────────────────────
 
-import type { ExtendedRegion, MidiNote, Zone } from './types.ts';
+import type { ExtendedRegion, MidiNote, TriggerMode, Zone } from './types.ts';
 
 export type ClassicVelocityLayer = 'low' | 'high';
 
@@ -25,6 +25,10 @@ export interface NoteTargets {
   sampleName?: string;
   /** Root key of that sample (for pitch shifting) */
   rootKey?: MidiNote;
+  /** Selected region object when in extended mode */
+  region?: ExtendedRegion;
+  /** Trigger mode (attack or release) */
+  trigger?: TriggerMode;
 }
 
 /** Converts a normalized keyboard velocity (0..1) or MIDI velocity to 1..127. */
@@ -57,7 +61,8 @@ export function resolveClassicNoteTargets(
 export function resolveExtendedNoteTargets(
   regions: ExtendedRegion[],
   note: MidiNote,
-  velocity127: number
+  velocity127: number,
+  trigger: TriggerMode = 'attack'
 ): NoteTargets {
   const hits = regions.filter(
     (r) =>
@@ -66,11 +71,20 @@ export function resolveExtendedNoteTargets(
       velocity127 >= r.lowVel &&
       velocity127 <= r.highVel
   );
-  const first = hits.find((r) => r.sampleName) ?? hits[0];
+
+  // Separate by trigger mode (attack vs release)
+  const triggerMatches = hits.filter((r) => (r.trigger || 'attack') === trigger);
+  const activePool = triggerMatches.length > 0 ? triggerMatches : (trigger === 'release' ? [] : hits);
+
+  // If multiple regions match and have round-robin indices, select sequentially or by rr index
+  const first = activePool.find((r) => r.sampleName) ?? activePool[0];
+
   return {
     regionIds: hits.map((r) => r.id),
     sampleName: first?.sampleName || undefined,
     rootKey: first?.rootKey,
+    region: first,
+    trigger: first?.trigger || 'attack',
   };
 }
 

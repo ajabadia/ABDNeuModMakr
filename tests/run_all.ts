@@ -43,6 +43,7 @@ const TEST_FILES = [
   'phase32_formats_vintage_disks.test.ts',
   'phase32_formats_block3.test.ts',
   'phase32_formats_block4.test.ts',
+  'phase22_advanced_sampler.test.ts',
 ];
 
 interface TestResult {
