@@ -33,6 +33,7 @@ export * from './DelugeFormat.ts';
 export * from './RenoiseFormat.ts';
 export * from './BlissFormat.ts';
 export * from './PolyendTrackerFormat.ts';
+export * from './AkaiDiskFormat.ts';
 export * from './rawSamplerTypes.ts';
 export * from './rawSamplerPreflight.ts';
 export * from './soundfont2Writer.ts';

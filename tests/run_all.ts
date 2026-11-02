@@ -35,6 +35,9 @@ const TEST_FILES = [
   'phase25_batch_autoslicer.test.ts',
   'phase28_decent_kontakt.test.ts',
   'phase31_mpc_xpm.test.ts',
+  'phase32_formats_block1.test.ts',
+  'phase32_formats_block2a.test.ts',
+  'phase32_formats_akai_disk.test.ts',
 ];
 
 interface TestResult {

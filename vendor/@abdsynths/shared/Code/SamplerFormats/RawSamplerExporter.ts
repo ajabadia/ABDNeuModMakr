@@ -209,7 +209,7 @@ export async function exportRawSamplerLibrary(
 
   let outFilename = `${cleanBankName}${meta.extension}`;
   let mimeType = meta.mimeType;
-  let outData: Uint8Array;
+  let outData: Uint8Array = new Uint8Array(0);
   let totalFiles = 1;
 
   // ── 2. Format-Specific Generation ───────────────────────

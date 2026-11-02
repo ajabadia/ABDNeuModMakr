@@ -278,6 +278,9 @@ class App {
         // FileList | File[] – cast to FileList (importMixedFilesOrZip iterates by index)
         void self.imports.importMixedFilesOrZip(files as FileList, 'audio', 'samples', 'Universal Import');
       },
+      onOpenBatchProcessor: () => {
+        self.batchModal.open();
+      },
     });
 
     this.configHealthModal = new ConfigHealthModal({

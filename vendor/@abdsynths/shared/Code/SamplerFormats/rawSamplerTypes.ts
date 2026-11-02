@@ -33,6 +33,7 @@ export type RawSamplerFormat =
   | 'tx16wx'       // CWITEC TX16Wx (.txprog XML + Samples/ packaged as .txprog.zip)
   | 'korg_kmp'     // Korg Trinity/Triton/M3/Pa (.KMP + .KSF + .KSC packaged as .kmp.zip)
   | 'dls'          // MMA Downloadable Sounds Level 1/2 (.dls RIFF "DLS " monolithic)
+  | 'akai_disk'    // Akai S-Series SCSI/Floppy/Gotek disk image (.iso, .img, .dsk)
   | 'music1010'    // 1010music Blackbox / Tangerine (preset.xml + samples in .zip)
   | 'deluge'       // Synthstrom Deluge (SYNTHS/*.XML + SAMPLES/ in .zip)
   | 'renoise'      // Renoise Instrument (.xrni ZIP with Instrument.xml + FLAC SampleData/)

@@ -104,6 +104,12 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.dls',
     mimeType: 'audio/x-dls',
   },
+  akai_disk: {
+    title: 'Akai S-Series Disk Image (.iso, .img, .dsk)',
+    description: 'Imagen de disco SCSI CD-ROM o disquete 3.5" (Gotek FlashFloppy) de samplers Akai S900/S950/S1000/S1100/S2000/S3000 con particiones y volúmenes.',
+    extension: '.iso',
+    mimeType: 'application/octet-stream',
+  },
   music1010: {
     title: '1010music Blackbox / Tangerine (preset.xml)',
     description: 'Preset XML multi-sample y drum cells para hardware 1010music Blackbox y Nanobox Tangerine.',

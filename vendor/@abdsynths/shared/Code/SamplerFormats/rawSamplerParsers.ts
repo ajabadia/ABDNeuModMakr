@@ -48,6 +48,11 @@ import { parseTalSampler } from './TalSamplerFormat.ts';
 import { parseTx16WxProgram } from './Tx16WxFormat.ts';
 import { isKorgKmpOrKsfBuffer, parseKorgKmp, parseKorgKsf } from './KorgKmpKsfFormat.ts';
 import { isDlsBuffer, parseDlsBank } from './DlsFormat.ts';
+import {
+  isAkaiDiskImage,
+  listAkaiDiskPrograms,
+  parseAkaiDiskProgram,
+} from './AkaiDiskFormat.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -63,7 +68,8 @@ export type RawSamplerFormat =
   | 'tal_sampler'
   | 'tx16wx'
   | 'korg_kmp'
-  | 'dls';
+  | 'dls'
+  | 'akai_disk';
 
 export interface ParsedImportRegion {
   id: string;
@@ -1812,19 +1818,32 @@ export interface ArchiveSamplerProgramInfo {
     | 'tal_sampler'
     | 'tx16wx'
     | 'korg_kmp'
-    | 'dls';
+    | 'dls'
+    | 'akai_disk';
   regionCount?: number;
   detail?: string;
 }
 
 /**
- * Lists all playable sampler program files inside a .zip or Akai .xpn archive.
+ * Lists all playable sampler program files inside a container:
+ * .zip / .xpn archives or Akai S-Series SCSI/floppy disk images (.iso, .img, .dsk).
  */
 export async function listZipSamplerPrograms(
   filename: string,
   data: ArrayBuffer
 ): Promise<ArchiveSamplerProgramInfo[]> {
   const lower = filename.toLowerCase();
+
+  // Akai S-Series Disk Image (.iso, .img, .dsk)
+  if (typeof data !== 'string' && (/\.(iso|img|dsk)$/i.test(lower) || isAkaiDiskImage(data))) {
+    try {
+      const akaiProgs = listAkaiDiskPrograms(data);
+      if (akaiProgs.length > 0) return akaiProgs;
+    } catch {
+      // Fallback
+    }
+  }
+
   if (!lower.endsWith('.zip') && !lower.endsWith('.xpn') && !isZipHeader(data)) {
     return [];
   }
@@ -1973,6 +1992,11 @@ export async function parseUniversalSampler(
         : undefined;
   const targetProgramPath =
     typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
+
+  // 0. Akai S-Series SCSI CD-ROM / Floppy / Gotek disk image (.iso, .img, .dsk)
+  if (typeof data !== 'string' && (/\.(iso|img|dsk)$/i.test(lower) || isAkaiDiskImage(data))) {
+    return parseAkaiDiskProgram(data, targetProgramPath);
+  }
 
   // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn, Bitwig .multisample)
   if (lower.endsWith('.zip') || lower.endsWith('.xpn') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {

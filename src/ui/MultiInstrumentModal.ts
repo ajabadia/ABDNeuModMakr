@@ -21,7 +21,7 @@ export interface MultiInstrumentItem {
   detail?: string;
 }
 
-export type MultiInstrumentContainerFormat = 'sf2' | 'sfz' | 'mpc' | 'folder' | 'zip';
+export type MultiInstrumentContainerFormat = 'sf2' | 'sfz' | 'mpc' | 'folder' | 'zip' | 'disk' | 'akai';
 
 export interface MultiInstrumentModalOptions {
   title?: string;
@@ -81,9 +81,11 @@ export class MultiInstrumentModal {
           ? 'Akai MPC expansion'
           : format === 'folder'
             ? 'sample directory'
-            : format === 'zip'
-              ? 'archive'
-              : 'collection';
+            : format === 'disk' || format === 'akai'
+              ? 'Akai S-Series disk image'
+              : format === 'zip'
+                ? 'archive'
+                : 'collection';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-multi-inst-window" role="dialog" aria-modal="true" aria-labelledby="multi-inst-title">
