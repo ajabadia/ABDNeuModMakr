@@ -276,6 +276,13 @@ ABDNeuModMakr/
   - [x] Suite de pruebas automatizadas 	ests/phase25_batch_autoslicer.test.ts (9/9 verificaciones) anadida al runner unificado (21/21 suites PASS).
 
 
+- [x] **Fase 32 — Paridad Total de Formatos de Sampler (Bloques 1, 2A, 2B, 3 y 4) [COMPLETADA]**:
+  - [x] **Bloque 1**: Ableton .adv, Logic EXS24 .exs, TAL-Sampler .talsmpl, TX16Wx .txprog, Korg Trinity/Triton .kmp/.ksf/.ksc, MMA DLS Level 2 .dls.
+  - [x] **Bloque 2**: Polyend .pti, Waldorf .qpat, Teenage Engineering OP-XY, Elektron Tonverk, Disting EX, Prophet X, Isla S2400, Korg Modern .korgmultisample, Groove Synthesis 3rd Wave, Roland Zen-Core .svz.
+  - [x] **Bloque 3**: Akai S-Series (S1000/S3000/S900/S950), Akai S5000/S6000/Z4/Z8 (.akp), Akai MPC Clásico (MPC60, MPC2000, MPC1000), Kurzweil (K2000/K2500/K2600 .krz), Roland S-5xx/S-7xx, Casio FZ-1, Yamaha YSFC (Motif/Montage), Synclavier II/V/Regen (.synx, .sflc), Fairlight CMI Series IIx/III (.cmi, .vc), IsoFormatIdentifier unificado para imágenes de disco.
+  - [x] **Bloque 4 & MESA**: Akai MESA / MESA II (.s3p), Reason NN-XT (.sxt), FL Studio DirectWave (.dwp), Audiomodern Soundbox (.sbpack, .sbx), Spectrasonics Omnisphere (.zmap), NI Maschine (.mxsnd, .mxgrp, .nicnt), y decodificación de audio ampliada (.mpa, .mp4, .ogg, .flac, .caf, .opus, .m4a).
+  - [x] 31 suites de pruebas ejecutadas con éxito continuo (100% pass rate).
+
 ## 5. Que FALTA por hacer (Siguientes Fases y Tareas Pendientes)
 
 ### 5.2 Formatos de Sampler Avanzados y Compatibilidad Kontakt / Decent Sampler
