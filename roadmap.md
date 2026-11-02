@@ -872,7 +872,7 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
      - [x] **Groove Synthesis 3rd Wave** (`.3wv` binario `3WV\0` con ranuras de programa y asignación de notas).
      - [x] **Roland SP-404MKII / MC-707 / Zen-Core** (`.svz` binario `SVZ\0` con descriptores de tono y zonas de tecla).
      - Verificado con `tests/phase32_formats_block2b.test.ts` (10/10 PASS).
-3. [ ] **Bloque 3 — Formatos Binarios Clásicos e Imágenes de Disco (CD/SCSI/Floppy/Gotek)**:
+3. [x] **Bloque 3 — Formatos Binarios Clásicos e Imágenes de Disco (CD/SCSI/Floppy/Gotek) [COMPLETADO]**:
    - [x] **Akai S-Series Vintage & MESA [COMPLETADO]**:
      - **Akai S900 / S950** (`.img`, `.dsk`, discos de 3.5" DD 720KB/HD 1.44MB para emuladores Gotek FlashFloppy y disqueteras físicas, descompresión por grupos de 10 muestras con bit-count variable de 12-bit).
      - **Akai S1000 / S1100 / S2000 / S3000** (`.iso`, `.img`, `.dsk`, imágenes de CD-ROM SCSI, discos duros y disquetes 3.5" Gotek).
@@ -883,16 +883,16 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
    - [x] **Roland S-7xx (S-770 / S-750 / S-760 / SP-700) [COMPLETADO]** (`.out`, `.img`, `.iso` con sector map Roland `770`, FAT y directorios de Patches, Partials y Samples).
    - [x] **Ensoniq EPS / EPS-16+ / ASR-10 [COMPLETADO]** (`.efe`, `.ede`, `.eda`, `.gkh`, `.img`, `.iso`, imágenes de disquete Gotek y SCSI con firma `5B` / sector map, cabeceras GKH y EFE).
    - [x] **Yamaha A3000 / A4000 / A5000 / YSFC [COMPLETADO]** (`.iso`, `.img`, `.hda`, `.hds`, `.x7u`, `.x7l`, `.x8l` con decodificación de sistemas SFS y YSFC).
-   - [x] **Motor Universal de Imágenes de Disco e ISO [COMPLETADO]** (`rawSamplerParsers.ts` con detección automática de Akai S-Series, E-mu, Roland, Ensoniq, Yamaha e imágenes de disco/floppy, con selección interactiva o lote batch vía `MultiInstrumentModal`).
-   - [ ] **Akai S5000 / S6000 / Z4 / Z8** (`.AKP` RIFF `APRG` + WAVs de muestras en carpeta).
-   - [ ] **Akai MPC Clásico** (`.PGM` / `.SND` para MPC60, MPC2000, MPC2000XL, MPC1000, MPC2500, imágenes de disco Gotek MPC2000 con cabecera bootsector `EB FE 90 4D 50 43 32 30 30 30`).
-   - [ ] **Kurzweil K2000 / K2500 / K2600** (`.krz`, `.k25`, `.k26`).
-   - [ ] **Roland S-50 / S-550 / S-330** (`.out`, `.img`, `.iso` con sector map S5xx).
-   - [ ] **Yamaha Motif** y serie **Montage/MODX** (`.x7u`/`.x8u`).
-   - [ ] **Korg Multisample Moderno** (`.korgmultisample` para Kronos/Nautilus/WaveState).
-   - [ ] **Casio FZ-1 / FZ-10M** (`.fzv`, `.fzf`, imágenes de floppy dump).
-   - [ ] **Fairlight CMI IIx/III** (`cmi3`) y **Synclavier II**.
-   - [ ] **Motor Universal de Imágenes de Disco e ISO** (`IsoFormatIdentifier` unificado para detección automática de E-MU, Akai S-series, Roland, Ensoniq, ISO-9660 y Floppy Gotek RAW/HFE).
+   - [x] **Akai S5000 / S6000 / Z4 / Z8 [COMPLETADO]** (`.akp` RIFF `APRG` + WAVs de muestras en carpeta, lector y escritor con soporte para generaciones 1 y 3).
+   - [x] **Akai MPC Clásico [COMPLETADO]** (`.pgm` / `.snd` para MPC60, MPC2000, MPC2000XL, MPC1000, MPC2500, imágenes de disco Gotek MPC2000 con cabecera bootsector `EB FE 90 4D 50 43 32 30 30 30` y descompresión 12-bit para MPC60).
+   - [x] **Kurzweil K2000 / K2500 / K2600 / PC3 [COMPLETADO]** (`.krz`, `.k25`, `.k26` con contenedor `PRAM`, Programs 36, Keymaps 37, Samples 38 y extracción de audio lineal de 16 bits en Big-Endian).
+   - [x] **Roland S-50 / S-550 / S-330 / W-30 [COMPLETADO]** (`.out`, `.img`, `.dsk` con sector map S5xx, 16 Patches, 32 Tones, bancos de onda A/B y descompresión de 12 bits).
+   - [x] **Casio FZ-1 / FZ-10M [COMPLETADO]** (`.fzv`, `.fzf`, imágenes de floppy dump de 1.3 MB y volcados con bloques PCM lineal de 16 bits).
+   - [x] **Yamaha Motif / Montage / MODX [COMPLETADO]** (`.x7u`, `.x8u`, `.x3a` con contenedor YSFC, metadatos `WVM1` y audio `WVD1`).
+   - [x] **Synclavier II / Synclavier V / Regen [COMPLETADO]** (timbres multipartiales, algoritmo de desofuscación LCG de 64 bits para archivos `.sflc` y archivos de biblioteca de tarjeta SD y SYNX).
+   - [x] **Fairlight CMI IIx/III [COMPLETADO]** (`.cmi`, `.cmi3`, `.vc`, `.co` con asignación de tabla de 128 zonas y audio PCM 16-bit Series III y 8-bit Series IIx).
+   - [x] **Motor Universal de Imágenes de Disco e ISO [COMPLETADO]** (`IsoFormatIdentifier` unificado para detección automática de E-MU, Akai S-series, Roland, Ensoniq, Casio, Yamaha, ISO-9660 y Floppy Gotek RAW/HFE).
+   - Verificado con `tests/phase32_formats_akai_disk.test.ts`, `tests/phase32_formats_vintage_disks.test.ts` y `tests/phase32_formats_block3.test.ts` (100% PASS).
 4. [ ] **Bloque 4 — Samplers de Software Adicionales**:
    - [ ] **Reason NN-XT** (`.sxt` IFF).
    - [ ] **Image-Line FL Studio DirectWave** (`.dwp` monolítico con FLAC).

@@ -119,6 +119,52 @@ import {
   parseZenCoreSvz,
   importZenCoreZip,
 } from './ZenCoreSvzFormat.ts';
+import {
+  isAkpData,
+  parseAkpProgram,
+  convertAkpToPreset,
+} from './AkaiAkpFormat.ts';
+import {
+  isMpc1000Pgm,
+  isMpc2000Pgm,
+  isMpc60Set,
+  isMpcDiskImage,
+  parseMpc1000Program,
+  parseMpc2000Program,
+  parseMpc60Set,
+  convertMpcClassicToPreset,
+} from './AkaiMpcClassicFormat.ts';
+import {
+  isKurzweilFile,
+  parseKurzweilFile,
+  convertKurzweilToPreset,
+} from './KurzweilFormat.ts';
+import {
+  isRolandS5xxDiskImage,
+  parseRolandS5xxDisk,
+  convertRolandS5xxToPreset,
+} from './RolandS5xxFormat.ts';
+import {
+  isCasioFzData,
+  parseCasioFz,
+  convertCasioFzToPreset,
+} from './CasioFzFormat.ts';
+import {
+  isYamahaYsfcFile,
+  parseYamahaYsfc,
+  convertYamahaYsfcToPreset,
+} from './YamahaMotifFormat.ts';
+import {
+  isSynclavierTimbre,
+  parseSynclavierTimbre,
+  convertSynclavierToPreset,
+} from './SynclavierFormat.ts';
+import {
+  isFairlightCmiVoice,
+  parseFairlightCmiVoice,
+  convertFairlightCmiToPreset,
+} from './FairlightCmiFormat.ts';
+import { identifyDiskImageFormat } from './IsoFormatIdentifier.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -148,7 +194,14 @@ export type RawSamplerFormat =
   | 'isla_s2400'
   | 'korg_modern'
   | 'third_wave'
-  | 'zencore';
+  | 'zencore'
+  | 'akai_akp'
+  | 'mpc_classic'
+  | 'kurzweil'
+  | 'casio_fz'
+  | 'yamaha_ysfc'
+  | 'synclavier'
+  | 'fairlight_cmi';
 
 export interface ParsedImportRegion {
   id: string;
@@ -1968,6 +2021,57 @@ export async function listZipSamplerPrograms(
         // Fallback
       }
     }
+
+    // 6. Roland S-5xx Disk Image
+    if (isRolandS5xxDiskImage(data)) {
+      try {
+        const s5xx = parseRolandS5xxDisk(data);
+        return s5xx.patches.map((p, idx) => ({
+          id: String(idx),
+          index: idx,
+          name: p.name,
+          format: 'roland_disk' as const,
+          detail: `Roland S-5xx Patch ${idx + 1}`,
+          regionCount: 2,
+        }));
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 7. Casio FZ Floppy / Bare Dump
+    if (isCasioFzData(data)) {
+      try {
+        const fz = parseCasioFz(data, filename);
+        return fz.voices.map((v, idx) => ({
+          id: String(idx),
+          index: idx,
+          name: v.name,
+          format: 'casio_fz' as const,
+          detail: `Casio FZ Voice ${idx + 1} (${v.sampleRateHz} Hz)`,
+          regionCount: 1,
+        }));
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 8. Akai MPC Floppy Image
+    if (isMpcDiskImage(data)) {
+      try {
+        const mpc = parseMpc2000Program(data, filename);
+        return [{
+          id: '0',
+          index: 0,
+          name: mpc.name,
+          format: 'akai_disk' as const,
+          detail: 'Akai MPC2000 Program',
+          regionCount: mpc.zones.length,
+        }];
+      } catch {
+        // Fallback
+      }
+    }
   }
 
   if (!lower.endsWith('.zip') && !lower.endsWith('.xpn') && !isZipHeader(data)) {
@@ -2167,6 +2271,62 @@ export async function listZipSamplerPrograms(
         format: 'zencore',
         detail: 'Roland Zen-Core / SP-404MKII',
       });
+    } else if (nLower.endsWith('.akp')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.akp$/i, ''),
+        format: 'akai_akp',
+        detail: 'Akai S5000 / S6000 / Z4 / Z8 Program',
+      });
+    } else if (nLower.endsWith('.pgm') || nLower.endsWith('.set')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(pgm|set)$/i, ''),
+        format: 'mpc_classic',
+        detail: 'Akai MPC Classic Program / Set',
+      });
+    } else if (nLower.endsWith('.krz') || nLower.endsWith('.k25') || nLower.endsWith('.k26')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(krz|k25|k26)$/i, ''),
+        format: 'kurzweil',
+        detail: 'Kurzweil K2xxx / PC3 Program',
+      });
+    } else if (nLower.endsWith('.x7u') || nLower.endsWith('.x8u') || nLower.endsWith('.x3a')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(x7u|x8u|x3a)$/i, ''),
+        format: 'yamaha_ysfc',
+        detail: 'Yamaha Motif / Montage / MODX',
+      });
+    } else if (nLower.endsWith('.fzv') || nLower.endsWith('.fzf')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(fzv|fzf)$/i, ''),
+        format: 'casio_fz',
+        detail: 'Casio FZ Voice / Bank Dump',
+      });
+    } else if (nLower.endsWith('.synx') || nLower.endsWith('-entry.txt')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(synx|txt)$/i, ''),
+        format: 'synclavier',
+        detail: 'Synclavier Timbre / SYNX',
+      });
+    } else if (nLower.endsWith('.cmi') || nLower.endsWith('.cmi3') || nLower.endsWith('.vc')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(cmi|cmi3|vc)$/i, ''),
+        format: 'fairlight_cmi',
+        detail: 'Fairlight CMI Series IIx / III Voice',
+      });
     }
   }
 
@@ -2191,8 +2351,53 @@ export async function parseUniversalSampler(
   const targetProgramPath =
     typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
 
-  // 0. Vintage Sampler Disk Images (Akai, E-mu, Roland, Ensoniq, Yamaha)
+  // 0. Vintage Sampler Disk Images (Akai, E-mu, Roland, Ensoniq, Yamaha, Casio, MPC)
   if (typeof data !== 'string') {
+    const diskType = identifyDiskImageFormat(data);
+    if (diskType === 'akai_mpc2000' || isMpcDiskImage(data)) {
+      const mpcProg = parseMpc2000Program(data, targetProgramPath || filename);
+      const converted = convertMpcClassicToPreset(mpcProg);
+      return {
+        format: 'akai_disk',
+        formatLabel: 'Akai MPC Floppy Disk',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'drums',
+        suggestedParameterSet: 0,
+        regions: converted.regions,
+        audioBuffers: converted.audioBuffers,
+      };
+    }
+    if (diskType === 'roland_s5xx' || isRolandS5xxDiskImage(data)) {
+      const s5xx = parseRolandS5xxDisk(data);
+      const patchIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
+      const converted = convertRolandS5xxToPreset(s5xx, patchIdx);
+      return {
+        format: 'roland_disk',
+        formatLabel: 'Roland S-5xx Disk Image',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: converted.audioBuffers,
+      };
+    }
+    if (diskType === 'casio_fz' || isCasioFzData(data)) {
+      const fz = parseCasioFz(data, targetProgramPath || filename);
+      const voiceIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
+      const converted = convertCasioFzToPreset(fz, voiceIdx);
+      return {
+        format: 'casio_fz',
+        formatLabel: 'Casio FZ Disk / Dump',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: converted.audioBuffers,
+      };
+    }
     if (isAkaiDiskImage(data)) {
       return parseAkaiDiskProgram(data, targetProgramPath);
     }
@@ -2248,6 +2453,13 @@ export async function parseUniversalSampler(
     let korgModernEntry: string | undefined;
     let thirdWaveEntry: string | undefined;
     let zenCoreEntry: string | undefined;
+    let akpEntry: string | undefined;
+    let mpcEntry: string | undefined;
+    let krzEntry: string | undefined;
+    let ysfcEntry: string | undefined;
+    let fzEntry: string | undefined;
+    let synxEntry: string | undefined;
+    let cmiEntry: string | undefined;
     const xpmEntries: string[] = [];
 
     const normTarget = targetProgramPath?.replace(/\\/g, '/');
@@ -2273,6 +2485,13 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.korgmultisample')) korgModernEntry = name;
       else if (nLower.endsWith('.3wv')) thirdWaveEntry = name;
       else if (nLower.endsWith('.svz')) zenCoreEntry = name;
+      else if (nLower.endsWith('.akp')) akpEntry = name;
+      else if (nLower.endsWith('.pgm') || nLower.endsWith('.set')) mpcEntry = name;
+      else if (nLower.endsWith('.krz') || nLower.endsWith('.k25') || nLower.endsWith('.k26')) krzEntry = name;
+      else if (nLower.endsWith('.x7u') || nLower.endsWith('.x8u') || nLower.endsWith('.x3a')) ysfcEntry = name;
+      else if (nLower.endsWith('.fzv') || nLower.endsWith('.fzf')) fzEntry = name;
+      else if (nLower.endsWith('.synx') || nLower.endsWith('-entry.txt')) synxEntry = name;
+      else if (nLower.endsWith('.cmi') || nLower.endsWith('.cmi3') || nLower.endsWith('.vc')) cmiEntry = name;
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
@@ -2632,6 +2851,122 @@ export async function parseUniversalSampler(
         audioBuffers: audioMap,
       };
     }
+    if (akpEntry) {
+      const akpBytes = extractZipEntry(rawZipBytes, indexMap.get(akpEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const parsedAkp = parseAkpProgram(akpBytes, cleanBasename(akpEntry));
+      const converted = convertAkpToPreset(parsedAkp);
+      return {
+        format: 'akai_disk',
+        formatLabel: 'Akai S5000/Z4 Program (.akp)',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 'warm_pad',
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (mpcEntry) {
+      const mpcBytes = extractZipEntry(rawZipBytes, indexMap.get(mpcEntry)!);
+      const audioMap = await extractAudioBuffers();
+      let mpcProg;
+      if (isMpc1000Pgm(mpcBytes)) {
+        mpcProg = parseMpc1000Program(mpcBytes, cleanBasename(mpcEntry));
+      } else if (isMpc60Set(mpcBytes)) {
+        mpcProg = parseMpc60Set(mpcBytes, cleanBasename(mpcEntry));
+      } else {
+        mpcProg = parseMpc2000Program(mpcBytes, cleanBasename(mpcEntry));
+      }
+      const converted = convertMpcClassicToPreset(mpcProg);
+      return {
+        format: 'akai_disk',
+        formatLabel: 'Akai MPC Classic Program',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'drums',
+        suggestedParameterSet: 'punchy_kick',
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (krzEntry) {
+      const krzBytes = extractZipEntry(rawZipBytes, indexMap.get(krzEntry)!);
+      const krz = parseKurzweilFile(krzBytes);
+      const converted = convertKurzweilToPreset(krz);
+      return {
+        format: 'kurzweil',
+        formatLabel: 'Kurzweil K2xxx / PC3 (.krz)',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 'warm_pad',
+        regions: converted.regions,
+        audioBuffers: krz.sampleAudioMap,
+      };
+    }
+    if (ysfcEntry) {
+      const ysfcBytes = extractZipEntry(rawZipBytes, indexMap.get(ysfcEntry)!);
+      const ysfc = parseYamahaYsfc(ysfcBytes);
+      const converted = convertYamahaYsfcToPreset(ysfc);
+      return {
+        format: 'yamaha_ysfc',
+        formatLabel: 'Yamaha Motif / Montage (.x7u)',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'workstation',
+        suggestedParameterSet: 'ambient_lead',
+        regions: converted.regions,
+        audioBuffers: ysfc.audioSamples,
+      };
+    }
+    if (fzEntry) {
+      const fzBytes = extractZipEntry(rawZipBytes, indexMap.get(fzEntry)!);
+      const fz = parseCasioFz(fzBytes, cleanBasename(fzEntry));
+      const converted = convertCasioFzToPreset(fz);
+      return {
+        format: 'casio_fz',
+        formatLabel: 'Casio FZ Dump / Voice (.fzv)',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 'warm_pad',
+        regions: converted.regions,
+        audioBuffers: fz.sampleAudioMap,
+      };
+    }
+    if (synxEntry) {
+      const sBytes = extractZipEntry(rawZipBytes, indexMap.get(synxEntry)!);
+      const sText = new TextDecoder('utf-8').decode(sBytes);
+      const audioMap = await extractAudioBuffers();
+      const timbre = parseSynclavierTimbre(sText, cleanBasename(synxEntry));
+      const converted = convertSynclavierToPreset(timbre);
+      return {
+        format: 'synclavier',
+        formatLabel: 'Synclavier Timbre / SYNX',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 'warm_pad',
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (cmiEntry) {
+      const cmiBytes = extractZipEntry(rawZipBytes, indexMap.get(cmiEntry)!);
+      const cmi = parseFairlightCmiVoice(cmiBytes, cleanBasename(cmiEntry));
+      const converted = convertFairlightCmiToPreset(cmi);
+      return {
+        format: 'fairlight_cmi',
+        formatLabel: 'Fairlight CMI Series III Voice',
+        presetName: converted.name,
+        modelName: converted.name.slice(0, 11),
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 'warm_pad',
+        regions: converted.regions,
+        audioBuffers: cmi.sampleAudioMap,
+      };
+    }
     if (xpmEntries.length > 0) {
       const availStems = new Set<string>();
       for (const ae of audioEntries) {
@@ -2775,6 +3110,130 @@ export async function parseUniversalSampler(
     const buf = (typeof data === 'string' ? new TextEncoder().encode(data).buffer : data) as ArrayBuffer;
     const instIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
     return parseDlsPreset(buf, instIdx, cleanBasename(filename).replace(/\.dls$/i, ''));
+  }
+
+  // Direct vintage file formats (standalone files)
+  if (lower.endsWith('.akp') || (typeof data !== 'string' && isAkpData(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const parsedAkp = parseAkpProgram(bytes, cleanBasename(filename));
+    const converted = convertAkpToPreset(parsedAkp);
+    return {
+      format: 'akai_disk',
+      formatLabel: 'Akai S5000/Z4 Program (.akp)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: await siblingAudioBuffers(),
+    };
+  }
+
+  if (lower.endsWith('.pgm') || lower.endsWith('.set') || (typeof data !== 'string' && (isMpc1000Pgm(data) || isMpc2000Pgm(data) || isMpc60Set(data)))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    let mpcProg;
+    if (isMpc1000Pgm(bytes)) {
+      mpcProg = parseMpc1000Program(bytes, cleanBasename(filename));
+    } else if (isMpc60Set(bytes)) {
+      mpcProg = parseMpc60Set(bytes, cleanBasename(filename));
+    } else {
+      mpcProg = parseMpc2000Program(bytes, cleanBasename(filename));
+    }
+    const converted = convertMpcClassicToPreset(mpcProg);
+    const audioMap = await siblingAudioBuffers();
+    for (const [k, v] of mpcProg.samples.entries()) {
+      audioMap.set(k, v);
+    }
+    return {
+      format: 'akai_disk',
+      formatLabel: 'Akai MPC Classic Program',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'drums',
+      suggestedParameterSet: 0,
+      regions: converted.regions,
+      audioBuffers: audioMap,
+    };
+  }
+
+  if (lower.endsWith('.krz') || lower.endsWith('.k25') || lower.endsWith('.k26') || (typeof data !== 'string' && isKurzweilFile(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const krz = parseKurzweilFile(bytes);
+    const converted = convertKurzweilToPreset(krz);
+    return {
+      format: 'kurzweil',
+      formatLabel: 'Kurzweil K2xxx / PC3 (.krz)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  if (lower.endsWith('.x7u') || lower.endsWith('.x8u') || lower.endsWith('.x3a') || (typeof data !== 'string' && isYamahaYsfcFile(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const ysfc = parseYamahaYsfc(bytes);
+    const converted = convertYamahaYsfcToPreset(ysfc);
+    return {
+      format: 'yamaha_ysfc',
+      formatLabel: 'Yamaha Motif / Montage (.x7u)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'workstation',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  if (lower.endsWith('.fzv') || lower.endsWith('.fzf') || (typeof data !== 'string' && isCasioFzData(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const fz = parseCasioFz(bytes, cleanBasename(filename));
+    const converted = convertCasioFzToPreset(fz);
+    return {
+      format: 'casio_fz',
+      formatLabel: 'Casio FZ Dump / Voice (.fzv)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  if (lower.endsWith('.synx') || lower.endsWith('-entry.txt') || (typeof data === 'string' && isSynclavierTimbre(data))) {
+    const text = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
+    const timbre = parseSynclavierTimbre(text, cleanBasename(filename));
+    const converted = convertSynclavierToPreset(timbre);
+    return {
+      format: 'synclavier',
+      formatLabel: 'Synclavier Timbre / SYNX',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: await siblingAudioBuffers(),
+    };
+  }
+
+  if (lower.endsWith('.cmi') || lower.endsWith('.cmi3') || lower.endsWith('.vc') || (typeof data !== 'string' && isFairlightCmiVoice(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const cmi = parseFairlightCmiVoice(bytes, cleanBasename(filename));
+    const converted = convertFairlightCmiToPreset(cmi);
+    return {
+      format: 'fairlight_cmi',
+      formatLabel: 'Fairlight CMI Series III Voice',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
   }
 
   // 2. Direct format dispatch by extension / contents

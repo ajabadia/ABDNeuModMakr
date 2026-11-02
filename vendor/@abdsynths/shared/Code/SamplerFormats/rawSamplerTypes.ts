@@ -52,6 +52,13 @@ export type RawSamplerFormat =
   | 'korg_modern'  // Korg Multisample Modern (.korgmultisample in .zip)
   | 'third_wave'   // Groove Synthesis 3rd Wave (.3wv in .zip)
   | 'zencore'      // Roland Zen-Core / SP-404MKII / MC-707 (.svz in .zip)
+  | 'akai_akp'     // Akai S5000 / S6000 / Z4 / Z8 (.akp RIFF APRG + WAVs)
+  | 'mpc_classic'  // Akai MPC60 / MPC2000 / MPC2000XL / MPC1000 (.pgm, .set, .snd, Gotek disk)
+  | 'kurzweil'     // Kurzweil K2000 / K2500 / K2600 / PC3 (.krz, .k25, .k26)
+  | 'casio_fz'     // Casio FZ-1 / FZ-10M (.fzv, .fzf, 1.3MB floppy dumps)
+  | 'yamaha_ysfc'  // Yamaha Motif / Montage / MODX (.x7u, .x8u, .x3a)
+  | 'synclavier'   // Synclavier II / Synclavier V / Regen (timbre + .sflc / .synx)
+  | 'fairlight_cmi'// Fairlight CMI IIx / III (.cmi, .cmi3, .vc, .co)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';

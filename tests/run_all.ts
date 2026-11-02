@@ -41,6 +41,7 @@ const TEST_FILES = [
   'phase32_formats_block2b.test.ts',
   'phase32_formats_akai_disk.test.ts',
   'phase32_formats_vintage_disks.test.ts',
+  'phase32_formats_block3.test.ts',
 ];
 
 interface TestResult {
