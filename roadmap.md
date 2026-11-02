@@ -320,7 +320,7 @@
 
 #### 11.5.6 Handoff a la Fase B de `ABDAxionikVS` (pendiente, bloqueado por Gate A→B)
 - [x] **Contrato y flujo de datos listos del lado Makr**: documento v2 escrito y preflighteado antes de que exista el DSP que lo reproduce; el preflight acepta el JSON tal cual sale de la cápsula (sin re-serializar) y bloquea ante caps ausentes o `engineMin` superior.
-- [ ] **Perfil de capacidades del motor Axionik**: declarar `{ generation, caps[], maxPartials?, maxFrames? }` con lo que el motor realmente cubre. Depende de las decisiones del Gate A→B (p. ej. `surround` exige el bus Quad del punto 5 pendiente).
+- [ ] **Perfil de capacidades del motor Axionik**: declarar `{ generation, caps[], maxPartials?, maxFrames? }` con lo que el motor realmente cubre. Sesión Gate 2026-11-02: tres motores en el mismo código (clásico / clásico mejorado / extendido); el perfil de caps describe al motor extendido, que es quien consume el v2. Salida Pseudo-Surround estéreo; sin bus discreto que declarar.
 - [ ] **Consumo en Fase B**: fuente primaria `05_extended_model/axionik-expanded.json`; `model.nmmodel` queda como respaldo espectral v1. Ambas rutas sin mezclarse con `04_classic_enhanced/`.
 - [ ] **Preflight en el arranque del motor**: cargar el documento, ejecutar `preflightExpandedModelForAxionik` y aplicar las `adaptations` (bypass de filtros/FX desconocidos, truncado HD declarado) o bloquear con aviso visible, nunca cargar parcialmente en silencio.
 - [ ] **DoD de la fase**: caso de prueba con motor sin caps (carga bloqueada con aviso) y con motor completo (carga con adaptaciones aplicadas).
