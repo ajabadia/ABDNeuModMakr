@@ -59,7 +59,10 @@
     "./formats/sampler": "./Code/SamplerFormats/index.ts",
     "./formats/sampler/*": "./Code/SamplerFormats/*",
     "./dsp/neuron-analysis": "./Code/DspCore/NeuronAnalysis/index.ts",
-    "./dsp/neuron-analysis/*": "./Code/DspCore/NeuronAnalysis/*"
+    "./dsp/neuron-analysis/*": "./Code/DspCore/NeuronAnalysis/*",
+    "./dsp/take": "./Code/DspCore/TakeDsp/takeDsp.ts",
+    "./dsp/take/*": "./Code/DspCore/TakeDsp/*",
+    "./contracts/recordingSession": "./Contracts/recordingSession.ts"
   },
   "files": [
     "Code",

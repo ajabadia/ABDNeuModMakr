@@ -24,7 +24,54 @@ export const MIDI_SOURCE_TYPES = {
   NRPN: 1,
   AFTERTOUCH: 2,
   PITCH_BEND: 3,
+  // Discrete / transport sources (Rec Recorder, DAW-style control surfaces).
+  // NOTE carries velocity as its value (note-off = 0); SYSEX_TRANSPORT carries
+  // a parsed MMC command id in `number` — parse with parseMmcCommand().
+  NOTE: 4,
+  SYSEX_TRANSPORT: 5,
 };
+
+/**
+ * MMC (MIDI Machine Control) command ids over Universal SysEx
+ * (`F0 7F <dev> 06 <cmd> F7`) relevant for transport control.
+ */
+export const MMC_COMMAND_NAMES = {
+  1: 'STOP',
+  2: 'PLAY',
+  3: 'DEFERRED PLAY',
+  4: 'FAST FORWARD',
+  5: 'REWIND',
+  6: 'RECORD STROBE',
+  7: 'RECORD EXIT',
+  8: 'RECORD PAUSE',
+  9: 'PAUSE',
+  10: 'EJECT',
+  11: 'CHASE',
+  13: 'RESET',
+};
+
+/**
+ * Parses a Universal SysEx MMC transport message into its command id.
+ * Accepts `Uint8Array | number[]` (e.g. from a WebMIDI `MIDIMessageEvent`).
+ * Returns the MMC command id (see MMC_COMMAND_NAMES) or -1 when the
+ * message is not a transport command.
+ */
+export function parseMmcCommand(bytes) {
+  if (!bytes || bytes.length < 6) return -1;
+  const b = bytes;
+  // F0 7F <dev:00..7F|7F all> 06 <cmd> F7
+  if (b[0] !== 0xf0 || b[1] !== 0x7f || b[3] !== 0x06) return -1;
+  if (b[b.length - 1] !== 0xf7) return -1;
+  const cmd = Number(b[4]);
+  if (!Number.isFinite(cmd) || cmd < 1 || cmd > 127) return -1;
+  return cmd;
+}
+
+/** True for event-like sources (NOTE, SYSEX_TRANSPORT) vs continuous ones. */
+export function isDiscreteTriggerSourceType(sourceType) {
+  const t = Number(sourceType);
+  return t === MIDI_SOURCE_TYPES.NOTE || t === MIDI_SOURCE_TYPES.SYSEX_TRANSPORT;
+}
 
 export const MIDI_CURVE_TYPES = {
   LINEAR: 0,
@@ -52,6 +99,11 @@ export function formatMidiSourceBadge(mapping) {
   }
   if (srcType === MIDI_SOURCE_TYPES.AFTERTOUCH) return 'AT';
   if (srcType === MIDI_SOURCE_TYPES.PITCH_BEND) return 'PB';
+  if (srcType === MIDI_SOURCE_TYPES.NOTE) return `NOTE ${num}`;
+  if (srcType === MIDI_SOURCE_TYPES.SYSEX_TRANSPORT) {
+    const name = MMC_COMMAND_NAMES[num];
+    return name ? `MMC ${name}` : `MMC ${num}`;
+  }
   return `CC ${String(num).padStart(2, '0')}`;
 }
 
@@ -173,7 +225,7 @@ export function createMidiLearnStore(options = {}) {
 
     return {
       id: typeof raw.id === 'string' && raw.id ? raw.id : nextId(),
-      sourceType: Math.max(0, Math.min(3, Math.round(Number(raw.sourceType ?? 0)))),
+      sourceType: Math.max(0, Math.min(5, Math.round(Number(raw.sourceType ?? 0)))),
       channel: Math.max(0, Math.min(16, Math.round(Number(raw.channel ?? 0)))),
       number: Math.max(0, Math.min(16383, Math.round(Number(raw.number ?? 74)))),
       targetIndex,

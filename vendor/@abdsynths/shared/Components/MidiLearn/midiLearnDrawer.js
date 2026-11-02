@@ -261,10 +261,12 @@ export function createMidiLearnDrawerContent(options = {}) {
                   <option value="${MIDI_SOURCE_TYPES.NRPN}" ${m.sourceType === MIDI_SOURCE_TYPES.NRPN ? 'selected' : ''}>NRPN</option>
                   <option value="${MIDI_SOURCE_TYPES.AFTERTOUCH}" ${m.sourceType === MIDI_SOURCE_TYPES.AFTERTOUCH ? 'selected' : ''}>Aftertouch</option>
                   <option value="${MIDI_SOURCE_TYPES.PITCH_BEND}" ${m.sourceType === MIDI_SOURCE_TYPES.PITCH_BEND ? 'selected' : ''}>PitchBend</option>
+                  <option value="${MIDI_SOURCE_TYPES.NOTE}" ${m.sourceType === MIDI_SOURCE_TYPES.NOTE ? 'selected' : ''}>Note</option>
+                  <option value="${MIDI_SOURCE_TYPES.SYSEX_TRANSPORT}" ${m.sourceType === MIDI_SOURCE_TYPES.SYSEX_TRANSPORT ? 'selected' : ''}>MMC Transport</option>
                 </select>
                 <input type="number" class="abd-select__field ml-row-number stat-num" data-id="${escapeHtml(m.id)}"
                   min="0" max="${m.sourceType === MIDI_SOURCE_TYPES.NRPN ? 16383 : 127}" value="${m.number}"
-                  ${m.sourceType >= 2 ? 'disabled' : ''}
+                  ${(m.sourceType === MIDI_SOURCE_TYPES.AFTERTOUCH || m.sourceType === MIDI_SOURCE_TYPES.PITCH_BEND) ? 'disabled' : ''}
                   title="Controller Number (CC 0..127 or NRPN 0..16383)" style="width: 64px; text-align: center;" />
                 <select class="abd-select__field ml-row-channel" data-id="${escapeHtml(m.id)}" aria-label="MIDI Channel" style="width: 92px;">
                   ${channelOpts}

@@ -85,7 +85,14 @@ export const MIDI_SOURCE_TYPES: {
   readonly NRPN: 1;
   readonly AFTERTOUCH: 2;
   readonly PITCH_BEND: 3;
+  readonly NOTE: 4;
+  readonly SYSEX_TRANSPORT: 5;
 };
+
+export const MMC_COMMAND_NAMES: Record<number, string>;
+
+export function parseMmcCommand(bytes: Uint8Array | number[] | ArrayLike<number>): number;
+export function isDiscreteTriggerSourceType(sourceType: number): boolean;
 
 export const MIDI_CURVE_TYPES: {
   readonly LINEAR: 0;
