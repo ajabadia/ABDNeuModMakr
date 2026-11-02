@@ -726,6 +726,53 @@
 
 ---
 
+## Fase 30 — Detector de Silencio, Suelo de Ruido y Huella de Ruido (Noise Print) con Limpieza DSP/IA [PLANIFICADA]
+
+**Estado actual (auditoría 2026-11-02)**: solo existe una compuerta RMS de silencio dentro de `AudioSlicerEngine.ts` (`silenceThresholdDb`, `isSilence`), usada exclusivamente para descartar trozos al trocear. No hay recorte de silencios en muestras, ni estimación de suelo de ruido, ni captura de huella de ruido, ni reducción de ruido. La "supresión de suelo de ruido" de `AcousticIntelligence.ts` actúa sobre parciales del análisis armónico, no sobre el audio.
+
+### 30.1 Detector y Recorte de Silencio (`SilenceDetector.ts`)
+- Detección de silencio inicial/final y huecos internos con umbral relativo al suelo de ruido medido (no fijo), tiempo mínimo de silencio y retención (hold).
+- Recorte automático con pre-roll configurable (protege ataques suaves) y micro-fundido de salida en el corte.
+- Ajuste a cruce por cero y reajuste de `loopStart`/`loopEnd`, zonas y marcadores tras recortar.
+- Modo informe (solo detecta y marca) frente a modo destructivo, con deshacer.
+
+### 30.2 Estimación del Suelo de Ruido (`NoiseFloorAnalyzer.ts`)
+- RMS por tramos + percentil bajo (p5-p10) de energía para el nivel de suelo en dBFS por canal.
+- Suelo espectral por bandas (STFT, mínimos estadísticos / minimum statistics) para distinguir hiss, hum (50/60 Hz y armónicos) y ruido de banda ancha.
+- Métricas: SNR estimada, tipo de ruido dominante, picos tonales de zumbido.
+
+### 30.3 Huella de Ruido (Noise Print) y Reducción
+- Captura automática de huella desde tramos de silencio detectados (o selección manual del usuario).
+- Reducción DSP: puerta espectral / sustracción espectral con suavizado temporal, notch adaptativo para hum, control de cantidad para evitar artefactos "musicales".
+- Opción IA vía Companion Bridge (p. ej. DeepFilterNet / RNNoise / modelos de denoise) cuando esté disponible, con fallback DSP en navegador.
+
+### 30.4 Integración con los Procesos IA de Mejora de Calidad
+- Exportar la huella y el suelo de ruido como metadatos (`noiseProfile`: nivel dBFS, espectro por bandas, tramos de silencio) para que upsampling/restauración/regeneración los descarten en lugar de reforzarlos.
+- Excluir tramos de silencio/ruido del análisis espectral clásico y de la búsqueda de loops.
+
+### 30.5 Batch y UI
+- Paso opcional "Limpieza" en el Batch Processor (detectar, recortar, reducir) con informe previo por archivo.
+- Visualización en la forma de onda: zonas de silencio sombreadas y línea de suelo de ruido.
+- Tests unitarios con señales sintéticas (tono + ruido blanco a SNR conocida, hum 50 Hz, silencios con cola de reverb).
+
+---
+
+## Fase 31 — Importación/Exportación Akai MPC (`.xpm` Keygroup/Drum, `.xpn` Expansion) [PLANIFICADA — BLOQUEADA POR ESPECIFICACIÓN]
+
+**Auditoría de `kontakt2mpce-main` (2026-11-02)**: el repositorio no sirve como especificación. Su código es un esqueleto (`convert_nki_to_xpm` lanza `NotImplementedError`) y su documentación XPM declara expresamente que los ejemplos son "conceptuales" y que los nombres de elementos reales pueden diferir. No aporta nada nuevo sobre Kontakt (remite a `nkitool` y ConvertWithMoss, e incluso indica que NCW requiere Kontakt, cosa ya superada por nuestro decodificador de la Fase 28).
+
+**Requisito previo**: obtener especificación fiable antes de implementar:
+- Archivos `.xpm` reales guardados por MPC Software/hardware (Keygroup y Drum, con varias capas y bucles), o
+- Referencia de código de un conversor funcional con lector/escritor XPM (p. ej. ConvertWithMoss, open source).
+
+**Alcance previsto una vez desbloqueada**:
+- Importador `.xpm` (Keygroup y Drum) a `ExtendedRegion[]`: rangos de nota, 4 capas por keygroup con rangos de velocidad, afinación, bucles, envolventes y filtro.
+- Exportador `.xpm` + carpeta de muestras WAV 16/24 bit 44.1 kHz, con división automática de regiones de más de 4 capas.
+- Empaquetado `.xpn` (`Expansion.xml`, `Programs/`, `Samples/`, `Previews/`, carátula de la Fase 14/20).
+- Tests de ida y vuelta contra archivos reales de referencia.
+
+---
+
 ## Revisión pendiente — NeuronDB Bank Browser (capturas aportadas, no tocar ahora) [PLANIFICADA]
 
 **Situación**: el usuario aportó 7 capturas del panel `NEURONDB BANK BROWSER` (visto en `localhost:5320`) sin pedir un cambio concreto. Se deja esta tarea al final del roadmap para revisarla cuando se llegue aquí; es muy posible que para entonces ya no haga falta porque la UI ya habrá evolucionado o el BankDrawer/BankManager ya cubrirá lo necesario.
