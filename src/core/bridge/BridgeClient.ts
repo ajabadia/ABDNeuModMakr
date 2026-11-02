@@ -120,6 +120,13 @@ export interface BridgeEnhanceOptions {
   capabilities?: string[];
   timeoutMs?: number;
   textPrompt?: string;
+  /** Fase 30: Captured Noise Profile to remove/ignore during AI enhancement */
+  noiseProfile?: {
+    levelDbfs: number;
+    hum50HzDb?: number;
+    hum60HzDb?: number;
+    spectrumBands?: number[];
+  };
 }
 
 export interface BridgeModelInfo {
@@ -426,6 +433,7 @@ export class BridgeClient {
           'X-Target-Loop-Sec': String(targetLoopSec),
           'X-Capabilities': caps.join(','),
           ...(options.textPrompt ? { 'X-Text-Prompt': options.textPrompt } : {}),
+          ...(options.noiseProfile ? { 'X-Noise-Profile': JSON.stringify(options.noiseProfile) } : {}),
         }),
         body: audioData instanceof Uint8Array ? (audioData.buffer as ArrayBuffer) : audioData,
         signal: controller.signal,

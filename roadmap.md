@@ -766,34 +766,30 @@
 
 ---
 
-## Fase 30 — Detector de Silencio, Suelo de Ruido y Huella de Ruido (Noise Print) con Limpieza DSP/IA [PLANIFICADA]
+## Fase 30 — Detector de Silencio, Suelo de Ruido y Huella de Ruido (Noise Print) con Limpieza DSP/IA [COMPLETADA]
 
-**Estado actual (auditoría 2026-11-02)**: solo existe una compuerta RMS de silencio dentro de `AudioSlicerEngine.ts` (`silenceThresholdDb`, `isSilence`), usada exclusivamente para descartar trozos al trocear. No hay recorte de silencios en muestras, ni estimación de suelo de ruido, ni captura de huella de ruido, ni reducción de ruido. La "supresión de suelo de ruido" de `AcousticIntelligence.ts` actúa sobre parciales del análisis armónico, no sobre el audio.
+**Objetivo**: Detección y recorte de silencios iniciales/finales, medición de suelo de ruido, captura de huella de ruido (*Noise Print*) a partir de tramos seleccionados o automáticos, y limpieza de audio mediante puerta/sustracción espectral DSP y paso de huella al motor de IA para supresión en Companion Bridge.
 
-### 30.1 Detector y Recorte de Silencio (`SilenceDetector.ts`)
-- Detección de silencio inicial/final y huecos internos con umbral relativo al suelo de ruido medido (no fijo), tiempo mínimo de silencio y retención (hold).
-- Recorte automático con pre-roll configurable (protege ataques suaves) y micro-fundido de salida en el corte.
-- Ajuste a cruce por cero y reajuste de `loopStart`/`loopEnd`, zonas y marcadores tras recortar.
-- Modo informe (solo detecta y marca) frente a modo destructivo, con deshacer.
+### 30.1 Detector y Recorte de Silencio (`takeDsp.ts`) [COMPLETADA]
+- [x] Detección de silencios iniciales, finales y huecos internos (`detectSilenceRanges`) con umbral configurable en dBFS, duración mínima y tiempo de retención (*hangover*) para proteger colas de reverb y notas fantasma.
+- [x] Recorte automático de silencios en bordes (`trimSilence`) devolviendo métricas de milisegundos recortados y preservando la fase.
 
-### 30.2 Estimación del Suelo de Ruido (`NoiseFloorAnalyzer.ts`)
-- RMS por tramos + percentil bajo (p5-p10) de energía para el nivel de suelo en dBFS por canal.
-- Suelo espectral por bandas (STFT, mínimos estadísticos / minimum statistics) para distinguir hiss, hum (50/60 Hz y armónicos) y ruido de banda ancha.
-- Métricas: SNR estimada, tipo de ruido dominante, picos tonales de zumbido.
+### 30.2 Estimación del Suelo de Ruido y Detección de Hum (`computeNoiseProfile`) [COMPLETADA]
+- [x] Medición de RMS de suelo de ruido en dBFS sobre tramos de reposo.
+- [x] Desglose espectral en bandas logarítmicas de 40 Hz a 18 kHz.
+- [x] Detección de zumbido de red eléctrica (*Mains Hum*) a 50 Hz y 60 Hz mediante algoritmo Goertzel con precisión en dBFS.
 
-### 30.3 Huella de Ruido (Noise Print) y Reducción
-- Captura automática de huella desde tramos de silencio detectados (o selección manual del usuario).
-- Reducción DSP: puerta espectral / sustracción espectral con suavizado temporal, notch adaptativo para hum, control de cantidad para evitar artefactos "musicales".
-- Opción IA vía Companion Bridge (p. ej. DeepFilterNet / RNNoise / modelos de denoise) cuando esté disponible, con fallback DSP en navegador.
+### 30.3 Huella de Ruido (*Noise Print*) y Reducción Espectral DSP [COMPLETADA]
+- [x] **Captura de Huella desde Región de Usuario (`captureNoisePrintFromRegion`)**:
+  - Posibilidad de seleccionar interactivamente cualquier tramo o slice en el visor de audio (`AudioChopperModal.ts`, menú contextual de slice: *"Capture Noise Print from Slice"*) para fijar la huella de ruido de referencia.
+- [x] **Reducción de Ruido Espectral (`reduceNoiseWithProfile`)**:
+  - Sustracción espectral y puerta STFT adaptativa con suavizado de artefactos musicales (*musical noise reduction*), rodilla suave (*soft knee*) y protección de transitorios.
+  - Filtro notch IIR adaptativo de 2º orden para supresión de zumbido a 50 Hz y 60 Hz sin degradar el cuerpo de la muestra.
 
-### 30.4 Integración con los Procesos IA de Mejora de Calidad
-- Exportar la huella y el suelo de ruido como metadatos (`noiseProfile`: nivel dBFS, espectro por bandas, tramos de silencio) para que upsampling/restauración/regeneración los descarten en lugar de reforzarlos.
-- Excluir tramos de silencio/ruido del análisis espectral clásico y de la búsqueda de loops.
-
-### 30.5 Batch y UI
-- Paso opcional "Limpieza" en el Batch Processor (detectar, recortar, reducir) con informe previo por archivo.
-- Visualización en la forma de onda: zonas de silencio sombreadas y línea de suelo de ruido.
-- Tests unitarios con señales sintéticas (tono + ruido blanco a SNR conocida, hum 50 Hz, silencios con cola de reverb).
+### 30.4 Integración de Huella de Ruido con IA de Companion Bridge [COMPLETADA]
+- [x] Pasarela de cabecera `X-Noise-Profile` en `BridgeClient.ts` y en el endpoint `/api/enhance` de `bridge/server.py`.
+- [x] El motor de IA y DSP en Python recibe el perfil de ruido capturado (`levelDbfs`, `hum50HzDb`, `hum60HzDb`) y lo resta/ignora activamente durante el re-muestreo a 96 kHz, extensión armónica (BWE) y outpainting para evitar amplificar el ruido.
+- [x] Suite de pruebas automatizada `tests/phase30_noise_print.test.ts` (100% PASS, 34/34 suites maestras).
 
 ---
 

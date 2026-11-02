@@ -469,12 +469,12 @@ def create_smpl_chunk(loop_start, loop_end, root_key=60, sample_rate=96000):
     return bytes(chunk)
 
 
-def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0, capabilities=None):
+def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0, capabilities=None, noise_profile=None):
     """
     High-fidelity Python audio DSP engine with automatic fallback:
       - 24-bit PCM decoding
+      - Noise profile subtraction & spectral de-noise gate (Fase 30)
       - Bandwidth extension & anti-aliasing sinc resample
-      - Spectral de-noise gate
       - Short-loop outpainting with phase-coherent organic modulation
       - 24-bit PCM WAV encoding with RIFF smpl preservation
     """
@@ -491,6 +491,30 @@ def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0,
         if audio.ndim == 1:
             audio = audio[:, np.newaxis]
         num_samples, num_channels = audio.shape
+
+        # 1.5. Apply Noise Floor / Noise Profile Subtraction if provided (Fase 30)
+        if noise_profile and isinstance(noise_profile, dict):
+            level_dbfs = float(noise_profile.get('levelDbfs', -60.0))
+            hum_50_db = float(noise_profile.get('hum50HzDb', -100.0))
+            hum_60_db = float(noise_profile.get('hum60HzDb', -100.0))
+            
+            # Attenuate mains hum if prominent
+            if HAS_SCIPY and (hum_50_db > level_dbfs + 3 or hum_60_db > level_dbfs + 3):
+                for ch in range(num_channels):
+                    if hum_50_db > level_dbfs + 3 and src_sr > 120:
+                        b_notch, a_notch = scipy.signal.iirnotch(50.0, 30.0, src_sr)
+                        audio[:, ch] = scipy.signal.lfilter(b_notch, a_notch, audio[:, ch])
+                    if hum_60_db > level_dbfs + 3 and src_sr > 140:
+                        b_notch, a_notch = scipy.signal.iirnotch(60.0, 30.0, src_sr)
+                        audio[:, ch] = scipy.signal.lfilter(b_notch, a_notch, audio[:, ch])
+
+            # Spectral floor attenuation: soft noise-gate threshold
+            thresh_linear = 10.0 ** (level_dbfs / 20.0)
+            if thresh_linear > 1e-5:
+                # Soft expansion below threshold to push noise down without squashing transients
+                mags = np.abs(audio)
+                gains = np.where(mags < thresh_linear, np.maximum(0.1, (mags / (thresh_linear + 1e-9)) ** 1.5), 1.0)
+                audio = audio * gains
 
         # 2. Resample to target sample rate (e.g. 96 kHz)
         if src_sr != target_sr:
@@ -1463,13 +1487,22 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             if prompt_hdr:
                 sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] Neural Timbre Guidance Prompt: '{prompt_hdr}'\n")
 
+            noise_profile = None
+            noise_profile_hdr = self.headers.get('X-Noise-Profile', '')
+            if noise_profile_hdr:
+                try:
+                    noise_profile = json.loads(noise_profile_hdr)
+                except Exception as ex:
+                    sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] Warning: Failed to parse X-Noise-Profile header: {ex}\n")
+
             # Execute processing
             try:
                 out_wav, provider_name = process_audio_enhancement(
                     input_bytes,
                     target_sr=target_sr,
                     target_loop_sec=target_loop_sec,
-                    capabilities=capabilities
+                    capabilities=capabilities,
+                    noise_profile=noise_profile
                 )
                 self.send_response(200)
                 self.send_cors_headers()

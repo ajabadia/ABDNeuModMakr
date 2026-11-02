@@ -44,6 +44,11 @@ import {
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
+import {
+  captureNoisePrintFromRegion,
+  reduceNoiseWithProfile,
+  type NoiseProfile,
+} from '../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
 import type { Zone, ExtendedRegion, WorkingMode } from '../core/types.ts';
 import { midiToNoteName } from './ZoneRibbon.ts';
 
@@ -110,6 +115,9 @@ export class AudioChopperModal {
   private manualSilenceRanges: ManualSilenceRange[] = [];
   private manualCutsPolicy: 'prompt' | 'keep' | 'discard' = 'prompt';
   private activeConfirmModalEl: HTMLElement | null = null;
+
+  // Fase 30: Captured Noise Print from selected slice or silence
+  private capturedNoiseProfile: NoiseProfile | null = null;
 
   constructor(context: AudioChopperContext) {
     this.context = context;
@@ -831,6 +839,12 @@ export class AudioChopperModal {
                   </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
                     ${ICONS.wave} Separate Stems
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
+                    ${ICONS.terminal || ''} DSP Denoise
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-ai-enhance" title="Enhance audio via Bridge AI, taking captured noise profile into account to remove it">
+                    ${ICONS.cpu || ''} AI Enhance
                   </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-import-cues" title="Import ReCycle (.rx2, .rex, .rcy), SFZ, or CUE text slice marker file">
                     ${ICONS.database} Import ReCycle / Cues...
@@ -2016,6 +2030,51 @@ export class AudioChopperModal {
     this.backdropEl.querySelector('#btn-chopper-inject')?.addEventListener('click', () => {
       this.handleInjectSlicesIntoSession();
     });
+
+    // Fase 30: DSP Denoise button
+    this.backdropEl.querySelector('#btn-chopper-dsp-denoise')?.addEventListener('click', () => {
+      if (this.pcm.length === 0) return;
+      try {
+        const profile = this.capturedNoiseProfile || {
+          levelDbfs: -48,
+          spectrumBands: new Array(16).fill(1 / 16),
+          hum50HzDb: -80,
+          hum60HzDb: -80,
+        };
+        const cleaned = reduceNoiseWithProfile(this.pcm, this.sampleRate, profile, {
+          reductionDb: 15,
+          removeHum: true,
+        });
+        this.pcm = cleaned;
+        this.recomputeSlices(false);
+        this.render();
+        toast('Cleaned audio using DSP Spectral Gate.', 'success');
+      } catch (err) {
+        toast(`DSP Denoise failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    });
+
+    // Fase 30: AI Enhance button passing captured noise profile to bridge
+    this.backdropEl.querySelector('#btn-chopper-ai-enhance')?.addEventListener('click', async () => {
+      if (this.pcm.length === 0) return;
+      try {
+        const wavBytes = encodePcm16Wav(this.pcm, this.sampleRate);
+        toast('Sending audio to AI Bridge with noise profile removal...', 'info');
+        const enhancedBytes = await bridgeClient.enhanceAudio(wavBytes, {
+          targetSampleRate: 96000,
+          capabilities: ['resample-96k', 'harmonic-bwe', 'spectral-denoise'],
+          noiseProfile: this.capturedNoiseProfile || undefined,
+        });
+        const decoded = await decodeWav(enhancedBytes.buffer as ArrayBuffer);
+        this.pcm = decoded.channelData[0];
+        this.sampleRate = decoded.sampleRate;
+        this.recomputeSlices(false);
+        this.render();
+        toast('Audio enhanced via Bridge AI with noise profile removed!', 'success');
+      } catch (err) {
+        toast(`AI Enhance failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+    });
   }
 
   private bindCanvasInteraction(): void {
@@ -2260,6 +2319,22 @@ export class AudioChopperModal {
                 icon: ICONS.eyeOff,
                 onClick: () => {
                   this.handleToggleSliceSilence(hitSlice.id);
+                },
+              },
+              {
+                label: `Capture Noise Print from Slice #${hitSlice.index} (Fase 30)`,
+                icon: ICONS.wave || ICONS.mic,
+                onClick: () => {
+                  this.capturedNoiseProfile = captureNoisePrintFromRegion(this.pcm, this.sampleRate, {
+                    startFrame: hitSlice.startFrame,
+                    endFrame: hitSlice.endFrame,
+                    label: `Slice #${hitSlice.index}`,
+                  });
+                  toast(
+                    `Captured noise print from Slice #${hitSlice.index} (${this.capturedNoiseProfile.levelDbfs.toFixed(1)} dBFS). Ready for DSP cleaning or AI Enhance!`,
+                    'success'
+                  );
+                  this.render();
                 },
               },
               { label: '', isDivider: true },
