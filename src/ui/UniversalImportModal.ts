@@ -27,6 +27,7 @@ import { ICONS } from './icons.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { toast } from './notify.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
+import { inspectKontaktFile } from '../formats/KontaktParser.ts';
 
 export interface UniversalImportModalContext {
   getCurrentWorkingMode: () => WorkingMode;
@@ -431,6 +432,17 @@ export class UniversalImportModal {
       this.rawFileBuffer = buffer;
       this.rawFilename = filename;
 
+      // Fase 28: early Kontakt DRM preflight — never crash on protected libraries
+      if (/\.(nki|nkm|nkx|nksn|nkc|nkr)$/i.test(filename)) {
+        const diag = inspectKontaktFile(filename, new Uint8Array(buffer));
+        if (!diag.importable) {
+          this.isInspecting = false;
+          this.inspectionError =
+            `${diag.message} Recommended path: ${diag.conversionGuide.join(' ')}`;
+          this.render();
+          return;
+        }
+      }
       let decodedWavBuffer: ArrayBuffer | undefined;
       const isRex = /\.(rx2|rex|rcy)$/i.test(filename);
       if (isRex && bridgeClient.isConnected()) {
