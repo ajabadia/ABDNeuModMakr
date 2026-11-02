@@ -285,6 +285,33 @@
 - [ ] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente.
 - [ ] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo.
 
+### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [ESPECIFICADA]
+
+**Decisión registrada**: doble motor, sí. Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` aún no existe: se crea ahora, y este apartado fija qué debe cumplir el motor y qué debe portar el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
+
+#### 11.5.1 Arquitectura de doble motor
+- [ ] **Motor clásico congelado bit a bit**: la ruta `04_classic_enhanced` es referencia y test dorado; no recibe parámetros nuevos jamás. Lo desconocido futuro la ignora por construcción.
+- [ ] **Ruta expanded nueva** en `ABDAxionikVS` que consume exclusivamente la capa `05_extended_model`. Nada de expanded contamina el clásico.
+- [ ] **El raw como fuente, no como producto**: la capa `01_raw_source` solo entra al expanded como transitorios PCM híbridos fundidos con cuerpo de resonador (punto 11.4). No hay modo rompler puro.
+- [ ] **Presets con motor mínimo declarado**: cada preset expanded fija `engineMin` + `requiredCaps`; el bridge anuncia las capacidades del Axionik conectado (descubrimiento, no asunción).
+
+#### 11.5.2 Inventario "lo mejor hasta hoy" que el expanded debe aprovechar
+- [ ] **Determinista**: NAS `legacy` + `enhanced` (separación HPSS transitorio/estacionario, pitch YIN/MPM + HPS, suavizado de trayectorias), frames Scape/Sphere + resíntesis a PCM, MasterWave determinista (loop por zero-crossing, expansión de short-loop, espacial hasta quad, 96 kHz, downmix), slicer (flujo espectral/onsets), loop editor multi-algoritmo, `qualityScore`, descriptores acústicos + taxonomía de 14 categorías.
+- [ ] **IA**: interfaz de proveedores (`audiosr`, `htdemucs`, `bigvgan`, `outpaint-loop`), `WebNeuralEngine`, Cloud BYOK, clasificador WebGPU/WASM/bridge. Toda mejora IA aplicada queda registrada como proveniencia en el preset (qué modelo, sobre qué capa).
+- [ ] **Filtros y efectos nuevos** en la ruta expanded (previsto del lado AxionikVS): viajan como bloques `filters[]` / `fxChain[]` tipados y puenteables, no como parámetros sueltos del clásico.
+
+#### 11.5.3 Huecos del formato v1 que obligan al v2 (auditoría)
+- [ ] `model.nmmodel` fija **64 parciales en código** (`frameToJson` itera `i < 64`): el espectral HD (>64 parciales, >16 tramas) no cabe. El v2 parametriza `partialCount` / `frameCount`.
+- [ ] La **separación formante/pitch** no se persiste en ningún fichero: el v2 la guarda (`formantProfile` + `pitchTrack`).
+- [ ] El **espacio de morphing 2D/3D y la referencia latente** (VAE) no tienen sitio: el v2 añade `morphSpace` + `latentRef` opaco con dimensiones.
+- [ ] **Filtros/FX del expanded y Resynators v2** no tienen sitio: el v2 los añade namespaced (`resynators.v2.*`), ignorables por motores viejos.
+- [ ] Ningún fichero declara **qué motor necesita**: el v2 añade `engineMin` + `requiredCaps`.
+
+#### 11.5.4 Regla de compatibilidad motor <-> formato
+- [ ] Todo lo que el motor produce tiene sitio en el formato; si no, se revisa la codificación del formato, no se recorta el motor.
+- [ ] Preflight también hacia Axionik (patrón Fase 16): si el destino no cubre los `requiredCaps`, adaptar o bloquear con aviso, nunca corromper en silencio.
+- [ ] Contrato único versionado en `ABDShared` (`contracts/axionikExpandedModel` v2.0.0, SSOT): precede al DSP; NeuModMakr ya puede escribirlo y preflightearlo mientras AxionikVS implementa la reproducción.
+
 ---
 
 ## Fase 12 — Procesamiento por Lotes (`Batch Processor`) [COMPLETADA]
