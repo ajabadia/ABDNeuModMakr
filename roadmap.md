@@ -800,7 +800,7 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
 ### 32.2 Arquitectura Común [COMPLETADA]
 - [x] Capa intermedia única (`UniversalSamplerInstrument` en `ABDShared/Code/SamplerFormats/UniversalSamplerModel.ts`): todos los lectores producen `ExtendedRegion[]` + articulación + metadatos; todos los escritores parten de ese modelo.
 - [x] Registro declarativo de formatos (`FORMAT_CAPABILITIES_REGISTRY`, 16 formatos activos) con detección por extensión y firma binaria, capacidades declaradas y avisos de pérdida (`evaluateFormatFidelity`).
-- [ ] Lector de imágenes de disco (Akai, E-mu, Roland, Ensoniq) como módulo separado (Bloque 3).
+- [x] Lector de imágenes de disco (Akai S-Series S900/S1000/S3000 ISO/Floppy Gotek) en ABDShared/Code/SamplerFormats/AkaiDiskFormat.ts (Bloque 3 en curso: E-mu, Roland, Ensoniq pendientes).
 - [x] Integración con el triaje batch de la Fase 29 y la exportación multiformato de la Fase 16 (`RawSamplerExportModal.ts`, `UniversalImportModal.ts`).
 
 ### 32.3 Mejora de los Formatos Existentes [COMPLETADA]
