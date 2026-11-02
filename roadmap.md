@@ -773,6 +773,44 @@
 
 ---
 
+## Fase 32 — Análisis de ConvertWithMoss: Paridad Total de Formatos de Entrada/Salida y Mejora de los Existentes [PLANIFICADA]
+
+**Referencia**: `D:\desarrollos\ABDSynths\_RESOURCES\convertidores\ConvertWithMoss-main` (Jürgen Moßgraber, **LGPL-3.0**). Se usa solo como referencia de formato: implementación propia (clean-room) en TypeScript, verificada con archivos reales; sin traducir su código Java. Atribución en `README.md` y en el diálogo About.
+
+**Objetivo**: soportar como entrada y salida todos los formatos que cubre ConvertWithMoss, y revisar los que ya tenemos para corregir carencias.
+
+### 32.1 Matriz de Formatos (auditoría inicial)
+Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuModMakr, prioridad, archivos reales de prueba disponibles y viabilidad (texto/XML, binario documentado, imagen de disco, cifrado).
+
+| Grupo | Formatos en ConvertWithMoss | Estado en NeuModMakr |
+|---|---|---|
+| Estándar | SF2, SFZ, DLS, WAV (multisample por nombre) | SF2/SFZ/WAV existentes: revisar paridad; DLS nuevo |
+| Samplers de software | Decent Sampler, Kontakt (+ NI container/monolitos), Maschine, EXS24 (Logic Sampler), Bitwig Multisample, Ableton Sampler/Simpler, TAL Sampler, TX16Wx, DirectWave, Omnisphere, Renoise, Reason NN-XT (`sxt`), Isla, Bliss, Polyend, Korg Multisample (KMP/KSF) | DS/Kontakt parciales (Fase 28); resto nuevo |
+| Akai | MPC moderno (XPM/XPN y pista JSON MPC 3), MPC60/1000/2000, S900/S1000/S3000 (AKP), MESA, imágenes de disco | MPC en Fase 31; resto nuevo |
+| Hardware clásico | E-mu (Emax, Emulator I-IV, EmulatorX), Ensoniq (EPS/ASR, Mirage), Kurzweil (K/PC3), Roland (S-1xx/5xx/7xx, MV8000, MC-707, SP-404mk2, Zen-Core), Yamaha (YSFC), Waldorf (qpat), Synclavier, CMI3, Casio, Sequential Prophet X, Elektron, Disting, 1010music (Blackbox, Bento), Teenage Engineering OP-XY, Synthstrom, Soundbox, Groove Synthesis, ISO | Nuevo |
+
+### 32.2 Arquitectura Común
+- Capa intermedia única: todos los lectores producen `ExtendedRegion[]` + articulación + metadatos; todos los escritores parten de ese modelo (igual que SF2/SFZ hoy).
+- Registro de formatos con detección por extensión y firma binaria, capacidades declaradas (lectura/escritura, capas, round-robin, loops, envolventes, filtros) y avisos de pérdida al exportar a formatos más limitados.
+- Lector de imágenes de disco (Akai, E-mu, Roland, Ensoniq) como módulo separado.
+- Integración con el triaje batch de la Fase 29 y la exportación multiformato de la Fase 16.
+
+### 32.3 Mejora de los Formatos Existentes
+- Comparar SF2, SFZ, Decent Sampler y Kontakt con el comportamiento documentado en ConvertWithMoss: opcodes/generadores no soportados, conversión de unidades (envolventes, filtros, afinación), round-robin, loops, metadatos.
+- Kontakt: detección real por versión (K1-K4 zlib, K4.2+/K5-K8 por fragmentos), contenedores NI y monolitos, verificación del decodificador NCW de la Fase 28.
+
+### 32.4 Orden de Implementación Propuesto
+1. Formatos de texto/XML de alto uso: Bitwig Multisample, Ableton, EXS24, TAL, TX16Wx, Korg KMP, DLS.
+2. Hardware moderno con mucha base de usuarios: Akai MPC (Fase 31), Polyend, 1010music, OP-XY, SP-404mk2.
+3. Formatos binarios clásicos e imágenes de disco (Akai S, E-mu, Roland S, Ensoniq).
+4. Formatos minoritarios según demanda.
+
+### 32.5 Verificación
+- Corpus de archivos reales por formato en `_RESOURCES`, tests de lectura y de ida y vuelta (leer, escribir, releer) con comparación de zonas, capas y loops.
+- Informe de diferencias frente a la salida de ConvertWithMoss para los mismos archivos.
+
+---
+
 ## Revisión pendiente — NeuronDB Bank Browser (capturas aportadas, no tocar ahora) [PLANIFICADA]
 
 **Situación**: el usuario aportó 7 capturas del panel `NEURONDB BANK BROWSER` (visto en `localhost:5320`) sin pedir un cambio concreto. Se deja esta tarea al final del roadmap para revisarla cuando se llegue aquí; es muy posible que para entonces ya no haga falta porque la UI ya habrá evolucionado o el BankDrawer/BankManager ya cubrirá lo necesario.
