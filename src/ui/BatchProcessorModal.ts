@@ -7,7 +7,11 @@ import { escHtml, escAttr } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { toast } from './notify.ts';
 import { extractSf2PresetsToCandidates } from '../core/batch/Sf2BatchExtractor.ts';
-import { extractFolderFilesToCandidates, type FolderFileInput } from '../core/batch/FolderBatchExtractor.ts';
+import {
+  extractFolderFilesToCandidates,
+  extractFolderLoopsToCandidates,
+  type FolderFileInput,
+} from '../core/batch/FolderBatchExtractor.ts';
 import { BatchQueue } from '../core/batch/BatchQueue.ts';
 import { buildBatchPreflightSummary } from '../core/batch/preflight.ts';
 import type {
@@ -52,6 +56,13 @@ export class BatchProcessorModal {
       complexityStrategy: 'auto',
       dspAlgorithm: initialProc.dspAlgorithm || 'legacy',
       autoAcousticClassification: true,
+      ingestionMode: 'multisample',
+      slicerProfile: 'drums',
+      slicerSensitivity: 70,
+      slicerSnapZeroCrossing: true,
+      slicerBpm: 120,
+      exportMidiPattern: true,
+      stagePipelineVramSafety: true,
       outputMasterZipName: `BatchExport_${new Date().toISOString().slice(0, 10)}.zip`,
       axionikDbPath:
         (typeof localStorage !== 'undefined' ? localStorage.getItem('abd_axionikdb_path') : null) ||
@@ -164,28 +175,90 @@ export class BatchProcessorModal {
   private renderDiscoverStep(): string {
     const isBridgeOnline = bridgeClient.isConnected();
     const defaultScanPath = 'd:\\desarrollos\\ABDSynths\\_RESOURCES\\Soundfonts';
+    const isSlicer = this.activeConfig.ingestionMode === 'slicer';
 
     return `
       <div class="nmm-batch-discover-pane">
+        <!-- Ingestion Mode Selector -->
+        <div class="nmm-batch-card" style="margin-bottom: 12px; padding: 12px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <strong style="font-size: 0.95rem;">Ingestion Strategy:</strong>
+              <span class="nmm-batch-hint" style="margin: 0; display: inline-block; margin-left: 8px;">
+                ${isSlicer ? 'Treat each audio loop as an individual kit/model, auto-detect slices and bundle groove MIDI.' : 'Group multiple sample files into multi-zone instrument models.'}
+              </span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="nmm-btn ${!isSlicer ? 'nmm-btn-primary' : 'nmm-btn-secondary'}" id="btn-batch-mode-multisample">
+                Multisample Instruments
+              </button>
+              <button type="button" class="nmm-btn ${isSlicer ? 'nmm-btn-primary' : 'nmm-btn-secondary'}" id="btn-batch-mode-slicer">
+                ${ICONS.scissors || ''} Batch AutoSlicer (Loops & Beats)
+              </button>
+            </div>
+          </div>
+
+          ${
+            isSlicer
+              ? `
+          <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 16px; align-items: center; font-size: 0.85rem;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="sel-batch-slicer-profile" style="color: var(--color-text-dim);">Slicing Profile:</label>
+              <select id="sel-batch-slicer-profile" class="nmm-select" style="padding: 3px 8px; font-size: 0.85rem;">
+                <option value="drums" ${this.activeConfig.slicerProfile === 'drums' ? 'selected' : ''}>Drums (General MIDI C1..B2 Map)</option>
+                <option value="chromatic" ${this.activeConfig.slicerProfile === 'chromatic' ? 'selected' : ''}>Chromatic (F0 Pitch + Equidistant 0..127)</option>
+                <option value="vocals" ${this.activeConfig.slicerProfile === 'vocals' ? 'selected' : ''}>Vocals & Phrases (Silence Valleys)</option>
+                <option value="grid" ${this.activeConfig.slicerProfile === 'grid' ? 'selected' : ''}>Musical Grid (1/16 Beat Division)</option>
+              </select>
+            </div>
+
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="checkbox" id="chk-batch-export-midi" ${this.activeConfig.exportMidiPattern !== false ? 'checked' : ''} />
+              <span>Generate & Bundle Groove MIDI Pattern (.mid)</span>
+            </label>
+
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <input type="checkbox" id="chk-batch-vram-safety" ${this.activeConfig.stagePipelineVramSafety !== false ? 'checked' : ''} />
+              <span title="Flushes CUDA memory between model jobs to prevent GPU OOM on 6/8 GB cards">VRAM Stage Safety Flush</span>
+            </label>
+          </div>
+          `
+              : ''
+          }
+        </div>
+
         <div class="nmm-batch-card">
           <h3>Select Source Material</h3>
           <p class="nmm-batch-hint">
-            Convert entire SoundFonts (multi-preset), multi-folder sample packs, or historic NeuronDB collections in a single unattended pass.
+            ${isSlicer ? 'Batch convert drum loops, vocal tracks, or ReCycle (.rx2/.rex) files into independent sliced model kits.' : 'Convert entire SoundFonts (multi-preset), multi-folder sample packs, or historic NeuronDB collections in a single unattended pass.'}
           </p>
 
           <div class="nmm-batch-dropzone" id="batch-dropzone">
             <div class="nmm-batch-dropzone-icon">${ICONS.upload || ''}</div>
-            <div class="nmm-batch-dropzone-text">Drag & drop <strong>.sf2</strong>, <strong>.zip</strong>, or audio folders here</div>
+            <div class="nmm-batch-dropzone-text">
+              ${isSlicer ? 'Drag & drop <strong>audio loops (.wav, .aif, .rx2, .rex)</strong> or loop folders here' : 'Drag & drop <strong>.sf2</strong>, <strong>.zip</strong>, or audio folders here'}
+            </div>
             <div class="nmm-batch-dropzone-sub">or use the buttons below</div>
             
             <div class="nmm-batch-dropzone-actions">
+              ${
+                !isSlicer
+                  ? `
               <label class="nmm-btn nmm-btn-secondary">
                 Select SoundFont (.sf2)
                 <input type="file" id="input-batch-sf2" accept=".sf2" style="display: none;" />
               </label>
+              `
+                  : `
+              <label class="nmm-btn nmm-btn-primary">
+                ${ICONS.scissors || ''} Select Loops (.wav, .rx2, .rex)
+                <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.rx2,.rex" multiple style="display: none;" />
+              </label>
+              `
+              }
 
               <label class="nmm-btn nmm-btn-secondary">
-                Select Audio Folder
+                Select ${isSlicer ? 'Loops Folder' : 'Audio Folder'}
                 <input type="file" id="input-batch-folder" webkitdirectory directory multiple style="display: none;" />
               </label>
             </div>
@@ -230,9 +303,10 @@ export class BatchProcessorModal {
           <td class="col-name">
             <strong>${escHtml(m.name)}</strong>
             <span class="nmm-badge-slug">${escHtml(m.slug)}</span>
+            ${m.isSlicer ? `<span class="nmm-badge-slug" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">Slicer (${m.slicerProfile || 'drums'})</span>` : ''}
           </td>
           <td class="col-origin">${escHtml(m.sourceOrigin)}</td>
-          <td class="col-zones">${m.zoneCount} zone(s) · ${m.fileCount} file(s)</td>
+          <td class="col-zones">${m.zoneCount} ${m.isSlicer ? 'slice(s) · MIDI' : 'zone(s)'} · ${m.fileCount} file(s)</td>
           <td class="col-cat">
             <span class="nmm-badge-cat">${escHtml(m.detectedCategory)} (Set ${m.suggestedParameterSet})</span>
           </td>
@@ -276,6 +350,16 @@ export class BatchProcessorModal {
               <span class="profile-label">Estimated Duration:</span>
               <strong class="profile-val">~${summary.estimatedDurationSec} seconds</strong>
             </div>
+            ${
+              summary.executionProfile.slicerProfileLabel
+                ? `
+            <div class="profile-item">
+              <span class="profile-label">AutoSlicer Pipeline:</span>
+              <strong class="profile-val" style="color: #34d399;">${escHtml(summary.executionProfile.slicerProfileLabel)}</strong>
+            </div>
+            `
+                : ''
+            }
           </div>
         </div>
 
@@ -444,7 +528,40 @@ export class BatchProcessorModal {
     // Close button
     this.backdropEl.querySelector('#btn-batch-close')?.addEventListener('click', () => this.close());
 
+    // Step 1: Mode Switcher & Slicer Controls
+    this.backdropEl.querySelector('#btn-batch-mode-multisample')?.addEventListener('click', () => {
+      this.activeConfig.ingestionMode = 'multisample';
+      this.render();
+    });
+
+    this.backdropEl.querySelector('#btn-batch-mode-slicer')?.addEventListener('click', () => {
+      this.activeConfig.ingestionMode = 'slicer';
+      this.render();
+    });
+
+    const profileSel = this.backdropEl.querySelector('#sel-batch-slicer-profile') as HTMLSelectElement | null;
+    profileSel?.addEventListener('change', () => {
+      this.activeConfig.slicerProfile = profileSel.value as any;
+    });
+
+    const exportMidiChk = this.backdropEl.querySelector('#chk-batch-export-midi') as HTMLInputElement | null;
+    exportMidiChk?.addEventListener('change', () => {
+      this.activeConfig.exportMidiPattern = exportMidiChk.checked;
+    });
+
+    const vramSafetyChk = this.backdropEl.querySelector('#chk-batch-vram-safety') as HTMLInputElement | null;
+    vramSafetyChk?.addEventListener('change', () => {
+      this.activeConfig.stagePipelineVramSafety = vramSafetyChk.checked;
+    });
+
     // Step 1: File inputs
+    const loopsInput = this.backdropEl.querySelector('#input-batch-loops') as HTMLInputElement | null;
+    loopsInput?.addEventListener('change', async (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (!files || files.length === 0) return;
+      await this.handleLoopFiles(Array.from(files));
+    });
+
     const sf2Input = this.backdropEl.querySelector('#input-batch-sf2') as HTMLInputElement | null;
     sf2Input?.addEventListener('change', async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
@@ -606,7 +723,7 @@ export class BatchProcessorModal {
       const fileInputs: FolderFileInput[] = [];
       for (const f of files) {
         const ext = f.name.split('.').pop()?.toLowerCase();
-        if (ext === 'wav' || ext === 'aif' || ext === 'aiff') {
+        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext || '')) {
           fileInputs.push({
             path: f.webkitRelativePath || f.name,
             name: f.name,
@@ -615,9 +732,16 @@ export class BatchProcessorModal {
         }
       }
 
-      const extracted = extractFolderFilesToCandidates(fileInputs);
+      const extracted =
+        this.activeConfig.ingestionMode === 'slicer'
+          ? extractFolderLoopsToCandidates(fileInputs, {
+              slicerProfile: this.activeConfig.slicerProfile || 'drums',
+              bpm: this.activeConfig.slicerBpm,
+            })
+          : extractFolderFilesToCandidates(fileInputs);
+
       if (extracted.length === 0) {
-        toast('No WAV or AIFF sample files found in selected directory.', 'warning');
+        toast('No WAV, AIFF, or ReCycle loop files found in selected directory.', 'warning');
         return;
       }
       this.candidates = extracted;
@@ -627,6 +751,43 @@ export class BatchProcessorModal {
       toast(`Discovered ${extracted.length} model sets from folder.`, 'success');
     } catch (err) {
       toast(`Failed to read folder files: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+  }
+
+  /**
+   * Fase 25: Handles batch selection of loop and beat files.
+   */
+  private async handleLoopFiles(files: File[]): Promise<void> {
+    try {
+      const fileInputs: FolderFileInput[] = [];
+      for (const f of files) {
+        const ext = f.name.split('.').pop()?.toLowerCase();
+        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext || '')) {
+          fileInputs.push({
+            path: f.name,
+            name: f.name,
+            buffer: await f.arrayBuffer(),
+          });
+        }
+      }
+
+      const extracted = extractFolderLoopsToCandidates(fileInputs, {
+        slicerProfile: this.activeConfig.slicerProfile || 'drums',
+        bpm: this.activeConfig.slicerBpm,
+      });
+
+      if (extracted.length === 0) {
+        toast('No supported loop or audio files (.wav, .rx2, .rex) selected.', 'warning');
+        return;
+      }
+
+      this.candidates = extracted;
+      this.selectedCandidateIds = new Set(extracted.map((c) => c.id));
+      this.currentStep = 'preflight';
+      this.render();
+      toast(`Discovered ${extracted.length} loop(s) for Batch AutoSlicer.`, 'success');
+    } catch (err) {
+      toast(`Failed to read loop files: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }
 

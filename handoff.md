@@ -268,14 +268,15 @@ ABDNeuModMakr/
   - [x] Suite de pruebas automatizadas `tests/phase24_semantic_slicing.test.ts` anadida al runner unificado (19/19 suites PASS).
 
 ---
+- [x] **Fase 18 & Fase 25 - Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer & Memory Safety)** [COMPLETADA]:
+  - [x] Extraccion masiva de loops en FolderBatchExtractor.ts: nuevo metodo extractFolderLoopsToCandidates() para convertir cada archivo .wav, .aif, .rx2, .rex en un candidato individual de kit cortado con perfiles Drums GM Map, Chromatic, Vocals o Grid.
+  - [x] Integracion en BatchQueue.ts: metodo sliceCandidateAudio() que decodifica audio mono, soporta REX2 nativo (decompressRx2Audio), ejecuta sliceAudioBuffer(), genera muestras WAV de 16-bit por corte, empaqueta zonas mapeadas y genera patron Standard MIDI Type 0 (.mid) adjuntado a cada modelo.
+  - [x] Salvaguarda de Memoria VRAM y Garbage Collection por etapas (Batch-by-Stage): endpoints GET /api/memory/status y POST /api/memory/clear_cache en ridge/server.py, metodos getMemoryStatus() y clearMemoryCache() en BridgeClient.ts, y purga automatica de cache CUDA entre modelos en la cola batch.
+  - [x] Interfaz interactiva en BatchProcessorModal.ts: conmutador de estrategia de ingesta (Multisample vs Batch AutoSlicer), selector de perfil de slicing, checkboxes de exportacion MIDI y purga VRAM, e integracion en tabla Preflight.
+  - [x] Suite de pruebas automatizadas 	ests/phase25_batch_autoslicer.test.ts (9/9 verificaciones) anadida al runner unificado (21/21 suites PASS).
+
 
 ## 5. Que FALTA por hacer (Siguientes Fases y Tareas Pendientes)
-
-### 5.1 Tareas Inmediatas de Frontend & Preparacion de Muestras
-1. **Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer)**:
-   - Integrar la deteccion y corte automatico en el Batch Processor (`BatchProcessorModal.ts`).
-   - Permitir procesar carpetas completas de loops ritmicos, frases vocales y archivos de rebanadas (`.rx2`/`.rex`/`.cue`) de forma 100% desatendida, generando modelos de bateria GM Drum Map, cromaticos equidistantes o volcando archivos MIDI asociados.
-   - **Arquitectura de Pipeline por Fases Homogeneas (Batch-by-Stage / Memory Safety)**: Reordenar la cola del lote por modelos IA para cargar un modelo pesado a la vez en VRAM (Fase Demucs -> Fase Whisper -> Fase DSP Slicing -> Fase AudioSR -> Fase SD-Turbo), liberando VRAM con `torch.cuda.empty_cache()` entre etapas y garantizando ejecucion masiva sin desbordar GPUs de 8 GB VRAM.
 
 ### 5.2 Formatos de Sampler Avanzados y Compatibilidad Kontakt / Decent Sampler
 2. **Fase 28 — Estudio en Profundidad de Decent Sampler y Compatibilidad de Librerias Kontakt (Encriptadas vs Sin Encriptar)**:

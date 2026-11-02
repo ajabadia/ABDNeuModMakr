@@ -4,7 +4,8 @@
 
 import { createUniqueModelSlug } from '../modelSlug.ts';
 import { classifyInstrumentAndParameterSet } from '../../formats/Sf2Parser.ts';
-import type { BatchModelCandidate } from './types.ts';
+import type { BatchModelCandidate, BatchSlicerProfile } from './types.ts';
+import { parseSliceFile } from '../dsp/SliceFileParser.ts';
 
 export interface FolderFileInput {
   /** Relative path (e.g. "VintageKeys/Rhodes_036_C2.wav" or "Rhodes_036_C2.wav") */
@@ -28,14 +29,91 @@ export function extractInstrumentPrefix(filename: string): string {
 }
 
 /**
+ * Fase 25: Discovers individual loop files (.wav, .aif, .rx2, .rex) as independent
+ * AutoSlicer model candidates, where each loop becomes a sliced kit with GM Drum or Chromatic mapping.
+ */
+export function extractFolderLoopsToCandidates(
+  files: FolderFileInput[],
+  options: {
+    defaultOriginName?: string;
+    slicerProfile?: BatchSlicerProfile;
+    bpm?: number;
+  } = {}
+): BatchModelCandidate[] {
+  const loopExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
+  const loopFiles = files.filter((f) => {
+    const ext = f.name.split('.').pop()?.toLowerCase();
+    return ext && loopExtensions.has(ext);
+  });
+
+  if (loopFiles.length === 0) {
+    return [];
+  }
+
+  const profile = options.slicerProfile || 'drums';
+  const candidates: BatchModelCandidate[] = [];
+  const existingSlugs: string[] = [];
+
+  for (let i = 0; i < loopFiles.length; i++) {
+    const file = loopFiles[i];
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const cleanName = file.name.replace(/\.[^.]+$/, '').replace(/[_.-]+/g, ' ').trim() || `Loop_${i + 1}`;
+    const slug = createUniqueModelSlug(cleanName, existingSlugs);
+    existingSlugs.push(slug);
+
+    // Try inspecting slice markers if format contains embedded cues/rex
+    let estimatedSlices = 16;
+    try {
+      const parsed = parseSliceFile(file.buffer, file.name);
+      if (parsed?.sliceFrames && parsed.sliceFrames.length > 0) {
+        estimatedSlices = parsed.sliceFrames.length;
+      }
+    } catch {
+      // transient ignore
+    }
+
+    const isRx2 = ext === 'rx2' || ext === 'rex';
+    const detectedCategory = profile === 'drums' ? 'Drums' : profile === 'vocals' ? 'Vocals' : 'Synth';
+    const suggestedParameterSet = profile === 'drums' ? 0 : profile === 'vocals' ? 1 : 2;
+
+    candidates.push({
+      id: `slicer_${slug}_${Date.now()}_${i}`,
+      name: cleanName,
+      slug,
+      sourceType: isRx2 ? 'loop-rx2' : 'auto-slicer',
+      sourceOrigin: options.defaultOriginName || file.path || file.name,
+      zoneCount: estimatedSlices,
+      detectedSliceCount: estimatedSlices,
+      slicerProfile: profile,
+      detectedCategory,
+      suggestedParameterSet,
+      suggestedComplexity: 8,
+      status: 'pending',
+      progressPct: 0,
+      files: [{ name: file.name, buffer: file.buffer }],
+    });
+  }
+
+  return candidates;
+}
+
+/**
  * Discovers model candidates from a collection of audio files, either by
  * subfolder hierarchy, by instrument prefix, or by legacy NeuronDB folder structures.
  */
 export function extractFolderFilesToCandidates(
   files: FolderFileInput[],
-  options: { defaultOriginName?: string } = {}
+  options: {
+    defaultOriginName?: string;
+    ingestionMode?: 'multisample' | 'slicer';
+    slicerProfile?: BatchSlicerProfile;
+  } = {}
 ): BatchModelCandidate[] {
-  const audioExtensions = new Set(['wav', 'aif', 'aiff']);
+  if (options.ingestionMode === 'slicer') {
+    return extractFolderLoopsToCandidates(files, options);
+  }
+
+  const audioExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
   const audioFiles = files.filter((f) => {
     const ext = f.name.split('.').pop()?.toLowerCase();
     return ext && audioExtensions.has(ext);

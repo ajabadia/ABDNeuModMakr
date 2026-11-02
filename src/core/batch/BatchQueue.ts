@@ -15,6 +15,9 @@ import { bridgeClient, type AxionikSaveFileEntry } from '../bridge/BridgeClient.
 import { parseSampleFilenameByName } from '../sampleNaming.ts';
 import { createZone } from '../sessionFactory.ts';
 import type { MidiNote, ProcessConfig, Zone } from '../types.ts';
+import { sliceAudioBuffer, buildMidiFileBuffer, type SlicerMode } from '../dsp/AudioSlicerEngine.ts';
+import { decodeWav, decodeAiff, encodePcm16Wav } from '../dsp/WavDecoder.ts';
+import { isRx2Buffer, decompressRx2Audio } from '../dsp/DwopDecompressor.ts';
 
 export type BatchQueueEvent =
   | 'progress'
@@ -246,11 +249,37 @@ export class BatchQueue {
       rawSamples.set(f.name, f.buffer);
     }
 
+    const isAutoSlicer =
+      job.sourceType === 'auto-slicer' ||
+      job.sourceType === 'loop-rx2' ||
+      config.ingestionMode === 'slicer';
+
     let zones: Zone[] = [];
-    if (job.classicZones && job.classicZones.length > 0) {
-      zones = job.classicZones;
+    let midiPatternFile: { name: string; buffer: ArrayBuffer } | null = null;
+
+    if (isAutoSlicer && job.files.length > 0) {
+      const sourceFile = job.files[0];
+      const sliceResult = this.sliceCandidateAudio(sourceFile, job, config);
+      zones = sliceResult.zones;
+      for (const [name, buf] of sliceResult.sliceSamples.entries()) {
+        rawSamples.set(name, buf);
+      }
+      if (sliceResult.midiBuffer) {
+        job.midiPatternBytes = sliceResult.midiBuffer;
+        midiPatternFile = {
+          name: `${job.slug}_groove.mid`,
+          buffer: sliceResult.midiBuffer.buffer as ArrayBuffer,
+        };
+        rawSamples.set(midiPatternFile.name, midiPatternFile.buffer);
+      }
+      job.detectedSliceCount = zones.length;
+      job.zoneCount = zones.length;
     } else {
-      zones = this.buildZonesFromFiles(job.files);
+      if (job.classicZones && job.classicZones.length > 0) {
+        zones = job.classicZones;
+      } else {
+        zones = this.buildZonesFromFiles(job.files);
+      }
     }
 
     if (zones.length === 0) {
@@ -334,6 +363,12 @@ export class BatchQueue {
           data: entry.data,
         });
       }
+      if (midiPatternFile) {
+        this.masterZipEntries.push({
+          path: `${job.slug}/04_midi/${midiPatternFile.name}`,
+          data: new Uint8Array(midiPatternFile.buffer),
+        });
+      }
     } else if (config.destination === 'axionikdb') {
       if (bridgeClient.isConnected()) {
         const filesToSave: AxionikSaveFileEntry[] = capsuleResult.entries.map((e) => {
@@ -348,6 +383,12 @@ export class BatchQueue {
             content_b64: this.uint8ArrayToBase64(e.data),
           };
         });
+        if (midiPatternFile) {
+          filesToSave.push({
+            path: `04_midi/${midiPatternFile.name}`,
+            content_b64: this.uint8ArrayToBase64(new Uint8Array(midiPatternFile.buffer)),
+          });
+        }
         const targetSub = job.sublibrary || config.destinationSublibrary || 'Default';
         await bridgeClient.saveAxionikModel(
           config.axionikDbPath || 'd:\\desarrollos\\ABDSynths\\AxionikDB',
@@ -364,8 +405,122 @@ export class BatchQueue {
             data: entry.data,
           });
         }
+        if (midiPatternFile) {
+          this.masterZipEntries.push({
+            path: `${job.slug}/04_midi/${midiPatternFile.name}`,
+            data: new Uint8Array(midiPatternFile.buffer),
+          });
+        }
       }
     }
+
+    // 7. Fase 25: Stage memory safety: force garbage collection & VRAM flush if bridge online
+    if (config.stagePipelineVramSafety !== false && bridgeClient.isConnected()) {
+      try {
+        await bridgeClient.clearMemoryCache();
+      } catch {
+        // non-blocking
+      }
+    }
+  }
+
+  /**
+   * Fase 25: Slices an audio loop into individual drum hits or chromatic notes,
+   * generates standard 16-bit WAV samples, maps zones, and extracts MIDI groove pattern.
+   */
+  private sliceCandidateAudio(
+    file: { name: string; buffer: ArrayBuffer },
+    job: BatchModelCandidate,
+    config: BatchConfig
+  ): {
+    zones: Zone[];
+    sliceSamples: Map<string, ArrayBuffer>;
+    midiBuffer: Uint8Array | null;
+  } {
+    const rawSamples = new Map<string, ArrayBuffer>();
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const isRx2 = ext === 'rx2' || ext === 'rex' || isRx2Buffer(file.buffer);
+
+    let pcm: Float32Array;
+    let sampleRate = 44100;
+    let detectedBpm = config.slicerBpm || 120;
+
+    if (isRx2) {
+      const rx2Res = decompressRx2Audio(file.buffer);
+      pcm = rx2Res.channels[0];
+      sampleRate = rx2Res.sampleRate;
+    } else {
+      let decoded: { channels: Float32Array[]; sampleRate: number };
+      if (ext === 'aif' || ext === 'aiff') {
+        decoded = decodeAiff(file.buffer);
+      } else {
+        decoded = decodeWav(file.buffer);
+      }
+      sampleRate = decoded.sampleRate;
+      if (decoded.channels.length === 1) {
+        pcm = decoded.channels[0];
+      } else {
+        pcm = new Float32Array(decoded.channels[0].length);
+        const inv = 1 / decoded.channels.length;
+        for (let i = 0; i < pcm.length; i++) {
+          let sum = 0;
+          for (let ch = 0; ch < decoded.channels.length; ch++) {
+            sum += decoded.channels[ch][i];
+          }
+          pcm[i] = sum * inv;
+        }
+      }
+    }
+
+    const slicerMode: SlicerMode = (job.slicerProfile || config.slicerProfile || 'drums') as SlicerMode;
+    const slicerRes = sliceAudioBuffer(pcm, sampleRate, {
+      mode: slicerMode,
+      sensitivity: config.slicerSensitivity ?? 70,
+      silenceThresholdDb: -42,
+      preRollMs: 3,
+      postRollMs: 8,
+      snapZeroCrossing: config.slicerSnapZeroCrossing ?? true,
+      bpm: detectedBpm,
+      gridDivision: '1/16',
+      allowOverlap: false,
+      chromaticBaseNote: 36,
+    });
+
+    const validSlices = slicerRes.slices.filter((s) => !s.isSilence);
+    if (validSlices.length === 0) {
+      throw new Error(`AutoSlicer could not detect any valid audio slices in "${file.name}".`);
+    }
+
+    const zones: Zone[] = [];
+    validSlices.forEach((sl, idx) => {
+      const sliceWavName = `${job.slug}_slice${String(idx + 1).padStart(2, '0')}.wav`;
+      const wavBuffer = encodePcm16Wav(sl.pcm, sampleRate, {
+        rootKey: sl.rootKey,
+        lowKey: sl.lowKey,
+        highKey: sl.highKey,
+      });
+      rawSamples.set(sliceWavName, wavBuffer);
+
+      zones.push(
+        createZone(
+          sl.lowKey as MidiNote,
+          sl.rootKey as MidiNote,
+          sl.highKey as MidiNote,
+          sliceWavName
+        )
+      );
+    });
+
+    let midiBuffer: Uint8Array | null = null;
+    if (config.exportMidiPattern !== false) {
+      midiBuffer = slicerRes.midiFileBuffer || buildMidiFileBuffer(validSlices, detectedBpm);
+    }
+
+    return {
+      zones,
+      sliceSamples: rawSamples,
+      midiBuffer,
+    };
   }
 
   /**

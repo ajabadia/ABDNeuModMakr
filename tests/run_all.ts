@@ -32,6 +32,7 @@ const TEST_FILES = [
   'phase26_rex2_decode.test.ts',
   'phase27_byok_text.test.ts',
   'phase23_sublibraries.test.ts',
+  'phase25_batch_autoslicer.test.ts',
 ];
 
 interface TestResult {

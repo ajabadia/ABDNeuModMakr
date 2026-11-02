@@ -348,7 +348,9 @@ def get_system_capabilities():
         "decode-rx2",
         "stem-separation",
         "phoneme-alignment",
-        "hierarchical-sublibraries"
+        "hierarchical-sublibraries",
+        "batch-autoslicer",
+        "memory-management"
     ]
     if gpu_available:
         caps.extend(["cuda-acceleration", "audiosr-ready", "demucs-ready"])
@@ -369,6 +371,49 @@ def get_system_capabilities():
         },
         "capabilities": caps
     }
+
+
+def get_memory_status():
+    """Returns current system memory and GPU VRAM statistics."""
+    import gc
+    vram_alloc_mb = 0.0
+    vram_res_mb = 0.0
+    vram_total_mb = 0.0
+    device_name = "CPU"
+    has_cuda = HAS_TORCH and torch.cuda.is_available()
+    if has_cuda:
+        try:
+            device_name = torch.cuda.get_device_name(0)
+            vram_alloc_mb = round(torch.cuda.memory_allocated() / (1024.0 * 1024.0), 2)
+            vram_res_mb = round(torch.cuda.memory_reserved() / (1024.0 * 1024.0), 2)
+            props = torch.cuda.get_device_properties(0)
+            vram_total_mb = round(props.total_memory / (1024.0 * 1024.0), 2)
+        except Exception:
+            pass
+    return {
+        "status": "ok",
+        "has_cuda": has_cuda,
+        "device_name": device_name,
+        "vram_allocated_mb": vram_alloc_mb,
+        "vram_reserved_mb": vram_res_mb,
+        "vram_total_mb": vram_total_mb,
+    }
+
+
+def clear_memory_cache():
+    """Forces Python garbage collection and clears PyTorch CUDA memory cache."""
+    import gc
+    gc.collect()
+    has_cuda = HAS_TORCH and torch.cuda.is_available()
+    if has_cuda:
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
+    status = get_memory_status()
+    status["action"] = "cache_cleared"
+    return status
 
 
 def parse_wav_smpl_chunk(wav_bytes):
@@ -870,6 +915,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         if path in ('', '/health', '/api/health'):
             caps = get_system_capabilities()
             body = json.dumps(caps, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path in ('/api/memory/status', '/memory/status'):
+            mem_info = get_memory_status()
+            body = json.dumps(mem_info, indent=2).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
             self.send_header('Content-Type', 'application/json')
@@ -2133,6 +2189,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(err)
                 return
+
+        if path in ('/api/memory/clear_cache', '/memory/clear_cache'):
+            res = clear_memory_cache()
+            body = json.dumps(res, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         self.send_response(404)
         self.send_cors_headers()

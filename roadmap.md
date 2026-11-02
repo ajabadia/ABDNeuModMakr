@@ -398,7 +398,7 @@
 
 ---
 
-## Fase 18 — Utilidad Inteligente de Troceado (Audio Chopper / Slicer) y Auto-Mapeo Multicapa por Tono y Volumen [PLANIFICADA]
+## Fase 18 — Utilidad Inteligente de Troceado (Audio Chopper / Slicer) y Auto-Mapeo Multicapa por Tono y Volumen [COMPLETADA]
 
 **Objetivo**: Segmentar archivos de audio continuos (WAV/AIFF) en rebanadas individuales (slices) y distribuirlos de forma inteligente en zonas de teclado y capas de velocidad, con lógica especializada para percusión o instrumentos cromáticos.
 
@@ -584,7 +584,7 @@
 
 ---
 
-## Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer) [PLANIFICADA]
+## Fase 25 — Procesador por Lotes para AutoSlicer / Audio Chopper (Batch AutoSlicer) [COMPLETADA]
 
 **Objetivo**: Integrar la tecnología de troceado automático y mapeo multicapa dentro del motor de procesamiento por lotes (`BatchProcessorModal.ts` y `FolderBatchExtractor.ts`), permitiendo procesar masivamente carpetas completas de loops rítmicos, frases vocales y archivos ReCycle (`.rx2` / `.rex` / WAV) de forma 100% desatendida y plenamente integrada en el resto de flujos batch de la aplicación.
 

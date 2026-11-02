@@ -18,6 +18,9 @@ export interface BatchPreflightModelItem {
   detectedCategory: string;
   suggestedParameterSet: number;
   selected: boolean;
+  sourceType?: string;
+  isSlicer?: boolean;
+  slicerProfile?: string;
 }
 
 export interface BatchPreflightSummary {
@@ -37,6 +40,8 @@ export interface BatchPreflightSummary {
     complexityLabel: string;
     destinationLabel: string;
     destinationPathOrName: string;
+    slicerProfileLabel?: string;
+    grooveMidiEnabled?: boolean;
   };
   models: BatchPreflightModelItem[];
 }
@@ -81,6 +86,9 @@ export function buildBatchPreflightSummary(
       detectedCategory: c.detectedCategory,
       suggestedParameterSet: c.suggestedParameterSet,
       selected: isSelected,
+      sourceType: c.sourceType,
+      isSlicer: c.sourceType === 'auto-slicer' || c.sourceType === 'loop-rx2' || config.ingestionMode === 'slicer',
+      slicerProfile: c.slicerProfile || config.slicerProfile,
     };
   });
 
@@ -125,6 +133,11 @@ export function buildBatchPreflightSummary(
     destinationPathOrName = config.neuronDbPath || 'Models/000.model .. 511.model';
   }
 
+  const slicerProfileLabel =
+    config.ingestionMode === 'slicer' || candidates.some((c) => c.sourceType === 'auto-slicer' || c.sourceType === 'loop-rx2')
+      ? `Batch AutoSlicer (${(config.slicerProfile || 'drums').toUpperCase()} Mode + Groove MIDI)`
+      : undefined;
+
   return {
     totalDiscovered: candidates.length,
     selectedCount,
@@ -142,6 +155,8 @@ export function buildBatchPreflightSummary(
       complexityLabel,
       destinationLabel,
       destinationPathOrName,
+      slicerProfileLabel,
+      grooveMidiEnabled: config.exportMidiPattern !== false,
     },
     models,
   };

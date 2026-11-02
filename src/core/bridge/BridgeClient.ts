@@ -104,6 +104,16 @@ export interface PhonemeAlignmentResult {
   error?: string;
 }
 
+export interface BridgeMemoryStatus {
+  status: string;
+  has_cuda: boolean;
+  device_name: string;
+  vram_allocated_mb: number;
+  vram_reserved_mb: number;
+  vram_total_mb: number;
+  action?: string;
+}
+
 export interface BridgeEnhanceOptions {
   targetSampleRate?: number;
   targetLoopSec?: number;
@@ -1231,6 +1241,51 @@ export class BridgeClient {
         durationSec: (data.total_frames || 0) / (data.sample_rate || 44100),
         success: data.status === 'ok',
       };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Fase 25: Returns current system memory and GPU VRAM statistics.
+   */
+  public async getMemoryStatus(timeoutMs = 5000): Promise<BridgeMemoryStatus | null> {
+    if (!this.isConnected()) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/memory/status`, {
+        method: 'GET',
+        headers: this.authHeaders({ Accept: 'application/json' }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as BridgeMemoryStatus;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Fase 25: Forces garbage collection and releases GPU VRAM cache in Companion Bridge.
+   */
+  public async clearMemoryCache(timeoutMs = 5000): Promise<BridgeMemoryStatus | null> {
+    if (!this.isConnected()) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/memory/clear_cache`, {
+        method: 'POST',
+        headers: this.authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as BridgeMemoryStatus;
+    } catch {
+      return null;
     } finally {
       clearTimeout(timer);
     }
