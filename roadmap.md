@@ -768,9 +768,12 @@
 - Tests: `tests/phase31_mpc_xpm.test.ts` (13/13, incluye los 52 `.xpm` reales, pistas `.xtd`/`.xty` MPC3, troceado real del chunk `"atem"` en `MPC3-RDK Snares.wav` y expansión MPC 1.x/3.x).
 
 **Pendiente**:
-- **Selector interactivo de programa (`MultiInstrumentModal`) para contenedores multiprograma**:
-  - *Estado actual (auditoría 2026-11-02)*: `MultiInstrumentModal.ts` **ya existe y funciona** en `importHandlers.ts` (`File -> Import Model Files / .zip`) cuando un `.sf2` tiene más de 1 preset o cuando se seleccionan varios `.sfz` (permitiendo elegir uno o enviar todos al Batch Processor), y `NeuronDbModal.ts` cuando hay varios `<NNN>.model`.
-  - *Qué falta*: (1) extender `MultiInstrumentModal` para que soporte también contenedores `.xpn` / `.zip` con múltiples programas (`.xpm`, `.xty`, `.xtd`, `.dspreset`, `.nki`, `.vstpreset`, `.multisample`), y (2) conectarlo también dentro de `UniversalImportModal.ts` (`Ctrl+I`), donde actualmente se carga el mejor programa sin preguntar. Se unificará con el triaje de la Fase 29.
+- **Selector interactivo de programa (`MultiInstrumentModal`) para contenedores multiprograma y directorios multi-instrumento**:
+  - *Estado actual (auditoría 2026-11-02)*: `MultiInstrumentModal.ts` **ya existe y funciona** en `importHandlers.ts` (`File -> Import Model Files / .zip`) cuando un `.sf2` tiene más de 1 preset o cuando se seleccionan varios `.sfz` (permitiendo elegir uno o enviar todos al Batch Processor), y `NeuronDbModal.ts` cuando hay varios `<NNN>.model`. Sin embargo, al arrastrar una carpeta con muestras sueltas de varios instrumentos a la importación normal, hoy mete todos los WAVs en un único instrumento sin preguntar (mientras que `FolderBatchExtractor.ts` sí los agrupa por prefijo/subcarpeta solo dentro del Batch Processor).
+  - *Qué falta*:
+    1. Extender `MultiInstrumentModal` para contenedores `.xpn` / `.zip` con múltiples programas (`.xpm`, `.xty`, `.xtd`, `.dspreset`, `.nki`, `.vstpreset`, `.multisample`).
+    2. **Deducción de múltiples instrumentos al leer un directorio de muestras**: reutilizar la agrupación por prefijo/tokens de nombre (`FolderBatchExtractor.ts`) —y opcionalmente permitir clasificación semántica de la lista de nombres mediante IA (Companion Bridge local o LLM BYOK de la Fase 27)— para que, si en una carpeta se detecta más de un instrumento, se abra también `MultiInstrumentModal` preguntando cuál cargar en la sesión activa o si enviar los seleccionados al Batch Processor.
+    3. Conectarlo también dentro de `UniversalImportModal.ts` (`Ctrl+I`), donde actualmente se carga el primer/mejor programa sin preguntar. Se unificará con el triaje de la Fase 29.
 - **Rendimiento ZIP**: el lector ZIP compartido tarda unos 45 s con un `.xpn` de 231 MB (Rusty Drums MPC3). Usar `DecompressionStream` / extracción perezosa de entradas.
 - **Formatos MPC heredados presentes en el corpus**: `.PGM` de MPC 1000/2500 (firma `MPC1000 PGM`, 8 archivos) y `.AKP` de Akai S5000/S6000 (RIFF `APRG`, 2 archivos); proyectos `.xpj`. Incluidos en la Fase 32.
 - Botón/opción de exportación MPC en `RawSamplerExportModal` (carpeta `.xpm` + WAV y empaquetado `.xpn`).
@@ -841,23 +844,36 @@ Comparar parámetro a parámetro lo que modela ConvertWithMoss en sus interfaces
 - **Expresividad Hardware (MPCe / MPE / Aftertouch / PitchBend)**:
   - Rango de `pitchBend` (semitonos arriba/abajo), matrices de modulación (ModWheel, Aftertouch, Velocidad, ejes X/Y de pad MPCe) hacia corte de filtro, tono, volumen y panorámica.
 
-### 33.2 Capa de Abstracción Universal y Mapeo de Parámetros (`UniversalSamplerModel`)
-- Diseñar un descriptor canónico intermedio (`UniversalSamplerInstrument` -> `UniversalGroup[]` -> `UniversalZone[]`) con unidades físicas normalizadas:
-  - Frecuencias en **Hz**, tiempos en **segundos**, niveles y ganancias en **dB**, afinación en **semitonos + cents**, panorámica en **-1..+1**, curvas en **-1..+1**, índices MIDI en **0..127**.
+### 33.2 Capa de Abstracción Universal y Compatibilidad con los Contratos de Parámetros de `ABDShared` (`MidiTranslationEngine` / Diccionario de Datos)
+**Auditoría de las capas de abstracción existentes en el ecosistema ABDSynths (2026-11-02)**:
+Se han revisado en detalle `ABDShared/Contracts/MidiTranslationEngine.ts`, `korg_ms2000_parameter_spec.json`, `behringer_deepmind12_parameter_spec.json`, `roland_juno106_parameter_spec.json`, `casio_cz101_parameter_spec.json`, `modulation_matrix.schema.json`, `s950-patch-fields.schema.json` y `ABDAxionikVS/Source/DSP/ParameterEngineBridge.h`.
+
+- **Qué NO tiene sentido forzar**:
+  - Los sintetizadores sustractivos/VA (`ABDMS2000`, `ABDEep`, `Juno106`, `Pro800`, o el banco `SndDatStore` de 445 floats en `ABDAxionikVS`) tienen una **topología fija de parámetros** conocida en tiempo de compilación (ej. un vector plano de N parámetros mapeado 1:1 a controles de pantalla y bytes CC/NRPN/SysEx).
+  - Un sampler multi-muestra tiene una **topología jerárquica de cardinalidad variable** (`1..G` Grupos $\times$ `1..Z` Zonas/Regiones $\times$ `1..L` Loops + Pool de archivos WAV y punteros de muestra en frames de 32 bits). Intentar aplanar una lista dinámica de 200 zonas o nombres de archivo `.wav` dentro de un array fijo de CCs/SysEx como `korg_ms2000_parameter_spec.json` sería artificial y contraproducente.
+
+- **Qué SÍ tiene todo el sentido (Arquitectura Híbrida en 3 Niveles compatible con `ABDShared` para un futuro Sampler de ABDSynths)**:
+  1. **Nivel 1 — Diccionario de Parámetros de Síntesis (`ParameterMeta` + `CurveType` de `MidiTranslationEngine.ts` + patrón `s950-patch-fields.schema.json`)**:
+     - Aunque el número de zonas sea variable, **los parámetros de síntesis dentro de cada Zona, Grupo o canal Global son un conjunto fijo y bien definido** (`filter.cutoff`, `filter.resonance`, `ampEnv.attack`, `ampEnv.decay`, `ampEnv.sustain`, `ampEnv.release`, `modLfo.rate`, `zone.tuneCents`, `zone.pan`, `zone.gainDb`, etc.), exactamente igual que ya hace `ABDShared/Contracts/s950-patch-fields.schema.json` para los 38 campos por keygroup del sampler hardware Akai S950 (`keygroups.fields` + `performTrims`).
+     - Definir el catálogo de parámetros de Voz/Grupo/Zona usando **el mismo esquema `ParameterMeta` de `@abdsynths/shared/Contracts/MidiTranslationEngine.ts`** (`id`, `name`, `group`, `min`, `max`, `default`, `type: 'continuous' | 'choice' | 'integer'`, `unit: 'Hz' | 's' | 'dB' | 'cents' | '%'`, `curve: 'Linear' | 'Exp' | 'Pow'`, `curveP0`, `curveP1`, `domainMin`, `domainMax`, `wire: 'CC' | 'Nrpn' | 'SysEx' | 'None'`) aporta dos ventajas directas:
+       - **En los conversores de formato (`NeuModMakr` / `ABDShared`)**: Las leyes de conversión de cada formato (por ejemplo, el tiempo de envolvente logarítmico de Akai MPC `0.001 * 1e5^v` es literalmente la curva `'Exp'` de `MidiTranslationEngine.evalCurve` con `curveP0 = 0.001, curveP1 = ln(100000) = 11.512925`) utilizan el mismo motor matemático invertible (`normalizedToPhysical` / `physicalToNormalized`) que el resto de sintetizadores.
+       - **En un futuro Sampler propio de ABDSynths**: Los controles en pantalla (knobs/sliders del editor de grupo o zona seleccionada), la automatización DAW/MIDI (`CC` / `NRPN`) y el motor DSP en C++/WebAudio hablarán directamente con el diccionario `sampler_voice_parameter_spec.json` usando `MidiTranslationEngine` y `ParameterEngineBridge` sin reescribir la capa de UI ni de control MIDI.
+  2. **Nivel 2 — Matriz de Modulación Compatible con `modulation_matrix.schema.json`**:
+     - Las rutas de modulación de los formatos de sampler (Velocity, Keytrack, ModWheel, Aftertouch, LFO 1/2, Envolventes Auxiliares, ejes X/Y de pad MPCe $\rightarrow$ Pitch, Cutoff, Resonance, Volume, Pan, SampleStart, LoopMod) se representan siguiendo el contrato `ABDShared/Contracts/modulation_matrix.schema.json` (`slots`, `sources`, `destinations` con `perNote` y `depthIsBipolar`).
+  3. **Nivel 3 — Grafo Estructural de Mapeo (`UniversalSamplerInstrument`)**:
+     - Contenedor jerárquico (`Program -> Groups -> Zones -> Loops + AudioPool`) para los datos estructurales que no son perillas continuas (rangos de nota/velocidad `lowNote..highNote`, `lowVel..highVel`, punteros de muestra en frames `sampleStart`/`sampleEnd`/`loopStart`/`loopEnd`, secuencias Round-Robin, grupos de exclusión `muteGroup` y referencias a buffers de audio), donde cada `Group` y `Zone` almacena su bloque de parámetros tipado por el Nivel 1 y sus modulaciones por el Nivel 2.
 - **Tabla declarativa de capacidades por formato (`FormatCapabilities`)**:
-  - Cada lector/escritor declara qué campos soporta de forma nativa, cuáles requieren aproximación (p. ej. dividir >4 capas en MPC, proyectar N capas a 2 capas en Hartmann Classic) y cuáles se descartan, generando un informe automático de fidelidad/adaptación en el Preflight.
-- **Conversores de unidades puros y verificables**:
-  - Funciones bidireccionales aisladas por formato (ej. timecents SF2 <-> segundos, escala logarítmica MPC `0.001 * 1e5^v` <-> segundos, cutoff MPC <-> Hz) con tests de inversión matemática.
+  - Cada lector/escritor declara qué campos del diccionario soporta de forma nativa, cuáles requieren aproximación (p. ej. dividir >4 capas en MPC, proyectar N capas a 2 capas en Hartmann Classic) y cuáles se descartan, generando un informe automático de fidelidad/adaptación en el Preflight.
 
 ### 33.3 Estudio y Plan de Migración a `@abdsynths/shared` (`ABDShared`)
 - **Qué debe vivir en `@abdsynths/shared`**:
-  - El modelo canónico universal (`UniversalSamplerInstrument`, `UniversalZone`, `FormatCapabilities`).
+  - El diccionario de parámetros de voz de sampler (`Contracts/sampler_voice_parameter_spec.json`) compatible con `MidiTranslationEngine.ts` y `modulation_matrix.schema.json`, junto con el modelo estructural (`UniversalSamplerInstrument`, `UniversalGroup`, `UniversalZone`, `FormatCapabilities`).
   - Los codecs de audio y contenedores puros sin dependencias del DOM (`WavDecoder`, `AiffDecoder`, `DwopDecompressor` REX2, `NcwDecoder` Kontakt, `SliceFileParser` con soporte `cue `/`MARK`/`atem`/`rx2`, `ZipArchive`).
   - Todos los lectores y escritores de formatos (`Sf2Parser`, `SfzParser`, `DecentSamplerParser`, `KontaktParser`, `MpcXpmFormat`, Bitwig, HALion, y los nuevos de la Fase 32) y los adaptadores de proyección (`extendedAdapter`).
 - **Qué permanece en `ABDNeuModMakr`**:
   - La interfaz de usuario (`UniversalImportModal`, `RawSamplerExportModal`, `AudioChopperModal`, `BatchProcessorModal`), el flujo de sesión y la comunicación con el Companion Bridge local.
 - **Beneficio para el ecosistema ABDSynths**:
-  - `ABDAxionikVS` (Fase 19 — Modo Rompler Puro) y cualquier otro sintetizador de ABDSynths podrá cargar y exportar directamente `.sf2`, `.sfz`, `.dspreset`, `.nki`/`.ncw`, `.xpm`/`.xpn`, `.rx2`, `.multisample`, etc. importando un único paquete compartido (`@abdsynths/shared/formats/samplers`), cumpliendo estrictamente el principio DRY.
+  - `ABDAxionikVS` (Fase 19 — Modo Rompler Puro), un futuro **Sampler dedicado de ABDSynths** y cualquier otro instrumento podrán tanto cargar/exportar todos los formatos de sampler como enlazar sus controles de UI, MIDI CC/NRPN y unidades físicas DSP usando exactamente la misma infraestructura de contratos de `@abdsynths/shared`.
 
 ---
 
