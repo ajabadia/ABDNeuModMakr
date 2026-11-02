@@ -59,6 +59,12 @@ export type RawSamplerFormat =
   | 'yamaha_ysfc'  // Yamaha Motif / Montage / MODX (.x7u, .x8u, .x3a)
   | 'synclavier'   // Synclavier II / Synclavier V / Regen (timbre + .sflc / .synx)
   | 'fairlight_cmi'// Fairlight CMI IIx / III (.cmi, .cmi3, .vc, .co)
+  | 'akai_mesa'    // Akai MESA / MESA II Program (.s3p, .p)
+  | 'reason_nnxt'  // Propellerhead Reason NN-XT (.sxt)
+  | 'directwave'   // Image-Line FL Studio DirectWave (.dwp)
+  | 'soundbox'     // Audiomodern Soundbox (.sbpack, .sbx)
+  | 'omnisphere'   // Spectrasonics Omnisphere (.zmap, .prt_omn)
+  | 'ni_maschine'  // Native Instruments Maschine (.mxsnd, .mxgrp, .nicnt)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';

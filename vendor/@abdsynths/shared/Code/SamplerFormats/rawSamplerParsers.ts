@@ -164,6 +164,43 @@ import {
   parseFairlightCmiVoice,
   convertFairlightCmiToPreset,
 } from './FairlightCmiFormat.ts';
+import {
+  isAkaiMesaS3p,
+  parseAkaiMesaS3p,
+  convertAkaiMesaToPreset,
+} from './AkaiMesaFormat.ts';
+import {
+  isSxtPatch,
+  parseSxtPatch,
+  convertSxtToPreset,
+  writeSxtPatch,
+} from './ReasonNnxtFormat.ts';
+import {
+  isDirectWavePatch,
+  parseDirectWavePatch,
+  convertDirectWaveToPreset,
+  writeDirectWavePatch,
+} from './DirectWaveFormat.ts';
+import {
+  isSoundboxBuffer,
+  listSoundboxPackPresets,
+  parseSoundboxPack,
+  convertSoundboxToPreset,
+  generateSoundboxXml,
+} from './SoundboxFormat.ts';
+import {
+  isOmnisphereFile,
+  parseOmnisphereZmap,
+  convertOmnisphereToPreset,
+  generateOmnisphereZmap,
+} from './OmnisphereFormat.ts';
+import {
+  isMaschineOrNicnt,
+  parseMaschineSound,
+  convertMaschineToPreset,
+  parseNicnt,
+  generateMaschineSoundXml,
+} from './MaschineNicntFormat.ts';
 import { identifyDiskImageFormat } from './IsoFormatIdentifier.ts';
 
 export type RawSamplerFormat =
@@ -201,7 +238,13 @@ export type RawSamplerFormat =
   | 'casio_fz'
   | 'yamaha_ysfc'
   | 'synclavier'
-  | 'fairlight_cmi';
+  | 'fairlight_cmi'
+  | 'akai_mesa'
+  | 'reason_nnxt'
+  | 'directwave'
+  | 'soundbox'
+  | 'omnisphere'
+  | 'ni_maschine';
 
 export interface ParsedImportRegion {
   id: string;
@@ -2327,6 +2370,54 @@ export async function listZipSamplerPrograms(
         format: 'fairlight_cmi',
         detail: 'Fairlight CMI Series IIx / III Voice',
       });
+    } else if (nLower.endsWith('.s3p')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.s3p$/i, ''),
+        format: 'akai_mesa',
+        detail: 'Akai MESA / MESA II Program',
+      });
+    } else if (nLower.endsWith('.sxt')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.sxt$/i, ''),
+        format: 'reason_nnxt',
+        detail: 'Reason NN-XT Sampler Patch',
+      });
+    } else if (nLower.endsWith('.dwp')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.dwp$/i, ''),
+        format: 'directwave',
+        detail: 'FL Studio DirectWave Program',
+      });
+    } else if (nLower.endsWith('.sbpack') || (nLower.endsWith('.xml') && base.toLowerCase().includes('soundbox'))) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(sbpack|xml)$/i, ''),
+        format: 'soundbox',
+        detail: 'Audiomodern Soundbox Pack',
+      });
+    } else if (nLower.endsWith('.zmap') || nLower.endsWith('.prt_omn')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(zmap|prt_omn)$/i, ''),
+        format: 'omnisphere',
+        detail: 'Spectrasonics Omnisphere Multisample',
+      });
+    } else if (nLower.endsWith('.mxsnd') || nLower.endsWith('.mxgrp') || nLower.endsWith('.nicnt')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(mxsnd|mxgrp|nicnt)$/i, ''),
+        format: 'ni_maschine',
+        detail: 'Native Instruments Maschine / NICNT',
+      });
     }
   }
 
@@ -2460,6 +2551,12 @@ export async function parseUniversalSampler(
     let fzEntry: string | undefined;
     let synxEntry: string | undefined;
     let cmiEntry: string | undefined;
+    let s3pEntry: string | undefined;
+    let sxtEntry: string | undefined;
+    let dwpEntry: string | undefined;
+    let soundboxEntry: string | undefined;
+    let omnisphereEntry: string | undefined;
+    let maschineEntry: string | undefined;
     const xpmEntries: string[] = [];
 
     const normTarget = targetProgramPath?.replace(/\\/g, '/');
@@ -2492,6 +2589,12 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.fzv') || nLower.endsWith('.fzf')) fzEntry = name;
       else if (nLower.endsWith('.synx') || nLower.endsWith('-entry.txt')) synxEntry = name;
       else if (nLower.endsWith('.cmi') || nLower.endsWith('.cmi3') || nLower.endsWith('.vc')) cmiEntry = name;
+      else if (nLower.endsWith('.s3p')) s3pEntry = name;
+      else if (nLower.endsWith('.sxt')) sxtEntry = name;
+      else if (nLower.endsWith('.dwp')) dwpEntry = name;
+      else if (nLower.endsWith('.sbpack') || (nLower.endsWith('.xml') && name.toLowerCase().includes('soundbox'))) soundboxEntry = name;
+      else if (nLower.endsWith('.zmap') || nLower.endsWith('.prt_omn')) omnisphereEntry = name;
+      else if (nLower.endsWith('.mxsnd') || nLower.endsWith('.mxgrp') || nLower.endsWith('.nicnt')) maschineEntry = name;
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
@@ -2967,6 +3070,103 @@ export async function parseUniversalSampler(
         audioBuffers: cmi.sampleAudioMap,
       };
     }
+    if (s3pEntry) {
+      const sBytes = extractZipEntry(rawZipBytes, indexMap.get(s3pEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const mesa = parseAkaiMesaS3p(sBytes);
+      const converted = convertAkaiMesaToPreset(mesa, audioMap);
+      return {
+        format: 'akai_disk',
+        formatLabel: 'Akai MESA Program (.s3p)',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (sxtEntry) {
+      const sBytes = extractZipEntry(rawZipBytes, indexMap.get(sxtEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const sxt = parseSxtPatch(sBytes);
+      const converted = convertSxtToPreset(sxt, audioMap);
+      return {
+        format: 'vstpreset',
+        formatLabel: 'Reason NN-XT Patch (.sxt)',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'vintage',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (dwpEntry) {
+      const dBytes = extractZipEntry(rawZipBytes, indexMap.get(dwpEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const dwp = parseDirectWavePatch(dBytes);
+      const converted = convertDirectWaveToPreset(dwp, audioMap);
+      return {
+        format: 'vstpreset',
+        formatLabel: 'FL Studio DirectWave (.dwp)',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'synth',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: converted.audioBuffers.size > 0 ? converted.audioBuffers : audioMap,
+      };
+    }
+    if (soundboxEntry) {
+      const sBytes = extractZipEntry(rawZipBytes, indexMap.get(soundboxEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const sText = new TextDecoder('utf-8').decode(sBytes);
+      const sbPreset = parseSoundboxPack(sBytes, soundboxEntry);
+      return {
+        format: 'multisample',
+        formatLabel: 'Audiomodern Soundbox Pack',
+        presetName: sbPreset.presetName,
+        modelName: sbPreset.modelName,
+        detectedCategory: 'synth',
+        suggestedParameterSet: 1,
+        regions: sbPreset.regions,
+        audioBuffers: sbPreset.audioBuffers.size > 0 ? sbPreset.audioBuffers : audioMap,
+      };
+    }
+    if (omnisphereEntry) {
+      const oBytes = extractZipEntry(rawZipBytes, indexMap.get(omnisphereEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const oText = new TextDecoder('utf-8').decode(oBytes);
+      const zmap = parseOmnisphereZmap(oText);
+      const converted = convertOmnisphereToPreset(zmap, audioMap);
+      return {
+        format: 'multisample',
+        formatLabel: 'Spectrasonics Omnisphere Multisample',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'synth',
+        suggestedParameterSet: 1,
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
+    if (maschineEntry) {
+      const mBytes = extractZipEntry(rawZipBytes, indexMap.get(maschineEntry)!);
+      const audioMap = await extractAudioBuffers();
+      const ms = parseMaschineSound(mBytes);
+      const converted = convertMaschineToPreset(ms, audioMap);
+      return {
+        format: 'vstpreset',
+        formatLabel: 'NI Maschine Sound / Group',
+        presetName: converted.presetName,
+        modelName: converted.modelName,
+        detectedCategory: 'drums',
+        suggestedParameterSet: 0,
+        regions: converted.regions,
+        audioBuffers: audioMap,
+      };
+    }
     if (xpmEntries.length > 0) {
       const availStems = new Set<string>();
       for (const ae of audioEntries) {
@@ -3231,6 +3431,112 @@ export async function parseUniversalSampler(
       modelName: converted.modelName,
       detectedCategory: 'vintage',
       suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // Akai MESA S3P (.s3p)
+  if (lower.endsWith('.s3p') || (typeof data !== 'string' && isAkaiMesaS3p(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const mesa = parseAkaiMesaS3p(bytes);
+    const converted = convertAkaiMesaToPreset(mesa, await siblingAudioBuffers());
+    return {
+      format: 'akai_disk',
+      formatLabel: 'Akai MESA Program (.s3p)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // Reason NN-XT (.sxt)
+  if (lower.endsWith('.sxt') || (typeof data !== 'string' && isSxtPatch(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const sxt = parseSxtPatch(bytes, cleanBasename(filename).replace(/\.sxt$/i, ''));
+    const converted = convertSxtToPreset(sxt, await siblingAudioBuffers());
+    return {
+      format: 'vstpreset',
+      formatLabel: 'Reason NN-XT Patch (.sxt)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'vintage',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // FL Studio DirectWave (.dwp)
+  if (lower.endsWith('.dwp') || (typeof data !== 'string' && isDirectWavePatch(data))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const dwp = parseDirectWavePatch(bytes);
+    const converted = convertDirectWaveToPreset(dwp, await siblingAudioBuffers());
+    return {
+      format: 'vstpreset',
+      formatLabel: 'FL Studio DirectWave (.dwp)',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'synth',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // Audiomodern Soundbox (.sbpack, .sbx)
+  if (lower.endsWith('.sbpack') || lower.endsWith('.sbx') || (typeof data !== 'string' && isSoundboxBuffer(data, filename))) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const converted = parseSoundboxPack(bytes);
+    return {
+      format: 'multisample',
+      formatLabel: 'Audiomodern Soundbox',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'synth',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // Spectrasonics Omnisphere (.zmap, .prt_omn)
+  if (lower.endsWith('.zmap') || lower.endsWith('.prt_omn') || (typeof data === 'string' && isOmnisphereFile(new Uint8Array(0), filename))) {
+    const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
+    const zmap = parseOmnisphereZmap(xml);
+    const converted = convertOmnisphereToPreset(zmap, await siblingAudioBuffers());
+    return {
+      format: 'multisample',
+      formatLabel: 'Spectrasonics Omnisphere',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'synth',
+      suggestedParameterSet: 1,
+      regions: converted.regions,
+      audioBuffers: converted.audioBuffers,
+    };
+  }
+
+  // Native Instruments Maschine (.mxsnd, .mxgrp, .nicnt)
+  if (
+    lower.endsWith('.mxsnd') ||
+    lower.endsWith('.mxgrp') ||
+    lower.endsWith('.nicnt') ||
+    (typeof data !== 'string' && isMaschineOrNicnt(data, filename))
+  ) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const ms = parseMaschineSound(bytes);
+    const converted = convertMaschineToPreset(ms, await siblingAudioBuffers());
+    return {
+      format: 'vstpreset',
+      formatLabel: 'NI Maschine Sound / Group',
+      presetName: converted.presetName,
+      modelName: converted.modelName,
+      detectedCategory: 'drums',
+      suggestedParameterSet: 0,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };

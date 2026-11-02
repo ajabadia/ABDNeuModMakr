@@ -26,11 +26,11 @@ import {
 
 /** Regular expression matching all supported raw audio file extensions across ABDSynths. */
 export const SUPPORTED_AUDIO_FILE_REGEX =
-  /\.(wav|aif|aiff|aifc|flac|mp3|ogg|oga|m4a|aac|opus|webm|caf|ncw)$/i;
+  /\.(wav|aif|aiff|aifc|flac|mp3|mpa|ogg|oga|m4a|mp4|aac|opus|webm|caf|ncw)$/i;
 
 /** HTML `<input type="file" accept="...">` string for all supported audio sample formats. */
 export const SUPPORTED_AUDIO_ACCEPT =
-  '.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*';
+  '.wav,.aif,.aiff,.aifc,.flac,.mp3,.mpa,.ogg,.oga,.m4a,.mp4,.aac,.opus,.webm,.caf,.ncw,audio/*';
 
 /**
  * Checks whether a filename has a supported audio sample extension.

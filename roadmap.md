@@ -893,14 +893,17 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
    - [x] **Fairlight CMI IIx/III [COMPLETADO]** (`.cmi`, `.cmi3`, `.vc`, `.co` con asignación de tabla de 128 zonas y audio PCM 16-bit Series III y 8-bit Series IIx).
    - [x] **Motor Universal de Imágenes de Disco e ISO [COMPLETADO]** (`IsoFormatIdentifier` unificado para detección automática de E-MU, Akai S-series, Roland, Ensoniq, Casio, Yamaha, ISO-9660 y Floppy Gotek RAW/HFE).
    - Verificado con `tests/phase32_formats_akai_disk.test.ts`, `tests/phase32_formats_vintage_disks.test.ts` y `tests/phase32_formats_block3.test.ts` (100% PASS).
-4. [ ] **Bloque 4 — Samplers de Software Adicionales**:
-   - [ ] **Reason NN-XT** (`.sxt` IFF).
-   - [ ] **Image-Line FL Studio DirectWave** (`.dwp` monolítico con FLAC).
-   - [ ] **Audiomodern Soundbox** (`.sbx`).
-   - [ ] **Spectrasonics Omnisphere** (`.omnisphere` multisample).
-   - [ ] **NI Maschine** (`.mxgrp`) y contenedores NI `.nicnt`.
+4. [x] **Bloque 4 — Samplers de Software Adicionales, Akai MESA y Decodificadores de Audio [COMPLETADO]**:
+     - [x] **Akai MESA / MESA II** (.s3p con desempaquetado de SysEx nibbles para programas S3000/S1000 y keygroups).
+     - [x] **Reason NN-XT** (.sxt contenedor IFF FORM PTCH con chunks DESC, AUTH, PARM, CAT REFS y tabla BODY con zonas completas; lectura y escritura).
+     - [x] **Image-Line FL Studio DirectWave** (.dwp formato de flujo de bloques DwPr con chunks 0x0066, 0x0067, 0x0003 y extracción de audio PCM16/FLAC; lectura y escritura).
+     - [x] **Audiomodern Soundbox** (.sbpack, .sbx definiciones XML y paquetes ZIP con capas y categorías; lectura y exportación).
+     - [x] **Spectrasonics Omnisphere** (.zmap, .prt_omn esquemas XML multisample de STEAM; lectura y exportación).
+     - [x] **NI Maschine & NICNT** (.mxsnd, .mxgrp, .nicnt sonido/grupo con módulos Sampler y descriptores Native Instruments SNPID).
+     - [x] **Formatos de Audio Ampliados**: Inclusión explícita de .mpa y .mp4 junto con .ogg, .flac, .caf, .m4a, .mp3 en UniversalAudioDecoder.ts.
+     - Verificado con 	ests/phase32_formats_block4.test.ts (100% PASS).
 
-### 32.5 Verificación
+  ### 32.5 Verificación
 - Corpus de archivos reales por formato en `_RESOURCES`, tests de lectura y de ida y vuelta (leer, escribir, releer) con comparación de zonas, capas y loops.
 - Informe de diferencias frente a la salida de ConvertWithMoss para los mismos archivos.
 
