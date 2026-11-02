@@ -818,10 +818,43 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
    - **CWITEC TX16Wx (`.txprog`)** (`Tx16WxFormat.ts`): lector/escritor XML `<tx:program>` con `<tx:wave>`, múltiples `<tx:loop>`, `<tx:soundshape>` (`<tx:aeg>`, `<tx:env1>`, `<tx:env2>`, `<tx:filter1>`, `<tx:modulation>`), `<tx:group>` y `<tx:region>` (`<tx:bounds>`, `<tx:fade>`).
    - **Korg Trinity/Triton/M3/Pa (`.KMP` + `.KSF` + `.KSC`)** (`KorgKmpKsfFormat.ts`): lector/escritor binario Big-Endian de chunks `MSP1`, `MNO1`, `RLP1` (18B/zona), `RLP2`, `SMP1` (32B), `SNO1`, `SMD1` (12B + PCM16 BE) y script `.KSC`.
    - **MMA Downloadable Sounds Level 2 (`.dls`)** (`DlsFormat.ts`): lector/escritor binario Little-Endian RIFF `"DLS "` con `colh`, `ptbl`, `LIST('lins')`, `insh`, `LIST('lrgn')` -> `LIST('rgn2')` (`rgnh`, `wsmp`, `wlnk`), `LIST('lar2')` -> `art2` (bloques de conexión de 12B en timecents/pitch-cents/mB) y `LIST('wvpl')`.
-   - Verificado con `tests/phase32_formats_block1.test.ts` (12/12 PASS).
-2. [ ] **Bloque 2 — Hardware moderno con mucha base de usuarios**: Akai MPC (Fase 31 completada), Polyend Tracker/Play (`.pti`), 1010music (Blackbox/Bento `preset.xml`), Teenage Engineering OP-XY, Roland SP-404mk2, Elektron, Synthstrom Deluge, Waldorf Quantum/Iridium (`.qpat`), Disting EX.
-3. [ ] **Bloque 3 — Formatos binarios clásicos e imágenes de disco**: Akai S1000/S3000/S5000 (`.AKP`, `.PGM`), E-mu, Roland S, Ensoniq, Kurzweil, Yamaha YSFC.
-4. [ ] **Bloque 4 — Samplers de software adicionales**: Reason NN-XT (`.sxt`), Renoise (`.xrni`), Image-Line DirectWave (`.dwp`), discoDSP Bliss (`.zbp`), Spectrasonics Omnisphere, Maschine.
+   - **Decodificación Universal de Muestras de Audio [COMPLETADO]** (`UniversalAudioDecoder.ts` + `WavAiffDecoder.ts`): decodificador y codificador FLAC (`fLaC`, RFC 9639) nativo en TS puro con `VORBIS_COMMENT` y chunk `smpl`, decodificador Apple CoreAudio CAF (`.caf`), AIFF/AIFC con compresión Little-Endian `sowt`, Float32/64, IMA4 ADPCM, uLaw, aLaw, y transcodificador asíncrono WebAudio para MP3, OGG, M4A, Opus.
+   - Verificado con `tests/phase32_formats_block1.test.ts` (14/14 PASS).
+2. [ ] **Bloque 2 — Hardware Moderno SD / Trackers / XML [EN CURSO]**:
+   - **Sub-bloque 2A (Modernos SD / Trackers / XML)**:
+     - [ ] **1010music Blackbox / Tangerine** (`preset.xml` + muestras en subcarpetas con `<session>`, `<cell>`, `<params>`).
+     - [ ] **Synthstrom Deluge** (`SYNTHS/*.XML` / `KITS/*.XML` con `<sound>`, `<osc1>`, `<zone>`, `<envelope1/2>`, `<filter>`).
+     - [ ] **Renoise Instrument** (`.xrni` — archivo ZIP con `Instrument.xml` + muestras en `SampleData/`).
+     - [ ] **discoDSP Bliss** (`.zbp` — archivo ZIP con `program.xml` + muestras FLAC/WAV).
+     - [ ] **Polyend Tracker / Play** (`.pti` — cabecera binaria `TI` + 372 bytes de bloque de parámetros + PCM16 44.1kHz).
+   - **Sub-bloque 2B (Hardware Moderno Adicional)**:
+     - [ ] **Waldorf Quantum / Iridium** (`.qpat`).
+     - [ ] **Elektron Tonverk / Digitakt / Octatrack** (`.tvpst`, `.ot`).
+     - [ ] **Teenage Engineering OP-XY / OP-Field** (JSON + RIFF patches).
+     - [ ] **Expert Sleepers Disting EX** (multisample SD maps).
+     - [ ] **Isla Instruments S2400** (`.s24` / kits).
+     - [ ] **Groove Synthesis 3rd Wave** (`.3wv`).
+     - [ ] **Sequential Prophet X** (`.pxi`).
+     - [ ] **Roland SP-404MKII / MC-707 / Zen-Core** (`.svz` / kits).
+3. [ ] **Bloque 3 — Formatos Binarios Clásicos e Imágenes de Disco**:
+   - [ ] **Akai S5000/S6000/Z4/Z8** (`.AKP` RIFF `APRG` + WAVs).
+   - [ ] **Akai MPC Clásico** (`.PGM` / `.SND` para MPC1000/2000/2500).
+   - [ ] **Akai S1000 / S3000 / S900 / MESA** (`.s3p`, binarios de disco).
+   - [ ] **Korg Multisample Moderno** (`.korgmultisample` para Kronos/Nautilus/WaveState).
+   - [ ] **Yamaha Montage / MODX / Motif** (`.ysfc` — `.x7u`/`.x8u`/`.y2u`).
+   - [ ] **Kurzweil K2000 / K2500 / K2600** (`.krz` / `.k25`).
+   - [ ] **E-MU Emulator II / III / IV / Emax / EmulatorX** (`.exb`).
+   - [ ] **Ensoniq Mirage / EPS / ASR-10** (`.efe`, `.efa`).
+   - [ ] **Roland S-50 / S-550 / S-760 / MV-8000** (`.out`, `.mv0`).
+   - [ ] **Casio FZ-1 / FZ-10M** (`.fzv`, `.fzf`).
+   - [ ] **Fairlight CMI IIx/III** (`cmi3`) y **Synclavier II**.
+   - [ ] **Lector de imágenes de disco e ISO** (`iso`).
+4. [ ] **Bloque 4 — Samplers de Software Adicionales**:
+   - [ ] **Reason NN-XT** (`.sxt` IFF).
+   - [ ] **Image-Line FL Studio DirectWave** (`.dwp` monolítico con FLAC).
+   - [ ] **Audiomodern Soundbox** (`.sbx`).
+   - [ ] **Spectrasonics Omnisphere** (`.omnisphere` multisample).
+   - [ ] **NI Maschine** (`.mxgrp`) y contenedores NI `.nicnt`.
 
 ### 32.5 Verificación
 - Corpus de archivos reales por formato en `_RESOURCES`, tests de lectura y de ida y vuelta (leer, escribir, releer) con comparación de zonas, capas y loops.
