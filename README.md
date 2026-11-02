@@ -155,26 +155,40 @@ El proyecto está optimizado para Vercel:
 - **64 Partials**: Histograma de armónicos en tiempo real con analizador FFT de 2048 puntos.
 - **Waveform A/B/C**: Comparativa de envolventes (Original vs DSP Legacy 2002 vs DSP Mejorado) con métrica matemática de calidad acústica (*Quality Score*).
 
-### 4.9 Utilidad Universal de Exportación Multi-Formato Raw (`RawSamplerExportModal.ts` & `RawSamplerExporter.ts` — Fase 16)
+### 4.9 Utilidad Universal de Exportación Multi-Formato Raw (`RawSamplerExportModal.ts` & `RawSamplerExporter.ts` — Fase 16, 31, 32)
 - Exportación directa de muestras y zonas originales (`01_raw_source`) de forma pura e intacta, **sin pasar por los transformadores espectrales Scape/Sphere** de Neuron.
-- **7 Estándares de la Industria Soportados**:
-  - **SoundFont 2 (`.sf2`)**: Generador binario RIFF `sfbk` v2.04 completo con bloques `INFO`, banco contiguo PCM16 `sdta` con holgura de 46 muestras anti-click, y jerarquía `pdta` (`phdr`/`pbag`/`pmod`/`pgen` → `inst`/`ibag`/`imod`/`igen` → `shdr`).
-  - **SFZ Format (`.sfz` + carpeta `Samples/` en `.zip`)**: Definición estándar de texto plano con `<control>`, `<global>` y `<region>` compatible con Sforzando, Cakewalk y LinuxSampler.
-  - **Decent Sampler (`.dspreset` + carpeta `Samples/` en `.zip`)**: Definición XML nativa con interfaz gráfica interactiva (knobs de Attack, Release, Tone y Volume), mapeo de grupos y samples.
-  - **Bitwig Studio Multisample (`.multisample`)**: Archivo empaquetado nativo con `multisample.xml` y carpeta de audio directamente reconocible por Bitwig Studio.
-  - **Native Instruments Kontakt (`.nki.zip`)**: Definición estructurada XML con grupos, zonas, clave raíz, rangos de teclas y velocidades.
-  - **Steinberg HALion (`.vstpreset.zip`)**: Archivo de programa HALion XML/vstpreset con capas de zonas y mapeo tímbrico.
+- **16 Estándares de la Industria Soportados (Lectura y Escritura Bidireccional)**:
+  - **SoundFont 2 (`.sf2`)**: Generador binario RIFF `sfbk` v2.04 completo con generadores de offsets de muestra, `exclusiveClass` (choke/mute groups), `scaleTuning`, bucles continuos y filtro 2 polos.
+  - **SFZ Format (`.sfz` + carpeta `Samples/` en `.zip`)**: Definición estándar de texto plano con `<control>`, `<global>`, `<master>`, `<group>`, `<region>`, `offset`/`end`, `loop_crossfade`, `direction=reverse`, curvas de fundido cruzado `xf_keycurve`/`xf_velcurve`, filtros multimodo (1/2/4/6 polos), `fileg_*`, `pitcheg_*`, `group`/`off_by` y keyswitches.
+  - **Decent Sampler (`.dspreset` + carpeta `Samples/` en `.zip`)**: Definición XML nativa con interfaz gráfica interactiva, `start`/`end`, `loopCrossfade`, `seqMode="round_robin"`, `tags`/`silencedByTags` (mute groups) y efectos de filtro/reverb.
+  - **Bitwig Studio Multisample (`.multisample`)**: Archivo empaquetado nativo con `multisample.xml` y carpeta de audio, con soporte de sub-elementos `<key>` y `<velocity>` con fundidos de entrada/salida (`fade-in`/`fade-out`), `<loop>`, `sample-start`/`sample-stop`, `reverse` y lógica round-robin.
+  - **Ableton Sampler / Simpler (`.adv.zip`)**: Archivos de preset XML comprimidos en GZIP con estructura jerárquica `<MultiSampleMap>` / `<SampleParts>`, zonas con rangos cruzados `CrossfadeMin`/`CrossfadeMax`, puntos de inicio/fin, bucles sustain con crossfade y desafinación, reverse y envolventes de filtro y tono.
+  - **Apple Logic EXS24 / Sampler (`.exs.zip`)**: Bloques binarios nativos `SOBT`/`SOBJ`/`TBOS` con serialización limpia de zonas, grupos con modos round-robin y keyswitching, muestras y parámetros de filtro, envolventes y modulación.
+  - **TAL-Sampler (`.talsmpl.zip`)**: Definición XML para TAL-Sampler con modelado exacto de las leyes de ganancia, envolventes y filtros no lineales, soporte de 4 capas independientes, offsets normalizados `[0..1]`, reverse y matriz de modulación de tono.
+  - **CWITEC TX16Wx (`.txprog.zip`)**: Especificación XML con namespace `tx:`, mapeando `<tx:wave>`, `<tx:loop>`, generadores `<tx:soundshape>` (filtro, envolventes AEG/FEG, LFO), `<tx:group>` (choke groups y modos de disparo) y regiones `<tx:bounds>` con atenuación de bordes de nota y velocidad.
+  - **Korg Trinity / Triton / M3 / Pa (`.kmp.zip`)**: Formato multisample hardware Big-Endian con bloques `MSP1`/`RLP1` (`.KMP`), descriptores de muestra `SMP1`/`SMD1` (`.KSF`), listas de asignación `.KSC` y audio PCM Big-Endian incrustado.
+  - **MMA Downloadable Sounds Level 2 (`.dls`)**: Sintetizador estándar de tabla de ondas RIFF `'DLS '` con articulaciones `lar2`/`art2` de Nivel 2, generadores de conexión para filtros y envolventes, bloques `wsmp` y pool de ondas `wvpl`.
+  - **Akai MPC Moderno (`.xpm`, `.xpn`, `.xty`, `.xtd`)**: Programas Keygroup y Drum XML (MPC 2.x) y GZIP+JSON (MPC 3.x), paquetes de expansión `.xpn`, kits troceados DRY con división de WAV largo, soporte de choke groups (`MuteGroup`), Round-Robin (`CycleType`) y asignación por pad.
+  - **Native Instruments Kontakt (`.nki.zip`)**: Definición estructurada XML y binaria para versiones K1 a K4 con grupos, zonas, notas raíz, rangos de teclas y velocidades, y soporte para muestras comprimidas sin pérdida `.ncw`.
+  - **Steinberg HALion (`.vstpreset.zip`)**: Contenedor binario `VstW` con XML de programa HALion, capas de zonas, fundidos cruzados, conmutadores por nota (keyswitches) y mapeo tímbrico.
   - **Linear Sample Chain con Cue Markers (`.wav`)**: Archivo de audio continuo lineal de 16-bit o 24-bit PCM con marcas de división RIFF `cue ` incrustadas y etiquetas `LIST adtl` para grooves y samplers hardware (Elektron Octatrack, Roland SP-404 MKII, Korg electribe, OP-1/OP-Z), acompañado de mapa de marcas en texto (`_slices.txt`).
-- **Compuerta de Preflight e Inspección Técnica (`rawSamplerPreflight.ts`)**:
-  - Detección preventiva de incompatibilidades técnicas: clamps automáticos de 24-bit a 16-bit PCM con dither TPDF para SF2, simplificación de envolventes DAHDSR a ADSR estándar, conversión de bucles complejos ping-pong a forward continuo, y bloqueo si faltan buffers en memoria.
+- **Compuerta de Preflight e Inspección Técnica (`rawSamplerPreflight.ts` & `FormatFidelity.ts`)**:
+  - Detección preventiva de incompatibilidades técnicas y evaluación de avisos de fidelidad para los 16 formatos.
   - Opciones completas de resolución (Original, 16-bit, 24-bit), frecuencia de muestreo (Original, 44.1k, 48k, 96k), normalización (Off, 0 dBFS, -0.3 dBFS) y estructura monolítica vs ZIP con `Samples/`.
 - Acceso directo: Menú `File -> Export Sampler / Multi-Format Bank...` o mediante atajo de teclado **`Ctrl+Shift+E`**.
 
-### 4.10 Entrada Universal de Importación Inteligente y Preflight (`UniversalImportModal.ts` & `rawSamplerParsers.ts` — Fase 18.8)
+### 4.10 Entrada Universal de Importación Inteligente y Decodificación de Audio (`UniversalImportModal.ts`, `UniversalAudioDecoder.ts` & `rawSamplerParsers.ts` — Fase 18.8, 31, 32)
 - **Punto de Entrada Unificado (`Ctrl+I`)**: Reemplaza y consolida las importaciones dispersas en un único diálogo drag-and-drop con soporte para:
-  - Formatos multisample y presets: SoundFont 2 (`.sf2`), SFZ (`.sfz`), Decent Sampler (`.dspreset`), Kontakt XML (`.nki` sin encriptar), HALion (`.vstpreset`), Bitwig (`.multisample`) y paquetes `.zip`.
-  - Bucles rebanados y slices: ReCycle (`.rx2`, `.rex`, `.rcy`), pistas CUE (`.cue`), y sample chains lineales (WAV/AIFF con marcas `cue ` / `smpl`). Detección automática que ofrece abrir directamente en el **Audio Chopper**.
-  - Audio crudo multizona: Lotes de archivos `.wav`, `.aif`, `.flac`.
+  - **Decodificación Universal de Muestras de Audio**:
+    - **`.wav` (`RIFF`/`WAVE`)**: PCM 8/16/24/32 bits, IEEE Float 32/64 bits, compresión G.711 µ-Law y A-Law, `WAVE_FORMAT_EXTENSIBLE`, chunks `inst`, `smpl`, `cue ` y `atem`.
+    - **`.aif` / `.aiff` / `.aifc` (`FORM`/`AIFF` y `FORM`/`AIFC`)**: Big-Endian (`NONE`/`twos`), Little-Endian (`sowt`), Float (`fl32`/`fl64`), `ulaw`, `alaw`, Apple IMA4 ADPCM (`ima4`), y bucles desde `INST` + `MARK`.
+    - **`.flac` (`fLaC`, RFC 9639)**: Decodificador y codificador 100% TypeScript puro con soporte de metadatos `VORBIS_COMMENT` (`ROOTKEY`, `LOOPSTART`, `LOOPEND`) y chunks `smpl` incrustados.
+    - **`.caf` (`caff`, Apple CoreAudio Format)**: Decodificador 100% TypeScript puro con chunks `desc`, `data`, `pakt`, `inst` (nota base, rangos de tecla/velocidad, ganancia) y `regn` (bucles).
+    - **`.ncw`**: Formato de audio comprimido sin pérdida de Native Instruments Kontakt.
+    - **`.mp3`, `.ogg` / `.oga`, `.m4a` / `.aac`, `.opus` / `.webm`**: Normalización asíncrona automática a WAV en navegador manteniendo las propiedades de instrumento.
+  - **Formatos Multisample y Presets**: SoundFont 2 (`.sf2`), SFZ (`.sfz`), Decent Sampler (`.dspreset`), Ableton Sampler/Simpler (`.adv`), Apple Logic EXS24 (`.exs`), TAL-Sampler (`.talsmpl`), CWITEC TX16Wx (`.txprog`), Korg Trinity/Triton (`.KMP`), MMA DLS (`.dls`), Akai MPC (`.xpm`, `.xpn`), Kontakt (`.nki`), Steinberg HALion (`.vstpreset`), Bitwig (`.multisample`) y paquetes `.zip`.
+  - **Bucles Rebanados y Slices**: ReCycle (`.rx2`, `.rex`, `.rcy`), pistas CUE (`.cue`), y sample chains lineales (WAV/AIFF con marcas `cue ` / `smpl`). Detección automática que ofrece abrir directamente en el **Audio Chopper**.
+  - **Audio Crudo Multizona**: Lotes de archivos de audio en cualquiera de los formatos soportados con deducción automática de notas o afinación cromática.
 - **Motor de Inspección Preflight de Entrada (`importPreflight.ts`)**:
   - Detección automática de huecos de teclado (cobertura incompleta de notas MIDI 0..127).
   - Alertas sobre capas de velocidad incompatibles con el modo clásico Hartmann (más de 2 capas).
@@ -253,8 +267,8 @@ La aplicación incluye 6 familias completas de diseño inspiradas en sintetizado
 - **Cero Emojis**: Toda la interfaz de usuario, diálogos e iconografía cumplen estrictamente la política de cero emojis, empleando exclusivamente iconos vectoriales SVG monocromos (`currentColor`) sincronizados con `@abdsynths/shared`.
 - **Tokens de Diseño**: Uso estricto de design tokens (`tokens.css` de `@abdsynths/shared/styles`) sin colores hardcodeados.
 - **Formatos de Audio y Modelos**:
-  - *Audio*: WAV (PCM 8/16/24/32 bits, IEEE Float 32/64 bits, Extensible), AIFF (FORM/COMM/SSND/INST), SF2 (SoundFont 2.04), SFZ, ReCycle (`.rx2`, `.rex`, `.rcy`), CUE Label Tracks.
-  - *Samplers y Bancos Raw*: SoundFont 2 (`.sf2`), SFZ Format (`.sfz`), Decent Sampler (`.dspreset`), Bitwig Studio Multisample (`.multisample`), Native Instruments Kontakt (`.nki`), Steinberg HALion (`.vstpreset`) y Linear Sample Chains con RIFF `cue ` chunks.
+  - *Audio*: WAV (PCM 8/16/24/32 bits, IEEE Float 32/64 bits, G.711 µ-Law/A-Law, Extensible, chunks `inst`/`smpl`/`cue `), AIFF/AIFC (FORM/COMM/SSND/INST/MARK, Big/Little Endian, Float, IMA4, uLaw, aLaw), FLAC (16-bit PCM, RFC 9639, Vorbis Comment), Apple CoreAudio CAF (`.caf`), Native Instruments NCW (`.ncw`), MP3, OGG/Vorbis, M4A/AAC, Opus, ReCycle (`.rx2`, `.rex`, `.rcy`), CUE Label Tracks.
+  - *Samplers y Bancos Raw (Lectura y Escritura)*: SoundFont 2 (`.sf2`), SFZ Format (`.sfz`), Decent Sampler (`.dspreset`), Bitwig Studio Multisample (`.multisample`), Ableton Sampler/Simpler (`.adv`), Apple Logic EXS24 (`.exs`), TAL-Sampler (`.talsmpl`), CWITEC TX16Wx (`.txprog`), Korg Trinity/Triton (`.kmp`), MMA DLS Level 2 (`.dls`), Akai MPC (`.xpm`, `.xpn`), Native Instruments Kontakt (`.nki`), Steinberg HALion (`.vstpreset`) y Linear Sample Chains con RIFF `cue ` chunks.
   - *Modelos Neuron*: `.model` (Hartmann binario: `.scape`, `.sphere`, `map.script`, `MName`), `.sound` (`sound.script`, `sound.stickrec`), `.nmmodel` (Modern Neural JSON Float32), y paquetes maestros de Cápsula del Tiempo `.zip`.
 
 ---

@@ -57,6 +57,11 @@ export function extractInstrumentPrefix(filename: string): string {
  * Fase 25: Discovers individual loop files (.wav, .aif, .rx2, .rex) as independent
  * AutoSlicer model candidates, where each loop becomes a sliced kit with GM Drum or Chromatic mapping.
  */
+const ALL_FOLDER_AUDIO_EXTENSIONS = new Set([
+  'wav', 'aif', 'aiff', 'aifc', 'flac', 'mp3', 'ogg', 'oga',
+  'm4a', 'aac', 'opus', 'webm', 'caf', 'ncw', 'rx2', 'rex',
+]);
+
 export function extractFolderLoopsToCandidates(
   files: FolderFileInput[],
   options: {
@@ -65,10 +70,9 @@ export function extractFolderLoopsToCandidates(
     bpm?: number;
   } = {}
 ): BatchModelCandidate[] {
-  const loopExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
   const loopFiles = files.filter((f) => {
     const ext = fileExtension(f.name);
-    return ext && loopExtensions.has(ext);
+    return ext && ALL_FOLDER_AUDIO_EXTENSIONS.has(ext);
   });
 
   if (loopFiles.length === 0) {
@@ -138,10 +142,9 @@ export function extractFolderFilesToCandidates(
     return extractFolderLoopsToCandidates(files, options);
   }
 
-  const audioExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
   const audioFiles = files.filter((f) => {
     const ext = fileExtension(f.name);
-    return ext && audioExtensions.has(ext);
+    return ext && ALL_FOLDER_AUDIO_EXTENSIONS.has(ext);
   });
 
   if (audioFiles.length === 0) {
@@ -234,10 +237,9 @@ export async function extractFolderFilesToCandidatesWithAi(
     preferredProvider?: CloudAiProvider;
   } = {}
 ): Promise<BatchModelCandidate[]> {
-  const audioExtensions = new Set(['wav', 'aif', 'aiff', 'flac', 'rx2', 'rex']);
   const audioFiles = files.filter((f) => {
     const ext = fileExtension(f.name);
-    return ext && audioExtensions.has(ext);
+    return ext && ALL_FOLDER_AUDIO_EXTENSIONS.has(ext);
   });
 
   if (audioFiles.length === 0) return [];

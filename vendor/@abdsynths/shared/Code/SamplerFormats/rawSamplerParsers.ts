@@ -22,6 +22,8 @@ import {
   decodeWav,
   decodeAiff,
   encodeWavPcm16,
+  isSupportedAudioFileName,
+  transcodeAnyAudioToWavBuffer,
   indexZipArchive,
   extractZipEntry,
   type DecodedWav,
@@ -1659,21 +1661,38 @@ export function parseSampleChainAudio(
   } else {
     const singleName = cleanBasename(filename);
     audioBuffers.set(singleName, buffer);
+    let instInfo: ReturnType<typeof decodeWav>['instrument'] | undefined;
+    try {
+      const decodedSingle =
+        filename.toLowerCase().endsWith('.aif') ||
+        filename.toLowerCase().endsWith('.aiff') ||
+        filename.toLowerCase().endsWith('.aifc')
+          ? decodeAiff(buffer)
+          : decodeWav(buffer);
+      instInfo = decodedSingle.instrument;
+    } catch {
+      // ignore if non-PCM raw
+    }
+    const hasLoop =
+      instInfo?.loopStart !== undefined &&
+      instInfo?.loopEnd !== undefined &&
+      instInfo.loopEnd > instInfo.loopStart;
+
     regions.push({
       id: 'chain_single_001',
       sampleName: singleName,
       samplePath: singleName,
-      rootKey: 60,
-      lowKey: 0,
-      highKey: 127,
-      lowVel: 1,
-      highVel: 127,
-      detuneCents: 0,
-      volumeDb: 0,
+      rootKey: instInfo?.rootKey ?? 60,
+      lowKey: instInfo?.lowKey ?? 0,
+      highKey: instInfo?.highKey ?? 127,
+      lowVel: instInfo?.lowVelocity ?? 1,
+      highVel: instInfo?.highVelocity ?? 127,
+      detuneCents: instInfo?.detune ?? 0,
+      volumeDb: instInfo?.gainDb ?? 0,
       pan: 0,
-      loopMode: 'no_loop',
-      loopStart: 0,
-      loopEnd: 0,
+      loopMode: hasLoop ? instInfo?.loopMode ?? 'loop_continuous' : 'no_loop',
+      loopStart: hasLoop ? instInfo!.loopStart! : 0,
+      loopEnd: hasLoop ? instInfo!.loopEnd! : 0,
     });
   }
 
@@ -1967,7 +1986,7 @@ export async function parseUniversalSampler(
       const norm = entry.path.replace(/\\/g, '/');
       indexMap.set(norm, entry);
       const nLower = norm.toLowerCase();
-      if (nLower.endsWith('.wav') || nLower.endsWith('.aif') || nLower.endsWith('.aiff') || nLower.endsWith('.flac')) {
+      if (isSupportedAudioFileName(nLower)) {
         audioEntries.push(entry);
       } else if (nLower.endsWith('.ksf')) {
         ksfEntries.push(entry);
@@ -2003,55 +2022,63 @@ export async function parseUniversalSampler(
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
-    const extractAudioBuffers = (onlyStems?: Set<string>): Map<string, ArrayBuffer> => {
+    const extractAudioBuffers = async (onlyStems?: Set<string>): Promise<Map<string, ArrayBuffer>> => {
       const audioFiles = new Map<string, ArrayBuffer>();
       for (const entry of audioEntries) {
         const cleanKey = cleanBasename(entry.path);
         const stem = cleanKey.replace(/\.[^.]+$/, '').toLowerCase();
         if (onlyStems && !onlyStems.has(stem) && !onlyStems.has(stem.trim())) continue;
         const bytes = extractZipEntry(rawZipBytes, entry);
-        audioFiles.set(cleanKey, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+        let rawBuf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+        if (!/\.(wav|aif|aiff)$/i.test(cleanKey)) {
+          try {
+            rawBuf = await transcodeAnyAudioToWavBuffer(rawBuf, cleanKey);
+          } catch {
+            // Keep rawBuf if transcoding fails
+          }
+        }
+        audioFiles.set(cleanKey, rawBuf);
       }
       return audioFiles;
     };
 
     if (dspresetEntry) {
       const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(dspresetEntry)!));
-      return parseDecentSamplerPreset(xml, extractAudioBuffers());
+      return parseDecentSamplerPreset(xml, await extractAudioBuffers());
     }
     if (nkiEntry) {
       const bytes = extractZipEntry(rawZipBytes, indexMap.get(nkiEntry)!);
-      return parseKontaktNki(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extractAudioBuffers());
+      return parseKontaktNki(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, await extractAudioBuffers());
     }
     if (vstpresetEntry) {
       const bytes = extractZipEntry(rawZipBytes, indexMap.get(vstpresetEntry)!);
-      return parseHalionVstPreset(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extractAudioBuffers());
+      return parseHalionVstPreset(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, await extractAudioBuffers());
     }
     if (multisampleEntry) {
       const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(multisampleEntry)!));
-      return parseBitwigMultisample(xml, extractAudioBuffers());
+      return parseBitwigMultisample(xml, await extractAudioBuffers());
     }
     if (advEntry) {
       const bytes = extractZipEntry(rawZipBytes, indexMap.get(advEntry)!);
-      return parseAbletonAdvPreset(bytes, extractAudioBuffers(), cleanBasename(advEntry).replace(/\.adv$/i, ''));
+      return parseAbletonAdvPreset(bytes, await extractAudioBuffers(), cleanBasename(advEntry).replace(/\.adv$/i, ''));
     }
     if (exsEntry) {
       const bytes = extractZipEntry(rawZipBytes, indexMap.get(exsEntry)!);
       const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      return parseExs24Preset(buf, extractAudioBuffers(), cleanBasename(exsEntry).replace(/\.exs$/i, ''));
+      return parseExs24Preset(buf, await extractAudioBuffers(), cleanBasename(exsEntry).replace(/\.exs$/i, ''));
     }
     if (talEntry) {
       const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(talEntry)!));
-      return parseTalSamplerPreset(xml, extractAudioBuffers(), cleanBasename(talEntry).replace(/\.talsmpl$/i, ''));
+      return parseTalSamplerPreset(xml, await extractAudioBuffers(), cleanBasename(talEntry).replace(/\.talsmpl$/i, ''));
     }
     if (txprogEntry) {
       const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(txprogEntry)!));
-      return parseTx16WxPreset(xml, extractAudioBuffers(), cleanBasename(txprogEntry).replace(/\.txprog$/i, ''));
+      return parseTx16WxPreset(xml, await extractAudioBuffers(), cleanBasename(txprogEntry).replace(/\.txprog$/i, ''));
     }
     if (kmpEntry) {
       const kmpBytes = extractZipEntry(rawZipBytes, indexMap.get(kmpEntry)!);
       const kmpBuf = kmpBytes.buffer.slice(kmpBytes.byteOffset, kmpBytes.byteOffset + kmpBytes.byteLength) as ArrayBuffer;
-      const siblingMap = extractAudioBuffers();
+      const siblingMap = await extractAudioBuffers();
       for (const ke of ksfEntries) {
         const kb = extractZipEntry(rawZipBytes, ke);
         siblingMap.set(cleanBasename(ke.path), kb.buffer.slice(kb.byteOffset, kb.byteOffset + kb.byteLength) as ArrayBuffer);
@@ -2101,7 +2128,7 @@ export async function parseUniversalSampler(
             neededStems.add(stem.trim());
           }
         }
-        const audioFiles = extractAudioBuffers(neededStems.size > 0 ? neededStems : undefined);
+        const audioFiles = await extractAudioBuffers(neededStems.size > 0 ? neededStems : undefined);
         const preset = mpcProgramToPreset(bestProg, audioFiles);
         preset.programCount = xpmEntries.length;
         return preset;
@@ -2111,11 +2138,20 @@ export async function parseUniversalSampler(
   }
 
   // Helper to convert optional zipEntries Map<string, Uint8Array> into Map<string, ArrayBuffer>
-  const siblingAudioBuffers = (): Map<string, ArrayBuffer> => {
+  const siblingAudioBuffers = async (): Promise<Map<string, ArrayBuffer>> => {
     const map = new Map<string, ArrayBuffer>();
     if (zipEntries) {
       for (const [name, b] of zipEntries.entries()) {
-        map.set(cleanBasename(name), b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
+        const cleanKey = cleanBasename(name);
+        let rawBuf = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+        if (!/\.(wav|aif|aiff|ksf)$/i.test(cleanKey)) {
+          try {
+            rawBuf = await transcodeAnyAudioToWavBuffer(rawBuf, cleanKey);
+          } catch {
+            // Keep rawBuf if transcoding fails
+          }
+        }
+        map.set(cleanKey, rawBuf);
       }
     }
     return map;
@@ -2124,31 +2160,31 @@ export async function parseUniversalSampler(
   // Akai MPC program (MPC2 XML or MPC3 GZIP/JSON)
   if (/\.(xpm|xty|xtd)$/.test(lower)) {
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
-    return mpcProgramToPreset(await parseMpcXpm(bytes), siblingAudioBuffers());
+    return mpcProgramToPreset(await parseMpcXpm(bytes), await siblingAudioBuffers());
   }
 
   // Ableton Sampler / Simpler (.adv)
   if (lower.endsWith('.adv')) {
     const bytes = typeof data === 'string' ? data : new Uint8Array(data);
-    return parseAbletonAdvPreset(bytes, siblingAudioBuffers(), cleanBasename(filename).replace(/\.adv$/i, ''));
+    return parseAbletonAdvPreset(bytes, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.adv$/i, ''));
   }
 
   // Apple Logic EXS24 (.exs)
   if (lower.endsWith('.exs') || (typeof data !== 'string' && isExs24Buffer(data))) {
     const buf = typeof data === 'string' ? new TextEncoder().encode(data).buffer : data;
-    return parseExs24Preset(buf as ArrayBuffer, siblingAudioBuffers(), cleanBasename(filename).replace(/\.exs$/i, ''));
+    return parseExs24Preset(buf as ArrayBuffer, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.exs$/i, ''));
   }
 
   // TAL-Sampler (.talsmpl)
   if (lower.endsWith('.talsmpl')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseTalSamplerPreset(xml, siblingAudioBuffers(), cleanBasename(filename).replace(/\.talsmpl$/i, ''));
+    return parseTalSamplerPreset(xml, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.talsmpl$/i, ''));
   }
 
   // CWITEC TX16Wx (.txprog)
   if (lower.endsWith('.txprog')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseTx16WxPreset(xml, siblingAudioBuffers(), cleanBasename(filename).replace(/\.txprog$/i, ''));
+    return parseTx16WxPreset(xml, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.txprog$/i, ''));
   }
 
   // Korg Trinity/Triton/M3/Pa (.kmp / .ksf)
@@ -2189,7 +2225,7 @@ export async function parseUniversalSampler(
         audioBuffers: audioMap,
       };
     }
-    return parseKorgKmpPreset(buf, siblingAudioBuffers(), cleanBasename(filename).replace(/\.kmp$/i, ''));
+    return parseKorgKmpPreset(buf, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.kmp$/i, ''));
   }
 
   // MMA Downloadable Sounds (.dls)
@@ -2202,26 +2238,27 @@ export async function parseUniversalSampler(
   // 2. Direct format dispatch by extension / contents
   if (lower.endsWith('.dspreset')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseDecentSamplerPreset(xml, siblingAudioBuffers());
+    return parseDecentSamplerPreset(xml, await siblingAudioBuffers());
   }
 
   if (lower.endsWith('.nki') || lower.endsWith('.nki.xml')) {
-    return parseKontaktNki(data, siblingAudioBuffers());
+    return parseKontaktNki(data, await siblingAudioBuffers());
   }
 
   if (lower.endsWith('.vstpreset') || lower.endsWith('.vstpreset.xml')) {
-    return parseHalionVstPreset(data, siblingAudioBuffers());
+    return parseHalionVstPreset(data, await siblingAudioBuffers());
   }
 
   if (lower.endsWith('.multisample') || lower.endsWith('multisample.xml')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseBitwigMultisample(xml, siblingAudioBuffers());
+    return parseBitwigMultisample(xml, await siblingAudioBuffers());
   }
 
-  // 3. Audio / Sample chain / Slices
-  if (lower.endsWith('.wav') || lower.endsWith('.aif') || lower.endsWith('.aiff')) {
+  // 3. Audio / Sample chain / Slices (.wav, .aif, .aiff, .aifc, .flac, .caf, .mp3, .ogg, .m4a, .aac, .opus)
+  if (isSupportedAudioFileName(lower)) {
     if (typeof data !== 'string') {
-      return parseSampleChainAudio(data, filename);
+      const wavBuf = await transcodeAnyAudioToWavBuffer(data, filename);
+      return parseSampleChainAudio(wavBuf, filename);
     }
   }
 

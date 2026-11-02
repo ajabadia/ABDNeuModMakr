@@ -19,6 +19,7 @@ import {
   findSmartAutoLoop,
   snapFrameToRisingZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
+import { decodeWav, transcodeAnyAudioToWavBuffer } from '../core/dsp/WavDecoder.ts';
 
 export interface LoopEditorModalContext {
   getLoopEditorData: (zoneId?: string, regionId?: string) => ZoneLoopEditorData | null;
@@ -113,28 +114,37 @@ export class LoopEditorModal {
 
   public async loadAudioFile(file: File): Promise<void> {
     try {
-      const arrayBuf = await file.arrayBuffer();
-      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const decoded = await audioCtx.decodeAudioData(arrayBuf.slice(0));
-      const pcm = decoded.getChannelData(0);
+      const rawBuf = await file.arrayBuffer();
+      const wavBuf = await transcodeAnyAudioToWavBuffer(rawBuf, file.name);
+      const decoded = decodeWav(wavBuf);
+      const pcm = decoded.mono;
       const sr = decoded.sampleRate;
       const totalFrames = pcm.length;
 
-      this.context.onRegisterSampleBuffer?.(file.name, arrayBuf);
+      this.context.onRegisterSampleBuffer?.(file.name, wavBuf);
+
+      const inst = decoded.instrument;
+      const hasEmbeddedLoop =
+        inst &&
+        inst.loopStart !== undefined &&
+        inst.loopEnd !== undefined &&
+        inst.loopEnd > inst.loopStart;
 
       this.loopData = {
         zoneId: this.currentZoneId ?? 'custom',
         sampleName: file.name,
         sampleRate: sr,
         totalFrames,
-        numChannels: 1,
+        numChannels: decoded.numChannels,
         durationSec: totalFrames / sr,
         monoPcm: pcm,
-        loopStart: Math.floor(totalFrames * 0.2),
-        loopEnd: Math.max(Math.floor(totalFrames * 0.2) + 64, Math.floor(totalFrames * 0.85)),
+        loopStart: hasEmbeddedLoop ? inst.loopStart! : Math.floor(totalFrames * 0.2),
+        loopEnd: hasEmbeddedLoop
+          ? inst.loopEnd!
+          : Math.max(Math.floor(totalFrames * 0.2) + 64, Math.floor(totalFrames * 0.85)),
         loopCrossfadeMs: 20,
-        loopMode: 'loop_continuous',
-        rootKey: 60,
+        loopMode: hasEmbeddedLoop && inst.loopMode ? inst.loopMode : 'loop_continuous',
+        rootKey: inst?.rootKey ?? 60,
       };
 
       this.zoomFactor = 1.0;
@@ -233,7 +243,7 @@ export class LoopEditorModal {
         </header>
 
         <div class="nmm-modal-body nmm-loop-body">
-          <input type="file" id="inp-loop-file-picker" accept=".wav,.aif,.aiff,.flac" style="display:none;" />
+          <input type="file" id="inp-loop-file-picker" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" style="display:none;" />
 
           ${
             !hasAudio

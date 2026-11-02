@@ -10,4 +10,5 @@ export * from './ModelFormat.ts';
 export * from './SoundFormat.ts';
 export * from './NeuronDbMapper.ts';
 export * from './WavAiffDecoder.ts';
+export * from './UniversalAudioDecoder.ts';
 export * from './ZipArchive.ts';

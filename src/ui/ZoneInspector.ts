@@ -1066,7 +1066,7 @@ export class ZoneInspector {
                       ${lowOptionsHtml}
                     </select>
                     <div class="sample-actions">
-                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff" multiple class="is-hidden-file" />
+                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" multiple class="is-hidden-file" />
                       <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk into this region">${ICONS.folder} Browse...</button>
                       ${activeReg.sampleName ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Region Sample">${ICONS.close}</button>` : ''}
                     </div>
@@ -1094,7 +1094,7 @@ export class ZoneInspector {
                       ${lowOptionsHtml}
                     </select>
                     <div class="sample-actions">
-                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff" multiple class="is-hidden-file" />
+                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" multiple class="is-hidden-file" />
                       <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
                       ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Low Vel Sample">${ICONS.close}</button>` : ''}
                     </div>
@@ -1112,7 +1112,7 @@ export class ZoneInspector {
                       ${highOptionsHtml}
                     </select>
                     <div class="sample-actions">
-                      <input type="file" id="file-input-high" accept=".wav,.aif,.aiff" class="is-hidden-file" />
+                      <input type="file" id="file-input-high" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" class="is-hidden-file" />
                       <button type="button" class="btn btn-xs btn-outline" id="btn-browse-high" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
                       ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-high" title="Clear High Vel Sample">${ICONS.close}</button>` : ''}
                     </div>

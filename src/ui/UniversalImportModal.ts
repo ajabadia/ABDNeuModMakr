@@ -209,12 +209,12 @@ export class UniversalImportModal {
           <div class="dropzone-icon">${ICONS.folder || ICONS.wave}</div>
           <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .rx2, .rex, .rcy, .cue, .wav, .aif, .zip</strong>
+            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files">
               ${ICONS.folder || ''} Browse File...
-              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.flac,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.rx2,.rex,.rcy,.cue,.zip" multiple />
+              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
           </div>
         </div>
@@ -222,7 +222,7 @@ export class UniversalImportModal {
         <div class="uimport-supported-formats-strip">
           <div class="fmt-chip"><strong>Multisample Banks:</strong> SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion, Bitwig, Akai MPC</div>
           <div class="fmt-chip"><strong>Loops &amp; Slices:</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
-          <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF (automatically mapped to zones or chopper)</div>
+          <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF/AIFC, FLAC, MP3, OGG, M4A/AAC, Opus, CAF, NCW (auto-mapped to zones or chopper)</div>
         </div>
       </div>
     `;
@@ -420,9 +420,9 @@ export class UniversalImportModal {
     if (primaryProgFile) file = primaryProgFile;
     const filename = file.name;
 
-    // If multiple raw audio files are dropped (.wav, .aif), offer standard audio batch import
+    // If multiple raw audio files are dropped (.wav, .aif, .flac, .mp3, .ogg, .m4a, .caf, .ncw), offer standard audio batch import
     const isAudioOnly = Array.from(allFiles).every((f) =>
-      /\.(wav|aif|aiff|flac)$/i.test(f.name)
+      /\.(wav|aif|aiff|aifc|flac|mp3|ogg|oga|m4a|aac|opus|webm|caf|ncw)$/i.test(f.name)
     );
     if (isAudioOnly && allFiles.length > 1 && this.context.onImportRawAudioFiles) {
       this.close();
@@ -467,7 +467,7 @@ export class UniversalImportModal {
         // Sibling WAVs / KSFs selected alongside the program file are resolved by sample name
         const siblings = new Map<string, Uint8Array>();
         for (const f of Array.from(allFiles)) {
-          if (/\.(wav|aif|aiff|flac|ksf)$/i.test(f.name)) {
+          if (/\.(wav|aif|aiff|aifc|flac|mp3|ogg|oga|m4a|aac|opus|webm|caf|ncw|ksf)$/i.test(f.name)) {
             siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
           }
         }

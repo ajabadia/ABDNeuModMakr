@@ -10,7 +10,15 @@
 //   - Mono, Stereo, and multi-channel with automatic mono downmix ((L+R)*0.5)
 // ─────────────────────────────────────────────────────────
 
-export type WavFormatTag = 'pcm' | 'ieee-float' | 'aiff-pcm';
+import {
+  decodeALawSample,
+  decodeAppleIma4Packets,
+  decodeCaf,
+  decodeFlac,
+  decodeMuLawSample,
+} from './UniversalAudioDecoder.ts';
+
+export type WavFormatTag = 'pcm' | 'ieee-float' | 'aiff-pcm' | 'ulaw' | 'alaw' | 'adpcm';
 
 export interface AiffInstrumentInfo {
   rootKey: number;
@@ -42,6 +50,8 @@ export interface DecodedWav {
 
 const WAVE_FORMAT_PCM = 0x0001;
 const WAVE_FORMAT_IEEE_FLOAT = 0x0003;
+const WAVE_FORMAT_ALAW = 0x0006;
+const WAVE_FORMAT_MULAW = 0x0007;
 const WAVE_FORMAT_EXTENSIBLE = 0xfffe;
 
 function readFourCC(view: DataView, offset: number): string {
@@ -87,9 +97,14 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
   let numSampleFrames = 0;
   let bitsPerSample = 0;
   let sampleRate = 0;
+  let compressionType = 'NONE';
   let ssndDataStart = -1;
   let ssndDataBytes = 0;
   let instrument: AiffInstrumentInfo | undefined;
+  let sustainPlayMode = 0;
+  let sustainBeginMarkerId = 0;
+  let sustainEndMarkerId = 0;
+  const markers = new Map<number, number>();
 
   while (offset + 8 <= buffer.byteLength) {
     const chunkId = readFourCC(view, offset);
@@ -104,6 +119,9 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
       numSampleFrames = view.getUint32(chunkDataStart + 2, false);
       bitsPerSample = view.getUint16(chunkDataStart + 6, false);
       sampleRate = Math.round(readIeee80BigEndian(view, chunkDataStart + 8));
+      if (aiff === 'AIFC' && chunkSize >= 22 && chunkDataStart + 22 <= buffer.byteLength) {
+        compressionType = readFourCC(view, chunkDataStart + 18);
+      }
     } else if (chunkId === 'SSND') {
       if (chunkSize < 8 || chunkDataStart + 8 > buffer.byteLength) {
         throw new Error('Invalid AIFF: truncated SSND chunk');
@@ -125,10 +143,37 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
         highVelocity: view.getUint8(chunkDataStart + 5),
         gainDb: view.getInt16(chunkDataStart + 6, false),
       };
+      if (chunkSize >= 14 && chunkDataStart + 14 <= buffer.byteLength) {
+        sustainPlayMode = view.getUint16(chunkDataStart + 8, false);
+        sustainBeginMarkerId = view.getUint16(chunkDataStart + 10, false);
+        sustainEndMarkerId = view.getUint16(chunkDataStart + 12, false);
+      }
+    } else if (chunkId === 'MARK' && chunkSize >= 2 && chunkDataStart + 2 <= buffer.byteLength) {
+      const numMarkers = view.getUint16(chunkDataStart, false);
+      let mPtr = chunkDataStart + 2;
+      for (let m = 0; m < numMarkers && mPtr + 7 <= chunkDataStart + chunkSize; m++) {
+        const mId = view.getUint16(mPtr, false);
+        const mPos = view.getUint32(mPtr + 2, false);
+        const pstrLen = view.getUint8(mPtr + 6);
+        markers.set(mId, mPos);
+        // Pascal string: 1 length byte + pstrLen bytes, padded to even total length
+        const strTotal = 1 + pstrLen + ((1 + pstrLen) & 1);
+        mPtr += 6 + strTotal;
+      }
     }
 
     const paddedSize = chunkSize + (chunkSize & 1);
     offset = chunkDataStart + paddedSize;
+  }
+
+  if (instrument && sustainPlayMode > 0) {
+    const lStart = markers.get(sustainBeginMarkerId);
+    const lEnd = markers.get(sustainEndMarkerId);
+    if (lStart !== undefined && lEnd !== undefined && lEnd > lStart) {
+      instrument.loopStart = lStart;
+      instrument.loopEnd = lEnd;
+      instrument.loopMode = 'loop_continuous';
+    }
   }
 
   if (numChannels < 1 || numChannels > 32) {
@@ -137,16 +182,59 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
   if (sampleRate < 4000 || sampleRate > 384000) {
     throw new Error(`Invalid AIFF: unsupported sample rate (${sampleRate} Hz)`);
   }
-  if (
+  if (ssndDataStart < 0 || ssndDataBytes <= 0) {
+    throw new Error('Invalid AIFF: missing or empty SSND chunk');
+  }
+
+  const compUpper = compressionType.toUpperCase();
+  if (compUpper === 'IMA4') {
+    const decodedIma = decodeAppleIma4Packets(
+      view,
+      ssndDataStart,
+      ssndDataBytes,
+      numChannels,
+      numSampleFrames > 0 ? numSampleFrames : undefined
+    );
+    const mono = new Float32Array(decodedIma.numSamples);
+    if (numChannels === 1) {
+      mono.set(decodedIma.channels[0]);
+    } else {
+      for (let i = 0; i < decodedIma.numSamples; i++) {
+        mono[i] = (decodedIma.channels[0][i] + decodedIma.channels[1][i]) * 0.5;
+      }
+    }
+    return {
+      sampleRate,
+      numChannels,
+      bitsPerSample: 16,
+      formatTag: 'adpcm',
+      numSamples: decodedIma.numSamples,
+      durationSec: decodedIma.numSamples / sampleRate,
+      channels: decodedIma.channels,
+      mono,
+      instrument,
+    };
+  }
+
+  const isUlaw = compUpper === 'ULAW';
+  const isAlaw = compUpper === 'ALAW';
+  const isFloat32 = compUpper === 'FL32';
+  const isFloat64 = compUpper === 'FL64';
+  const isLittleEndian = compressionType === 'sowt';
+
+  if (isUlaw || isAlaw) {
+    bitsPerSample = 8;
+  } else if (isFloat32) {
+    bitsPerSample = 32;
+  } else if (isFloat64) {
+    bitsPerSample = 64;
+  } else if (
     bitsPerSample !== 8 &&
     bitsPerSample !== 16 &&
     bitsPerSample !== 24 &&
     bitsPerSample !== 32
   ) {
     throw new Error(`Invalid AIFF: unsupported bit depth (${bitsPerSample}-bit)`);
-  }
-  if (ssndDataStart < 0 || ssndDataBytes <= 0) {
-    throw new Error('Invalid AIFF: missing or empty SSND chunk');
   }
 
   const bytesPerSample = bitsPerSample >>> 3;
@@ -164,20 +252,32 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
   for (let i = 0; i < numSamples; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
       let val = 0;
-      if (bitsPerSample === 8) {
-        // AIFF 8-bit is signed (-128..127)
-        val = view.getInt8(ptr) / 128.0;
+      if (isUlaw) {
+        val = decodeMuLawSample(view.getUint8(ptr));
+      } else if (isAlaw) {
+        val = decodeALawSample(view.getUint8(ptr));
+      } else if (isFloat32) {
+        val = view.getFloat32(ptr, false);
+      } else if (isFloat64) {
+        val = view.getFloat64(ptr, false);
+      } else if (bitsPerSample === 8) {
+        val = compressionType === 'raw '
+          ? (view.getUint8(ptr) - 128) / 128.0
+          : view.getInt8(ptr) / 128.0;
       } else if (bitsPerSample === 16) {
-        val = view.getInt16(ptr, false) / 32768.0;
+        val = view.getInt16(ptr, isLittleEndian) / 32768.0;
       } else if (bitsPerSample === 24) {
         const b0 = view.getUint8(ptr);
         const b1 = view.getUint8(ptr + 1);
         const b2 = view.getUint8(ptr + 2);
-        const int24 = ((b0 << 24) | (b1 << 16) | (b2 << 8)) >> 8;
+        const int24 = isLittleEndian
+          ? ((b2 << 24) | (b1 << 16) | (b0 << 8)) >> 8
+          : ((b0 << 24) | (b1 << 16) | (b2 << 8)) >> 8;
         val = int24 / 8388608.0;
       } else {
-        val = view.getInt32(ptr, false) / 2147483648.0;
+        val = view.getInt32(ptr, isLittleEndian) / 2147483648.0;
       }
+      if (!Number.isFinite(val)) val = 0;
       channels[ch][i] = val;
       ptr += bytesPerSample;
     }
@@ -211,7 +311,7 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
  * Decodes a binary RIFF/WAVE or FORM/AIFF ArrayBuffer into normalized Float32Array channels + mono mix.
  */
 export function decodeWav(buffer: ArrayBuffer): DecodedWav {
-  if (buffer.byteLength < 44) {
+  if (buffer.byteLength < 32) {
     throw new Error(`Invalid audio buffer: too small (${buffer.byteLength} bytes)`);
   }
 
@@ -220,8 +320,14 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
   if (magic === 'FORM') {
     return decodeAiff(buffer);
   }
+  if (magic === 'fLaC') {
+    return decodeFlac(buffer);
+  }
+  if (magic === 'caff') {
+    return decodeCaf(buffer);
+  }
   if (magic !== 'RIFF' && magic !== 'RF64') {
-    throw new Error(`Invalid WAV: expected 'RIFF' or 'FORM' header, found '${magic}'`);
+    throw new Error(`Invalid WAV: expected 'RIFF', 'FORM', 'fLaC', or 'caff' header, found '${magic}'`);
   }
 
   const wave = readFourCC(view, 8);
@@ -350,6 +456,12 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
       throw new Error(`Invalid WAV: unsupported IEEE Float bit depth (${bitsPerSample}-bit)`);
     }
     formatTag = 'ieee-float';
+  } else if (audioFormat === WAVE_FORMAT_ALAW) {
+    bitsPerSample = 8;
+    formatTag = 'alaw';
+  } else if (audioFormat === WAVE_FORMAT_MULAW) {
+    bitsPerSample = 8;
+    formatTag = 'ulaw';
   } else {
     throw new Error(`Invalid WAV: unsupported audio format tag (0x${audioFormat.toString(16)})`);
   }
@@ -371,7 +483,11 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
     let samplePtr = framePtr;
     for (let ch = 0; ch < numChannels; ch++) {
       let val = 0;
-      if (formatTag === 'pcm') {
+      if (formatTag === 'ulaw') {
+        val = decodeMuLawSample(view.getUint8(samplePtr));
+      } else if (formatTag === 'alaw') {
+        val = decodeALawSample(view.getUint8(samplePtr));
+      } else if (formatTag === 'pcm') {
         if (bitsPerSample === 8) {
           val = (view.getUint8(samplePtr) - 128) / 128.0;
         } else if (bitsPerSample === 16) {
@@ -439,7 +555,14 @@ export function encodeWavPcm16(
   const byteRate = sampleRate * blockAlign;
   const dataSize = numSamples * blockAlign;
   const instChunkBytes = instrument ? 16 : 0; // 'inst' (4) + size=7 (4) + 7 bytes + 1 pad byte
-  const buffer = new ArrayBuffer(44 + dataSize + instChunkBytes);
+  const hasLoop =
+    instrument !== undefined &&
+    typeof instrument.loopStart === 'number' &&
+    typeof instrument.loopEnd === 'number' &&
+    instrument.loopEnd > instrument.loopStart;
+  const smplPayloadBytes = hasLoop ? 60 : 36;
+  const smplChunkBytes = hasLoop ? 8 + smplPayloadBytes : 0;
+  const buffer = new ArrayBuffer(44 + dataSize + instChunkBytes + smplChunkBytes);
   const view = new DataView(buffer);
 
   const writeStr = (off: number, s: string) => {
@@ -449,7 +572,7 @@ export function encodeWavPcm16(
   };
 
   writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize + instChunkBytes, true);
+  view.setUint32(4, 36 + dataSize + instChunkBytes + smplChunkBytes, true);
   writeStr(8, 'WAVE');
   writeStr(12, 'fmt ');
   view.setUint32(16, 16, true);
@@ -478,12 +601,40 @@ export function encodeWavPcm16(
     view.setUint32(ptr + 4, 7, true);
     view.setUint8(ptr + 8, Math.max(0, Math.min(127, instrument.rootKey ?? 60)));
     view.setInt8(ptr + 9, Math.max(-50, Math.min(50, instrument.detune ?? 0)));
-    view.setInt8(ptr + 10, Math.max(-64, Math.min(64, instrument.gainDb ?? 0)));
+    view.setInt8(ptr + 10, Math.max(-64, Math.min(64, Math.round(instrument.gainDb ?? 0))));
     view.setUint8(ptr + 11, Math.max(0, Math.min(127, instrument.lowKey ?? 0)));
     view.setUint8(ptr + 12, Math.max(0, Math.min(127, instrument.highKey ?? 127)));
     view.setUint8(ptr + 13, Math.max(1, Math.min(127, instrument.lowVelocity ?? 1)));
     view.setUint8(ptr + 14, Math.max(1, Math.min(127, instrument.highVelocity ?? 127)));
     view.setUint8(ptr + 15, 0); // pad byte
+    ptr += 16;
+
+    if (hasLoop) {
+      writeStr(ptr, 'smpl');
+      view.setUint32(ptr + 4, smplPayloadBytes, true);
+      const smplData = ptr + 8;
+      view.setUint32(smplData + 0, 0, true);
+      view.setUint32(smplData + 4, 0, true);
+      view.setUint32(smplData + 8, Math.round(1000000000 / sampleRate), true);
+      view.setUint32(smplData + 12, Math.max(0, Math.min(127, instrument.rootKey ?? 60)), true);
+      const detune = Math.max(-50, Math.min(50, instrument.detune ?? 0));
+      const pitchFrac = detune >= 0 ? Math.round((detune / 100) * 4294967296) : 0;
+      view.setUint32(smplData + 16, pitchFrac >>> 0, true);
+      view.setUint32(smplData + 20, 0, true);
+      view.setUint32(smplData + 24, 0, true);
+      view.setUint32(smplData + 28, 1, true);
+      view.setUint32(smplData + 32, 0, true);
+      view.setUint32(smplData + 36, 0, true);
+      view.setUint32(smplData + 40, 0, true);
+      view.setUint32(smplData + 44, Math.max(0, Math.round(instrument.loopStart ?? 0)), true);
+      view.setUint32(
+        smplData + 48,
+        Math.min(Math.max(0, numSamples - 1), Math.round(instrument.loopEnd ?? 0)),
+        true
+      );
+      view.setUint32(smplData + 52, 0, true);
+      view.setUint32(smplData + 56, 0, true);
+    }
   }
 
   return buffer;

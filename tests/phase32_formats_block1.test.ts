@@ -15,7 +15,14 @@
 // ─────────────────────────────────────────────────────────
 
 import assert from 'node:assert/strict';
-import { encodeWavPcm16 } from '../src/core/dsp/WavDecoder.ts';
+import {
+  encodeWavPcm16,
+  decodeWav,
+  decodeFlac,
+  encodeFlacPcm16,
+  decodeCaf,
+  transcodeAnyAudioToWavBuffer,
+} from '../src/core/dsp/WavDecoder.ts';
 import { indexZipArchive, extractZipEntry } from '../src/formats/ZipArchive.ts';
 import {
   parseUniversalSamplerInstrument,
@@ -591,5 +598,114 @@ await test('7. FORMAT_CAPABILITIES_REGISTRY registers all 16 formats and evaluat
   }
 });
 
-console.log(`\nFase 32.3 + 32.4 (Bloque 1) Summary: ${passed} passed, ${failed} failed`);
+await test('8. FLAC ("fLaC") pure-TS encoder/decoder round-trips stereo PCM + VORBIS_COMMENT loop/rootKey metadata and parses as UniversalSamplerInstrument', async () => {
+  const sr = 44100;
+  const frames = 2048;
+  const left = new Float32Array(frames);
+  const right = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    left[i] = Math.sin((2 * Math.PI * 440 * i) / sr) * 0.5;
+    right[i] = Math.cos((2 * Math.PI * 440 * i) / sr) * 0.5;
+  }
+
+  const flacBuf = encodeFlacPcm16([left, right], sr, {
+    rootKey: 64,
+    loopStart: 256,
+    loopEnd: 1792,
+  });
+
+  const decoded = decodeFlac(flacBuf);
+  assert.equal(decoded.sampleRate, sr);
+  assert.equal(decoded.numChannels, 2);
+  assert.equal(decoded.channels[0].length, frames);
+  assert.equal(decoded.instrument?.rootKey, 64);
+  assert.equal(decoded.instrument?.loopStart, 256);
+  assert.equal(decoded.instrument?.loopEnd, 1792);
+  assertCloseTo(decoded.channels[0][100], left[100], 0.001, 'FLAC left channel sample');
+
+  // Verify standalone .flac import via parseUniversalSamplerInstrument
+  const inst = await parseUniversalSamplerInstrument('TestTone_E4.flac', flacBuf);
+  assert.equal(inst.regions.length, 1);
+  assert.equal(inst.regions[0].rootKey, 64);
+  assert.equal(inst.regions[0].loopMode, 'loop_continuous');
+  assert.equal(inst.regions[0].loopStart, 256);
+  assert.equal(inst.regions[0].loopEnd, 1792);
+});
+
+await test('9. Apple CoreAudio Format (.caf "caff") decodes LPCM + inst chunk (baseNote, key/velocity range, gain) and transcodes to WAV', async () => {
+  // Build a minimal valid Apple CAF file with 'desc', 'inst', and 'data' chunks
+  const sr = 48000;
+  const frames = 512;
+  // caff header (8B) + desc chunk (12+32=44B) + inst chunk (12+32=44B) + data chunk (12+4+frames*2)
+  const totalSize = 8 + 44 + 44 + 16 + frames * 2;
+  const buf = new ArrayBuffer(totalSize);
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  let pos = 0;
+
+  const writeFourCC = (s: string) => {
+    for (let i = 0; i < 4; i++) bytes[pos++] = s.charCodeAt(i);
+  };
+  const writeU64 = (n: number) => {
+    view.setUint32(pos, 0, false);
+    view.setUint32(pos + 4, n, false);
+    pos += 8;
+  };
+
+  // File header: 'caff', version=1, flags=0
+  writeFourCC('caff');
+  view.setUint16(pos, 1, false); pos += 2;
+  view.setUint16(pos, 0, false); pos += 2;
+
+  // 'desc' chunk (32 bytes)
+  writeFourCC('desc');
+  writeU64(32);
+  view.setFloat64(pos, sr, false); pos += 8; // mSampleRate
+  writeFourCC('lpcm'); // mFormatID
+  view.setUint32(pos, 2, false); pos += 4; // mFormatFlags: bit 1 = little-endian
+  view.setUint32(pos, 2, false); pos += 4; // mBytesPerPacket
+  view.setUint32(pos, 1, false); pos += 4; // mFramesPerPacket
+  view.setUint32(pos, 1, false); pos += 4; // mChannelsPerFrame
+  view.setUint32(pos, 16, false); pos += 4; // mBitsPerChannel
+
+  // 'inst' chunk (32 bytes)
+  writeFourCC('inst');
+  writeU64(32);
+  view.setFloat32(pos, 72.25, false); pos += 4; // baseNote = 72, +25 cents
+  view.setUint8(pos++, 48); // midiLowNote
+  view.setUint8(pos++, 84); // midiHighNote
+  view.setUint8(pos++, 10); // midiLowVelocity
+  view.setUint8(pos++, 120); // midiHighVelocity
+  view.setFloat32(pos, -6.0, false); pos += 4; // dBGain
+  pos += 20; // loop region IDs (0)
+
+  // 'data' chunk
+  writeFourCC('data');
+  writeU64(4 + frames * 2);
+  view.setUint32(pos, 0, false); pos += 4; // mEditCount
+  for (let i = 0; i < frames; i++) {
+    const s = Math.round(Math.sin((2 * Math.PI * 440 * i) / sr) * 16384);
+    view.setInt16(pos, s, true);
+    pos += 2;
+  }
+
+  const cafDecoded = decodeCaf(buf);
+  assert.equal(cafDecoded.sampleRate, sr);
+  assert.equal(cafDecoded.numChannels, 1);
+  assert.equal(cafDecoded.mono.length, frames);
+  assert.equal(cafDecoded.instrument?.rootKey, 72);
+  assert.equal(cafDecoded.instrument?.detune, 25);
+  assert.equal(cafDecoded.instrument?.lowKey, 48);
+  assert.equal(cafDecoded.instrument?.highKey, 84);
+  assert.equal(cafDecoded.instrument?.lowVelocity, 10);
+  assert.equal(cafDecoded.instrument?.highVelocity, 120);
+  assert.equal(cafDecoded.instrument?.gainDb, -6);
+
+  const wavBuf = await transcodeAnyAudioToWavBuffer(buf, 'TestCaf.caf');
+  const wavDecoded = decodeWav(wavBuf);
+  assert.equal(wavDecoded.sampleRate, sr);
+  assert.equal(wavDecoded.instrument?.rootKey, 72);
+});
+
+console.log(`\nFase 32.3 + 32.4 (Bloque 1) + UniversalAudio Summary: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

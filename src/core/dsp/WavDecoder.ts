@@ -4,3 +4,4 @@
 // ─────────────────────────────────────────────────────────
 
 export * from '@abdsynths/shared/formats/neuron/WavAiffDecoder.ts';
+export * from '@abdsynths/shared/formats/neuron/UniversalAudioDecoder.ts';

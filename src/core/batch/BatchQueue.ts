@@ -16,7 +16,13 @@ import { parseSampleFilenameByName } from '../sampleNaming.ts';
 import { createZone } from '../sessionFactory.ts';
 import type { MidiNote, ProcessConfig, Zone } from '../types.ts';
 import { sliceAudioBuffer, buildMidiFileBuffer, type SlicerMode } from '../dsp/AudioSlicerEngine.ts';
-import { decodeWav, decodeAiff, encodePcm16Wav } from '../dsp/WavDecoder.ts';
+import {
+  decodeWav,
+  decodeAiff,
+  encodePcm16Wav,
+  isSupportedAudioFileName,
+  transcodeAnyAudioToWavBuffer,
+} from '../dsp/WavDecoder.ts';
 import { isRx2Buffer, decompressRx2Audio } from '../dsp/DwopDecompressor.ts';
 import { fileExtension } from '../pathUtils.ts';
 import { delay, yieldToUI } from '../asyncUtils.ts';
@@ -248,7 +254,16 @@ export class BatchQueue {
     // 1. Resolve zones and raw audio buffers
     const rawSamples = new Map<string, ArrayBuffer>();
     for (const f of job.files) {
-      rawSamples.set(f.name, f.buffer);
+      let buf = f.buffer;
+      if (isSupportedAudioFileName(f.name)) {
+        try {
+          buf = await transcodeAnyAudioToWavBuffer(f.buffer, f.name);
+          f.buffer = buf;
+        } catch {
+          // keep original if already handled or RX2
+        }
+      }
+      rawSamples.set(f.name, buf);
     }
 
     const isAutoSlicer =

@@ -14,7 +14,12 @@ import { escHtml } from './escape.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
 import { downloadBlob } from './download.ts';
-import { encodePcm16Wav, decodeWav, decodeAiff } from '../core/dsp/WavDecoder.ts';
+import {
+  encodePcm16Wav,
+  decodeWav,
+  decodeAiff,
+  transcodeAnyAudioToWavBuffer,
+} from '../core/dsp/WavDecoder.ts';
 import {
   computeZoomedWaveformEnvelope,
   snapFrameToNearestZeroCrossing,
@@ -236,18 +241,18 @@ export class AudioChopperModal {
         }
       }
 
-      // Standard Audio Decode
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const decoded = await audioCtx.decodeAudioData(arrayBuf.slice(0));
-      this.pcm = decoded.getChannelData(0);
-      this.sampleRate = decoded.sampleRate;
+      // Universal Audio Decode (WAV, AIFF/AIFC, FLAC, CAF, MP3, OGG, M4A/AAC, Opus)
+      const wavBuf = await transcodeAnyAudioToWavBuffer(arrayBuf, file.name);
+      const decWav = decodeWav(wavBuf);
+      this.pcm = decWav.mono;
+      this.sampleRate = decWav.sampleRate;
       this.sourceFilename = file.name;
       this.zoomFactor = 1.0;
       this.viewCenterNorm = 0.5;
       this.selectedSliceId = null;
       this.activeBoundaryIndex = 1;
 
-      this.context.onRegisterSampleBuffer?.(file.name, arrayBuf);
+      this.context.onRegisterSampleBuffer?.(file.name, wavBuf);
 
       // Check if standard WAV / AIFF contains embedded slice cues
       const embedded = parseSliceFile(arrayBuf, file.name, this.sampleRate);
@@ -777,7 +782,7 @@ export class AudioChopperModal {
         </header>
 
         <div class="nmm-modal-body nmm-chopper-body">
-          <input type="file" id="inp-chopper-audio-file" accept=".wav,.aif,.aiff,.flac,.rx2,.rex,.rcy,.sfz,.cue,.txt" style="display: none;" />
+          <input type="file" id="inp-chopper-audio-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.sfz,.cue,.txt,audio/*" style="display: none;" />
           <input type="file" id="inp-chopper-markers-file" accept=".rx2,.rex,.rcy,.sfz,.cue,.txt,.wav,.aif" style="display: none;" />
 
           ${

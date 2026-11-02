@@ -10,12 +10,15 @@ import { PARAMETER_SETS } from '../core';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { NeuronDbModal } from '../ui/NeuronDbModal';
 import {
+  isSupportedAudioFileName,
   parseMName,
   parseMapScript,
   parseModelNamesCache,
   parseSoundNamesCache,
   parseSoundScript,
   parseZipArchive,
+  SUPPORTED_AUDIO_ACCEPT,
+  transcodeAnyAudioToWavBuffer,
 } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { MAX_SFZ_TEXT_BYTES } from '../formats/SfzParser.ts';
@@ -55,7 +58,8 @@ export class ImportHandlers {
   ): Promise<void> {
     try {
       await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${file.name}"...`, async () => {
-        const buffer = await file.arrayBuffer();
+        const rawBuf = await file.arrayBuffer();
+        const buffer = await transcodeAnyAudioToWavBuffer(rawBuf, file.name);
         const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
         const targetZone = this.ctx.session?.zones.find((z) => z.id === zoneId);
         const effectiveSlot =
@@ -93,7 +97,8 @@ export class ImportHandlers {
   ): Promise<void> {
     try {
       await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${file.name}"...`, async () => {
-        const buffer = await file.arrayBuffer();
+        const rawBuf = await file.arrayBuffer();
+        const buffer = await transcodeAnyAudioToWavBuffer(rawBuf, file.name);
         const decoded = this.ctx.core.registerSampleBuffer(file.name, buffer);
         const changes: Parameters<CoreService['updateExtendedRegion']>[1] = {
           sampleName: file.name,
@@ -692,8 +697,7 @@ export class ImportHandlers {
         }
         const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
-          const lower = entry.name.toLowerCase();
-          if (lower.endsWith('.wav') || lower.endsWith('.aif') || lower.endsWith('.aiff')) {
+          if (isSupportedAudioFileName(entry.name)) {
             const file = await (entry as FileSystemFileHandle).getFile();
             const buffer = await file.arrayBuffer();
             folderInputs.push({ path: relPath, name: entry.name, buffer });
@@ -741,7 +745,12 @@ export class ImportHandlers {
         'LOADING AUDIO SAMPLES...',
         `Mapping and decoding ${files.length} audio file(s)${instrumentName ? ` for "${instrumentName}"` : ''}...`,
         async () => {
-          const zones = await this.ctx.core.importAudioFiles(files, audioMode);
+          const normalizedFiles: { name: string; buffer: ArrayBuffer }[] = [];
+          for (const f of files) {
+            const normBuf = await transcodeAnyAudioToWavBuffer(f.buffer, f.name);
+            normalizedFiles.push({ name: f.name, buffer: normBuf });
+          }
+          const zones = await this.ctx.core.importAudioFiles(normalizedFiles, audioMode);
           this.ctx.session = this.ctx.core.getSession()!;
           if (instrumentName && this.ctx.session) {
             this.ctx.session.name = instrumentName;
@@ -819,7 +828,7 @@ export class ImportHandlers {
         if (base.startsWith('.') || base.startsWith('._')) continue;
 
         const lower = base.toLowerCase();
-        if (lower.endsWith('.wav') || lower.endsWith('.aif') || lower.endsWith('.aiff')) {
+        if (isSupportedAudioFileName(lower)) {
           audioFileEntries.push(f);
         } else if (
           lower.endsWith('.scape') ||
@@ -1078,8 +1087,7 @@ export class ImportHandlers {
           lower === 'mname' ||
           lower.endsWith('.nmmodel') ||
           lower.endsWith('.neuronikmodel');
-        const isAudio =
-          lower.endsWith('.wav') || lower.endsWith('.aif') || lower.endsWith('.aiff');
+        const isAudio = isSupportedAudioFileName(lower);
 
         if (isModelArtifact) {
           const slotMatch = /(\d{3})\.model\//i.exec(normPath);
@@ -1188,7 +1196,12 @@ export class ImportHandlers {
                 );
               }
               const sfzText = new TextDecoder('utf-8').decode(chosenSfz.buffer);
-              const session = await this.ctx.core.importSfzText(sfzText, chosenSfz.name, audioFiles);
+              const normalizedSfzAudio: { name: string; buffer: ArrayBuffer }[] = [];
+              for (const af of audioFiles) {
+                const normBuf = await transcodeAnyAudioToWavBuffer(af.buffer, af.name);
+                normalizedSfzAudio.push({ name: af.name, buffer: normBuf });
+              }
+              const session = await this.ctx.core.importSfzText(sfzText, chosenSfz.name, normalizedSfzAudio);
               this.ctx.session = session;
               this.ctx.selectedZoneId = session.zones[0]?.id || null;
               this.ctx.log(
@@ -1334,7 +1347,8 @@ export class ImportHandlers {
           const regId = this.ctx.selectedZoneId || this.ctx.session.extendedRegions?.[0]?.id;
           if (regId) {
             await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${singleFile.name}"...`, async () => {
-              this.ctx.core.registerSampleBuffer(singleFile.name, singleFile.buffer);
+              const normBuf = await transcodeAnyAudioToWavBuffer(singleFile.buffer, singleFile.name);
+              this.ctx.core.registerSampleBuffer(singleFile.name, normBuf);
               await this.ctx.core.updateExtendedRegion(regId, { sampleName: singleFile.name });
               this.ctx.session = this.ctx.core.getSession()!;
               this.ctx.log(`${sourceLabel}: assigned "${singleFile.name}" to region [${regId}].`);
@@ -1349,7 +1363,8 @@ export class ImportHandlers {
           if (activeZone) {
             const slot = activeZone.sampleLow ? 'high' : 'low';
             await withLoading('LOADING AUDIO SAMPLE...', `Decoding "${singleFile.name}"...`, async () => {
-              this.ctx.core.registerSampleBuffer(singleFile.name, singleFile.buffer);
+              const normBuf = await transcodeAnyAudioToWavBuffer(singleFile.buffer, singleFile.name);
+              this.ctx.core.registerSampleBuffer(singleFile.name, normBuf);
               await this.ctx.core.updateZone(activeZone.id, slot === 'low' ? { sampleLow: singleFile.name } : { sampleHigh: singleFile.name });
               this.ctx.session = this.ctx.core.getSession()!;
               this.ctx.log(`${sourceLabel}: assigned "${singleFile.name}" to zone #${this.ctx.session.zones.indexOf(activeZone) + 1} (${slot === 'low' ? 'Low' : 'High'} Vel).`);
@@ -1390,7 +1405,7 @@ export class ImportHandlers {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.wav,.aif,.aiff,.sf2,.sfz,.zip';
+    fileInput.accept = `${SUPPORTED_AUDIO_ACCEPT},.sf2,.sfz,.zip`;
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
       if (!fileList || fileList.length === 0) return;
@@ -1405,7 +1420,7 @@ export class ImportHandlers {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = '.sf2,.sfz,.wav,.aif,.aiff,.zip';
+    fileInput.accept = `.sf2,.sfz,${SUPPORTED_AUDIO_ACCEPT},.zip`;
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
       if (!fileList || fileList.length === 0) return;

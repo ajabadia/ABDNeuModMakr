@@ -253,8 +253,8 @@ export class BatchProcessorModal {
               `
                   : `
               <label class="nmm-btn nmm-btn-primary">
-                ${ICONS.scissors || ''} Select Loops (.wav, .rx2, .rex)
-                <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.rx2,.rex" multiple style="display: none;" />
+                ${ICONS.scissors || ''} Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex)
+                <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex" multiple style="display: none;" />
               </label>
               `
               }
