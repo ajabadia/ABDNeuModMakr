@@ -431,16 +431,100 @@ async function runPhase11Tests(): Promise<void> {
     console.log('  [OK] 11.7 capsule carries and round-trips the v2 document');
   }
 
-  // 11.8 Serialización estable.
+  // 11.8 Aislamiento de capas: el v2 nunca entra en el parseo clásico.
+  {
+    const v2doc: AxionikExpandedModel = buildAxionikExpandedModel(makeBaseInput());
+    const base = {
+      slot: 4,
+      modelName: 'TESTMODEL11',
+      processConfig: makeProcessConfig(),
+      zones: [],
+      acousticLines: ['; test'],
+      manifestExtra: {},
+    };
+    const toFiles = (entries: { path: string; data: string }[]) =>
+      entries.map((e) => ({
+        name: e.path,
+        data: new TextEncoder().encode(e.data),
+      }));
+    const withV2 = extractTimeCapsuleFromFiles(
+      toFiles(buildTimeCapsuleEntries({ ...base, expandedModelV2: v2doc }).entries)
+    );
+    const withoutV2 = extractTimeCapsuleFromFiles(
+      toFiles(buildTimeCapsuleEntries(base).entries)
+    );
+    assert(
+      withV2.expandedModelV2Json !== null,
+      '11.8 extraction must surface the v2 document'
+    );
+    assert(
+      !withV2.classicEnhancedFiles.some((f) =>
+        f.name.toLowerCase().includes('axionik-expanded')
+      ),
+      '11.8 the v2 document must never leak into 04_classic_enhanced files'
+    );
+    assert(
+      !withV2.modelParseFiles.some((f) =>
+        f.name.toLowerCase().includes('axionik-expanded')
+      ),
+      '11.8 modelParseFiles (classic parse) must exclude the v2 document'
+    );
+    const parseSetOf = (ext: { modelParseFiles: { name: string }[] }) =>
+      ext.modelParseFiles
+        .map((f) => f.name)
+        .sort()
+        .join('|');
+    assert(
+      parseSetOf(withV2) === parseSetOf(withoutV2),
+      '11.8 adding the v2 document must not change the classic parse set'
+    );
+    console.log('  [OK] 11.8 v2 document stays outside the classic layer and parse set');
+  }
+
+  // 11.9 Handoff textual: el JSON tal cual sale de la cápsula y se preflightea.
+  {
+    const doc = buildAxionikExpandedModel(
+      makeBaseInput({
+        spectral: makeSpectral(128, 8),
+        expandedFx: [{ id: 'rev', type: 'plate-v2', mix: 0.3 }],
+      })
+    );
+    const capsule = buildTimeCapsuleEntries({
+      slot: 5,
+      modelName: 'TESTMODEL11',
+      processConfig: makeProcessConfig(),
+      zones: [],
+      acousticLines: ['; test'],
+      manifestExtra: {},
+      expandedModelV2: doc,
+    });
+    const entry = capsule.entries.find(
+      (e) => e.path === EXPANDED_MODEL_V2_CAPSULE_PATH
+    );
+    assert(entry !== undefined, '11.9 capsule must carry the v2 entry');
+    const full = preflightExpandedModelForAxionik(entry.data, FULL_CAPS_ENGINE);
+    assert(full.ok, `11.9 stored text must preflight on a full engine (${full.errors})`);
+    const partial = preflightExpandedModelForAxionik(entry.data, {
+      generation: 'expanded-v1',
+      caps: ['hd-spectral'],
+    });
+    assert(
+      !partial.ok && partial.missingCaps.includes('fx-v2'),
+      '11.9 a partial engine must block the stored text, not the in-memory doc'
+    );
+    console.log('  [OK] 11.9 stored capsule text preflights without re-serialization');
+  }
+
+  // 11.10 Serialización estable.
   {
     const doc = buildAxionikExpandedModel(makeBaseInput());
     const text = serializeExpandedModel(doc);
     assert(
       isAxionikExpandedModel(JSON.parse(text)),
-      '11.8 serialized text must re-parse through the guard'
+      '11.10 serialized text must re-parse through the guard'
     );
-    assert(text.includes('"schemaVersion": "2.0.0"'), '11.8 must pin 2.0.0');
-    console.log('  [OK] 11.8 serialize/parse round-trip is stable');
+    assert(text.includes('"schemaVersion": "2.0.0"'), '11.10 must pin 2.0.0');
+    console.log('  [OK] 11.10 serialize/parse round-trip is stable');
   }
 
   console.log('=== ALL PHASE 11 EXPANDED MODEL TESTS PASSED ===');
