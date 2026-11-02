@@ -26,6 +26,8 @@ import type {
 import { SAMPLER_FORMAT_METADATA } from '../core/export/rawSamplerPreflight.ts';
 import { ICONS } from './icons.ts';
 import { toast } from './notify.ts';
+import { downloadBlob } from './download.ts';
+import { formatKb } from '../core/pathUtils.ts';
 
 export interface RawSamplerExportModalContext {
   core: CoreService;
@@ -109,6 +111,8 @@ export class RawSamplerExportModal {
       { id: 'sf2', label: 'SoundFont 2 (.sf2)', badge: 'RIFF sfbk' },
       { id: 'sfz', label: 'SFZ Format (.sfz)', badge: 'Open Text' },
       { id: 'dspreset', label: 'Decent Sampler (.dspreset)', badge: 'XML + UI' },
+      { id: 'mpc_xpm', label: 'Akai MPC Program (.xpm)', badge: 'Keygroup/Drum' },
+      { id: 'mpc_xpn', label: 'Akai MPC Expansion (.xpn)', badge: 'MPC Pack' },
       { id: 'multisample', label: 'Bitwig Studio (.multisample)', badge: 'DAW Package' },
       { id: 'nki', label: 'Kontakt (.nki XML)', badge: 'NI Multisample' },
       { id: 'vstpreset', label: 'HALion (.vstpreset)', badge: 'Steinberg' },
@@ -405,16 +409,9 @@ export class RawSamplerExportModal {
         result.data.byteOffset + result.data.byteLength
       ) as ArrayBuffer;
       const blob = new Blob([rawSlice], { type: result.mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = result.filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, result.filename);
 
-      const kbSize = (result.stats.totalBytes / 1024).toFixed(1);
+      const kbSize = formatKb(result.stats.totalBytes);
       toast(`Exported ${result.filename} (${kbSize} KB) successfully.`, 'success');
       this.context.onExportSuccess?.(result.filename, result.stats.totalBytes);
 

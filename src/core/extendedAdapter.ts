@@ -15,6 +15,7 @@ import type {
   RegionFilterConfig,
   RegionLfoConfig,
 } from './types';
+import { clampInt } from './dsp/DspMath.ts';
 
 export function createDefaultCommonPlayback(): CommonPlaybackDefaults {
   return {
@@ -105,9 +106,27 @@ export function cloneArticulation(art?: SynthArticulationConfig): SynthArticulat
     modEnvEnabled: Boolean(art.modEnvEnabled),
     modEnv: { ...art.modEnv },
     modEnvToPitchCents: Number(art.modEnvToPitchCents) || 0,
-    filter: { ...art.filter },
+    ...(art.pitchEnv
+      ? {
+          pitchEnv: {
+            enabled: Boolean(art.pitchEnv.enabled),
+            env: { ...art.pitchEnv.env },
+            depthCents: Number(art.pitchEnv.depthCents) || 0,
+            ...(art.pitchEnv.velModDepth !== undefined ? { velModDepth: Number(art.pitchEnv.velModDepth) } : {}),
+          },
+        }
+      : {}),
+    filter: {
+      ...art.filter,
+      ...(art.filter?.filterEnv ? { filterEnv: { ...art.filter.filterEnv } } : {}),
+    },
     vibLfo: { ...art.vibLfo },
     modLfo: { ...art.modLfo },
+    ...(art.pitchBendUpSt !== undefined ? { pitchBendUpSt: Number(art.pitchBendUpSt) } : {}),
+    ...(art.pitchBendDownSt !== undefined ? { pitchBendDownSt: Number(art.pitchBendDownSt) } : {}),
+    ...(art.polyphony !== undefined ? { polyphony: Number(art.polyphony) } : {}),
+    ...(art.voiceMode !== undefined ? { voiceMode: art.voiceMode } : {}),
+    ...(art.glideTimeSec !== undefined ? { glideTimeSec: Number(art.glideTimeSec) } : {}),
     bakeEnvelopeIntoWave: Boolean(art.bakeEnvelopeIntoWave),
   };
 }
@@ -115,8 +134,20 @@ export function cloneArticulation(art?: SynthArticulationConfig): SynthArticulat
 export function cloneExtendedRegion(r: ExtendedRegion): ExtendedRegion {
   return {
     ...r,
+    loops: r.loops ? r.loops.map((l) => ({ ...l })) : undefined,
     ampEnvOverride: r.ampEnvOverride ? { ...r.ampEnvOverride } : undefined,
-    filterOverride: r.filterOverride ? { ...r.filterOverride } : undefined,
+    filterOverride: r.filterOverride
+      ? {
+          ...r.filterOverride,
+          ...(r.filterOverride.filterEnv ? { filterEnv: { ...r.filterOverride.filterEnv } } : {}),
+        }
+      : undefined,
+    pitchEnvOverride: r.pitchEnvOverride
+      ? {
+          ...r.pitchEnvOverride,
+          ...(r.pitchEnvOverride.env ? { env: { ...r.pitchEnvOverride.env } } : {}),
+        }
+      : undefined,
   };
 }
 
@@ -249,10 +280,6 @@ export function syncExtendedRegionsFromClassicZones(
   }
 
   return result;
-}
-
-function clampInt(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, Math.round(val)));
 }
 
 /**

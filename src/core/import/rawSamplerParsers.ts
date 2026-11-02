@@ -15,7 +15,11 @@ import { decodeWav, decodeAiff, encodeWavPcm16, type DecodedWav } from '../dsp/W
 import { parseSliceFile, parseWavSliceCues, type ParsedSliceMarker } from '../dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../dsp/DwopDecompressor.ts';
 import type { LoopMode } from '../types.ts';
-import { parseZipArchive } from '../../formats/ZipArchive.ts';
+import {
+  indexZipArchive,
+  extractZipEntry,
+  type ZipCentralEntry,
+} from '../../formats/ZipArchive.ts';
 import { parseMpcXpm, mpcGainToDb, type MpcProgram } from '../../formats/MpcXpmFormat.ts';
 
 export type RawSamplerFormat =
@@ -1034,10 +1038,11 @@ export async function listZipSamplerPrograms(
   if (!lower.endsWith('.zip') && !lower.endsWith('.xpn') && !isZipHeader(data)) {
     return [];
   }
-  const parsedEntries = parseZipArchive(new Uint8Array(data));
+  const zipBytes = new Uint8Array(data);
+  const zipIndex = indexZipArchive(zipBytes);
   const programs: ArchiveSamplerProgramInfo[] = [];
 
-  for (const entry of parsedEntries) {
+  for (const entry of zipIndex) {
     const norm = entry.path.replace(/\\/g, '/');
     const nLower = norm.toLowerCase();
     if (nLower.includes('__macosx/') || nLower.includes('[previews]')) continue;
@@ -1049,7 +1054,8 @@ export async function listZipSamplerPrograms(
       let regionCount: number | undefined;
       let detail = nLower.endsWith('.xtd') ? 'MPC3 Drum Track' : nLower.endsWith('.xty') ? 'MPC3 Keygroup Track' : 'MPC Program';
       try {
-        const parsed = await parseMpcXpm(entry.data);
+        const entryBytes = extractZipEntry(zipBytes, entry);
+        const parsed = await parseMpcXpm(entryBytes);
         if (parsed.name) progName = parsed.name;
         regionCount = parsed.instruments.reduce((acc, inst) => acc + inst.layers.length, 0);
         detail = `MPC ${parsed.type} (${parsed.sourceVariant})`;
@@ -1133,10 +1139,17 @@ export async function parseUniversalSampler(
   // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn expansions)
   if (lower.endsWith('.zip') || lower.endsWith('.xpn') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {
     const rawZipBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
-    const parsedEntries = parseZipArchive(rawZipBytes);
-    const entriesMap = new Map<string, Uint8Array>();
-    for (const entry of parsedEntries) {
-      entriesMap.set(entry.path.replace(/\\/g, '/'), entry.data);
+    const zipIndex = indexZipArchive(rawZipBytes);
+    const indexMap = new Map<string, ZipCentralEntry>();
+    const audioEntries: ZipCentralEntry[] = [];
+
+    for (const entry of zipIndex) {
+      const norm = entry.path.replace(/\\/g, '/');
+      indexMap.set(norm, entry);
+      const nLower = norm.toLowerCase();
+      if (nLower.endsWith('.wav') || nLower.endsWith('.aif') || nLower.endsWith('.aiff') || nLower.endsWith('.flac')) {
+        audioEntries.push(entry);
+      }
     }
 
     // Look for preset definition file inside the ZIP
@@ -1147,7 +1160,7 @@ export async function parseUniversalSampler(
     const xpmEntries: string[] = [];
 
     const normTarget = targetProgramPath?.replace(/\\/g, '/');
-    for (const name of entriesMap.keys()) {
+    for (const name of indexMap.keys()) {
       if (normTarget && name !== normTarget) continue;
       const nLower = name.toLowerCase();
       if (nLower.endsWith('.dspreset')) dspresetEntry = name;
@@ -1158,45 +1171,50 @@ export async function parseUniversalSampler(
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
-    // Extract audio buffers
-    const audioFiles = new Map<string, ArrayBuffer>();
-    for (const [name, bytes] of entriesMap.entries()) {
-      const nLower = name.toLowerCase();
-      if (nLower.endsWith('.wav') || nLower.endsWith('.aif') || nLower.endsWith('.aiff') || nLower.endsWith('.flac')) {
-        const cleanKey = cleanBasename(name);
+    const extractAudioBuffers = (onlyStems?: Set<string>): Map<string, ArrayBuffer> => {
+      const audioFiles = new Map<string, ArrayBuffer>();
+      for (const entry of audioEntries) {
+        const cleanKey = cleanBasename(entry.path);
+        const stem = cleanKey.replace(/\.[^.]+$/, '').toLowerCase();
+        if (onlyStems && !onlyStems.has(stem) && !onlyStems.has(stem.trim())) continue;
+        const bytes = extractZipEntry(rawZipBytes, entry);
         audioFiles.set(cleanKey, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
       }
-    }
+      return audioFiles;
+    };
 
     if (dspresetEntry) {
-      const xml = new TextDecoder('utf-8').decode(entriesMap.get(dspresetEntry)!);
-      return parseDecentSamplerPreset(xml, audioFiles);
+      const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(dspresetEntry)!));
+      return parseDecentSamplerPreset(xml, extractAudioBuffers());
     }
     if (nkiEntry) {
-      const bytes = entriesMap.get(nkiEntry)!;
-      return parseKontaktNki(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, audioFiles);
+      const bytes = extractZipEntry(rawZipBytes, indexMap.get(nkiEntry)!);
+      return parseKontaktNki(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extractAudioBuffers());
     }
     if (vstpresetEntry) {
-      const bytes = entriesMap.get(vstpresetEntry)!;
-      return parseHalionVstPreset(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, audioFiles);
+      const bytes = extractZipEntry(rawZipBytes, indexMap.get(vstpresetEntry)!);
+      return parseHalionVstPreset(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, extractAudioBuffers());
     }
     if (multisampleEntry) {
-      const xml = new TextDecoder('utf-8').decode(entriesMap.get(multisampleEntry)!);
-      return parseBitwigMultisample(xml, audioFiles);
+      const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(multisampleEntry)!));
+      return parseBitwigMultisample(xml, extractAudioBuffers());
     }
     if (xpmEntries.length > 0) {
       // Expansions often bundle several programs. Prefer root-level programs over
       // project copies ([ProjectData]/[TrackData]) and pick the one whose samples
-      // are actually present in the archive before slicing audio.
+      // are actually present in the archive before decompressing audio.
       const availStems = new Set<string>();
-      for (const k of audioFiles.keys()) availStems.add(cleanBasename(k).replace(/\.[^.]+$/, '').toLowerCase());
+      for (const ae of audioEntries) {
+        availStems.add(cleanBasename(ae.path).replace(/\.[^.]+$/, '').toLowerCase());
+      }
       const ranked = [...xpmEntries].sort((a, b) => Number(a.includes('[')) - Number(b.includes('[')));
       let bestProg: MpcProgram | null = null;
       let bestScore = -1;
       let lastError: unknown = null;
       for (const entry of ranked.slice(0, 32)) {
         try {
-          const prog = await parseMpcXpm(entriesMap.get(entry)!);
+          const entryBytes = extractZipEntry(rawZipBytes, indexMap.get(entry)!);
+          const prog = await parseMpcXpm(entryBytes);
           const layers = prog.instruments.flatMap((i) => i.layers);
           if (layers.length === 0) continue;
           const resolved = layers.filter((l) => {
@@ -1214,6 +1232,15 @@ export async function parseUniversalSampler(
         }
       }
       if (bestProg) {
+        const neededStems = new Set<string>();
+        for (const inst of bestProg.instruments) {
+          for (const l of inst.layers) {
+            const stem = (l.sampleFile ? cleanBasename(l.sampleFile).replace(/\.[^.]+$/, '') : l.sampleName).toLowerCase();
+            neededStems.add(stem);
+            neededStems.add(stem.trim());
+          }
+        }
+        const audioFiles = extractAudioBuffers(neededStems.size > 0 ? neededStems : undefined);
         const preset = mpcProgramToPreset(bestProg, audioFiles);
         preset.programCount = xpmEntries.length;
         return preset;

@@ -41,6 +41,7 @@ import type {
 } from './types.ts';
 import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
 import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
+import { clamp, clampInt } from './dsp/DspMath.ts';
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
@@ -136,13 +137,7 @@ function asFiniteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function clampInt(value: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, Math.round(value)));
-}
-
-function clampNum(value: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, value));
-}
+const clampNum = clamp;
 
 function fieldError(field: string, reason: string): Error {
   return new Error(`Invalid session JSON: field '${field}' ${reason}`);
@@ -510,6 +505,19 @@ export function validateSessionPayload(payload: unknown): Session {
             loopCrossfadeMs: Math.max(0, Math.round(asFiniteNumber(r.loopCrossfadeMs) ?? 0)),
             sampleRate: asFiniteNumber(r.sampleRate) ?? undefined,
             numChannels: asFiniteNumber(r.numChannels) ?? undefined,
+            sampleStartFrame: asFiniteNumber(r.sampleStartFrame) !== null ? Math.max(0, Math.round(asFiniteNumber(r.sampleStartFrame)!)) : undefined,
+            sampleEndFrame: asFiniteNumber(r.sampleEndFrame) !== null ? Math.max(0, Math.round(asFiniteNumber(r.sampleEndFrame)!)) : undefined,
+            reversed: typeof r.reversed === 'boolean' ? r.reversed : undefined,
+            playLogic:
+              r.playLogic === 'always' || r.playLogic === 'round_robin' || r.playLogic === 'random' || r.playLogic === 'velocity'
+                ? r.playLogic
+                : undefined,
+            velToVolumeDepth: asFiniteNumber(r.velToVolumeDepth) !== null ? clampNum(asFiniteNumber(r.velToVolumeDepth)!, -100, 100) : undefined,
+            velToPitchCents: asFiniteNumber(r.velToPitchCents) !== null ? clampNum(asFiniteNumber(r.velToPitchCents)!, -1200, 1200) : undefined,
+            groupId: typeof r.groupId === 'string' && r.groupId.trim() ? r.groupId.trim().slice(0, 64) : undefined,
+            groupName: typeof r.groupName === 'string' && r.groupName.trim() ? r.groupName.trim().slice(0, 64) : undefined,
+            muteGroup: asFiniteNumber(r.muteGroup) !== null ? clampInt(asFiniteNumber(r.muteGroup)!, 0, 32) : undefined,
+            keyswitchNote: asFiniteNumber(r.keyswitchNote) !== null ? clampInt(asFiniteNumber(r.keyswitchNote)!, 0, 127) : undefined,
           }),
         )
     : undefined;

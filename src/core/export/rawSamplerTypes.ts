@@ -6,7 +6,7 @@
 // to standard sampler formats.
 // ─────────────────────────────────────────────────────────
 
-import type { CrossfadeCurve, DahdsrEnvelope, LoopMode, MidiNote } from '../types.ts';
+import type { CrossfadeCurve, DahdsrEnvelope, LoopMode, MidiNote, RegionFilterConfig, TriggerMode } from '../types.ts';
 
 export type RawSamplerFormat =
   | 'sfz'          // SFZ format (.sfz + Samples/ folder packaged as .zip)
@@ -15,6 +15,8 @@ export type RawSamplerFormat =
   | 'nki'          // Native Instruments Kontakt structured instrument (.zip with definition + Samples/)
   | 'vstpreset'    // Steinberg HALion program preset (.zip with .vstpreset + Samples/)
   | 'multisample'  // Bitwig Studio Multisample package (.multisample zip with multisample.xml)
+  | 'mpc_xpm'      // Akai MPC Program (.xpm XML + sibling WAVs packaged as .zip)
+  | 'mpc_xpn'      // Akai MPC Expansion Pack (.xpn with Expansion.xml + .xpm + WAVs)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';
@@ -93,6 +95,13 @@ export interface UniformSamplerRegion {
   loopCrossfadeMs: number;
   crossfadeCurve?: CrossfadeCurve;
   ampEnvelope?: Partial<DahdsrEnvelope>;
+  filterConfig?: Partial<RegionFilterConfig>;
+  trigger?: TriggerMode;
+  seqPosition?: number;
+  seqLength?: number;
+  sampleStartFrame?: number;
+  sampleEndFrame?: number;
+  muteGroup?: number;
 }
 
 export interface RawExportResult {

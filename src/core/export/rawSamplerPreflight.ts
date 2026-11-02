@@ -56,6 +56,18 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.vstpreset.zip',
     mimeType: 'application/zip',
   },
+  mpc_xpm: {
+    title: 'Akai MPC Keygroup / Drum Program (.xpm + WAV)',
+    description: 'Programa nativo Akai MPC 2.x / 3.x (<MPCVObject> XML, 128 instrumentos x 4 capas) con WAVs hermanos listos para MPC Live/One/X/Key y MPC Software.',
+    extension: '.xpm.zip',
+    mimeType: 'application/zip',
+  },
+  mpc_xpn: {
+    title: 'Akai MPC Expansion Pack (.xpn)',
+    description: 'Paquete de expansión instalable para Akai MPC Software y hardware autónomo (Expansion.xml + programa .xpm + muestras WAV).',
+    extension: '.xpn',
+    mimeType: 'application/zip',
+  },
   sample_chain: {
     title: 'Sample Chain Lineal con Cue Markers (.wav)',
     description: 'Audio continuo concatenado con marcas RIFF cue/smpl para Octatrack, SP-404, electribe y OP-1.',
@@ -88,6 +100,13 @@ export function extractUniformSamplerRegions(session: Session): UniformSamplerRe
       loopCrossfadeMs: reg.loopCrossfadeMs ?? 0,
       crossfadeCurve: reg.fadeCurve,
       ampEnvelope: reg.ampEnvOverride ?? session.articulation?.ampEnv,
+      filterConfig: reg.filterOverride ?? session.articulation?.filter,
+      trigger: reg.trigger,
+      seqPosition: reg.seqPosition,
+      seqLength: reg.seqLength,
+      sampleStartFrame: reg.sampleStartFrame,
+      sampleEndFrame: reg.sampleEndFrame,
+      muteGroup: reg.muteGroup,
     }));
   }
 
@@ -111,6 +130,8 @@ export function extractUniformSamplerRegions(session: Session): UniformSamplerRe
     loopCrossfadeMs: 0,
     crossfadeCurve: 'equal-power',
     ampEnvelope: session.articulation?.ampEnv,
+    filterConfig: session.articulation?.filter,
+    trigger: 'attack',
   }));
 }
 
@@ -262,16 +283,40 @@ export function analyzeRawSamplerPreflight(
     }
   }
 
-  if (options.format === 'sf2' && pingPongLoops > 0) {
+  if ((options.format === 'sf2' || options.format === 'mpc_xpm' || options.format === 'mpc_xpn') && pingPongLoops > 0) {
     issues.push({
       id: 'sf2-pingpong-adaptation',
       category: 'loop',
       severity: 'warning',
-      title: 'Bucles Ping-Pong no Soportados en SoundFont 2',
-      description: `${pingPongLoops} regiones tienen bucle en modo Ping-Pong o Reverse, incompatible con el estándar SF2 2.04.`,
+      title: `Bucles Ping-Pong no Soportados en ${options.format === 'sf2' ? 'SoundFont 2' : 'Akai MPC'}`,
+      description: `${pingPongLoops} regiones tienen bucle en modo Ping-Pong o Reverse, no soportado nativamente en el formato destino.`,
       adaptation: 'Conversión automática a bucle continuo forward tradicional (loop_continuous).',
       affectedCount: pingPongLoops,
     });
+  }
+
+  // MPC 4-layer per instrument spill check
+  if (options.format === 'mpc_xpm' || options.format === 'mpc_xpn') {
+    const byKeySpan = new Map<string, number>();
+    for (const reg of regions) {
+      const k = `${reg.lowKey}:${reg.highKey}`;
+      byKeySpan.set(k, (byKeySpan.get(k) ?? 0) + 1);
+    }
+    let spilledGroups = 0;
+    for (const count of byKeySpan.values()) {
+      if (count > 4) spilledGroups++;
+    }
+    if (spilledGroups > 0) {
+      issues.push({
+        id: 'mpc-4layer-spill',
+        category: 'velocity_layers',
+        severity: 'info',
+        title: 'Desbordamiento Automático a Keygroups Solapados (>4 Capas por Rango)',
+        description: `Cada Instrumento de Akai MPC admite hasta 4 capas (Layers 1..4). ${spilledGroups} rangos de teclado superan 4 capas de velocidad o Round-Robin.`,
+        adaptation: 'División automática sin pérdida en Keygroups solapados adicionales dentro de los 128 slots del programa MPC.',
+        affectedCount: spilledGroups,
+      });
+    }
   }
 
   if ((options.format === 'sf2' || options.format === 'sample_chain') && complexXfades > 0) {

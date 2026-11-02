@@ -17,10 +17,19 @@ import {
 } from '../src/formats/MpcXpmFormat.ts';
 import { parseUniversalSampler, mpcProgramToPreset, listZipSamplerPrograms } from '../src/core/import/rawSamplerParsers.ts';
 import { parseSliceFile } from '../src/core/dsp/SliceFileParser.ts';
-import { createZipArchive } from '../src/formats/ZipArchive.ts';
+import { createZipArchive, indexZipArchive, extractZipEntry } from '../src/formats/ZipArchive.ts';
 import { extractInstrumentPrefix, extractFolderFilesToCandidates } from '../src/core/batch/FolderBatchExtractor.ts';
 import { MidiTranslationEngine } from '../vendor/@abdsynths/shared/Contracts/MidiTranslationEngine.ts';
 import samplerSpec from '../vendor/@abdsynths/shared/Contracts/sampler_voice_parameter_spec.json' with { type: 'json' };
+import { exportRawSamplerLibrary } from '../src/core/export/rawSamplerExporter.ts';
+import { encodeWavPcm16 } from '../src/core/dsp/WavDecoder.ts';
+import {
+  sessionToUniversalSamplerInstrument,
+  extractNormalizedDictionaryParams,
+  applyNormalizedDictionaryParams,
+  evaluateFormatFidelity,
+} from '../src/core/sampler/UniversalSamplerModel.ts';
+import type { Session } from '../src/core/types.ts';
 
 let passed = 0;
 let failed = 0;
@@ -317,6 +326,118 @@ async function main(): Promise<void> {
     assert.ok(Math.abs(atkMid - Math.sqrt(0.001 * 100)) < 1e-3);
     assert.ok(Math.abs(atkMax - 100) < 1e-2);
     assert.ok(Math.abs(engine.domainToNormalized('ampEnvAttackSec', atkMid) - 0.5) < 1e-6);
+  });
+
+  await test('Lazy ZIP indexer (indexZipArchive + extractZipEntry) and RawSamplerExporter mpc_xpm / mpc_xpn', async () => {
+    const sine = new Float32Array(256);
+    for (let i = 0; i < sine.length; i++) sine[i] = Math.sin((2 * Math.PI * i) / 32) * 0.5;
+    const wavBuf = encodeWavPcm16([sine], 44100);
+
+    const mockSession: Session = {
+      id: 'sess-mpc-exp',
+      name: 'SynthBell',
+      zones: [
+        {
+          id: 'z1',
+          lowKey: 36,
+          rootKey: 60,
+          highKey: 84,
+          sampleLow: 'Bell_C3.wav',
+          sampleHigh: null,
+          detune: 0,
+          volume: 0,
+          pan: 0,
+        },
+      ],
+      extendedRegions: [
+        {
+          id: 'r1',
+          sampleName: 'Bell_C3.wav',
+          lowKey: 36,
+          highKey: 84,
+          rootKey: 60,
+          lowVel: 1,
+          highVel: 127,
+          detune: 0,
+          volume: 0,
+          pan: 0,
+          pitchKeytrack: 100,
+          trigger: 'attack',
+          keyFadeIn: 0,
+          keyFadeOut: 0,
+          velFadeIn: 0,
+          velFadeOut: 0,
+          fadeCurve: 'equal-power',
+          loopMode: 'loop_continuous',
+          loopStart: 32,
+          loopEnd: 224,
+          loopCrossfadeMs: 5,
+          muteGroup: 2,
+          sampleStartFrame: 0,
+          sampleEndFrame: 256,
+        },
+      ],
+      processConfig: {
+        modelNumber: 1,
+        modelName: 'SynthBell',
+        expandedName: 'SynthBell Extended',
+        complexity: 8,
+        parameterSet: 2,
+      },
+      dirty: false,
+      createdAt: new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
+    };
+
+    const exportedXpn = await exportRawSamplerLibrary(
+      mockSession,
+      {
+        format: 'mpc_xpn',
+        resolution: 'original',
+        sampleRate: 'original',
+        normalization: 'none',
+        layout: 'folder_samples',
+        bankName: 'SynthBell',
+        author: 'ABD',
+        license: 'CC0',
+      },
+      (name) => (name === 'Bell_C3.wav' ? wavBuf : undefined)
+    );
+
+    assert.equal(exportedXpn.filename, 'SynthBell.xpn');
+    const idx = indexZipArchive(exportedXpn.data);
+    assert.equal(idx.length, 3); // Expansion.xml + SynthBell.xpm + Bell_C3.wav
+    const expEntry = idx.find((e) => e.path === 'Expansion.xml');
+    assert.ok(expEntry);
+    const expText = new TextDecoder().decode(extractZipEntry(exportedXpn.data, expEntry));
+    assert.ok(expText.includes('<title>SynthBell</title>'));
+
+    // Round-trip re-import via parseUniversalSampler
+    const reimported = await parseUniversalSampler(
+      exportedXpn.filename,
+      exportedXpn.data.buffer.slice(exportedXpn.data.byteOffset, exportedXpn.data.byteOffset + exportedXpn.data.byteLength) as ArrayBuffer
+    );
+    assert.equal(reimported.format, 'xpm');
+    assert.equal(reimported.presetName, 'SynthBell');
+    assert.equal(reimported.regions.length, 1);
+    assert.equal(reimported.regions[0].rootKey, 60);
+    assert.equal(reimported.regions[0].loopMode, 'loop_continuous');
+
+    // Fase 33.1 UniversalSamplerInstrument round-trip & FormatCapabilities fidelity check
+    const uni = sessionToUniversalSamplerInstrument(mockSession);
+    assert.equal(uni.regions[0].loops?.length, 1);
+    assert.equal(uni.regions[0].loops?.[0].startFrame, 32);
+    assert.equal(uni.groups[0].muteGroup, 2);
+
+    const normParams = extractNormalizedDictionaryParams(uni);
+    assert.ok(normParams.filterCutoffHz >= 0 && normParams.filterCutoffHz <= 1);
+    const updatedUni = applyNormalizedDictionaryParams(uni, { ...normParams, pitchBendUpSt: 0.5 });
+    assert.equal(updatedUni.articulation.pitchBendUpSt, 12);
+
+    // Check FormatCapabilities fidelity warnings when ping-pong loop is exported to MPC
+    uni.regions[0].loopMode = 'ping_pong';
+    const notices = evaluateFormatFidelity(uni, 'mpc_xpm');
+    assert.ok(notices.some((n) => n.feature === 'ping_pong_loop'));
   });
 
   console.log(`\n${passed}/${passed + failed} passed${skipped ? `, ${skipped} skipped` : ''}`);
