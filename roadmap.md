@@ -540,23 +540,24 @@
 
 ---
 
-## Fase 22 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon) [PLANIFICADA]
+## Fase 22 — Suite de Funcionalidades Avanzadas de Sampler Profesional (Estándar Kontakt / HALion / Falcon) [COMPLETADA]
 
 **Objetivo**: Dotar a ABDNeuModMakr y al motor ABDAxionikVS de las capacidades de expresión, articulación y gestión acústica que distinguen a los samplers insignia de la industria.
 
 ### 22.1 Matriz de Funcionalidades
-| Funcionalidad | Descripción e Interés | Prioridad |
+| Funcionalidad | Descripción e Interés | Estado |
 | :--- | :--- | :--- |
-| **Round-Robin (Alternancia de Muestras)** | Disparar tomas alternas (`Take 1`, `Take 2`, etc.) en ciclos ordenados, aleatorios o de true-neighbor para la misma nota/velocidad, eliminando el efecto "ametralladora" en baterías, guitarras y cuerdas. | **Alta** |
-| **Release Triggers / Key-Off** | Muestras que se disparan al soltar la tecla (el apagador de un piano, ruido de trastes en guitarra o golpe mecánico de llaves de órgano). | **Media-Alta** |
-| **Auto-Mapping por Expresión Regular (Filename Regex)** | Al arrastrar 50+ archivos `.wav` sueltos (ej. `Violin_C3_mf_rr1.wav`), reconocer automáticamente la nota, velocidad y capa round-robin por el nombre del archivo y ubicarlos en la celda correspondiente al instante. | **Alta** |
-| **Interactive Slicer con MIDI Drag-and-Drop** | Detección de transitorios en un loop rítmico, corte en rodajas a teclas cromáticas consecutivas y botón arrastrable para transferir el archivo MIDI generado directamente a la pista del DAW. | **Alta** |
-| **Matriz de Modulación MIDI (Mod Matrix)** | Enrutar Rueda de Modulación (CC1), Expresión (CC11), Aftertouch o Velocidad al corte de filtro, volumen, pitch o longitud de loop. | **Media** |
-| **Soporte de Microtuning / Escalas Scala (`.scl`)** | Importación de tablas de afinación alternativas (temperamento mesotónico, cuartos de tono, microtonalismo oriental). | **Media-Baja** |
+| **Round-Robin (Alternancia de Muestras)** | Disparar tomas alternas (`Take 1`, `Take 2`, etc.) en ciclos ordenados (`cycle`), aleatorios sin repetición inmediata (`random`), o alternancia estricta para la misma nota/velocidad (`ArticulationEngine.ts`). | **COMPLETADO** |
+| **Release Triggers / Key-Off** | Muestras que se disparan al soltar la tecla (el apagador de un piano, ruido de trastes en guitarra o golpe mecánico de llaves de órgano) con resolución dinámica en `noteMapping.ts` y audición en `src/main.ts`. | **COMPLETADO** |
+| **Auto-Mapping por Expresión Regular (Filename Regex)** | Reconocimiento automático de nota raíz (`C3`, `F#2`), rangos de tecla (`C2-C3`), dinámicas de velocidad (`ppp`..`fff`, `v1`..`v4`, `1-127`), capas round-robin (`_rr1`, `take2`), etiquetas release (`_rel`, `keyoff`) y relleno contiguo de vecinos (`neighborSpread`). | **COMPLETADO** |
+| **Interactive Slicer con MIDI Drag-and-Drop** | Detección de transitorios en un loop rítmico, corte en rodajas a teclas cromáticas consecutivas y botón arrastrable para transferir el archivo MIDI generado directamente a la pista del DAW (Fases 18 y 25). | **COMPLETADO** |
+| **Matriz de Modulación MIDI (Mod Matrix)** | Enrutar Rueda de Modulación (CC1), Expresión (CC11), Aftertouch o Velocidad al corte de filtro, volumen, pitch o longitud de loop (`ModulationMatrix` en `ArticulationEngine.ts`). | **COMPLETADO** |
+| **Soporte de Microtuning / Escalas Scala (`.scl`)** | Parser de archivos Scala `.scl` con razones racionales y cents decimales, generador de tablas de frecuencias absolutas y tabla de offsets relativos en cents frente a 12-TET (`ScalaMicrotuning.ts`). | **COMPLETADO** |
 
 ### 22.2 Integración en Formatos de Exportación
-- En **formato Moderno (`.nmmodel`) y Cápsula del Tiempo**: Se preservan como metadatos nativos de primera clase.
-- En **formato Clásico Hartmann (`.model`)**: Dado que el hardware Neuron original no dispone de round-robin ni release triggers nativos, el preflight exportará la capa primaria y avisará con un diálogo interactivo al usuario antes de proceder a la adaptación.
+- [x] En **formato Moderno (`.nmmodel`), Axionik v2 y Cápsula del Tiempo**: Se preservan como metadatos nativos de primera clase.
+- [x] En **formato Clásico Hartmann (`.model`)**: Dado que el hardware Neuron original no dispone de round-robin ni release triggers nativos, el preflight exportará la capa primaria y avisará con un diálogo interactivo al usuario antes de proceder a la adaptación.
+- [x] Suite de pruebas automatizada `tests/phase22_advanced_sampler.test.ts` (8/8 tests 100% PASS).
 
 ---
 
@@ -814,7 +815,7 @@
 
 ---
 
-## Fase 32 — Análisis de ConvertWithMoss: Paridad Total de Formatos de Entrada/Salida y Mejora de los Existentes [EN CURSO — Bloque 1 Completado]
+## Fase 32 — Análisis de ConvertWithMoss: Paridad Total de Formatos de Entrada/Salida y Mejora de los Existentes [COMPLETADA]
 
 **Referencia**: `D:\desarrollos\ABDSynths\_RESOURCES\convertidores\ConvertWithMoss-main` (Jürgen Moßgraber, **LGPL-3.0**). Se usa solo como referencia de formato: implementación propia (clean-room) en TypeScript, verificada con archivos reales; sin traducir su código Java. Atribución en `README.md` y en el diálogo About (`Navbar.ts`).
 
