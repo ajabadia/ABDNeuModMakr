@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://abdsynths.dev/schemas/parameter_dictionary.schema.json",
+  "title": "ABDSynths Common Data Dictionary & Parameter Specification Schema (v2.0)",
+  "description": "Esquema unificado de diccionario de datos para sintetizadores (fijos y bitímbricos) y samplers jerárquicos de la suite ABDSynths. Conecta controles en pantalla (WebUI), transporte MIDI (CC, NRPN, SysEx), empaquetado binario de parches y unidades físicas de motores DSP (C++/WASM).",
+  "type": "object",
+  "required": ["schemaVersion", "id", "displayName", "topology", "parameters"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": {
+      "type": ["string", "integer"],
+      "description": "Versión del esquema (canónico '2.0.0'; retrocompatible con '1.0.0' y 1)"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+$",
+      "description": "Identificador canónico en snake_case (ej. 'korg_ms2000', 'behringer_deepmind12', 'hartmann_neuron', 'sampler_voice')"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Nombre legible del instrumento o subsistema"
+    },
+    "topology": {
+      "type": "string",
+      "enum": ["fixed", "multi_part", "hierarchical_sampler"],
+      "description": "'fixed' = vector fijo de parámetros; 'multi_part' = sintetizador bitímbrico/multilínea con bloques repetidos; 'hierarchical_sampler' = grafo variable Program -> Groups -> Zones -> Loops"
+    },
+    "totalParameters": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parts": {
+      "type": "array",
+      "description": "Declaración opcional de partes/timbres o niveles jerárquicos que instancian parámetros con scope != 'global'",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope", "cardinality"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "scope": { "type": "string", "enum": ["global", "part", "group", "zone", "loop", "mod_slot"] },
+          "cardinality": {
+            "type": ["integer", "string"],
+            "description": "Número fijo de instancias (ej. 2 para Timbre 1/2) o '1..N' para colecciones dinámicas de sampler"
+          },
+          "idPrefix": {
+            "type": "string",
+            "description": "Prefijo opcional al expandir a tabla plana (ej. '' para T1 y 't2' para T2 en MS2000; 'R1'/'R2' en Axionik)"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/ParameterEntry" }
+    }
+  },
+  "definitions": {
+    "ParameterEntry": {
+      "type": "object",
+      "required": ["id", "name", "type", "min", "max", "default"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único del parámetro (camelCase recomendado)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Etiqueta de interfaz de usuario"
+        },
+        "group": {
+          "type": "string",
+          "description": "Sección funcional (Master, Voice, Pitch, Oscillators, Mixer, Filter, Envelopes, LFO, Effects, Arpeggiator, ModMatrix, Zone, Loop)"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["global", "part", "group", "zone", "loop", "mod_slot"],
+          "default": "global",
+          "description": "Ámbito de cardinalidad del parámetro"
+        },
+        "semanticRole": {
+          "type": "string",
+          "description": "Rol semántico transversal para mapeo universal entre formatos de sampler y perfiladores (ej. 'FilterCutoff', 'FilterResonance', 'AmpEnvAttack', 'AmpEnvRelease', 'ZoneRootKey', 'ZoneTuneCents')"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["continuous", "bipolar", "integer", "choice", "boolean"],
+          "description": "Tipo canónico del parámetro"
+        },
+        "min": {
+          "type": "number",
+          "description": "Mínimo en rango de panel/UI o wire discreto"
+        },
+        "max": {
+          "type": "number",
+          "description": "Máximo en rango de panel/UI o wire discreto"
+        },
+        "default": {
+          "type": "number",
+          "description": "Valor inicial por defecto en rango [min, max]"
+        },
+        "domainMin": {
+          "type": "number",
+          "description": "Mínimo en dominio físico DSP (ej. 20.0 Hz, 0.001 s, -12.0 dB)"
+        },
+        "domainMax": {
+          "type": "number",
+          "description": "Máximo en dominio físico DSP (ej. 20000.0 Hz, 100.0 s, +12.0 dB)"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "Hz",
+            "s",
+            "ms",
+            "dB",
+            "st",
+            "cents",
+            "BPM",
+            "%",
+            "pan",
+            "midi_note",
+            "velocity",
+            "frames",
+            "enum",
+            "normalized"
+          ],
+          "description": "Unidad física canónica (ISO/inglés unificado)"
+        },
+        "curve": {
+          "type": "string",
+          "enum": ["Linear", "Exp", "Pow", "SymBipolar", "PiecewiseLinear", "Lut"],
+          "default": "Linear",
+          "description": "Ley matemática entre valor normalizado [0..1] y dominio físico [domainMin..domainMax]"
+        },
+        "curveP0": {
+          "type": "number",
+          "description": "Coeficiente primario de curva (en Exp: valor base p0; en Pow: escala p0)"
+        },
+        "curveP1": {
+          "type": "number",
+          "description": "Coeficiente secundario de curva (en Exp: exponente p1 tal que y = p0 * exp(x * p1); en Pow: exponente gamma)"
+        },
+        "lutId": {
+          "type": "string",
+          "description": "Identificador de tabla ROM/calibración cuando curve === 'Lut'"
+        },
+        "choices": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Lista ordenada de etiquetas cuando type === 'choice'"
+        },
+        "smoothing": {
+          "type": "string",
+          "enum": ["None", "Linear", "Logarithmic"],
+          "default": "Linear"
+        },
+        "wire": {
+          "type": "string",
+          "enum": ["CC", "SysEx", "Nrpn", "None"],
+          "default": "None"
+        },
+        "wireCodec": {
+          "type": "string",
+          "enum": ["Value", "Bipolar", "Enum", "SignedByte", "Bitfield"],
+          "default": "Value"
+        },
+        "wireZeroCenter": {
+          "type": "integer",
+          "description": "Valor wire exacto que representa 0.0 físico en parámetros bipolares (ej. 64 en MIDI 0..127 o 0 en -64..+63)"
+        },
+        "cc": {
+          "type": ["integer", "null"],
+          "description": "Número de MIDI CC (0..127), o null/-1 si no aplica"
+        },
+        "nrpnMsb": {
+          "type": ["integer", "null"]
+        },
+        "nrpnLsb": {
+          "type": ["integer", "null"]
+        },
+        "sysex": {
+          "type": "boolean"
+        },
+        "binaryPacking": {
+          "type": "object",
+          "description": "Empaquetado opcional en volcado binario de parche o bloque de hardware (unifica s950-patch-fields y MS2000/CZ/Juno SysEx)",
+          "properties": {
+            "byteOffset": { "type": "integer", "minimum": 0 },
+            "bitMask": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "bitShift": { "type": "integer", "minimum": 0, "maximum": 7 },
+            "byteSize": { "type": "integer", "minimum": 1, "maximum": 4 },
+            "encoding": { "type": "string", "enum": ["Unsigned", "Signed2sComplement", "Offset64", "NibblesLH", "NibblesHL", "Bit"] }
+          }
+        },
+        "modDestId": {
+          "type": ["string", "integer", "null"],
+          "description": "ID o índice en la matriz de modulación (<model>_modulation_matrix.json) si el parámetro es modulable"
+        }
+      }
+    }
+  }
+}

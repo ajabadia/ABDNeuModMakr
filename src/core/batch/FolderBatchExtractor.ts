@@ -6,6 +6,8 @@ import { createUniqueModelSlug } from '../modelSlug.ts';
 import { classifyInstrumentAndParameterSet } from '../../formats/Sf2Parser.ts';
 import type { BatchModelCandidate, BatchSlicerProfile } from './types.ts';
 import { parseSliceFile } from '../dsp/SliceFileParser.ts';
+import { fileExtension } from '../pathUtils.ts';
+import { cloudByokClient, type CloudAiProvider } from '../ai/CloudByokClient.ts';
 
 export interface FolderFileInput {
   /** Relative path (e.g. "VintageKeys/Rhodes_036_C2.wav" or "Rhodes_036_C2.wav") */
@@ -14,18 +16,41 @@ export interface FolderFileInput {
   buffer: ArrayBuffer;
 }
 
+const BARE_NOTE_OR_LAYER_RE =
+  /^(?:[A-Ga-g][#b]?-?[0-9]|0?\d{1,3}|v[0-9]+|vl[0-9]+|vel[0-9]+|velocity[0-9]+|rr[0-9]+|layer[0-9]+|low|high|soft|loud)$/i;
+
 /**
  * Extracts a common instrument or pack prefix from a sample filename.
- * Strips MIDI numbers, note names, and velocity suffixes.
+ * Strips MIDI numbers, note names, velocity suffixes, and round-robin tokens.
+ * If the filename consists solely of note/velocity tokens (e.g. "C3.wav", "060_v127.wav"),
+ * returns "Instrument" so all notes of an unnamed single instrument stay grouped together.
  */
 export function extractInstrumentPrefix(filename: string): string {
-  const base = filename.replace(/\.[^.]+$/, '');
-  const match = base.match(/^([A-Za-z0-9\s]+?)(?:[_\-\s]+(?:[0-9]{1,3}|[A-Ga-g][#b]?-?[0-9]|v[12]|high|low|vel[12]))/i);
-  if (match && match[1]?.trim()) {
-    return match[1].trim();
+  const base = filename.replace(/\.[^.]+$/, '').trim();
+  if (!base) return 'Instrument';
+
+  // Split into tokens by underscore, hyphen, or whitespace
+  const rawTokens = base.split(/[_\-\s]+/).filter(Boolean);
+  if (rawTokens.length === 0) return 'Instrument';
+
+  // Strip trailing note/velocity/MIDI tokens (e.g. "Grand_Piano_C#3_v127" -> ["Grand", "Piano"])
+  let endIdx = rawTokens.length;
+  while (endIdx > 0 && BARE_NOTE_OR_LAYER_RE.test(rawTokens[endIdx - 1])) {
+    endIdx--;
   }
-  const token = base.split(/[_\-]/)[0]?.trim();
-  return token || base;
+
+  // Also strip leading numeric index if followed by an instrument name (e.g. "01_Rhodes_C3" -> ["Rhodes"])
+  let startIdx = 0;
+  if (endIdx - startIdx > 1 && /^\d{1,3}$/.test(rawTokens[0])) {
+    startIdx = 1;
+  }
+
+  const kept = rawTokens.slice(startIdx, endIdx);
+  if (kept.length === 0 || kept.every((t) => BARE_NOTE_OR_LAYER_RE.test(t))) {
+    return 'Instrument';
+  }
+
+  return kept.join(' ').trim() || 'Instrument';
 }
 
 /**
@@ -42,7 +67,7 @@ export function extractFolderLoopsToCandidates(
 ): BatchModelCandidate[] {
   const loopExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
   const loopFiles = files.filter((f) => {
-    const ext = f.name.split('.').pop()?.toLowerCase();
+    const ext = fileExtension(f.name);
     return ext && loopExtensions.has(ext);
   });
 
@@ -56,7 +81,7 @@ export function extractFolderLoopsToCandidates(
 
   for (let i = 0; i < loopFiles.length; i++) {
     const file = loopFiles[i];
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const ext = fileExtension(file.name);
     const cleanName = file.name.replace(/\.[^.]+$/, '').replace(/[_.-]+/g, ' ').trim() || `Loop_${i + 1}`;
     const slug = createUniqueModelSlug(cleanName, existingSlugs);
     existingSlugs.push(slug);
@@ -115,7 +140,7 @@ export function extractFolderFilesToCandidates(
 
   const audioExtensions = new Set(['wav', 'aif', 'aiff', 'rx2', 'rex']);
   const audioFiles = files.filter((f) => {
-    const ext = f.name.split('.').pop()?.toLowerCase();
+    const ext = fileExtension(f.name);
     return ext && audioExtensions.has(ext);
   });
 
@@ -196,4 +221,88 @@ export function extractFolderFilesToCandidates(
   }
 
   return candidates;
+}
+
+/**
+ * Uses AI (Cloud BYOK LLM) to semantically cluster sample filenames into distinct instruments,
+ * falling back to `extractFolderFilesToCandidates` heuristics when AI is unavailable or returns null.
+ */
+export async function extractFolderFilesToCandidatesWithAi(
+  files: FolderFileInput[],
+  options: {
+    defaultOriginName?: string;
+    preferredProvider?: CloudAiProvider;
+  } = {}
+): Promise<BatchModelCandidate[]> {
+  const audioExtensions = new Set(['wav', 'aif', 'aiff', 'flac', 'rx2', 'rex']);
+  const audioFiles = files.filter((f) => {
+    const ext = fileExtension(f.name);
+    return ext && audioExtensions.has(ext);
+  });
+
+  if (audioFiles.length === 0) return [];
+
+  const fileLookup = new Map<string, FolderFileInput>();
+  for (const f of audioFiles) {
+    fileLookup.set(f.name, f);
+    fileLookup.set(f.path, f);
+    fileLookup.set(f.name.toLowerCase(), f);
+  }
+
+  const aiGroups = await cloudByokClient.groupSampleFilenamesIntoInstruments(
+    audioFiles.map((f) => f.name),
+    options.preferredProvider
+  );
+
+  if (!aiGroups || aiGroups.length === 0) {
+    return extractFolderFilesToCandidates(files, options);
+  }
+
+  const candidates: BatchModelCandidate[] = [];
+  const existingSlugs: string[] = [];
+  const assigned = new Set<FolderFileInput>();
+
+  for (let i = 0; i < aiGroups.length; i++) {
+    const grp = aiGroups[i];
+    const matchedFiles: FolderFileInput[] = [];
+    for (const fname of grp.files) {
+      const f = fileLookup.get(fname) ?? fileLookup.get(fname.toLowerCase());
+      if (f && !assigned.has(f)) {
+        assigned.add(f);
+        matchedFiles.push(f);
+      }
+    }
+    if (matchedFiles.length === 0) continue;
+
+    const cleanName = grp.name.trim() || `Instrument_${i + 1}`;
+    const slug = createUniqueModelSlug(cleanName, existingSlugs);
+    existingSlugs.push(slug);
+    const classification = classifyInstrumentAndParameterSet(cleanName);
+    const zoneCount = matchedFiles.length;
+    const suggestedComplexity = zoneCount >= 8 ? 8 : zoneCount >= 4 ? 7 : 6;
+
+    candidates.push({
+      id: `ai_folder_${slug}_${Date.now()}_${i}`,
+      name: cleanName,
+      slug,
+      sourceType: 'folder-pack',
+      sourceOrigin: options.defaultOriginName || cleanName,
+      zoneCount,
+      detectedCategory: classification.category,
+      suggestedParameterSet: classification.parameterSet,
+      suggestedComplexity,
+      status: 'pending',
+      progressPct: 0,
+      files: matchedFiles.map((f) => ({ name: f.name, buffer: f.buffer })),
+    });
+  }
+
+  // Any leftover files not matched by AI are grouped heuristically
+  const leftovers = audioFiles.filter((f) => !assigned.has(f));
+  if (leftovers.length > 0) {
+    const rest = extractFolderFilesToCandidates(leftovers, options);
+    candidates.push(...rest);
+  }
+
+  return candidates.length > 0 ? candidates : extractFolderFilesToCandidates(files, options);
 }

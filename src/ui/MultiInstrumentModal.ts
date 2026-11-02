@@ -21,14 +21,18 @@ export interface MultiInstrumentItem {
   detail?: string;
 }
 
+export type MultiInstrumentContainerFormat = 'sf2' | 'sfz' | 'mpc' | 'folder' | 'zip';
+
 export interface MultiInstrumentModalOptions {
   title?: string;
   fileName: string;
-  format: 'sf2' | 'sfz';
+  format: MultiInstrumentContainerFormat;
   items: MultiInstrumentItem[];
   onSelect: (item: MultiInstrumentItem) => void;
   onProcessBatch: () => void;
   onCancel?: () => void;
+  /** Optional AI-assisted re-clustering callback when deducing instruments from a directory of loose samples. */
+  onDeduceWithAi?: () => Promise<MultiInstrumentItem[] | null>;
 }
 
 export class MultiInstrumentModal {
@@ -36,6 +40,7 @@ export class MultiInstrumentModal {
   private options: MultiInstrumentModalOptions | null = null;
   private filterQuery = '';
   private selectedIndex = 0;
+  private isAiGrouping = false;
 
   public open(options: MultiInstrumentModalOptions): void {
     this.close();
@@ -69,6 +74,16 @@ export class MultiInstrumentModal {
       : items;
 
     const formatBadge = format.toUpperCase();
+    const containerNoun =
+      format === 'sf2'
+        ? 'SoundFont'
+        : format === 'mpc'
+          ? 'Akai MPC expansion'
+          : format === 'folder'
+            ? 'sample directory'
+            : format === 'zip'
+              ? 'archive'
+              : 'collection';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-multi-inst-window" role="dialog" aria-modal="true" aria-labelledby="multi-inst-title">
@@ -89,7 +104,7 @@ export class MultiInstrumentModal {
               <span class="badge badge-accent">${items.length} INSTRUMENTS</span>
             </div>
             <p class="nmm-multi-inst-desc">
-              This SoundFont contains <strong>${items.length} playable instruments / presets</strong>.
+              This ${escHtml(containerNoun)} contains <strong>${items.length} playable instruments / presets</strong>.
               Select one to load directly into your editing session, or process all presets unattended into separate models via the Batch Processor.
             </p>
           </div>
@@ -105,6 +120,13 @@ export class MultiInstrumentModal {
               autofocus
             />
             ${this.filterQuery ? `<button type="button" class="btn btn-xs btn-outline" id="btn-clear-search">Clear</button>` : ''}
+            ${
+              this.options.onDeduceWithAi
+                ? `<button type="button" class="btn btn-xs btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="Use AI (BYOK LLM) to re-group sample filenames by musical instrument">
+                    ${ICONS.sparkle || ICONS.cpu} ${this.isAiGrouping ? 'AI Grouping...' : 'AI Group by Name'}
+                  </button>`
+                : ''
+            }
           </div>
 
           <div class="nmm-multi-inst-list-wrap" tabindex="0">
@@ -166,7 +188,7 @@ export class MultiInstrumentModal {
               id="btn-multi-inst-batch"
               title="Batch process all ${items.length} instruments unattended into Hartmann Neuron models"
             >
-              ${ICONS.cpu} ⚡ Process All in Batch Processor (${items.length} Models)
+              ${ICONS.cpu} Process All in Batch Processor (${items.length} Models)
             </button>
             <button
               type="button"
@@ -213,6 +235,22 @@ export class MultiInstrumentModal {
     this.backdropEl.querySelector('#btn-clear-search')?.addEventListener('click', () => {
       this.filterQuery = '';
       this.render();
+    });
+
+    this.backdropEl.querySelector('#btn-ai-deduce-inst')?.addEventListener('click', async () => {
+      if (!this.options?.onDeduceWithAi || this.isAiGrouping) return;
+      this.isAiGrouping = true;
+      this.render();
+      try {
+        const updatedItems = await this.options.onDeduceWithAi();
+        if (updatedItems && updatedItems.length > 0 && this.options) {
+          this.options.items = updatedItems;
+          this.selectedIndex = 0;
+        }
+      } finally {
+        this.isAiGrouping = false;
+        this.render();
+      }
     });
 
     // Row selection & double click

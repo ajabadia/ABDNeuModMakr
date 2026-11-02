@@ -754,6 +754,51 @@ export class CloudByokClient {
       return null;
     }
   }
+
+  /**
+   * Groups a list of audio sample filenames/relative paths into distinct musical instruments
+   * using an LLM when filenames in a directory are heterogeneous or ambiguous.
+   */
+  public async groupSampleFilenamesIntoInstruments(
+    filenames: string[],
+    preferredProvider?: CloudAiProvider
+  ): Promise<Array<{ name: string; files: string[] }> | null> {
+    if (filenames.length === 0) return null;
+    const provider = preferredProvider ?? this.getFirstAvailableTextProvider();
+    if (!provider) return null;
+
+    const systemPrompt =
+      'You are an audio sample library organizer. Given a list of audio sample filenames (which include pitch/note names like C3, F#4, MIDI numbers like 060, or velocity layers like v1, vel127), group the files into distinct musical instruments. Return valid JSON only: { "instruments": [ { "name": "Instrument Name", "files": ["exact_filename_1.wav", ...] } ] }. Every input filename must appear in exactly one group.';
+
+    const capped = filenames.slice(0, 200);
+    const prompt = `Group these ${capped.length} sample filenames by musical instrument:\n${JSON.stringify(capped)}`;
+
+    try {
+      const result = await this.generateText(prompt, {
+        provider,
+        maxTokens: 1200,
+        temperature: 0.1,
+        systemPrompt,
+      });
+      const match = result.text.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]) as {
+        instruments?: Array<{ name?: string; files?: string[] }>;
+      };
+      if (!Array.isArray(parsed.instruments) || parsed.instruments.length === 0) {
+        return null;
+      }
+      const validGroups = parsed.instruments
+        .filter((g) => g && typeof g.name === 'string' && Array.isArray(g.files) && g.files.length > 0)
+        .map((g) => ({
+          name: String(g.name).trim(),
+          files: g.files!.map(String),
+        }));
+      return validGroups.length > 0 ? validGroups : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export const cloudByokClient = new CloudByokClient();

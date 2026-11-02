@@ -15,9 +15,12 @@ import {
   parseExpansionXml,
   type MpcSourceRegion,
 } from '../src/formats/MpcXpmFormat.ts';
-import { parseUniversalSampler, mpcProgramToPreset } from '../src/core/import/rawSamplerParsers.ts';
+import { parseUniversalSampler, mpcProgramToPreset, listZipSamplerPrograms } from '../src/core/import/rawSamplerParsers.ts';
 import { parseSliceFile } from '../src/core/dsp/SliceFileParser.ts';
 import { createZipArchive } from '../src/formats/ZipArchive.ts';
+import { extractInstrumentPrefix, extractFolderFilesToCandidates } from '../src/core/batch/FolderBatchExtractor.ts';
+import { MidiTranslationEngine } from '../vendor/@abdsynths/shared/Contracts/MidiTranslationEngine.ts';
+import samplerSpec from '../vendor/@abdsynths/shared/Contracts/sampler_voice_parameter_spec.json' with { type: 'json' };
 
 let passed = 0;
 let failed = 0;
@@ -220,6 +223,100 @@ async function main(): Promise<void> {
     assert.ok(preset.audioBuffers.has('MPC3-RDK Snares_slice_s09.wav'));
     assert.ok(preset.audioBuffers.has('MPC3-RDK Snares_slice_s06.wav'));
     assert.ok((preset.audioBuffers.get('MPC3-RDK Snares_slice_s09.wav')?.byteLength ?? 0) < wavAb.byteLength / 10);
+  });
+
+  await test('Multi-program .xpn archive lists selectable programs and loads selectedProgramPath', async () => {
+    const prog1 = writeMpcXpm({
+      name: 'Warm Pad',
+      type: 'Keygroup',
+      instruments: regionsToMpcInstruments([
+        { sampleName: 'Pad_C3', rootKey: 60, lowKey: 0, highKey: 127, lowVel: 1, highVel: 127, sampleEnd: 64 },
+      ], 'Keygroup'),
+    });
+    const prog2 = writeMpcXpm({
+      name: 'Bright Lead',
+      type: 'Keygroup',
+      instruments: regionsToMpcInstruments([
+        { sampleName: 'Lead_C4', rootKey: 72, lowKey: 0, highKey: 127, lowVel: 1, highVel: 127, sampleEnd: 64 },
+      ], 'Keygroup'),
+    });
+    const meta = buildExpansionXml({
+      identifier: 'com.abd.multixpn',
+      title: 'Multi XPN',
+      manufacturer: 'ABD',
+      version: '1.0.0',
+      type: 'instrument',
+      description: 'Multi',
+    });
+    const zipBytes = createZipArchive([
+      { path: 'Expansion.xml', data: meta },
+      { path: 'Warm Pad.xpm', data: prog1 },
+      { path: 'Bright Lead.xpm', data: prog2 },
+      { path: 'Pad_C3.wav', data: new Uint8Array([1, 2, 3, 4]) },
+      { path: 'Lead_C4.wav', data: new Uint8Array([5, 6, 7, 8]) },
+    ]);
+    const xpnBuf = zipBytes.buffer.slice(zipBytes.byteOffset, zipBytes.byteOffset + zipBytes.byteLength) as ArrayBuffer;
+
+    const progs = await listZipSamplerPrograms('Multi.xpn', xpnBuf);
+    assert.equal(progs.length, 2);
+    assert.equal(progs[0].name, 'Warm Pad');
+    assert.equal(progs[1].name, 'Bright Lead');
+
+    const selected = await parseUniversalSampler('Multi.xpn', xpnBuf, undefined, progs[1].id);
+    assert.equal(selected.presetName, 'Bright Lead');
+    assert.equal(selected.regions.length, 1);
+    assert.equal(selected.regions[0].rootKey, 72);
+  });
+
+  await test('Folder multi-instrument deduction separates named instruments without splitting bare notes', async () => {
+    assert.equal(extractInstrumentPrefix('C3.wav'), 'Instrument');
+    assert.equal(extractInstrumentPrefix('F#4_v127.wav'), 'Instrument');
+    assert.equal(extractInstrumentPrefix('060_vl1.wav'), 'Instrument');
+    assert.equal(extractInstrumentPrefix('Rhodes_C3_v100.wav'), 'Rhodes');
+    assert.equal(extractInstrumentPrefix('01_WarmPad_A2.wav'), 'WarmPad');
+
+    const dummyBuf = new ArrayBuffer(64);
+    const singleInstFiles = [
+      { path: 'C3.wav', name: 'C3.wav', buffer: dummyBuf },
+      { path: 'E3.wav', name: 'E3.wav', buffer: dummyBuf },
+      { path: 'G3.wav', name: 'G3.wav', buffer: dummyBuf },
+    ];
+    assert.equal(extractFolderFilesToCandidates(singleInstFiles).length, 1);
+
+    const multiInstFiles = [
+      { path: 'Piano_C3.wav', name: 'Piano_C3.wav', buffer: dummyBuf },
+      { path: 'Piano_G3.wav', name: 'Piano_G3.wav', buffer: dummyBuf },
+      { path: 'Strings_C3.wav', name: 'Strings_C3.wav', buffer: dummyBuf },
+      { path: 'Strings_G3.wav', name: 'Strings_G3.wav', buffer: dummyBuf },
+    ];
+    const candidates = extractFolderFilesToCandidates(multiInstFiles);
+    assert.equal(candidates.length, 2);
+    assert.deepEqual(candidates.map((c) => c.name).sort(), ['Piano', 'Strings']);
+  });
+
+  await test('ABDShared Common Data Dictionary v2.0 (sampler_voice_parameter_spec + MidiTranslationEngine)', async () => {
+    const engine = new MidiTranslationEngine(samplerSpec as any);
+    assert.equal(MidiTranslationEngine.getParameterIds().length, 42);
+
+    // SymBipolar hardware zero-center (wire 64 -> 0.0 physical)
+    const panDef = engine.getMeta('MasterPan')!;
+    assert.ok(panDef);
+    assert.equal(panDef.id, 'masterPan');
+    assert.ok(Math.abs(engine.wireToDomain('masterPan', 64)) < 1e-9);
+    assert.equal(engine.domainToWire('masterPan', 0), 64);
+    assert.ok(Math.abs(engine.wireToDomain('masterPan', 0) - (-1.0)) < 1e-9);
+    assert.ok(Math.abs(engine.wireToDomain('masterPan', 127) - 1.0) < 1e-9);
+
+    // Exponential curve: 0.001 * exp(11.512925464970229 * t) -> [0.001 .. 100.0] s
+    const atkDef = engine.getMeta('AmpEnvAttack')!;
+    assert.equal(atkDef.id, 'ampEnvAttackSec');
+    const atkMin = engine.normalizedToDomain('ampEnvAttackSec', 0);
+    const atkMid = engine.normalizedToDomain('ampEnvAttackSec', 0.5);
+    const atkMax = engine.normalizedToDomain('ampEnvAttackSec', 1);
+    assert.ok(Math.abs(atkMin - 0.001) < 1e-6);
+    assert.ok(Math.abs(atkMid - Math.sqrt(0.001 * 100)) < 1e-3);
+    assert.ok(Math.abs(atkMax - 100) < 1e-2);
+    assert.ok(Math.abs(engine.domainToNormalized('ampEnvAttackSec', atkMid) - 0.5) < 1e-6);
   });
 
   console.log(`\n${passed}/${passed + failed} passed${skipped ? `, ${skipped} skipped` : ''}`);

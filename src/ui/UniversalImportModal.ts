@@ -14,9 +14,11 @@
 
 import type { WorkingMode, Zone, ExtendedRegion } from '../core/types.ts';
 import {
+  listZipSamplerPrograms,
   parseUniversalSampler,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
+import { MultiInstrumentModal } from './MultiInstrumentModal.ts';
 import {
   analyzeImportPreflight,
   applyPreflightImportAdaptations,
@@ -458,7 +460,7 @@ export class UniversalImportModal {
       }
 
       // Parse universal sampler bank or slice file
-      let preset;
+      let preset: ParsedSamplerPreset;
       if (xpmFile) {
         // Sibling WAVs selected alongside the .xpm are resolved by sample name
         const siblings = new Map<string, Uint8Array>();
@@ -467,6 +469,56 @@ export class UniversalImportModal {
         }
         preset = await parseUniversalSampler(filename, buffer, siblings);
       } else {
+        if (/\.(zip|xpn)$/i.test(filename)) {
+          const programs = await listZipSamplerPrograms(filename, buffer);
+          if (programs.length > 1) {
+            this.isInspecting = false;
+            this.render();
+            const multiModal = new MultiInstrumentModal();
+            multiModal.open({
+              fileName: filename,
+              format: filename.toLowerCase().endsWith('.xpn') ? 'mpc' : 'zip',
+              items: programs.map((p) => ({
+                id: p.id,
+                index: p.index,
+                name: p.name,
+                regionCount: p.regionCount,
+                detail: p.detail,
+              })),
+              onSelect: (chosen) => {
+                void (async () => {
+                  try {
+                    this.isInspecting = true;
+                    this.render();
+                    const selectedPreset = await parseUniversalSampler(
+                      filename,
+                      buffer,
+                      undefined,
+                      decodedWavBuffer,
+                      chosen.id
+                    );
+                    const rep = analyzeImportPreflight(selectedPreset, this.context.getCurrentWorkingMode());
+                    this.parsedPreset = selectedPreset;
+                    this.preflightReport = rep;
+                    this.optAutoExtend = rep.defaultActions.autoExtendOuterZones;
+                    this.optAdaptVelocity = rep.defaultActions.adaptVelocityLayers;
+                    this.optSwitchToExtended = rep.defaultActions.switchToExtendedMode;
+                    this.isInspecting = false;
+                    this.render();
+                  } catch (err) {
+                    this.isInspecting = false;
+                    this.inspectionError = err instanceof Error ? err.message : String(err);
+                    this.render();
+                  }
+                })();
+              },
+              onProcessBatch: () => {
+                this.close();
+              },
+            });
+            return;
+          }
+        }
         preset = await parseUniversalSampler(filename, buffer, decodedWavBuffer);
       }
       const report = analyzeImportPreflight(preset, this.context.getCurrentWorkingMode());

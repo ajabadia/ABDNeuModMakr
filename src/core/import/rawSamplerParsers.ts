@@ -1014,15 +1014,121 @@ export function parseRex2Sampler(
 // 6. Master Auto-Detect Universal Dispatcher
 // ─────────────────────────────────────────────────────────
 
+export interface ArchiveSamplerProgramInfo {
+  id: string;
+  index: number;
+  name: string;
+  format: 'xpm' | 'dspreset' | 'nki' | 'vstpreset' | 'multisample' | 'sfz';
+  regionCount?: number;
+  detail?: string;
+}
+
+/**
+ * Lists all playable sampler program files inside a .zip or Akai .xpn archive.
+ */
+export async function listZipSamplerPrograms(
+  filename: string,
+  data: ArrayBuffer
+): Promise<ArchiveSamplerProgramInfo[]> {
+  const lower = filename.toLowerCase();
+  if (!lower.endsWith('.zip') && !lower.endsWith('.xpn') && !isZipHeader(data)) {
+    return [];
+  }
+  const parsedEntries = parseZipArchive(new Uint8Array(data));
+  const programs: ArchiveSamplerProgramInfo[] = [];
+
+  for (const entry of parsedEntries) {
+    const norm = entry.path.replace(/\\/g, '/');
+    const nLower = norm.toLowerCase();
+    if (nLower.includes('__macosx/') || nLower.includes('[previews]')) continue;
+    const base = cleanBasename(norm);
+    if (base.startsWith('.') || base.startsWith('._')) continue;
+
+    if (/\.(xpm|xty|xtd)$/.test(nLower)) {
+      let progName = base.replace(/\.(xpm|xty|xtd)$/i, '');
+      let regionCount: number | undefined;
+      let detail = nLower.endsWith('.xtd') ? 'MPC3 Drum Track' : nLower.endsWith('.xty') ? 'MPC3 Keygroup Track' : 'MPC Program';
+      try {
+        const parsed = await parseMpcXpm(entry.data);
+        if (parsed.name) progName = parsed.name;
+        regionCount = parsed.instruments.reduce((acc, inst) => acc + inst.layers.length, 0);
+        detail = `MPC ${parsed.type} (${parsed.sourceVariant})`;
+      } catch {
+        // fallback to filename
+      }
+      if (regionCount !== 0) {
+        programs.push({
+          id: norm,
+          index: programs.length,
+          name: progName,
+          format: 'xpm',
+          regionCount,
+          detail,
+        });
+      }
+    } else if (nLower.endsWith('.dspreset')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.dspreset$/i, ''),
+        format: 'dspreset',
+        detail: 'Decent Sampler Preset',
+      });
+    } else if (nLower.endsWith('.nki') || nLower.endsWith('.nki.xml')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.nki(\.xml)?$/i, ''),
+        format: 'nki',
+        detail: 'Kontakt Instrument',
+      });
+    } else if (nLower.endsWith('.vstpreset') || nLower.endsWith('.vstpreset.xml')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.vstpreset(\.xml)?$/i, ''),
+        format: 'vstpreset',
+        detail: 'HALion VST Preset',
+      });
+    } else if (nLower.endsWith('multisample.xml') || nLower.endsWith('.multisample')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(multisample|xml)$/i, '') || 'Bitwig Multisample',
+        format: 'multisample',
+        detail: 'Bitwig Multisample',
+      });
+    } else if (nLower.endsWith('.sfz')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.sfz$/i, ''),
+        format: 'sfz',
+        detail: 'SFZ Instrument',
+      });
+    }
+  }
+
+  return programs;
+}
+
 export async function parseUniversalSampler(
   filename: string,
   data: ArrayBuffer | string,
   zipEntriesOrDecodedWav?: Map<string, Uint8Array> | ArrayBuffer,
-  decodedWavBuffer?: ArrayBuffer
+  decodedWavBufferOrProgramPath?: ArrayBuffer | string,
+  selectedProgramPath?: string
 ): Promise<ParsedSamplerPreset> {
   const lower = filename.toLowerCase();
   const zipEntries = zipEntriesOrDecodedWav instanceof Map ? zipEntriesOrDecodedWav : undefined;
-  const decodedWav = zipEntriesOrDecodedWav instanceof ArrayBuffer ? zipEntriesOrDecodedWav : decodedWavBuffer;
+  const decodedWav =
+    zipEntriesOrDecodedWav instanceof ArrayBuffer
+      ? zipEntriesOrDecodedWav
+      : decodedWavBufferOrProgramPath instanceof ArrayBuffer
+        ? decodedWavBufferOrProgramPath
+        : undefined;
+  const targetProgramPath =
+    typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
 
   // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn expansions)
   if (lower.endsWith('.zip') || lower.endsWith('.xpn') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {
@@ -1040,7 +1146,9 @@ export async function parseUniversalSampler(
     let multisampleEntry: string | undefined;
     const xpmEntries: string[] = [];
 
+    const normTarget = targetProgramPath?.replace(/\\/g, '/');
     for (const name of entriesMap.keys()) {
+      if (normTarget && name !== normTarget) continue;
       const nLower = name.toLowerCase();
       if (nLower.endsWith('.dspreset')) dspresetEntry = name;
       else if (nLower.endsWith('.nki.xml') || nLower.endsWith('.nki')) nkiEntry = name;

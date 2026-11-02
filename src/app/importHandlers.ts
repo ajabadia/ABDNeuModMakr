@@ -21,7 +21,12 @@ import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbM
 import { MAX_SFZ_TEXT_BYTES } from '../formats/SfzParser.ts';
 import { toast, confirmDialog } from '../ui/notify';
 import { withLoading } from '../ui/LoadingModal';
-import { MultiInstrumentModal } from '../ui/MultiInstrumentModal';
+import { MultiInstrumentModal, type MultiInstrumentItem } from '../ui/MultiInstrumentModal';
+import {
+  extractFolderFilesToCandidates,
+  extractFolderFilesToCandidatesWithAi,
+  type FolderFileInput,
+} from '../core/batch/FolderBatchExtractor';
 
 export interface ImportContext {
   core: CoreService;
@@ -679,27 +684,28 @@ export class ImportHandlers {
     // 3. Otherwise collect `.wav` / `.aif` / `.aiff` audio files (recursively up to 1 level)
     // Refresh never replaces the editor session with audio imports.
     if (opts?.applyToSession === false) return;
-    const audioFiles: { name: string; buffer: ArrayBuffer }[] = [];
-    const collectAudio = async (dir: FileSystemDirectoryHandle, depth: number): Promise<void> => {
+    const folderInputs: FolderFileInput[] = [];
+    const collectAudio = async (dir: FileSystemDirectoryHandle, relPrefix: string, depth: number): Promise<void> => {
       for await (const entry of (dir as IterDir).values()) {
         if (entry.name.startsWith('.') || entry.name.startsWith('._') || entry.name === '__MACOSX') {
           continue;
         }
+        const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
           const lower = entry.name.toLowerCase();
           if (lower.endsWith('.wav') || lower.endsWith('.aif') || lower.endsWith('.aiff')) {
             const file = await (entry as FileSystemFileHandle).getFile();
             const buffer = await file.arrayBuffer();
-            audioFiles.push({ name: entry.name, buffer });
+            folderInputs.push({ path: relPath, name: entry.name, buffer });
           }
         } else if (entry.kind === 'directory' && depth < 2) {
-          await collectAudio(entry as FileSystemDirectoryHandle, depth + 1);
+          await collectAudio(entry as FileSystemDirectoryHandle, relPath, depth + 1);
         }
       }
     };
 
-    await collectAudio(rootHandle, 0);
-    if (audioFiles.length === 0) {
+    await collectAudio(rootHandle, '', 0);
+    if (folderInputs.length === 0) {
       const msg =
         preferredKind === 'model'
           ? 'No valid .model files (MName, map.script, .scape, .sphere) found in selected folder.'
@@ -709,13 +715,89 @@ export class ImportHandlers {
       return;
     }
 
-    const zones = await this.ctx.core.importAudioFiles(audioFiles, 'samples');
-    this.ctx.session = this.ctx.core.getSession()!;
-    this.ctx.selectedZoneId = zones[0]?.id || null;
-    this.ctx.log(
-      `Import Folder: mapped ${audioFiles.length} audio file(s) into ${zones.length} contiguous zone(s).`
+    await this.importDeducedAudioDirectoryOrPrompt(
+      folderInputs,
+      rootHandle.name || 'Sample Folder',
+      'samples',
+      'Import Folder'
     );
-    this.ctx.refresh();
+  }
+
+  private async importDeducedAudioDirectoryOrPrompt(
+    folderInputs: FolderFileInput[],
+    containerName: string,
+    audioMode: 'samples' | 'by-name',
+    sourceLabel: string
+  ): Promise<void> {
+    let candidates = extractFolderFilesToCandidates(folderInputs, {
+      defaultOriginName: containerName,
+    });
+
+    const loadSingleAudioGroup = async (
+      files: { name: string; buffer: ArrayBuffer }[],
+      instrumentName?: string
+    ) => {
+      await withLoading(
+        'LOADING AUDIO SAMPLES...',
+        `Mapping and decoding ${files.length} audio file(s)${instrumentName ? ` for "${instrumentName}"` : ''}...`,
+        async () => {
+          const zones = await this.ctx.core.importAudioFiles(files, audioMode);
+          this.ctx.session = this.ctx.core.getSession()!;
+          if (instrumentName && this.ctx.session) {
+            this.ctx.session.name = instrumentName;
+            this.ctx.session.processConfig.modelName = instrumentName.slice(0, 11);
+          }
+          this.ctx.selectedZoneId = zones[0]?.id || null;
+          this.ctx.log(
+            `${sourceLabel}: mapped ${files.length} audio file(s)${instrumentName ? ` ("${instrumentName}")` : ''} into ${zones.length} contiguous zone(s).`
+          );
+          this.ctx.refresh();
+        }
+      );
+    };
+
+    if (candidates.length > 1) {
+      const toModalItems = (list: typeof candidates): MultiInstrumentItem[] =>
+        list.map((c, idx) => ({
+          id: c.id,
+          index: idx,
+          name: c.name,
+          regionCount: c.zoneCount,
+          detail: `${c.detectedCategory} (Set #${c.suggestedParameterSet})`,
+        }));
+
+      const multiModal = new MultiInstrumentModal();
+      multiModal.open({
+        fileName: containerName,
+        format: 'folder',
+        items: toModalItems(candidates),
+        onSelect: (item) => {
+          const chosen = candidates[item.index] || candidates[0];
+          if (chosen) {
+            void loadSingleAudioGroup(chosen.files, chosen.name);
+          }
+        },
+        onProcessBatch: () => {
+          this.ctx.onOpenBatchProcessor?.();
+        },
+        onDeduceWithAi: async () => {
+          const aiCandidates = await extractFolderFilesToCandidatesWithAi(folderInputs, {
+            defaultOriginName: containerName,
+          });
+          if (aiCandidates.length > 0) {
+            candidates = aiCandidates;
+            return toModalItems(candidates);
+          }
+          return null;
+        },
+      });
+      return;
+    }
+
+    await loadSingleAudioGroup(
+      folderInputs.map((f) => ({ name: f.name, buffer: f.buffer })),
+      candidates[0]?.name !== 'Instrument' ? candidates[0]?.name : undefined
+    );
   }
 
   async importFromWebkitFileList(
@@ -898,18 +980,21 @@ export class ImportHandlers {
         return;
       }
 
-      const audioFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const folderInputs: FolderFileInput[] = [];
+      let rootFolderName = 'Sample Folder';
       for (const f of audioFileEntries) {
+        const relPath = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
+        const firstSeg = relPath.split('/')[0];
+        if (firstSeg && relPath.includes('/')) rootFolderName = firstSeg;
         const buffer = await f.arrayBuffer();
-        audioFiles.push({ name: f.name, buffer });
+        folderInputs.push({ path: relPath, name: f.name, buffer });
       }
-      const zones = await this.ctx.core.importAudioFiles(audioFiles, 'samples');
-      this.ctx.session = this.ctx.core.getSession()!;
-      this.ctx.selectedZoneId = zones[0]?.id || null;
-      this.ctx.log(
-        `Import Folder: mapped ${audioFiles.length} audio file(s) into ${zones.length} contiguous zone(s).`
+      await this.importDeducedAudioDirectoryOrPrompt(
+        folderInputs,
+        rootFolderName,
+        'samples',
+        'Import Folder'
       );
-      this.ctx.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.ctx.log(`Folder import error: ${msg}`);
@@ -967,7 +1052,7 @@ export class ImportHandlers {
       // Classify expanded files into model folders (<NNN>.model), loose model files, SF2/SFZ, and audio files
       const modelFolders = new Map<number, { name: string; buffer: ArrayBuffer }[]>();
       const looseModelFiles: { name: string; buffer: ArrayBuffer }[] = [];
-      const audioFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const audioFiles: { name: string; path?: string; buffer: ArrayBuffer }[] = [];
       const sf2Files: { name: string; buffer: ArrayBuffer }[] = [];
       const sfzFiles: { name: string; buffer: ArrayBuffer }[] = [];
 
@@ -1007,7 +1092,7 @@ export class ImportHandlers {
             looseModelFiles.push(item);
           }
         } else if (isAudio) {
-          audioFiles.push({ name: base, buffer: item.buffer });
+          audioFiles.push({ name: base, path: normPath, buffer: item.buffer });
         }
       }
 
@@ -1277,18 +1362,16 @@ export class ImportHandlers {
 
       // Otherwise, if audio files (.wav / .aif / .aiff) were provided (directly or inside a .zip)
       if (audioFiles.length > 0) {
-        await withLoading(
-          'LOADING AUDIO SAMPLES...',
-          `Mapping and decoding ${audioFiles.length} audio file(s)...`,
-          async () => {
-            const zones = await this.ctx.core.importAudioFiles(audioFiles, audioMode);
-            this.ctx.session = this.ctx.core.getSession()!;
-            this.ctx.selectedZoneId = zones[0]?.id || null;
-            this.ctx.log(
-              `${sourceLabel}: mapped ${audioFiles.length} audio file(s) into ${zones.length} contiguous zone(s).`
-            );
-            this.ctx.refresh();
-          }
+        const folderInputs: FolderFileInput[] = audioFiles.map((af) => ({
+          path: af.path ?? af.name,
+          name: af.name,
+          buffer: af.buffer,
+        }));
+        await this.importDeducedAudioDirectoryOrPrompt(
+          folderInputs,
+          `${audioFiles.length} Audio Samples`,
+          audioMode,
+          sourceLabel
         );
         return;
       }
