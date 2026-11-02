@@ -44,6 +44,7 @@ const TEST_FILES = [
   'phase32_formats_block3.test.ts',
   'phase32_formats_block4.test.ts',
   'phase22_advanced_sampler.test.ts',
+  'phase29_virtual_fs_triage.test.ts',
 ];
 
 interface TestResult {

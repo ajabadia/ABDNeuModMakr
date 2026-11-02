@@ -684,6 +684,18 @@ export class BatchProcessorModal {
 
   // ── Source Ingestion Helpers ───────────────────────────
 
+  public loadCandidates(candidates: BatchModelCandidate[], originTitle?: string): void {
+    if (candidates.length === 0) return;
+    this.open();
+    this.candidates = candidates;
+    this.selectedCandidateIds = new Set(candidates.map((c) => c.id));
+    this.currentStep = 'preflight';
+    this.render();
+    if (originTitle) {
+      toast(`Loaded ${candidates.length} candidates from ${originTitle}.`, 'success');
+    }
+  }
+
   public loadSf2Buffer(buffer: ArrayBuffer, soundFontName: string): void {
     try {
       const extracted = extractSf2PresetsToCandidates(buffer, { soundFontName: soundFontName.replace(/\.[^.]+$/, '') });

@@ -65,6 +65,8 @@ export * from './MaschineNicntFormat.ts';
 export * from './ScalaMicrotuning.ts';
 export * from './AutoMapper.ts';
 export * from './ArticulationEngine.ts';
+export * from './VirtualZipFs.ts';
+export * from './MultiAssetDiscovery.ts';
 export * from './rawSamplerTypes.ts';
 export * from './rawSamplerPreflight.ts';
 export * from './soundfont2Writer.ts';

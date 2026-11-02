@@ -733,38 +733,36 @@
 
 ---
 
-## Fase 29 — Equivalencia Transparente de Contenedores .ZIP como Carpeta e Importación Inteligente Polimórfica Mixta con Triaje Batch [PLANIFICADA]
+## Fase 29 — Equivalencia Transparente de Contenedores .ZIP como Carpeta e Importación Inteligente Polimórfica Mixta con Triaje Batch [COMPLETADA]
 
 **Objetivo**: Tratar cualquier archivo `.zip` depositado en la aplicación con total equivalencia a una carpeta física en disco, permitiendo la ingesta desatendida o guiada de colecciones complejas. Implementar un motor de descubrimiento recursivo capaz de explorar carpetas o archivos comprimidos heterogéneos con múltiples formatos, instrumentos y presets entremezclados, clasificando lo que hay y presentando una compuerta interactiva de triaje previo que informe detalladamente al usuario y le permita seleccionar qué procesar por lotes.
 
-### 29.1 Equivalencia Transparente .ZIP = Carpeta (Virtual Zip Filesystem)
-- **Tratamiento Unificado de Entrada**:
-  - Toda función de importación (arrastrar a la ventana, selector de archivos, importación universal, batch processor) aceptará indistintamente un directorio del sistema de archivos o un archivo `.zip`.
-  - Desempaquetado virtual en memoria / streaming mediante `ZipArchive.ts`, exponiendo un árbol de rutas virtuales normalizadas (`virtual_fs`) sin necesidad de descompresión física previa en el disco duro del usuario.
-  - Soporte para ZIPs anidados (ZIP que contiene dentro otros ZIPs, presets o SoundFonts empaquetados).
+### 29.1 Equivalencia Transparente .ZIP = Carpeta (Virtual Zip Filesystem) [COMPLETADA]
+- [x] **Tratamiento Unificado de Entrada**:
+  - Toda función de importación acepta indistintamente un directorio del sistema de archivos o un archivo `.zip`.
+  - Desempaquetado virtual en memoria mediante `VirtualZipFs.ts`, exponiendo un árbol de rutas virtuales normalizadas (`VirtualFileEntry[]`) sin necesidad de descompresión física en disco.
+  - Soporte transparente para ZIPs anidados (archivos `.zip` o `.xpn` contenidos dentro de otros ZIPs).
 
-### 29.2 Descubrimiento Polimórfico de Contenidos Mixtos (Multi-Asset Discovery Engine)
-- **Inspección Recursiva Multiformato**:
-  - Escaneo en profundidad de todas las ramas del árbol de directorios (físico o virtual dentro de un `.zip`), identificando simultáneamente:
-    - Bancos y Presets SoundFont 2 (`.sf2`).
-    - Instrumentos SFZ (`.sfz` con sus muestras asociadas).
-    - Presets de Decent Sampler (`.dspreset`).
-    - Patches de Native Instruments Kontakt (`.nki`).
-    - Multisamples de Bitwig (`.multisample`).
-    - Loops rebanados ReCycle (`.rx2`, `.rex`, `.rcy`).
-    - Cadenas de audio lineal con marcadores CUE / sample-chains (`.wav`).
-    - Carpetas de muestras sueltas agrupadas por instrumento, afinación o prefijo.
-- **Diferenciación y Aislamiento de Entidades**:
-  - Detección de colisiones y límites de instrumento: separar de forma limpia cuándo dos carpetas pertenecen a instrumentos distintos aunque compartan nombres de notas o directorios raíz.
+### 29.2 Descubrimiento Polimórfico de Contenidos Mixtos (Multi-Asset Discovery Engine) [COMPLETADA]
+- [x] **Inspección Recursiva Multiformato (`MultiAssetDiscovery.ts`)**:
+  - Escaneo en profundidad del árbol virtual identificando de forma simultánea e independiente:
+    - SoundFont 2 (`.sf2` con múltiples presets).
+    - Instrumentos SFZ (`.sfz` y sus muestras asociadas).
+    - Presets Decent Sampler (`.dspreset`).
+    - Patches Native Instruments Kontakt (`.nki`).
+    - Multisamples Bitwig (`.multisample`).
+    - Loops ReCycle (`.rx2`, `.rex`, `.rcy`).
+    - Cadenas y formatos modernos/clásicos (Ableton ADV, Logic EXS24, TAL-Sampler, TX16Wx, Korg KMP, Akai MPC/MESA/AKP, Reason NN-XT, DirectWave, Soundbox, Omnisphere, Maschine, etc.).
+    - Carpetas de muestras sueltas agrupadas por instrumento, afinación o prefijo común.
+- [x] **Diferenciación y Aislamiento de Entidades**: Aislamiento limpio de muestras compañeras por subdirectorio para evitar colisiones de notas entre instrumentos heterogéneos.
 
-### 29.3 Compuerta Preflight de Triaje y Selección Batch Interactiva
-- **Detección de Casos Múltiples**:
-  - Si el árbol de entrada contiene un único instrumento o preset homogéneo, se ofrece la importación directa a la sesión activa.
-  - Si se detecta **más de un caso** (ej. varios presets SF2, combinación de un `.dspreset` y carpetas de WAVs, o múltiples librerías mezcladas):
-    - **Aviso y Diagnóstico Previo**: La aplicación detiene el procesamiento automático y despliega un diálogo modal de triaje claro e interactivo.
-    - **Desglose Estructurado**: Muestra una tabla jerárquica con todo lo detectado (Tipo de formato, Nombre de instrumento/preset, Número de muestras, Cobertura estimada, Tamaño en disco y Ruta relativa).
-    - **Control Granular del Usuario**: Checkboxes individuales y por grupo ("Seleccionar todo", "Deseleccionar todo", "Filtrar por formato") para que el usuario decida con exactitud qué elementos desea convertir y cuáles ignorar.
-    - **Derivación al Procesador por Lotes**: Los elementos aprobados por el usuario se inyectan directamente en la cola del `BatchProcessor` con su perfil de destino y configuración de síntesis (Classic / Extended) preconfigurada.
+### 29.3 Compuerta Preflight de Triaje y Selección Batch Interactiva [COMPLETADA]
+- [x] Diálogo modal interactivo `MultiAssetTriageModal.ts`:
+  - Desglose jerárquico estructurado (formato, nombre de preset, recuento de muestras, tamaño en KB/MB y ruta).
+  - Buscador en tiempo real y selector de filtro por formato.
+  - Checkboxes individuales y masivos (Select All / Deselect All) con contador en vivo.
+  - Carga individual en 1 clic hacia la sesión activa o derivación directa de la selección hacia el `BatchProcessorModal` (`loadCandidates`).
+- [x] Suite de pruebas automatizada `tests/phase29_virtual_fs_triage.test.ts` (100% PASS, 33/33 suites maestras).
 
 ---
 
