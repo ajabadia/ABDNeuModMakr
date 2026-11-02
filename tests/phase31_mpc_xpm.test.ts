@@ -177,6 +177,29 @@ async function main(): Promise<void> {
     assert.ok(preset.audioBuffers.size > 0);
   });
 
+  await test('Real MPC3 track files: .xtd parses as Drum, .xty as Keygroup', async () => {
+    const xtd = findFiles(CORPUS, '.xtd').find((p) => /Kit-RDK 001 Rusty Drum Kit\.xtd$/.test(p));
+    const xty = findFiles(CORPUS, '.xty').find((p) => /Bass-GPS Bass-Clean\.xty$/.test(p));
+    if (!xtd || !xty) return 'skip';
+    const d = await parseMpcXpm(new Uint8Array(readFileSync(xtd)));
+    assert.equal(d.type, 'Drum');
+    assert.equal(d.name, 'Kit-RDK 001 Rusty Drum Kit');
+    assert.ok(d.instruments.length > 0);
+    const k = await parseMpcXpm(new Uint8Array(readFileSync(xty)));
+    assert.equal(k.type, 'Keygroup');
+    assert.ok(k.instruments.length > 0);
+  });
+
+  await test('Real MPC 1.x program (File_Version 1.7) reads <Name>', async () => {
+    const f = findFiles(CORPUS, '.xpn').find((p) => /The Reaper MPC Software Installer\.xpn$/.test(p));
+    if (!f) return 'skip';
+    const buf = readFileSync(f);
+    const preset = await parseUniversalSampler(path.basename(f), buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    assert.equal(preset.presetName, 'Bass-Reaper Upright Bass');
+    assert.equal(preset.programCount, 3);
+    assert.equal(preset.regions.filter((r) => preset.audioBuffers.has(r.sampleName)).length, preset.regions.length);
+  });
+
   console.log(`\n${passed}/${passed + failed} passed${skipped ? `, ${skipped} skipped` : ''}`);
   if (failed > 0) process.exit(1);
 }

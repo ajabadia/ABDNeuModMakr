@@ -765,6 +765,10 @@
 - Tests: `tests/phase31_mpc_xpm.test.ts` (10/10, incluye los 52 `.xpm` reales y una expansión MPC3).
 
 **Pendiente**:
+- **Slices de MPC 3**: los kits MPC 3 reparten un único WAV largo entre pads mediante `sampleStart`/`sampleEnd` (p. ej. `MPC3-RDK Snares.wav`). `ParsedImportRegion` no tiene campos de inicio/fin, así que cada pad reproduciría el archivo completo. Añadir inicio/fin de muestra al modelo de importación o recortar el audio al importar.
+- **Selección de programa**: las expansiones traen varios programas (hasta 5 en el corpus); hoy se importa automáticamente el que tiene todas sus muestras. Ofrecer elegir (o procesar todos en batch) con el triaje de la Fase 29.
+- **Rendimiento ZIP**: el lector ZIP compartido tarda unos 45 s con un `.xpn` de 231 MB (Rusty Drums MPC3). Usar `DecompressionStream` / extracción perezosa de entradas.
+- **Formatos MPC heredados presentes en el corpus**: `.PGM` de MPC 1000/2500 (firma `MPC1000 PGM`, 8 archivos) y `.AKP` de Akai S5000/S6000 (RIFF `APRG`, 2 archivos); proyectos `.xpj`. Incluidos en la Fase 32.
 - Botón/opción de exportación MPC en `RawSamplerExportModal` (carpeta `.xpm` + WAV y empaquetado `.xpn`).
 - Validar en MPC Software/hardware que carga los `.xpm` generados (la ley de volumen exacta y los campos mínimos no están confirmados oficialmente).
 - Escritura en formato MPC 3 JSON.

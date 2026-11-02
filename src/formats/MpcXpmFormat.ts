@@ -152,7 +152,8 @@ export function isMpcXml(text: string): boolean {
 export function parseMpcXpmXml(xml: string): MpcProgram {
   const programMatch = /<Program\s+type="([^"]+)"/.exec(xml);
   const type: MpcProgramType = programMatch && /drum/i.test(programMatch[1]) ? 'Drum' : 'Keygroup';
-  const name = tagText(xml, 'ProgramName')?.trim() || 'MPC Program';
+  // MPC 2.x uses <ProgramName>; MPC 1.x (File_Version 1.7) uses <Name>
+  const name = tagText(xml, 'ProgramName')?.trim() || tagText(xml, 'Name')?.trim() || 'MPC Program';
 
   const numKeygroups = type === 'Keygroup' ? tagNum(xml, 'KeygroupNumKeygroups', 128) : 128;
 
@@ -274,8 +275,15 @@ export function parseMpcJsonProgram(text: string): MpcProgram {
   if (start < 0) throw new Error('MPC3 program: JSON body not found');
   const root = asObj(JSON.parse(text.slice(start)));
   const data = asObj(root.data ?? root);
-  const name = asStr(data.name) || 'MPC Program';
-  const type: MpcProgramType = asNum(data.type, 1) === 0 ? 'Drum' : 'Keygroup';
+  // MPC 3 track files (.xty/.xtd) nest the program under data.program
+  const prog = asObj(data.program ?? data);
+  const name = asStr(prog.name) || asStr(data.name) || 'MPC Program';
+  // Verified on real files: program.type 0 = Drum, 1 = Keygroup (keygroups also carry a "drum" object)
+  const typeRaw = prog.type ?? data.type;
+  const isDrum =
+    (typeof typeRaw === 'string' && /drum/i.test(typeRaw)) ||
+    (typeof typeRaw === 'number' && typeRaw === 0);
+  const type: MpcProgramType = isDrum ? 'Drum' : 'Keygroup';
 
   const found: JsonObj[] = [];
   findInstruments(data, found);

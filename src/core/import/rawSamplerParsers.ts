@@ -60,6 +60,8 @@ export interface ParsedSamplerPreset {
   isSliceChain?: boolean;
   sliceFrames?: number[];
   sliceMarkers?: ParsedSliceMarker[];
+  /** Number of programs found in a multi-program container (e.g. Akai .xpn). */
+  programCount?: number;
 }
 
 /**
@@ -932,7 +934,7 @@ export async function parseUniversalSampler(
     let nkiEntry: string | undefined;
     let vstpresetEntry: string | undefined;
     let multisampleEntry: string | undefined;
-    let xpmEntry: string | undefined;
+    const xpmEntries: string[] = [];
 
     for (const name of entriesMap.keys()) {
       const nLower = name.toLowerCase();
@@ -940,7 +942,8 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.nki.xml') || nLower.endsWith('.nki')) nkiEntry = name;
       else if (nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.vstpreset')) vstpresetEntry = name;
       else if (nLower.endsWith('multisample.xml')) multisampleEntry = name;
-      else if (nLower.endsWith('.xpm') && !nLower.includes('[previews]') && !xpmEntry) xpmEntry = name;
+      // MPC programs: .xpm (MPC 1/2/3) and MPC 3 track files .xty (keygroup) / .xtd (drum)
+      else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
     // Extract audio buffers
@@ -969,14 +972,39 @@ export async function parseUniversalSampler(
       const xml = new TextDecoder('utf-8').decode(entriesMap.get(multisampleEntry)!);
       return parseBitwigMultisample(xml, audioFiles);
     }
-    if (xpmEntry) {
-      const program = await parseMpcXpm(entriesMap.get(xpmEntry)!);
-      return mpcProgramToPreset(program, audioFiles);
+    if (xpmEntries.length > 0) {
+      // Expansions often bundle several programs. Prefer root-level programs over
+      // project copies ([ProjectData]/[TrackData]) and pick the one whose samples
+      // are actually present in the archive.
+      const ranked = [...xpmEntries].sort((a, b) => Number(a.includes('[')) - Number(b.includes('[')));
+      let best: ParsedSamplerPreset | null = null;
+      let bestScore = -1;
+      let lastError: unknown = null;
+      for (const entry of ranked.slice(0, 32)) {
+        try {
+          const preset = mpcProgramToPreset(await parseMpcXpm(entriesMap.get(entry)!), audioFiles);
+          if (preset.regions.length === 0) continue;
+          const resolved = preset.regions.filter((r) => preset.audioBuffers.has(r.sampleName)).length;
+          const score = resolved / preset.regions.length;
+          if (score > bestScore) {
+            best = preset;
+            bestScore = score;
+          }
+          if (score === 1) break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      if (best) {
+        best.programCount = xpmEntries.length;
+        return best;
+      }
+      if (lastError) throw lastError;
     }
   }
 
   // Akai MPC program (MPC2 XML or MPC3 GZIP/JSON). Sibling WAVs may be supplied via zipEntries.
-  if (lower.endsWith('.xpm')) {
+  if (/\.(xpm|xty|xtd)$/.test(lower)) {
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const audioFiles = new Map<string, ArrayBuffer>();
     if (zipEntries) {
