@@ -1,4 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Navbar Module
 // Integrates with ABDShared's SynthNavBar (`onAction`, `activeValues`, `aboutDialog`)
 // ─────────────────────────────────────────────────────────
@@ -317,7 +317,8 @@ export class AppNavbar {
         appName: 'NEURON MODELmaker',
         subtitle: 'Hartmann Spectral Reconstructor & Dual-Target Model Generator',
         version: '1.2.0',
-        buildInfo: 'NASAnalysis.dll 1:1 WebAudio DSP + Dual-Target (.model/.sound + .nmmodel)',
+        buildInfo: 'NASAnalysis.dll 1:1 WebAudio DSP + Dual-Target (.model/.sound + .nmmodel). ' +
+          'Format research credits: ConvertWithMoss by Juergen Mossgraber (LGPL-3.0, mossgrabers.de) used as a format reference for Akai MPC and Kontakt/NCW; independent implementation.',
         author: 'ABDSynths',
         copyright: '© 2026 ABDSynths',
       },

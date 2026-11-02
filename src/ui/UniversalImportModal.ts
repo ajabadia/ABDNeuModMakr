@@ -207,12 +207,12 @@ export class UniversalImportModal {
           <div class="dropzone-icon">${ICONS.folder || ICONS.wave}</div>
           <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .rx2, .rex, .rcy, .cue, .wav, .aif, .zip</strong>
+            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .xpm, .xpn, .rx2, .rex, .rcy, .cue, .wav, .aif, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files">
               ${ICONS.folder || ''} Browse File...
-              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.flac,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.rx2,.rex,.rcy,.cue,.zip" />
+              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.flac,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.xpm,.xpn,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
           </div>
         </div>
@@ -411,6 +411,9 @@ export class UniversalImportModal {
   }
 
   private async handleFileSelection(file: File, allFiles: FileList | File[]): Promise<void> {
+    // Fase 31: an Akai .xpm dropped together with its WAVs is the primary file
+    const xpmFile = Array.from(allFiles).find((f) => /\.xpm$/i.test(f.name));
+    if (xpmFile) file = xpmFile;
     const filename = file.name;
 
     // If multiple raw audio files are dropped (.wav, .aif), offer standard audio batch import
@@ -455,7 +458,17 @@ export class UniversalImportModal {
       }
 
       // Parse universal sampler bank or slice file
-      const preset = await parseUniversalSampler(filename, buffer, decodedWavBuffer);
+      let preset;
+      if (xpmFile) {
+        // Sibling WAVs selected alongside the .xpm are resolved by sample name
+        const siblings = new Map<string, Uint8Array>();
+        for (const f of Array.from(allFiles)) {
+          if (/\.(wav|aif|aiff)$/i.test(f.name)) siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
+        }
+        preset = await parseUniversalSampler(filename, buffer, siblings);
+      } else {
+        preset = await parseUniversalSampler(filename, buffer, decodedWavBuffer);
+      }
       const report = analyzeImportPreflight(preset, this.context.getCurrentWorkingMode());
 
       this.parsedPreset = preset;

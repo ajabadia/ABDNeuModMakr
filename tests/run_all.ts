@@ -34,6 +34,7 @@ const TEST_FILES = [
   'phase23_sublibraries.test.ts',
   'phase25_batch_autoslicer.test.ts',
   'phase28_decent_kontakt.test.ts',
+  'phase31_mpc_xpm.test.ts',
 ];
 
 interface TestResult {

@@ -16,6 +16,7 @@ import { parseSliceFile, type ParsedSliceMarker } from '../dsp/SliceFileParser.t
 import { decompressRx2Audio, isRx2Buffer } from '../dsp/DwopDecompressor.ts';
 import type { LoopMode } from '../types.ts';
 import { parseZipArchive } from '../../formats/ZipArchive.ts';
+import { parseMpcXpm, mpcGainToDb, type MpcProgram } from '../../formats/MpcXpmFormat.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -24,7 +25,8 @@ export type RawSamplerFormat =
   | 'multisample'
   | 'samplechain'
   | 'sfz'
-  | 'sf2';
+  | 'sf2'
+  | 'xpm';
 
 export interface ParsedImportRegion {
   id: string;
@@ -607,6 +609,68 @@ export function parseBitwigMultisample(
 }
 
 // ─────────────────────────────────────────────────────────
+// 4b. Akai MPC Program (.xpm / .xpn) — Fase 31
+// ─────────────────────────────────────────────────────────
+
+/** Converts a parsed MPC program into the generic preset model. */
+export function mpcProgramToPreset(
+  program: MpcProgram,
+  audioFiles: Map<string, ArrayBuffer> = new Map()
+): ParsedSamplerPreset {
+  const audioBuffers = mapAudioBuffers(audioFiles);
+  // Resolve "SampleName" (no extension) against available audio, case-insensitive
+  const byStem = new Map<string, string>();
+  for (const k of audioBuffers.keys()) byStem.set(k.replace(/\.[^.]+$/, '').toLowerCase(), k);
+
+  const regions: ParsedImportRegion[] = [];
+  let idx = 0;
+  program.instruments.forEach((inst, instIndex) => {
+    const drumNote = program.padNotes[inst.number - 1] ?? 36 + instIndex;
+    for (const l of inst.layers) {
+      const stem = (l.sampleFile ? cleanBasename(l.sampleFile).replace(/\.[^.]+$/, '') : l.sampleName).toLowerCase();
+      const resolved = byStem.get(stem) ?? byStem.get(stem.trim()) ?? `${l.sampleName}.wav`;
+      const isDrum = program.type === 'Drum';
+      const lowKey = isDrum ? drumNote : inst.lowNote;
+      const highKey = isDrum ? drumNote : inst.highNote;
+      const rootKey = isDrum || l.rootNote < 0 ? lowKey : l.rootNote;
+      idx++;
+      regions.push({
+        id: `mpc_zone_${String(idx).padStart(3, '0')}`,
+        sampleName: resolved,
+        samplePath: l.sampleFile ?? resolved,
+        rootKey,
+        lowKey,
+        highKey,
+        lowVel: Math.max(1, l.velStart),
+        highVel: Math.min(127, Math.max(1, l.velEnd)),
+        detuneCents: (l.tuneCoarse + inst.tuneCoarse) * 100 + l.tuneFine + inst.tuneFine,
+        volumeDb: Math.max(-32, Math.min(12, mpcGainToDb(l.volume))),
+        pan: Math.max(-50, Math.min(50, Math.round((l.pan - 0.5) * 100))),
+        loopMode: l.loopEnabled && l.loopEnd > l.loopStart ? 'loop_continuous' : inst.triggerMode === 0 ? 'one_shot' : 'no_loop',
+        loopStart: l.loopStart,
+        loopEnd: l.loopEnd,
+      });
+    }
+  });
+
+  const { category, parameterSet } = classifyPresetCategory(program.name + (program.type === 'Drum' ? ' drum' : ''));
+  const env = program.instruments[0]?.volumeEnv;
+  return {
+    format: 'xpm',
+    formatLabel: program.sourceVariant === 'mpc3-json' ? 'Akai MPC 3 Program (.xpm JSON)' : `Akai MPC ${program.type} Program (.xpm)`,
+    presetName: program.name,
+    modelName: program.name.slice(0, 11),
+    detectedCategory: program.type === 'Drum' ? 'Drums & Percussion' : category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers,
+    envelope: env
+      ? { attack: env.attackSec, decay: env.decaySec, sustain: env.sustain, release: env.releaseSec }
+      : undefined,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
 // 5. Linear Sample Chains Parser (Octatrack / SP-404 / OP-1)
 // ─────────────────────────────────────────────────────────
 
@@ -854,8 +918,8 @@ export async function parseUniversalSampler(
   const zipEntries = zipEntriesOrDecodedWav instanceof Map ? zipEntriesOrDecodedWav : undefined;
   const decodedWav = zipEntriesOrDecodedWav instanceof ArrayBuffer ? zipEntriesOrDecodedWav : decodedWavBuffer;
 
-  // 1. If it's a ZIP archive containing a bank + samples
-  if (lower.endsWith('.zip') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {
+  // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn expansions)
+  if (lower.endsWith('.zip') || lower.endsWith('.xpn') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {
     const rawZipBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const parsedEntries = parseZipArchive(rawZipBytes);
     const entriesMap = new Map<string, Uint8Array>();
@@ -868,6 +932,7 @@ export async function parseUniversalSampler(
     let nkiEntry: string | undefined;
     let vstpresetEntry: string | undefined;
     let multisampleEntry: string | undefined;
+    let xpmEntry: string | undefined;
 
     for (const name of entriesMap.keys()) {
       const nLower = name.toLowerCase();
@@ -875,6 +940,7 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.nki.xml') || nLower.endsWith('.nki')) nkiEntry = name;
       else if (nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.vstpreset')) vstpresetEntry = name;
       else if (nLower.endsWith('multisample.xml')) multisampleEntry = name;
+      else if (nLower.endsWith('.xpm') && !nLower.includes('[previews]') && !xpmEntry) xpmEntry = name;
     }
 
     // Extract audio buffers
@@ -903,6 +969,22 @@ export async function parseUniversalSampler(
       const xml = new TextDecoder('utf-8').decode(entriesMap.get(multisampleEntry)!);
       return parseBitwigMultisample(xml, audioFiles);
     }
+    if (xpmEntry) {
+      const program = await parseMpcXpm(entriesMap.get(xpmEntry)!);
+      return mpcProgramToPreset(program, audioFiles);
+    }
+  }
+
+  // Akai MPC program (MPC2 XML or MPC3 GZIP/JSON). Sibling WAVs may be supplied via zipEntries.
+  if (lower.endsWith('.xpm')) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    const audioFiles = new Map<string, ArrayBuffer>();
+    if (zipEntries) {
+      for (const [name, b] of zipEntries.entries()) {
+        audioFiles.set(cleanBasename(name), b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
+      }
+    }
+    return mpcProgramToPreset(await parseMpcXpm(bytes), audioFiles);
   }
 
   // 2. Direct format dispatch by extension / contents

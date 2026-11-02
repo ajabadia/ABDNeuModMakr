@@ -201,6 +201,16 @@ El proyecto está optimizado para Vercel:
 - **Estandarización UI en Pills**: Selectores de proveedores de IA y estilos unificados bajo componentes de píldora interactiva (`.btn-style-pill`, `.byok-provider-opt`) con badges de capacidades (`AudioSR GPU`, `Multimodal`, `GPT-4o & DALL-E`, `Sonnet & Haiku`, etc.).
 - **Catálogo Modular del Bridge**: Especificación según `MODULAR_PACKAGES_STANDARD.md` con metadatos de paquetes (`@abdsynths/*`), categorías y requisitos de VRAM en `/api/models`.
 
+### 4.14 Akai MPC (`.xpm` / `.xpn`) y Kontakt / NCW (Fases 28 y 31)
+- **Akai MPC** (`src/formats/MpcXpmFormat.ts`): importación de programas Keygroup y Drum en XML de MPC 2.x y en GZIP+JSON de MPC 3.x, y de expansiones `.xpn` (ZIP con `Expansion.xml`, programas y WAV). Escritor de programas `.xpm` (128 instrumentos x 4 capas, convenciones verificadas con archivos reales: `RootNote` = nota MIDI + 1, `SampleName` sin extensión, tiempos de envolvente logarítmicos, cutoff normalizado).
+- **Kontakt** (`src/formats/KontaktParser.ts`): detección por versión (K1/K1.5, K2-4.1 zlib, K4.2 FastLZ, K5+ contenedor NI, monolitos), extracción de zonas `K2_Zone`, detección de DRM real (chunks Authorization/Encryption) y decodificador de audio NCW (delta, truncado, raw, mid/side y float).
+
+---
+
+## Créditos y Atribuciones
+
+- **ConvertWithMoss** — Jürgen Moßgraber, https://www.mossgrabers.de/Software/ConvertWithMoss/ (licencia LGPL-3.0). Usado como referencia de documentación de formatos (Akai MPC `.xpm`/`.xpn`, Kontakt `.nki`, NCW). La implementación de NeuModMakr es independiente, escrita en TypeScript y verificada con archivos reales; no incluye ni traduce código de ConvertWithMoss.
+
 ---
 
 ## 5. Atajos de Teclado

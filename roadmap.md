@@ -757,7 +757,19 @@
 
 ---
 
-## Fase 31 — Importación/Exportación Akai MPC (`.xpm` Keygroup/Drum, `.xpn` Expansion) [PLANIFICADA — BLOQUEADA POR ESPECIFICACIÓN]
+## Fase 31 — Importación/Exportación Akai MPC (`.xpm` Keygroup/Drum, `.xpn` Expansion) [COMPLETADA (importación + escritor) / PENDIENTE (UI de exportación y validación en hardware)]
+
+**Implementado (2026-11-02)** en `src/formats/MpcXpmFormat.ts` (implementación propia; especificación obtenida de 52 `.xpm` y 10 `.xpn` reales de `_RESOURCES/samplers/akai mpc` y contrastada con ConvertWithMoss, LGPL-3.0, solo como referencia):
+- Lector MPC 2.x XML (Keygroup y Drum) y MPC 3.x GZIP+JSON; expansiones `.xpn` (ZIP) integradas en `parseUniversalSampler`; `.xpm` + WAV hermanos seleccionados juntos en la importación universal.
+- Escritor `.xpm` (128 instrumentos x 4 capas), agrupación automática de regiones en keygroups con desbordamiento a keygroups solapados, round-robin (ZonePlay ciclo) y release (TriggerMode note-off); generador de `Expansion.xml`.
+- Tests: `tests/phase31_mpc_xpm.test.ts` (10/10, incluye los 52 `.xpm` reales y una expansión MPC3).
+
+**Pendiente**:
+- Botón/opción de exportación MPC en `RawSamplerExportModal` (carpeta `.xpm` + WAV y empaquetado `.xpn`).
+- Validar en MPC Software/hardware que carga los `.xpm` generados (la ley de volumen exacta y los campos mínimos no están confirmados oficialmente).
+- Escritura en formato MPC 3 JSON.
+
+**Auditoría original de `kontakt2mpce-main`**: no sirve como especificación (código esqueleto, ejemplos XPM declarados "conceptuales").
 
 **Auditoría de `kontakt2mpce-main` (2026-11-02)**: el repositorio no sirve como especificación. Su código es un esqueleto (`convert_nki_to_xpm` lanza `NotImplementedError`) y su documentación XPM declara expresamente que los ejemplos son "conceptuales" y que los nombres de elementos reales pueden diferir. No aporta nada nuevo sobre Kontakt (remite a `nkitool` y ConvertWithMoss, e incluso indica que NCW requiere Kontakt, cosa ya superada por nuestro decodificador de la Fase 28).
 
