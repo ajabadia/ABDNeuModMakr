@@ -73,6 +73,52 @@ import {
   listYamahaDiskPrograms,
   parseYamahaDiskProgram,
 } from './YamahaDiskFormat.ts';
+import {
+  isWaldorfQpatBuffer,
+  listWaldorfQpatLayers,
+  parseWaldorfQpat,
+  importWaldorfQpatZip,
+} from './WaldorfQpatFormat.ts';
+import {
+  isOpXyPatchJson,
+  parseOpXyPatch,
+  importOpXyZip,
+} from './OpXyFormat.ts';
+import {
+  isTonverkPstText,
+  parseTonverkPst,
+  importTonverkZip,
+} from './TonverkFormat.ts';
+import {
+  isDistingExBuffer,
+  parseDistingExPreset,
+  importDistingExZip,
+} from './DistingExFormat.ts';
+import {
+  isProphetXGroupText,
+  parseProphetXGroupText,
+  importProphetXZip,
+} from './ProphetXFormat.ts';
+import {
+  isS2400KitBuffer,
+  parseS2400Kit,
+  importS2400Zip,
+} from './IslaS2400Format.ts';
+import {
+  isKorgMultisampleBuffer,
+  parseKorgMultisample,
+  importKorgMultisampleZip,
+} from './KorgMultisampleModernFormat.ts';
+import {
+  isThirdWaveBuffer,
+  parseThirdWaveProgram,
+  importThirdWaveZip,
+} from './ThirdWaveFormat.ts';
+import {
+  isZenCoreSvzBuffer,
+  parseZenCoreSvz,
+  importZenCoreZip,
+} from './ZenCoreSvzFormat.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -93,7 +139,16 @@ export type RawSamplerFormat =
   | 'emu_disk'
   | 'roland_disk'
   | 'ensoniq_disk'
-  | 'yamaha_disk';
+  | 'yamaha_disk'
+  | 'waldorf_qpat'
+  | 'opxy'
+  | 'tonverk'
+  | 'disting_ex'
+  | 'prophet_x'
+  | 'isla_s2400'
+  | 'korg_modern'
+  | 'third_wave'
+  | 'zencore';
 
 export interface ParsedImportRegion {
   id: string;
@@ -2040,6 +2095,78 @@ export async function listZipSamplerPrograms(
         format: 'dls',
         detail: 'Downloadable Sounds (.DLS)',
       });
+    } else if (nLower.endsWith('.qpat')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.qpat$/i, ''),
+        format: 'waldorf_qpat',
+        detail: 'Waldorf Quantum/Iridium Patch',
+      });
+    } else if (nLower.endsWith('patch.json')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/patch\.json$/i, '') || 'OP-XY Patch',
+        format: 'opxy',
+        detail: 'Teenage Engineering OP-XY',
+      });
+    } else if (nLower.endsWith('.tvpst') || nLower.endsWith('elmulti')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(tvpst|elmulti)$/i, ''),
+        format: 'tonverk',
+        detail: 'Elektron Tonverk Preset',
+      });
+    } else if (nLower.endsWith('.dexpreset')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.dexpreset$/i, ''),
+        format: 'disting_ex',
+        detail: 'Expert Sleepers Disting EX',
+      });
+    } else if (nLower.endsWith('.grp')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.grp$/i, ''),
+        format: 'prophet_x',
+        detail: 'Sequential Prophet X (.grp)',
+      });
+    } else if (nLower.endsWith('.kit') || nLower.endsWith('.s24')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.(kit|s24)$/i, ''),
+        format: 'isla_s2400',
+        detail: 'Isla Instruments S2400 Kit',
+      });
+    } else if (nLower.endsWith('.korgmultisample')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.korgmultisample$/i, ''),
+        format: 'korg_modern',
+        detail: 'Korg Modern Multisample',
+      });
+    } else if (nLower.endsWith('.3wv')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.3wv$/i, ''),
+        format: 'third_wave',
+        detail: 'Groove Synthesis 3rd Wave',
+      });
+    } else if (nLower.endsWith('.svz')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.svz$/i, ''),
+        format: 'zencore',
+        detail: 'Roland Zen-Core / SP-404MKII',
+      });
     }
   }
 
@@ -2112,6 +2239,15 @@ export async function parseUniversalSampler(
     let txprogEntry: string | undefined;
     let kmpEntry: string | undefined;
     let dlsEntry: string | undefined;
+    let qpatEntry: string | undefined;
+    let opxyEntry: string | undefined;
+    let tonverkEntry: string | undefined;
+    let distingEntry: string | undefined;
+    let prophetEntry: string | undefined;
+    let islaEntry: string | undefined;
+    let korgModernEntry: string | undefined;
+    let thirdWaveEntry: string | undefined;
+    let zenCoreEntry: string | undefined;
     const xpmEntries: string[] = [];
 
     const normTarget = targetProgramPath?.replace(/\\/g, '/');
@@ -2128,6 +2264,15 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.txprog')) txprogEntry = name;
       else if (nLower.endsWith('.kmp')) kmpEntry = name;
       else if (nLower.endsWith('.dls')) dlsEntry = name;
+      else if (nLower.endsWith('.qpat')) qpatEntry = name;
+      else if (nLower.endsWith('patch.json')) opxyEntry = name;
+      else if (nLower.endsWith('.tvpst') || nLower.endsWith('elmulti')) tonverkEntry = name;
+      else if (nLower.endsWith('.dexpreset')) distingEntry = name;
+      else if (nLower.endsWith('.grp')) prophetEntry = name;
+      else if (nLower.endsWith('.kit') || nLower.endsWith('.s24')) islaEntry = name;
+      else if (nLower.endsWith('.korgmultisample')) korgModernEntry = name;
+      else if (nLower.endsWith('.3wv')) thirdWaveEntry = name;
+      else if (nLower.endsWith('.svz')) zenCoreEntry = name;
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
@@ -2198,6 +2343,294 @@ export async function parseUniversalSampler(
       const dlsBytes = extractZipEntry(rawZipBytes, indexMap.get(dlsEntry)!);
       const dlsBuf = dlsBytes.buffer.slice(dlsBytes.byteOffset, dlsBytes.byteOffset + dlsBytes.byteLength) as ArrayBuffer;
       return parseDlsPreset(dlsBuf, 0, cleanBasename(dlsEntry).replace(/\.dls$/i, ''));
+    }
+    if (qpatEntry) {
+      const qBytes = extractZipEntry(rawZipBytes, indexMap.get(qpatEntry)!);
+      const qBuf = qBytes.buffer.slice(qBytes.byteOffset, qBytes.byteOffset + qBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const pIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
+      const parsed = parseWaldorfQpat(qBuf, pIdx, audioMap);
+      return {
+        format: 'waldorf_qpat',
+        formatLabel: 'Waldorf Quantum/Iridium (.qpat)',
+        presetName: parsed.presetName,
+        modelName: parsed.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(parsed.presetName).category,
+        suggestedParameterSet: classifyPresetCategory(parsed.presetName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: r.loops && r.loops.length > 0 ? r.loops[0].mode : (r.loopMode ?? 'no_loop'),
+          loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : r.loopStart,
+          loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : r.loopEnd,
+          sampleStartFrame: r.sampleStartFrame,
+          sampleEndFrame: r.sampleEndFrame,
+          reversed: r.reversed,
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (opxyEntry) {
+      const pBytes = extractZipEntry(rawZipBytes, indexMap.get(opxyEntry)!);
+      const jsonText = new TextDecoder('utf-8').decode(pBytes);
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseOpXyPatch(jsonText, audioMap);
+      const pName = cleanBasename(filename).replace(/\.(preset|zip)$/i, '') || parsed.presetName;
+      return {
+        format: 'opxy',
+        formatLabel: 'Teenage Engineering OP-XY',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: r.loops && r.loops.length > 0 ? r.loops[0].mode : (r.loopMode ?? 'no_loop'),
+          loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : r.loopStart,
+          loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : r.loopEnd,
+          sampleStartFrame: r.sampleStartFrame,
+          sampleEndFrame: r.sampleEndFrame,
+          reversed: r.reversed,
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (tonverkEntry) {
+      const tvBytes = extractZipEntry(rawZipBytes, indexMap.get(tonverkEntry)!);
+      const tvText = new TextDecoder('utf-8').decode(tvBytes);
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseTonverkPst(tvText, audioMap);
+      const pName = cleanBasename(tonverkEntry).replace(/\.(tvpst|elmulti)$/i, '') || parsed.presetName;
+      return {
+        format: 'tonverk',
+        formatLabel: 'Elektron Tonverk (.tvpst)',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: r.loops && r.loops.length > 0 ? r.loops[0].mode : (r.loopMode ?? 'no_loop'),
+          loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : r.loopStart,
+          loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : r.loopEnd,
+          sampleStartFrame: r.sampleStartFrame,
+          sampleEndFrame: r.sampleEndFrame,
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (distingEntry) {
+      const dexBytes = extractZipEntry(rawZipBytes, indexMap.get(distingEntry)!);
+      const dexBuf = dexBytes.buffer.slice(dexBytes.byteOffset, dexBytes.byteOffset + dexBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseDistingExPreset(dexBuf, Array.from(audioMap.keys()), audioMap);
+      const pName = cleanBasename(distingEntry).replace(/\.dexpreset$/i, '') || parsed.presetName;
+      return {
+        format: 'disting_ex',
+        formatLabel: 'Expert Sleepers Disting EX',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: r.loops && r.loops.length > 0 ? r.loops[0].mode : (r.loopMode ?? 'no_loop'),
+          loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : r.loopStart,
+          loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : r.loopEnd,
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (prophetEntry) {
+      const gBytes = extractZipEntry(rawZipBytes, indexMap.get(prophetEntry)!);
+      const gText = new TextDecoder('utf-8').decode(gBytes);
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseProphetXGroupText(gText, audioMap);
+      const pName = cleanBasename(prophetEntry).replace(/\.grp$/i, '') || parsed.presetName;
+      return {
+        format: 'prophet_x',
+        formatLabel: 'Sequential Prophet X (.grp)',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: r.loops && r.loops.length > 0 ? r.loops[0].mode : (r.loopMode ?? 'no_loop'),
+          loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : r.loopStart,
+          loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : r.loopEnd,
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (islaEntry) {
+      const kBytes = extractZipEntry(rawZipBytes, indexMap.get(islaEntry)!);
+      const kBuf = kBytes.buffer.slice(kBytes.byteOffset, kBytes.byteOffset + kBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseS2400Kit(kBuf, Array.from(audioMap.keys()));
+      const pName = cleanBasename(islaEntry).replace(/\.(kit|s24)$/i, '') || parsed.presetName;
+      return {
+        format: 'isla_s2400',
+        formatLabel: 'Isla Instruments S2400 Kit',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: 'no_loop',
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (korgModernEntry) {
+      const kmBytes = extractZipEntry(rawZipBytes, indexMap.get(korgModernEntry)!);
+      const kmBuf = kmBytes.buffer.slice(kmBytes.byteOffset, kmBytes.byteOffset + kmBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseKorgMultisample(kmBuf, Array.from(audioMap.keys()));
+      const pName = cleanBasename(korgModernEntry).replace(/\.korgmultisample$/i, '') || parsed.presetName;
+      return {
+        format: 'korg_modern',
+        formatLabel: 'Korg Modern Multisample',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: 'no_loop',
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (thirdWaveEntry) {
+      const twBytes = extractZipEntry(rawZipBytes, indexMap.get(thirdWaveEntry)!);
+      const twBuf = twBytes.buffer.slice(twBytes.byteOffset, twBytes.byteOffset + twBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseThirdWaveProgram(twBuf, Array.from(audioMap.keys()));
+      const pName = cleanBasename(thirdWaveEntry).replace(/\.3wv$/i, '') || parsed.presetName;
+      return {
+        format: 'third_wave',
+        formatLabel: 'Groove Synthesis 3rd Wave',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: 'no_loop',
+        })),
+        audioBuffers: audioMap,
+      };
+    }
+    if (zenCoreEntry) {
+      const zBytes = extractZipEntry(rawZipBytes, indexMap.get(zenCoreEntry)!);
+      const zBuf = zBytes.buffer.slice(zBytes.byteOffset, zBytes.byteOffset + zBytes.byteLength) as ArrayBuffer;
+      const audioMap = await extractAudioBuffers();
+      const parsed = parseZenCoreSvz(zBuf, Array.from(audioMap.keys()));
+      const pName = cleanBasename(zenCoreEntry).replace(/\.svz$/i, '') || parsed.presetName;
+      return {
+        format: 'zencore',
+        formatLabel: 'Roland Zen-Core / SP-404MKII',
+        presetName: pName,
+        modelName: pName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(pName).category,
+        suggestedParameterSet: classifyPresetCategory(pName).parameterSet,
+        regions: parsed.regions.map((r) => ({
+          id: r.id,
+          sampleName: r.sampleName,
+          samplePath: r.sampleName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detune ?? 0,
+          volumeDb: r.volume ?? 0,
+          pan: r.pan ?? 0,
+          loopMode: 'no_loop',
+        })),
+        audioBuffers: audioMap,
+      };
     }
     if (xpmEntries.length > 0) {
       const availStems = new Set<string>();

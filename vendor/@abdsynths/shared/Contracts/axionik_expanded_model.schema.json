@@ -1,0 +1,264 @@
+{
+  "$id": "https://abdsynths.example/contracts/axionik_expanded_model.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AxionikExpandedModel",
+  "description": "Canonical Axionik Expanded Model document (SSOT v2.0.0). Dual-engine contract: frozen classic layer + expanded voice path. See Contracts/axionikExpandedModel.ts.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "identity",
+    "spectral",
+    "regions",
+    "articulation",
+    "resynators",
+    "analysis",
+    "classic"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2.0.0" },
+    "identity": {
+      "type": "object",
+      "required": ["slug", "expandedName", "modelName", "engineMin", "requiredCaps"],
+      "properties": {
+        "slug": { "type": "string", "minLength": 1 },
+        "expandedName": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string", "maxLength": 11 },
+        "engineMin": { "enum": ["classic", "expanded-v1"] },
+        "requiredCaps": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "hd-spectral",
+              "formant-pitch-split",
+              "morph-2d",
+              "morph-3d",
+              "latent-ref",
+              "surround",
+              "hybrid-transient",
+              "filter-v2",
+              "fx-v2",
+              "ai-provenance"
+            ]
+          }
+        },
+        "classicSlot": { "type": "integer", "minimum": 0, "maximum": 511 }
+      }
+    },
+    "spectral": {
+      "type": "object",
+      "required": ["partialCount", "frameCount", "frames"],
+      "properties": {
+        "partialCount": { "type": "integer", "minimum": 1 },
+        "frameCount": { "type": "integer", "minimum": 1 },
+        "frameSpanHz": { "type": "number", "minimum": 0 },
+        "gridFixed": { "type": "boolean" },
+        "frames": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["amps", "offsets"],
+            "properties": {
+              "amps": { "type": "array", "items": { "type": "number" } },
+              "offsets": { "type": "array", "items": { "type": "number" } },
+              "f0Hz": { "type": "number", "minimum": 0 },
+              "formantShiftSt": { "type": "number" },
+              "weight": { "type": "number" }
+            }
+          }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "weight", "frames"],
+            "properties": {
+              "name": { "type": "string" },
+              "weight": { "type": "number" },
+              "frames": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["amps", "offsets"],
+                  "properties": {
+                    "amps": { "type": "array", "items": { "type": "number" } },
+                    "offsets": { "type": "array", "items": { "type": "number" } },
+                    "f0Hz": { "type": "number", "minimum": 0 },
+                    "formantShiftSt": { "type": "number" },
+                    "weight": { "type": "number" }
+                  }
+                }
+              },
+              "frameWeights": { "type": "array", "items": { "type": "number" } }
+            }
+          }
+        },
+        "pitchTrackHz": { "type": "array", "items": { "type": "number" } },
+        "formantProfileSt": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "morphSpace": {
+      "type": "object",
+      "required": ["dims", "points"],
+      "properties": {
+        "dims": { "enum": [2, 3] },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["u", "v", "frameIndex"],
+            "properties": {
+              "u": { "type": "number" },
+              "v": { "type": "number" },
+              "w": { "type": "number" },
+              "frameIndex": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "latentRef": {
+          "type": "object",
+          "required": ["dims", "codec", "dataRef"],
+          "properties": {
+            "dims": { "type": "integer", "minimum": 1 },
+            "codec": { "type": "string" },
+            "dataRef": { "type": "string" }
+          }
+        }
+      }
+    },
+    "regions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "sampleRef", "lowKey", "highKey", "rootKey", "lowVel", "highVel"],
+        "properties": {
+          "id": { "type": "string" },
+          "sampleRef": { "type": "string" },
+          "lowKey": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "highKey": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "rootKey": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "lowVel": { "type": "integer", "minimum": 1, "maximum": 127 },
+          "highVel": { "type": "integer", "minimum": 1, "maximum": 127 },
+          "detuneCents": { "type": "number" },
+          "volumeDb": { "type": "number" },
+          "pan": { "type": "number" },
+          "pitchKeytrack": { "type": "number" },
+          "loop": {
+            "type": "object",
+            "required": ["mode", "startFrame", "endFrame"],
+            "properties": {
+              "mode": { "type": "string" },
+              "startFrame": { "type": "integer", "minimum": 0 },
+              "endFrame": { "type": "integer", "minimum": 0 },
+              "crossfadeMs": { "type": "number", "minimum": 0 }
+            }
+          },
+          "channels": { "enum": [1, 2, 4] }
+        }
+      }
+    },
+    "articulation": {
+      "type": "object",
+      "required": ["ampEnv", "filters", "fxChain"],
+      "properties": {
+        "ampEnv": { "$ref": "#/definitions/dahdsr" },
+        "modEnv": { "$ref": "#/definitions/dahdsr" },
+        "modEnvToPitchCents": { "type": "number" },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "cutoffHz", "resonance"],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "cutoffHz": { "type": "number", "minimum": 0 },
+              "resonance": { "type": "number", "minimum": 0 },
+              "keytrack": { "type": "number" },
+              "bypass": { "type": "boolean" }
+            }
+          }
+        },
+        "fxChain": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type"],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "bypass": { "type": "boolean" },
+              "mix": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "polyphony": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "voiceMode": { "enum": ["poly", "mono", "legato"] },
+        "glideTimeSec": { "type": "number", "minimum": 0 }
+      }
+    },
+    "resynators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "model", "params"],
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "const": 2 },
+          "model": { "type": "string" },
+          "params": { "type": "object" }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["algorithm", "complexity", "parameterSet"],
+      "properties": {
+        "algorithm": { "enum": ["legacy", "enhanced", "hd"] },
+        "complexity": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "parameterSet": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "category": { "type": "string" },
+        "qualityScore": { "type": "number" },
+        "descriptorsRef": { "type": "string" }
+      }
+    },
+    "aiChain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability"],
+        "properties": {
+          "capability": { "enum": ["audiosr", "htdemucs", "bigvgan", "outpaint-loop"] },
+          "model": { "type": "string" },
+          "appliedAt": { "type": "string" },
+          "targetLayer": { "type": "string" }
+        }
+      }
+    },
+    "classic": {
+      "type": "object",
+      "required": ["modelName"],
+      "properties": {
+        "modelName": { "type": "string", "maxLength": 11 },
+        "mapScriptRef": { "type": "string" },
+        "scapeSphereRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "dahdsr": {
+      "type": "object",
+      "required": ["delay", "attack", "hold", "decay", "sustain", "release"],
+      "properties": {
+        "delay": { "type": "number", "minimum": 0 },
+        "attack": { "type": "number", "minimum": 0 },
+        "hold": { "type": "number", "minimum": 0 },
+        "decay": { "type": "number", "minimum": 0 },
+        "sustain": { "type": "number", "minimum": 0, "maximum": 1 },
+        "release": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

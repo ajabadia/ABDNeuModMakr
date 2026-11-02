@@ -157,7 +157,7 @@ El proyecto está optimizado para Vercel:
 
 ### 4.9 Utilidad Universal de Exportación Multi-Formato Raw (`RawSamplerExportModal.ts` & `RawSamplerExporter.ts` — Fase 16, 31, 32)
 - Exportación directa de muestras y zonas originales (`01_raw_source`) de forma pura e intacta, **sin pasar por los transformadores espectrales Scape/Sphere** de Neuron.
-- **16 Estándares de la Industria Soportados (Lectura y Escritura Bidireccional)**:
+- **30+ Estándares de la Industria Soportados (Lectura y Escritura Bidireccional)**:
   - **SoundFont 2 (`.sf2`)**: Generador binario RIFF `sfbk` v2.04 completo con generadores de offsets de muestra, `exclusiveClass` (choke/mute groups), `scaleTuning`, bucles continuos y filtro 2 polos.
   - **SFZ Format (`.sfz` + carpeta `Samples/` en `.zip`)**: Definición estándar de texto plano con `<control>`, `<global>`, `<master>`, `<group>`, `<region>`, `offset`/`end`, `loop_crossfade`, `direction=reverse`, curvas de fundido cruzado `xf_keycurve`/`xf_velcurve`, filtros multimodo (1/2/4/6 polos), `fileg_*`, `pitcheg_*`, `group`/`off_by` y keyswitches.
   - **Decent Sampler (`.dspreset` + carpeta `Samples/` en `.zip`)**: Definición XML nativa con interfaz gráfica interactiva, `start`/`end`, `loopCrossfade`, `seqMode="round_robin"`, `tags`/`silencedByTags` (mute groups) y efectos de filtro/reverb.
@@ -171,6 +171,20 @@ El proyecto está optimizado para Vercel:
   - **Akai MPC Moderno (`.xpm`, `.xpn`, `.xty`, `.xtd`)**: Programas Keygroup y Drum XML (MPC 2.x) y GZIP+JSON (MPC 3.x), paquetes de expansión `.xpn`, kits troceados DRY con división de WAV largo, soporte de choke groups (`MuteGroup`), Round-Robin (`CycleType`) y asignación por pad.
   - **Native Instruments Kontakt (`.nki.zip`)**: Definición estructurada XML y binaria para versiones K1 a K4 con grupos, zonas, notas raíz, rangos de teclas y velocidades, y soporte para muestras comprimidas sin pérdida `.ncw`.
   - **Steinberg HALion (`.vstpreset.zip`)**: Contenedor binario `VstW` con XML de programa HALion, capas de zonas, fundidos cruzados, conmutadores por nota (keyswitches) y mapeo tímbrico.
+  - **1010music Blackbox / Tangerine (`preset.xml` en `.zip`)**: Presets XML para la serie 1010music con asignación de celdas por cuadrícula, activos multisample, envolventes de amplitud/filtro y audio asociado.
+  - **Synthstrom Deluge (`SYNTHS/*.XML` en `.zip`)**: Sintetizador y sampler de rejilla con definiciones XML en `SYNTHS/`, mapeo de rangos con `rangeTopNote`, filtros resonantes multimodo y muestras en `SAMPLES/`.
+  - **Renoise Instrument (`.xrni`)**: Formato contenedor ZIP de tracker con `Instrument.xml`, compresión de audio FLAC sin pérdida en `SampleData/`, capas de modulación por muestra y bucles bidireccionales.
+  - **discoDSP Bliss (`.zbp`)**: Sampler VST con definiciones `program.xml` empaquetadas en ZIP, audio en FLAC nativo y parámetros completos de zona y envolvente.
+  - **Polyend Tracker / Play (`.pti`)**: Instrumento standalone binario de tracker con cabecera `TI`, parámetros de reproducción, modulación de corte y muestra PCM16 de 44.1 kHz incrustada.
+  - **Waldorf Quantum / Iridium (`.qpat` en `.zip`)**: Sintetizador híbrido de referencia con contenedor binario `0x0033ECB4`, tabla de parámetros de 16 bytes y mapas de muestras de texto tabulado con crossfade y bucles.
+  - **Teenage Engineering OP-XY (`patch.json` en `.preset` o `.zip`)**: Multisampler moderno con estructura JSON limpia para motor de síntesis, envolventes, rangos de nota/velocidad, start/end y puntos de bucle.
+  - **Elektron Tonverk (`.tvpst` / `elmulti` en `.zip`)**: Presets basados en formato declarativo estilo TOML con `[[key-zones]]`, `[[key-zones.velocity-layers]]` y `[[key-zones.velocity-layers.sample-slots]]`.
+  - **Expert Sleepers Disting EX (`.dexpreset` en `.zip`)**: Formato multisample modular Eurorack en archivo binario `DEXBPRST` con algoritmo 2 y convención de nombres de archivo `[Name]_[Note]_SW[key]_V[vel].wav`.
+  - **Sequential Prophet X / XL (`.grp` en `.zip`)**: Mapeo multisample hardware de 15 columnas TSV a 48 kHz con afinación por Hertz exacta (`File Path`, `Low Midi Note`, `Pitch in Hertz`).
+  - **Isla Instruments S2400 (`.kit` / `.s24` en `.zip`)**: Kit de sampler clásico y multisample binario con registros TLV (`FIELD_*`), ganancia de pista, choke groups y modos de disparo.
+  - **Korg Modern Multisample (`.korgmultisample` en `.zip`)**: Formato multisample binario moderno para teclados Korg Kronos, Nautilus, WaveState y modwave (`0x00000001`).
+  - **Groove Synthesis 3rd Wave (`.3wv` en `.zip`)**: Sintetizador wavetable/multisample híbrido con archivo binario de programa `3WV\0`, ranuras de mapeo de notas y afinación por ranura.
+  - **Roland Zen-Core / SP-404MKII / MC-707 (`.svz` en `.zip`)**: Descriptor de tono binario `SVZ\0` de la plataforma Zen-Core y samplers Roland modernos con zonas de tecla y afinación.
   - **Linear Sample Chain con Cue Markers (`.wav`)**: Archivo de audio continuo lineal de 16-bit o 24-bit PCM con marcas de división RIFF `cue ` incrustadas y etiquetas `LIST adtl` para grooves y samplers hardware (Elektron Octatrack, Roland SP-404 MKII, Korg electribe, OP-1/OP-Z), acompañado de mapa de marcas en texto (`_slices.txt`).
 - **Compuerta de Preflight e Inspección Técnica (`rawSamplerPreflight.ts` & `FormatFidelity.ts`)**:
   - Detección preventiva de incompatibilidades técnicas y evaluación de avisos de fidelidad para los 16 formatos.

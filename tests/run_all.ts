@@ -37,6 +37,7 @@ const TEST_FILES = [
   'phase31_mpc_xpm.test.ts',
   'phase32_formats_block1.test.ts',
   'phase32_formats_block2a.test.ts',
+  'phase32_formats_block2b.test.ts',
   'phase32_formats_akai_disk.test.ts',
   'phase32_formats_vintage_disks.test.ts',
 ];

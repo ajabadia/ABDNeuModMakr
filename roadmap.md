@@ -847,22 +847,25 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
    - **MMA Downloadable Sounds Level 2 (`.dls`)** (`DlsFormat.ts`): lector/escritor binario Little-Endian RIFF `"DLS "` con `colh`, `ptbl`, `LIST('lins')`, `insh`, `LIST('lrgn')` -> `LIST('rgn2')` (`rgnh`, `wsmp`, `wlnk`), `LIST('lar2')` -> `art2` (bloques de conexión de 12B en timecents/pitch-cents/mB) y `LIST('wvpl')`.
    - **Decodificación Universal de Muestras de Audio [COMPLETADO]** (`UniversalAudioDecoder.ts` + `WavAiffDecoder.ts`): decodificador y codificador FLAC (`fLaC`, RFC 9639) nativo en TS puro con `VORBIS_COMMENT` y chunk `smpl`, decodificador Apple CoreAudio CAF (`.caf`), AIFF/AIFC con compresión Little-Endian `sowt`, Float32/64, IMA4 ADPCM, uLaw, aLaw, y transcodificador asíncrono WebAudio para MP3, OGG, M4A, Opus.
    - Verificado con `tests/phase32_formats_block1.test.ts` (14/14 PASS).
-2. [ ] **Bloque 2 — Hardware Moderno SD / Trackers / XML [EN CURSO]**:
-   - **Sub-bloque 2A (Modernos SD / Trackers / XML)**:
-     - [ ] **1010music Blackbox / Tangerine** (`preset.xml` + muestras en subcarpetas con `<session>`, `<cell>`, `<params>`).
-     - [ ] **Synthstrom Deluge** (`SYNTHS/*.XML` / `KITS/*.XML` con `<sound>`, `<osc1>`, `<zone>`, `<envelope1/2>`, `<filter>`).
-     - [ ] **Renoise Instrument** (`.xrni` — archivo ZIP con `Instrument.xml` + muestras en `SampleData/`).
-     - [ ] **discoDSP Bliss** (`.zbp` — archivo ZIP con `program.xml` + muestras FLAC/WAV).
-     - [ ] **Polyend Tracker / Play** (`.pti` — cabecera binaria `TI` + 372 bytes de bloque de parámetros + PCM16 44.1kHz).
-   - **Sub-bloque 2B (Hardware Moderno Adicional)**:
-     - [ ] **Waldorf Quantum / Iridium** (`.qpat`).
-     - [ ] **Elektron Tonverk / Digitakt / Octatrack** (`.tvpst`, `.ot`).
-     - [ ] **Teenage Engineering OP-XY / OP-Field** (JSON + RIFF patches).
-     - [ ] **Expert Sleepers Disting EX** (multisample SD maps).
-     - [ ] **Isla Instruments S2400** (`.s24` / kits).
-     - [ ] **Groove Synthesis 3rd Wave** (`.3wv`).
-     - [ ] **Sequential Prophet X** (`.pxi`).
-     - [ ] **Roland SP-404MKII / MC-707 / Zen-Core** (`.svz` / kits).
+2. [x] **Bloque 2 — Hardware Moderno SD / Trackers / Sintetizadores [COMPLETADO]**:
+   - **Sub-bloque 2A (Modernos SD / Trackers / XML) [COMPLETADO]**:
+     - [x] **1010music Blackbox / Tangerine** (`preset.xml` + muestras en subcarpetas con `<session>`, `<cell>`, `<params>`).
+     - [x] **Synthstrom Deluge** (`SYNTHS/*.XML` / `KITS/*.XML` con `<sound>`, `<osc1>`, `<zone>`, `<envelope1/2>`, `<filter>`).
+     - [x] **Renoise Instrument** (`.xrni` — archivo ZIP con `Instrument.xml` + muestras en `SampleData/` en formato FLAC).
+     - [x] **discoDSP Bliss** (`.zbp` — archivo ZIP con `program.xml` + muestras FLAC/WAV).
+     - [x] **Polyend Tracker / Play** (`.pti` — cabecera binaria `TI` + 372 bytes de bloque de parámetros + PCM16 44.1kHz).
+     - Verificado con `tests/phase32_formats_block2a.test.ts` (6/6 PASS).
+   - **Sub-bloque 2B (Hardware Moderno Adicional) [COMPLETADO]**:
+     - [x] **Waldorf Quantum / Iridium** (`.qpat` — contenedor binario `0x0033ECB4`, tabla de parámetros y mapas de muestra tabulados con crossfade y bucles).
+     - [x] **Elektron Tonverk / Digitakt** (`.tvpst` / `elmulti` con formato declarativo TOML `[[key-zones]]`, `[[key-zones.velocity-layers]]` y `[[key-zones.velocity-layers.sample-slots]]`).
+     - [x] **Teenage Engineering OP-XY / OP-Field** (`patch.json` en `.preset` o `.zip` con estructura JSON para motor, envolventes, start/end y bucles).
+     - [x] **Expert Sleepers Disting EX** (`.dexpreset` binario `DEXBPRST` con algoritmo 2 y convención de nombres `[Name]_[Note]_SW[key]_V[vel].wav`).
+     - [x] **Sequential Prophet X / XL** (`.grp` con mapeo de 15 columnas TSV a 48 kHz y afinación por Hertz exacta).
+     - [x] **Isla Instruments S2400** (`.kit` / `.s24` binario TLV con registros de campo `FIELD_*`, ganancia de pista, choke groups y modos de disparo).
+     - [x] **Korg Modern Multisample** (`.korgmultisample` binario `0x00000001` para Kronos, Nautilus, WaveState y modwave).
+     - [x] **Groove Synthesis 3rd Wave** (`.3wv` binario `3WV\0` con ranuras de programa y asignación de notas).
+     - [x] **Roland SP-404MKII / MC-707 / Zen-Core** (`.svz` binario `SVZ\0` con descriptores de tono y zonas de tecla).
+     - Verificado con `tests/phase32_formats_block2b.test.ts` (10/10 PASS).
 3. [ ] **Bloque 3 — Formatos Binarios Clásicos e Imágenes de Disco (CD/SCSI/Floppy/Gotek)**:
    - [x] **Akai S-Series Vintage & MESA [COMPLETADO]**:
      - **Akai S900 / S950** (`.img`, `.dsk`, discos de 3.5" DD 720KB/HD 1.44MB para emuladores Gotek FlashFloppy y disqueteras físicas, descompresión por grupos de 10 muestras con bit-count variable de 12-bit).

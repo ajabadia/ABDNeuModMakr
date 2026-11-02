@@ -164,6 +164,30 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.pti',
     mimeType: 'application/octet-stream',
   },
+  waldorf_qpat: {
+    title: 'Waldorf Quantum / Iridium (.qpat)',
+    description: 'Contenedor de patch y mapa de muestras para sintetizadores Waldorf Quantum e Iridium.',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
+  opxy: {
+    title: 'Teenage Engineering OP-XY (.preset)',
+    description: 'Paquete de preset multisampler para Teenage Engineering OP-XY (patch.json + muestras WAV).',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
+  tonverk: {
+    title: 'Elektron Tonverk (.tvpst / elmulti)',
+    description: 'Preset de instrumento o multi-sample para sintetizador/groovebox Elektron Tonverk.',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
+  disting_ex: {
+    title: 'Expert Sleepers Disting EX (.dexpreset)',
+    description: 'Preset de multisample para módulo eurorack Expert Sleepers Disting EX (archivo DEXBPRST + WAVs).',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
   sample_chain: {
     title: 'Sample Chain Lineal con Cue Markers (.wav)',
     description: 'Audio continuo concatenado con marcas RIFF cue/smpl para Octatrack, SP-404, electribe y OP-1.',

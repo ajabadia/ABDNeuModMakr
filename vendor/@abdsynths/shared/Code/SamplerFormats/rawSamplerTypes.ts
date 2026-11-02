@@ -43,6 +43,15 @@ export type RawSamplerFormat =
   | 'renoise'      // Renoise Instrument (.xrni ZIP with Instrument.xml + FLAC SampleData/)
   | 'bliss'        // discoDSP Bliss (.zbp ZIP with program.xml + FLAC samples)
   | 'polyend_pti'  // Polyend Tracker / Play (.pti standalone binary)
+  | 'waldorf_qpat' // Waldorf Quantum / Iridium (.qpat patch in .zip or standalone)
+  | 'opxy'         // Teenage Engineering OP-XY (patch.json in .preset / .zip)
+  | 'tonverk'      // Elektron Tonverk (.tvpst / elmulti in .zip)
+  | 'disting_ex'   // Expert Sleepers Disting EX (.dexpreset in .zip)
+  | 'prophet_x'    // Sequential Prophet X / XL (.grp in .zip)
+  | 'isla_s2400'   // Isla Instruments S2400 (.kit / .s24 in .zip)
+  | 'korg_modern'  // Korg Multisample Modern (.korgmultisample in .zip)
+  | 'third_wave'   // Groove Synthesis 3rd Wave (.3wv in .zip)
+  | 'zencore'      // Roland Zen-Core / SP-404MKII / MC-707 (.svz in .zip)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';

@@ -42,6 +42,10 @@ import { importDelugeZip } from './DelugeFormat.ts';
 import { importRenoiseXrni } from './RenoiseFormat.ts';
 import { importBlissZip } from './BlissFormat.ts';
 import { parsePolyendTrackerPti } from './PolyendTrackerFormat.ts';
+import { importWaldorfQpatZip } from './WaldorfQpatFormat.ts';
+import { importOpXyZip } from './OpXyFormat.ts';
+import { importTonverkZip } from './TonverkFormat.ts';
+import { importDistingExZip } from './DistingExFormat.ts';
 import {
   parseUniversalSampler,
   type ParsedSamplerPreset,
@@ -1525,6 +1529,174 @@ export async function parseUniversalSamplerInstrument(
         });
       } catch {
         // Not a valid Deluge archive
+      }
+    }
+
+    const hasQpat = entries.some(e => e.path.toLowerCase().endsWith('.qpat'));
+    if (hasQpat) {
+      try {
+        const qRes = importWaldorfQpatZip(buffer);
+        return parsedSamplerPresetToUniversalInstrument({
+          format: 'waldorf_qpat' as unknown as ParsedSamplerPreset['format'],
+          formatLabel: 'Waldorf Quantum/Iridium (.qpat)',
+          presetName: qRes.presetName,
+          modelName: qRes.presetName.slice(0, 11),
+          detectedCategory: 'Instrument',
+          suggestedParameterSet: 0,
+          filter: qRes.articulation.filter,
+          envelope: qRes.articulation.ampEnvEnabled ? {
+            attack: qRes.articulation.ampEnv.attackSec,
+            decay: qRes.articulation.ampEnv.decaySec,
+            sustain: qRes.articulation.ampEnv.sustainLevel,
+            release: qRes.articulation.ampEnv.releaseSec,
+          } : undefined,
+          regions: qRes.regions.map(r => ({
+            id: r.id,
+            sampleName: r.sampleName,
+            samplePath: r.sampleName,
+            rootKey: r.rootNote,
+            lowKey: r.keyRange.low,
+            highKey: r.keyRange.high,
+            lowVel: r.velocityRange.low,
+            highVel: r.velocityRange.high,
+            detuneCents: r.tuneCents ?? 0,
+            volumeDb: r.gainDb ?? 0,
+            pan: r.pan ?? 0,
+            loopMode: r.loops && r.loops.length > 0 ? r.loops[0].type : 'no_loop',
+            loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : undefined,
+            loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : undefined,
+            sampleStartFrame: r.sampleStartFrame,
+            sampleEndFrame: r.sampleEndFrame,
+            reversed: r.reversed,
+          })),
+          audioBuffers: qRes.audioBuffers,
+        });
+      } catch {
+        // Not a valid QPAT package
+      }
+    }
+
+    const hasOpXy = entries.some(e => e.path.toLowerCase().endsWith('patch.json'));
+    if (hasOpXy) {
+      try {
+        const opRes = importOpXyZip(buffer);
+        return parsedSamplerPresetToUniversalInstrument({
+          format: 'opxy' as unknown as ParsedSamplerPreset['format'],
+          formatLabel: 'Teenage Engineering OP-XY',
+          presetName: opRes.presetName,
+          modelName: opRes.presetName.slice(0, 11),
+          detectedCategory: 'Instrument',
+          suggestedParameterSet: 0,
+          filter: opRes.articulation.filter,
+          envelope: opRes.articulation.ampEnvEnabled ? {
+            attack: opRes.articulation.ampEnv.attackSec,
+            decay: opRes.articulation.ampEnv.decaySec,
+            sustain: opRes.articulation.ampEnv.sustainLevel,
+            release: opRes.articulation.ampEnv.releaseSec,
+          } : undefined,
+          regions: opRes.regions.map(r => ({
+            id: r.id,
+            sampleName: r.sampleName,
+            samplePath: r.sampleName,
+            rootKey: r.rootNote,
+            lowKey: r.keyRange.low,
+            highKey: r.keyRange.high,
+            lowVel: r.velocityRange.low,
+            highVel: r.velocityRange.high,
+            detuneCents: r.tuneCents ?? 0,
+            volumeDb: r.gainDb ?? 0,
+            pan: r.pan ?? 0,
+            loopMode: r.loops && r.loops.length > 0 ? r.loops[0].type : 'no_loop',
+            loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : undefined,
+            loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : undefined,
+            sampleStartFrame: r.sampleStartFrame,
+            sampleEndFrame: r.sampleEndFrame,
+            reversed: r.reversed,
+          })),
+          audioBuffers: opRes.audioBuffers,
+        });
+      } catch {
+        // Not a valid OP-XY package
+      }
+    }
+
+    const hasTonverk = entries.some(e => {
+      const p = e.path.toLowerCase();
+      return p.endsWith('.tvpst') || p.endsWith('elmulti');
+    });
+    if (hasTonverk) {
+      try {
+        const tvRes = importTonverkZip(buffer);
+        return parsedSamplerPresetToUniversalInstrument({
+          format: 'tonverk' as unknown as ParsedSamplerPreset['format'],
+          formatLabel: 'Elektron Tonverk (.tvpst)',
+          presetName: tvRes.presetName,
+          modelName: tvRes.presetName.slice(0, 11),
+          detectedCategory: 'Instrument',
+          suggestedParameterSet: 0,
+          filter: tvRes.articulation.filter,
+          envelope: tvRes.articulation.ampEnvEnabled ? {
+            attack: tvRes.articulation.ampEnv.attackSec,
+            decay: tvRes.articulation.ampEnv.decaySec,
+            sustain: tvRes.articulation.ampEnv.sustainLevel,
+            release: tvRes.articulation.ampEnv.releaseSec,
+          } : undefined,
+          regions: tvRes.regions.map(r => ({
+            id: r.id,
+            sampleName: r.sampleName,
+            samplePath: r.sampleName,
+            rootKey: r.rootNote,
+            lowKey: r.keyRange.low,
+            highKey: r.keyRange.high,
+            lowVel: r.velocityRange.low,
+            highVel: r.velocityRange.high,
+            detuneCents: r.tuneCents ?? 0,
+            volumeDb: r.gainDb ?? 0,
+            pan: r.pan ?? 0,
+            loopMode: r.loops && r.loops.length > 0 ? r.loops[0].type : 'no_loop',
+            loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : undefined,
+            loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : undefined,
+            sampleStartFrame: r.sampleStartFrame,
+            sampleEndFrame: r.sampleEndFrame,
+          })),
+          audioBuffers: tvRes.audioBuffers,
+        });
+      } catch {
+        // Not a valid Tonverk package
+      }
+    }
+
+    const hasDisting = entries.some(e => e.path.toLowerCase().endsWith('.dexpreset'));
+    if (hasDisting) {
+      try {
+        const dexRes = importDistingExZip(buffer);
+        return parsedSamplerPresetToUniversalInstrument({
+          format: 'disting_ex' as unknown as ParsedSamplerPreset['format'],
+          formatLabel: 'Expert Sleepers Disting EX',
+          presetName: dexRes.presetName,
+          modelName: dexRes.presetName.slice(0, 11),
+          detectedCategory: 'Instrument',
+          suggestedParameterSet: 0,
+          regions: dexRes.regions.map(r => ({
+            id: r.id,
+            sampleName: r.sampleName,
+            samplePath: r.sampleName,
+            rootKey: r.rootNote,
+            lowKey: r.keyRange.low,
+            highKey: r.keyRange.high,
+            lowVel: r.velocityRange.low,
+            highVel: r.velocityRange.high,
+            detuneCents: r.tuneCents ?? 0,
+            volumeDb: r.gainDb ?? 0,
+            pan: r.pan ?? 0,
+            loopMode: r.loops && r.loops.length > 0 ? r.loops[0].type : 'no_loop',
+            loopStart: r.loops && r.loops.length > 0 ? r.loops[0].startFrame : undefined,
+            loopEnd: r.loops && r.loops.length > 0 ? r.loops[0].endFrame : undefined,
+          })),
+          audioBuffers: dexRes.audioBuffers,
+        });
+      } catch {
+        // Not a valid Disting EX package
       }
     }
   }
