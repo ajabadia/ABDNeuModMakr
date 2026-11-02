@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://abdsynths.local/schemas/recording_session.schema.json",
+  "title": "ABDShared Recording Session",
+  "description": "Recording session with takes and MIDI transport bindings (recordingSession.ts SSOT).",
+  "type": "object",
+  "required": ["contractVersion", "id", "name", "createdAt", "deviceId", "sampleRate", "takes", "transport"],
+  "properties": {
+    "contractVersion": { "type": "string", "const": "1.0.0" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "createdAt": { "type": "string" },
+    "deviceId": { "type": "string" },
+    "sampleRate": { "type": "integer", "minimum": 1 },
+    "takes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "index", "durationSec", "sampleRate", "channels", "classification", "classificationConfidence", "peakDbfs"],
+        "properties": {
+          "id": { "type": "string" },
+          "index": { "type": "integer", "minimum": 0 },
+          "durationSec": { "type": "number", "minimum": 0 },
+          "sampleRate": { "type": "integer", "minimum": 1 },
+          "channels": { "type": "integer", "minimum": 1 },
+          "classification": { "type": "string", "enum": ["chromatic", "drums", "unknown"] },
+          "classificationConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "peakDbfs": { "type": "number" },
+          "noiseProfile": {
+            "type": "object",
+            "required": ["levelDbfs", "spectrumBands"],
+            "properties": {
+              "levelDbfs": { "type": "number" },
+              "spectrumBands": { "type": "array", "items": { "type": "number" } },
+              "hum50HzDb": { "type": "number" },
+              "hum60HzDb": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "transport": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "action", "sourceType", "channel", "number"],
+        "properties": {
+          "id": { "type": "string" },
+          "action": { "type": "string", "enum": ["play", "pause", "stop", "ff", "rw", "record", "togglePlay"] },
+          "sourceType": { "type": "integer", "minimum": 0, "maximum": 5 },
+          "channel": { "type": "integer", "minimum": 0, "maximum": 16 },
+          "number": { "type": "integer", "minimum": 0, "maximum": 16383 },
+          "label": { "type": "string" }
+        }
+      }
+    }
+  }
+}
