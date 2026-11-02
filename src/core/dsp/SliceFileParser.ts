@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { decodeWav, decodeAiff, type DecodedWav } from './WavDecoder.ts';
+import { fileExtension } from '../pathUtils.ts';
 
 export interface ParsedSliceMarker {
   id: number | string;
@@ -67,9 +68,10 @@ export function parseWavSliceCues(buffer: ArrayBuffer, filename: string): Parsed
   if (riff !== 'RIFF' || wave !== 'WAVE') return null;
 
   let offset = 12;
-  const rawMarkers: Array<{ id: number; frame: number }> = [];
+  const rawMarkers: Array<{ id: number; frame: number; durationFrames?: number }> = [];
   const labels = new Map<number, string>();
   let decodedAudio: DecodedWav | null = null;
+  let hasAkaiAtem = false;
 
   while (offset + 8 <= view.byteLength) {
     const chunkId = readFourCC(view, offset);
@@ -86,6 +88,30 @@ export function parseWavSliceCues(buffer: ArrayBuffer, filename: string): Parsed
         const sampleOffset = view.getUint32(pOffset + 20, true);
         const frame = sampleOffset > 0 ? sampleOffset : position;
         rawMarkers.push({ id, frame });
+      }
+    } else if (chunkId === 'atem' && chunkSize >= 16) {
+      // Akai MPC WAV embedded slice JSON ("atem" = "meta" reversed)
+      try {
+        const endPos = Math.min(view.byteLength, chunkDataStart + chunkSize);
+        const jsonStr = new TextDecoder('utf-8')
+          .decode(new Uint8Array(buffer, chunkDataStart, endPos - chunkDataStart))
+          .replace(/\0+$/, '');
+        const parsed = JSON.parse(jsonStr) as { value0?: Record<string, unknown> };
+        const v0 = parsed?.value0;
+        if (v0 && typeof v0 === 'object') {
+          const numSlices = typeof v0['Num slices'] === 'number' ? v0['Num slices'] : 0;
+          for (let i = 0; i < numSlices; i++) {
+            const sl = v0[`Slice ${i}`] as { Start?: number; End?: number } | undefined;
+            if (sl && typeof sl.Start === 'number') {
+              const durationFrames = typeof sl.End === 'number' && sl.End > sl.Start ? sl.End - sl.Start : undefined;
+              rawMarkers.push({ id: i, frame: sl.Start, durationFrames });
+              labels.set(i, `Slice #${i + 1}`);
+              hasAkaiAtem = true;
+            }
+          }
+        }
+      } catch {
+        // Ignore malformed atem chunk
       }
     } else if (chunkId === 'LIST' && chunkSize >= 4) {
       const listType = readFourCC(view, chunkDataStart);
@@ -117,18 +143,21 @@ export function parseWavSliceCues(buffer: ArrayBuffer, filename: string): Parsed
     // optional audio decode
   }
 
-  // Sort markers chronologically
-  rawMarkers.sort((a, b) => a.frame - b.frame);
+  // Sort markers chronologically (preserve index order when Akai atem slices are used)
+  if (!hasAkaiAtem) {
+    rawMarkers.sort((a, b) => a.frame - b.frame);
+  }
   const sliceFrames = rawMarkers.map((m) => m.frame);
   const markers: ParsedSliceMarker[] = rawMarkers.map((m, idx) => ({
     id: m.id,
     frame: m.frame,
     label: labels.get(m.id) ?? `Slice #${idx + 1}`,
+    ...(m.durationFrames !== undefined ? { durationFrames: m.durationFrames } : {}),
   }));
 
   return {
     format: 'wav-cue',
-    formatLabel: 'WAV with Cue Markers',
+    formatLabel: hasAkaiAtem ? 'WAV with Akai MPC Slices (atem)' : 'WAV with Cue Markers',
     sourceFilename: filename,
     sliceFrames,
     markers,
@@ -219,7 +248,7 @@ export function parseReCycleSliceFile(buffer: ArrayBuffer, filename: string): Pa
   if (view.byteLength < 16) return null;
 
   const headerTag = readFourCC(view, 0);
-  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  const ext = fileExtension(filename);
   const isRexExt = ext === 'rex' || ext === 'rcy' || ext === 'rx2';
 
   // 1. ReCycle 1.x RIFF format ('RIFF' ... 'REX ' or 'RCY ')
@@ -237,9 +266,11 @@ export function parseReCycleSliceFile(buffer: ArrayBuffer, filename: string): Pa
         const start = offset + 8;
 
         if ((chunkId === 'slic' || chunkId === 'SLIC' || chunkId === 'slce') && chunkSize >= 4) {
+          const chunkEnd = Math.min(view.byteLength, start + chunkSize);
           const count = view.getUint32(start, true);
-          for (let i = 0; i < count; i++) {
-            if (start + 4 + (i + 1) * 4 <= view.byteLength) {
+          const maxEntries = Math.floor((chunkEnd - start - 4) / 4);
+          if (count > 0 && count <= maxEntries && count <= 4096) {
+            for (let i = 0; i < count; i++) {
               sliceFrames.push(view.getUint32(start + 4 + i * 4, true));
             }
           }
@@ -505,7 +536,7 @@ export function parseSliceFile(
   sampleRate: number = 44100
 ): ParsedSliceFileResult | null {
   if (typeof content === 'string') {
-    const ext = filename.toLowerCase().split('.').pop() ?? '';
+    const ext = fileExtension(filename);
     if (ext === 'sfz') {
       return parseSfzSliceFile(content, filename, sampleRate);
     }

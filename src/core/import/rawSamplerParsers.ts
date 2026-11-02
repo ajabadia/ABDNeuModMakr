@@ -11,8 +11,8 @@
 // Symmetric counterpart to `RawSamplerExporter.ts`.
 // ─────────────────────────────────────────────────────────
 
-import { decodeWav, decodeAiff, encodeWavPcm16 } from '../dsp/WavDecoder.ts';
-import { parseSliceFile, type ParsedSliceMarker } from '../dsp/SliceFileParser.ts';
+import { decodeWav, decodeAiff, encodeWavPcm16, type DecodedWav } from '../dsp/WavDecoder.ts';
+import { parseSliceFile, parseWavSliceCues, type ParsedSliceMarker } from '../dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../dsp/DwopDecompressor.ts';
 import type { LoopMode } from '../types.ts';
 import { parseZipArchive } from '../../formats/ZipArchive.ts';
@@ -611,10 +611,35 @@ export function parseBitwigMultisample(
 }
 
 // ─────────────────────────────────────────────────────────
+// Shared DRY Audio Slice Extractor (used by Sample Chains, REX2, and MPC Sliced Kits)
+// ─────────────────────────────────────────────────────────
+
+function sliceDecodedAudioToWav(
+  decoded: DecodedWav,
+  startFrame: number,
+  endFrame: number,
+  keys: { rootKey: number; lowKey: number; highKey: number }
+): ArrayBuffer | null {
+  const totalFrames = decoded.channels[0]?.length ?? 0;
+  const start = Math.max(0, Math.min(totalFrames, Math.floor(startFrame)));
+  const end = Math.max(start, Math.min(totalFrames, Math.floor(endFrame)));
+  if (end <= start) return null;
+
+  const sliceLen = end - start;
+  const sliceChannels: Float32Array[] = decoded.channels.map((ch) => {
+    const slice = new Float32Array(sliceLen);
+    slice.set(ch.subarray(start, end));
+    return slice;
+  });
+
+  return encodeWavPcm16(sliceChannels, decoded.sampleRate, keys);
+}
+
+// ─────────────────────────────────────────────────────────
 // 4b. Akai MPC Program (.xpm / .xpn) — Fase 31
 // ─────────────────────────────────────────────────────────
 
-/** Converts a parsed MPC program into the generic preset model. */
+/** Converts a parsed MPC program into the generic preset model, reusing the shared slicer for sliced WAVs. */
 export function mpcProgramToPreset(
   program: MpcProgram,
   audioFiles: Map<string, ArrayBuffer> = new Map()
@@ -623,6 +648,42 @@ export function mpcProgramToPreset(
   // Resolve "SampleName" (no extension) against available audio, case-insensitive
   const byStem = new Map<string, string>();
   for (const k of audioBuffers.keys()) byStem.set(k.replace(/\.[^.]+$/, '').toLowerCase(), k);
+
+  // Lazy per-WAV cache of parsed slice cues ("atem" / "cue ") and decoded PCM
+  const wavCache = new Map<
+    string,
+    { decoded: DecodedWav | null; markers: ParsedSliceMarker[]; sliceFrames: number[] }
+  >();
+  const getWavInfo = (wavKey: string) => {
+    let entry = wavCache.get(wavKey);
+    if (entry) return entry;
+    const buf = audioBuffers.get(wavKey);
+    if (!buf || buf.byteLength <= 44) {
+      entry = { decoded: null, markers: [], sliceFrames: [] };
+      wavCache.set(wavKey, entry);
+      return entry;
+    }
+    const cueRes = parseWavSliceCues(buf, wavKey);
+    let decoded: DecodedWav | null = null;
+    try {
+      decoded = wavKey.toLowerCase().endsWith('.aif') || wavKey.toLowerCase().endsWith('.aiff')
+        ? decodeAiff(buf)
+        : decodeWav(buf);
+    } catch {
+      decoded = null;
+    }
+    entry = {
+      decoded,
+      markers: cueRes?.markers ?? [],
+      sliceFrames: cueRes?.sliceFrames ?? [],
+    };
+    wavCache.set(wavKey, entry);
+    return entry;
+  };
+
+  let isSliceChain = false;
+  let primarySliceFrames: number[] | undefined;
+  let primarySliceMarkers: ParsedSliceMarker[] | undefined;
 
   const regions: ParsedImportRegion[] = [];
   let idx = 0;
@@ -635,11 +696,71 @@ export function mpcProgramToPreset(
       const lowKey = isDrum ? drumNote : inst.lowNote;
       const highKey = isDrum ? drumNote : inst.highNote;
       const rootKey = isDrum || l.rootNote < 0 ? lowKey : l.rootNote;
+
+      let targetSampleName = resolved;
+      let loopStart = l.loopStart;
+      let loopEnd = l.loopEnd;
+
+      // Check if this layer references a slice inside a shared WAV (via Akai atem/cue sliceIndex or explicit sampleStart/End)
+      if (audioBuffers.has(resolved)) {
+        const info = getWavInfo(resolved);
+        const totalFrames = info.decoded?.channels[0]?.length ?? 0;
+        let sliceStart = 0;
+        let sliceEnd = 0;
+        let sliceTag = '';
+
+        if (
+          l.sliceIndex !== undefined &&
+          l.sliceIndex >= 0 &&
+          l.sliceIndex !== 128 &&
+          l.sliceIndex < info.markers.length
+        ) {
+          const m = info.markers[l.sliceIndex];
+          sliceStart = m.frame;
+          sliceEnd =
+            m.durationFrames !== undefined
+              ? m.frame + m.durationFrames
+              : l.sliceIndex + 1 < info.markers.length
+                ? info.markers[l.sliceIndex + 1].frame
+                : totalFrames;
+          sliceTag = `s${String(l.sliceIndex).padStart(2, '0')}`;
+        } else if (
+          totalFrames > 0 &&
+          (l.sampleStart > 0 || (l.sampleEnd > 0 && l.sampleEnd < totalFrames))
+        ) {
+          sliceStart = l.sampleStart;
+          sliceEnd = l.sampleEnd > 0 ? l.sampleEnd : totalFrames;
+          sliceTag = `${sliceStart}_${sliceEnd}`;
+        }
+
+        if (info.decoded && sliceTag && sliceEnd > sliceStart && (sliceStart > 0 || sliceEnd < totalFrames)) {
+          const baseStem = resolved.replace(/\.[^.]+$/, '');
+          targetSampleName = `${baseStem}_slice_${sliceTag}.wav`;
+          if (!audioBuffers.has(targetSampleName)) {
+            const slicedWav = sliceDecodedAudioToWav(info.decoded, sliceStart, sliceEnd, {
+              rootKey,
+              lowKey,
+              highKey,
+            });
+            if (slicedWav) {
+              audioBuffers.set(targetSampleName, slicedWav);
+            }
+          }
+          loopStart = Math.max(0, loopStart - sliceStart);
+          loopEnd = Math.max(0, Math.min(sliceEnd - sliceStart, loopEnd - sliceStart));
+          isSliceChain = true;
+          if (!primarySliceFrames && info.sliceFrames.length > 1) {
+            primarySliceFrames = info.sliceFrames;
+            primarySliceMarkers = info.markers;
+          }
+        }
+      }
+
       idx++;
       regions.push({
         id: `mpc_zone_${String(idx).padStart(3, '0')}`,
-        sampleName: resolved,
-        samplePath: l.sampleFile ?? resolved,
+        sampleName: targetSampleName,
+        samplePath: targetSampleName,
         rootKey,
         lowKey,
         highKey,
@@ -648,9 +769,9 @@ export function mpcProgramToPreset(
         detuneCents: (l.tuneCoarse + inst.tuneCoarse) * 100 + l.tuneFine + inst.tuneFine,
         volumeDb: Math.max(-32, Math.min(12, mpcGainToDb(l.volume))),
         pan: Math.max(-50, Math.min(50, Math.round((l.pan - 0.5) * 100))),
-        loopMode: l.loopEnabled && l.loopEnd > l.loopStart ? 'loop_continuous' : inst.triggerMode === 0 ? 'one_shot' : 'no_loop',
-        loopStart: l.loopStart,
-        loopEnd: l.loopEnd,
+        loopMode: l.loopEnabled && loopEnd > loopStart ? 'loop_continuous' : inst.triggerMode === 0 ? 'one_shot' : 'no_loop',
+        loopStart,
+        loopEnd,
       });
     }
   });
@@ -669,6 +790,7 @@ export function mpcProgramToPreset(
     envelope: env
       ? { attack: env.attackSec, decay: env.decaySec, sustain: env.sustain, release: env.releaseSec }
       : undefined,
+    ...(isSliceChain ? { isSliceChain: true, sliceFrames: primarySliceFrames, sliceMarkers: primarySliceMarkers } : {}),
   };
 }
 
@@ -743,25 +865,16 @@ export function parseSampleChainAudio(
     for (let i = 0; i < sliceFrames.length; i++) {
       const start = sliceFrames[i];
       const end = i < sliceFrames.length - 1 ? sliceFrames[i + 1] : totalFrames;
-      if (end <= start) continue;
-
-      const sliceLen = end - start;
-      const sliceChannels: Float32Array[] = decoded.channels.map((ch) => {
-        const slice = new Float32Array(sliceLen);
-        slice.set(ch.subarray(start, end));
-        return slice;
+      const note = Math.min(127, baseMidi + i);
+      const sliceWav = sliceDecodedAudioToWav(decoded, start, end, {
+        rootKey: note,
+        lowKey: note,
+        highKey: note,
       });
+      if (!sliceWav) continue;
 
       const sliceSampleName = `${cleanName}_slice_${String(i + 1).padStart(2, '0')}.wav`;
-      const sliceWav = encodeWavPcm16(sliceChannels, decoded.sampleRate, {
-        rootKey: baseMidi + i,
-        lowKey: baseMidi + i,
-        highKey: baseMidi + i,
-      });
-
       audioBuffers.set(sliceSampleName, sliceWav);
-
-      const note = Math.min(127, baseMidi + i);
       regions.push({
         id: `chain_slice_${String(i + 1).padStart(2, '0')}`,
         sampleName: sliceSampleName,
@@ -851,25 +964,16 @@ export function parseRex2Sampler(
       for (let i = 0; i < sliceFrames.length; i++) {
         const start = sliceFrames[i];
         const end = i < sliceFrames.length - 1 ? sliceFrames[i + 1] : totalFrames;
-        if (end <= start) continue;
-
-        const sliceLen = end - start;
-        const sliceChannels: Float32Array[] = decoded.channels.map((ch) => {
-          const slice = new Float32Array(sliceLen);
-          slice.set(ch.subarray(start, end));
-          return slice;
+        const note = Math.min(127, baseMidi + i);
+        const sliceWav = sliceDecodedAudioToWav(decoded, start, end, {
+          rootKey: note,
+          lowKey: note,
+          highKey: note,
         });
+        if (!sliceWav) continue;
 
         const sliceSampleName = `${cleanName}_slice_${String(i + 1).padStart(2, '0')}.wav`;
-        const sliceWav = encodeWavPcm16(sliceChannels, decoded.sampleRate, {
-          rootKey: baseMidi + i,
-          lowKey: baseMidi + i,
-          highKey: baseMidi + i,
-        });
-
         audioBuffers.set(sliceSampleName, sliceWav);
-
-        const note = Math.min(127, baseMidi + i);
         regions.push({
           id: `rex_slice_${String(i + 1).padStart(2, '0')}`,
           sampleName: sliceSampleName,
@@ -975,19 +1079,25 @@ export async function parseUniversalSampler(
     if (xpmEntries.length > 0) {
       // Expansions often bundle several programs. Prefer root-level programs over
       // project copies ([ProjectData]/[TrackData]) and pick the one whose samples
-      // are actually present in the archive.
+      // are actually present in the archive before slicing audio.
+      const availStems = new Set<string>();
+      for (const k of audioFiles.keys()) availStems.add(cleanBasename(k).replace(/\.[^.]+$/, '').toLowerCase());
       const ranked = [...xpmEntries].sort((a, b) => Number(a.includes('[')) - Number(b.includes('[')));
-      let best: ParsedSamplerPreset | null = null;
+      let bestProg: MpcProgram | null = null;
       let bestScore = -1;
       let lastError: unknown = null;
       for (const entry of ranked.slice(0, 32)) {
         try {
-          const preset = mpcProgramToPreset(await parseMpcXpm(entriesMap.get(entry)!), audioFiles);
-          if (preset.regions.length === 0) continue;
-          const resolved = preset.regions.filter((r) => preset.audioBuffers.has(r.sampleName)).length;
-          const score = resolved / preset.regions.length;
+          const prog = await parseMpcXpm(entriesMap.get(entry)!);
+          const layers = prog.instruments.flatMap((i) => i.layers);
+          if (layers.length === 0) continue;
+          const resolved = layers.filter((l) => {
+            const stem = (l.sampleFile ? cleanBasename(l.sampleFile).replace(/\.[^.]+$/, '') : l.sampleName).toLowerCase();
+            return availStems.has(stem) || availStems.has(stem.trim());
+          }).length;
+          const score = resolved / layers.length;
           if (score > bestScore) {
-            best = preset;
+            bestProg = prog;
             bestScore = score;
           }
           if (score === 1) break;
@@ -995,9 +1105,10 @@ export async function parseUniversalSampler(
           lastError = err;
         }
       }
-      if (best) {
-        best.programCount = xpmEntries.length;
-        return best;
+      if (bestProg) {
+        const preset = mpcProgramToPreset(bestProg, audioFiles);
+        preset.programCount = xpmEntries.length;
+        return preset;
       }
       if (lastError) throw lastError;
     }

@@ -15,7 +15,8 @@ import {
   parseExpansionXml,
   type MpcSourceRegion,
 } from '../src/formats/MpcXpmFormat.ts';
-import { parseUniversalSampler } from '../src/core/import/rawSamplerParsers.ts';
+import { parseUniversalSampler, mpcProgramToPreset } from '../src/core/import/rawSamplerParsers.ts';
+import { parseSliceFile } from '../src/core/dsp/SliceFileParser.ts';
 import { createZipArchive } from '../src/formats/ZipArchive.ts';
 
 let passed = 0;
@@ -198,6 +199,27 @@ async function main(): Promise<void> {
     assert.equal(preset.presetName, 'Bass-Reaper Upright Bass');
     assert.equal(preset.programCount, 3);
     assert.equal(preset.regions.filter((r) => preset.audioBuffers.has(r.sampleName)).length, preset.regions.length);
+  });
+
+  await test('Real MPC3 sliced WAV ("atem" chunk) slices pads via shared DRY slicer', async () => {
+    const xtd = findFiles(CORPUS, '.xtd').find((p) => /Kit-RDK 001 Rusty Drum Kit\.xtd$/.test(p));
+    const wav = findFiles(CORPUS, '.wav').find((p) => /MPC3-RDK Snares\.wav$/.test(p));
+    if (!xtd || !wav) return 'skip';
+    const wavBuf = readFileSync(wav);
+    const wavAb = wavBuf.buffer.slice(wavBuf.byteOffset, wavBuf.byteOffset + wavBuf.byteLength) as ArrayBuffer;
+    const sliceRes = parseSliceFile(wavAb, 'MPC3-RDK Snares.wav');
+    assert.ok(sliceRes);
+    assert.equal(sliceRes.format, 'wav-cue');
+    assert.equal(sliceRes.markers.length, 76);
+    assert.equal(sliceRes.markers[9].frame, 527098);
+    assert.equal(sliceRes.markers[9].durationFrames, 594002 - 527098);
+
+    const prog = await parseMpcXpm(new Uint8Array(readFileSync(xtd)));
+    const preset = mpcProgramToPreset(prog, new Map([['MPC3-RDK Snares.wav', wavAb]]));
+    assert.equal(preset.isSliceChain, true);
+    assert.ok(preset.audioBuffers.has('MPC3-RDK Snares_slice_s09.wav'));
+    assert.ok(preset.audioBuffers.has('MPC3-RDK Snares_slice_s06.wav'));
+    assert.ok((preset.audioBuffers.get('MPC3-RDK Snares_slice_s09.wav')?.byteLength ?? 0) < wavAb.byteLength / 10);
   });
 
   console.log(`\n${passed}/${passed + failed} passed${skipped ? `, ${skipped} skipped` : ''}`);

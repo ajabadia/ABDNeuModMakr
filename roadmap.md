@@ -757,35 +757,27 @@
 
 ---
 
-## Fase 31 — Importación/Exportación Akai MPC (`.xpm` Keygroup/Drum, `.xpn` Expansion) [COMPLETADA (importación + escritor) / PENDIENTE (UI de exportación y validación en hardware)]
+## Fase 31 — Importación/Exportación Akai MPC (`.xpm` Keygroup/Drum, `.xpn` Expansion) [COMPLETADA (importación + slicer DRY + escritor) / PENDIENTE (selector multiprograma en UI, exportación UI y validación en hardware)]
 
-**Implementado (2026-11-02)** en `src/formats/MpcXpmFormat.ts` (implementación propia; especificación obtenida de 52 `.xpm` y 10 `.xpn` reales de `_RESOURCES/samplers/akai mpc` y contrastada con ConvertWithMoss, LGPL-3.0, solo como referencia):
-- Lector MPC 2.x XML (Keygroup y Drum) y MPC 3.x GZIP+JSON; expansiones `.xpn` (ZIP) integradas en `parseUniversalSampler`; `.xpm` + WAV hermanos seleccionados juntos en la importación universal.
+**Implementado (2026-11-02)** en `src/formats/MpcXpmFormat.ts` y `src/core/dsp/SliceFileParser.ts` (implementación propia; especificación obtenida de 52 `.xpm` y 10 `.xpn` reales de `_RESOURCES/samplers/akai mpc` y contrastada con ConvertWithMoss, LGPL-3.0, solo como referencia):
+- Lector MPC 1.x / 2.x XML (Keygroup y Drum) y MPC 3.x GZIP+JSON (`.xpm`, `.xty`, `.xtd`); expansiones `.xpn` (ZIP) integradas en `parseUniversalSampler`; `.xpm`/`.xty`/`.xtd` + WAV hermanos seleccionados juntos en la importación universal.
+- **Slices de MPC 3 integrados en nuestro Slicer (Filosofía DRY)** `[COMPLETADO]`:
+  - `SliceFileParser.ts` (`parseWavSliceCues`) ahora lee el chunk RIFF `"atem"` JSON de Akai MPC incrustado en los WAV (`Num slices`, `Slice 0..N` con `Start` y `End`), además de `cue ` estándar, por lo que cualquier WAV troceado de MPC funciona directamente en el `AudioChopperModal` y en el `Batch AutoSlicer`.
+  - Se extrajo el helper compartido `sliceDecodedAudioToWav()` en `rawSamplerParsers.ts`, reutilizado por `parseSampleChainAudio`, `parseRex2Sampler` y `mpcProgramToPreset`. Cuando un kit MPC referencia `sliceIndex` o rangos `sampleStart`/`sampleEnd` sobre un WAV compartido, recorta cada slice y activa `isSliceChain: true` (habilitando el botón *"Open in Audio Chopper"*).
 - Escritor `.xpm` (128 instrumentos x 4 capas), agrupación automática de regiones en keygroups con desbordamiento a keygroups solapados, round-robin (ZonePlay ciclo) y release (TriggerMode note-off); generador de `Expansion.xml`.
-- Tests: `tests/phase31_mpc_xpm.test.ts` (10/10, incluye los 52 `.xpm` reales y una expansión MPC3).
+- Tests: `tests/phase31_mpc_xpm.test.ts` (13/13, incluye los 52 `.xpm` reales, pistas `.xtd`/`.xty` MPC3, troceado real del chunk `"atem"` en `MPC3-RDK Snares.wav` y expansión MPC 1.x/3.x).
 
 **Pendiente**:
-- **Slices de MPC 3**: los kits MPC 3 reparten un único WAV largo entre pads mediante `sampleStart`/`sampleEnd` (p. ej. `MPC3-RDK Snares.wav`). `ParsedImportRegion` no tiene campos de inicio/fin, así que cada pad reproduciría el archivo completo. Añadir inicio/fin de muestra al modelo de importación o recortar el audio al importar.
-- **Selección de programa**: las expansiones traen varios programas (hasta 5 en el corpus); hoy se importa automáticamente el que tiene todas sus muestras. Ofrecer elegir (o procesar todos en batch) con el triaje de la Fase 29.
+- **Selector interactivo de programa (`MultiInstrumentModal`) para contenedores multiprograma**:
+  - *Estado actual (auditoría 2026-11-02)*: `MultiInstrumentModal.ts` **ya existe y funciona** en `importHandlers.ts` (`File -> Import Model Files / .zip`) cuando un `.sf2` tiene más de 1 preset o cuando se seleccionan varios `.sfz` (permitiendo elegir uno o enviar todos al Batch Processor), y `NeuronDbModal.ts` cuando hay varios `<NNN>.model`.
+  - *Qué falta*: (1) extender `MultiInstrumentModal` para que soporte también contenedores `.xpn` / `.zip` con múltiples programas (`.xpm`, `.xty`, `.xtd`, `.dspreset`, `.nki`, `.vstpreset`, `.multisample`), y (2) conectarlo también dentro de `UniversalImportModal.ts` (`Ctrl+I`), donde actualmente se carga el mejor programa sin preguntar. Se unificará con el triaje de la Fase 29.
 - **Rendimiento ZIP**: el lector ZIP compartido tarda unos 45 s con un `.xpn` de 231 MB (Rusty Drums MPC3). Usar `DecompressionStream` / extracción perezosa de entradas.
 - **Formatos MPC heredados presentes en el corpus**: `.PGM` de MPC 1000/2500 (firma `MPC1000 PGM`, 8 archivos) y `.AKP` de Akai S5000/S6000 (RIFF `APRG`, 2 archivos); proyectos `.xpj`. Incluidos en la Fase 32.
 - Botón/opción de exportación MPC en `RawSamplerExportModal` (carpeta `.xpm` + WAV y empaquetado `.xpn`).
 - Validar en MPC Software/hardware que carga los `.xpm` generados (la ley de volumen exacta y los campos mínimos no están confirmados oficialmente).
 - Escritura en formato MPC 3 JSON.
 
-**Auditoría original de `kontakt2mpce-main`**: no sirve como especificación (código esqueleto, ejemplos XPM declarados "conceptuales").
-
-**Auditoría de `kontakt2mpce-main` (2026-11-02)**: el repositorio no sirve como especificación. Su código es un esqueleto (`convert_nki_to_xpm` lanza `NotImplementedError`) y su documentación XPM declara expresamente que los ejemplos son "conceptuales" y que los nombres de elementos reales pueden diferir. No aporta nada nuevo sobre Kontakt (remite a `nkitool` y ConvertWithMoss, e incluso indica que NCW requiere Kontakt, cosa ya superada por nuestro decodificador de la Fase 28).
-
-**Requisito previo**: obtener especificación fiable antes de implementar:
-- Archivos `.xpm` reales guardados por MPC Software/hardware (Keygroup y Drum, con varias capas y bucles), o
-- Referencia de código de un conversor funcional con lector/escritor XPM (p. ej. ConvertWithMoss, open source).
-
-**Alcance previsto una vez desbloqueada**:
-- Importador `.xpm` (Keygroup y Drum) a `ExtendedRegion[]`: rangos de nota, 4 capas por keygroup con rangos de velocidad, afinación, bucles, envolventes y filtro.
-- Exportador `.xpm` + carpeta de muestras WAV 16/24 bit 44.1 kHz, con división automática de regiones de más de 4 capas.
-- Empaquetado `.xpn` (`Expansion.xml`, `Programs/`, `Samples/`, `Previews/`, carátula de la Fase 14/20).
-- Tests de ida y vuelta contra archivos reales de referencia.
+**Auditoría de `kontakt2mpce-main` (2026-11-02)**: el repositorio no sirve como especificación (código esqueleto `NotImplementedError`, ejemplos XPM declarados "conceptuales").
 
 ---
 
@@ -824,6 +816,48 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
 ### 32.5 Verificación
 - Corpus de archivos reales por formato en `_RESOURCES`, tests de lectura y de ida y vuelta (leer, escribir, releer) con comparación de zonas, capas y loops.
 - Informe de diferencias frente a la salida de ConvertWithMoss para los mismos archivos.
+
+---
+
+## Fase 33 — Estudio de Capacidades del Modelo Canónico frente a ConvertWithMoss, Capa de Abstracción Universal de Parámetros y Migración a `@abdsynths/shared` (`ABDShared`) [PLANIFICADA]
+
+**Objetivo**: Auditar el modelo intermedio de ConvertWithMoss (`IMultisampleSource`, `IInstrumentSource`, `IGroup`, `ISampleZone`, `IFilter`, `IEnvelope`, `IEnvelopeModulator`, `IPitchModulator`, `IMetadata`) frente a nuestro modelo (`ExtendedRegion`, `SynthArticulationConfig`, `ExtendedModelMetadata`) para garantizar que NeuModMakr soporta todas las características expresivas de esos formatos mediante una capa de abstracción y mapeo bidireccional de parámetros, y evaluar la extracción de los lectores, escritores y transformadores a `@abdsynths/shared` (`ABDShared`) para su reutilización en otros sintetizadores y herramientas de ABDSynths (p. ej. `ABDAxionikVS`).
+
+### 33.1 Auditoría de Características de Sampler/Síntesis (Gap Analysis)
+Comparar parámetro a parámetro lo que modela ConvertWithMoss en sus interfaces (`de/mossgrabers/convertwithmoss/core/model/`) frente a lo que soportamos hoy en `ExtendedRegion` y `SynthArticulationConfig`:
+- **Recorte y Reproducción de Muestra (`ISampleZone`)**:
+  - `start` / `stop` (offset de inicio y fin de reproducción dentro del WAV sin recortar destructivamente), inversión (`reversed`), dirección de reproducción, `keyTracking` continuo (0..100%), `playLogic` (Always vs Round-Robin / Random).
+- **Bucles Múltiples y Modos (`ISampleLoop`)**:
+  - Lista de bucles por zona (no solo uno), tipos (`FORWARDS`, `BACKWARDS`, `ALTERNATING`), `start`, `end`, `length`, `crossfade` lineal/igual potencia y número de repeticiones.
+- **Fundidos Cruzados (`Crossfade`)**:
+  - Curvas y anchos de fundido de nota (`noteCrossfadeLow`/`High`) y de velocidad (`velocityCrossfadeLow`/`High`).
+- **Envolventes y Curvas (`IEnvelope` / `IEnvelopeModulator`)**:
+  - Tiempos `delay`, `attack`, `hold`, `decay`, `release`, niveles `startLevel`, `holdLevel`, `sustainLevel`, `endLevel`, pendientes/curvas (`attackSlope`, `decaySlope`, `releaseSlope`: lineal, exponencial, logarítmica) y profundidad de modulación por velocidad.
+  - Tres envolventes independientes por zona o grupo: **Amplitud**, **Filtro** (con profundidad bipolar en cents/octavas) y **Pitch/Tono** (`IPitchModulator`).
+- **Filtros (`IFilter`)**:
+  - Tipos (`LOW_PASS`, `HIGH_PASS`, `BAND_PASS`, `BAND_REJECTION`), número de polos (`1, 2, 3, 4, 6, 8`), `cutoff` (Hz), `resonance` (dB / Q / normalizado 0..1), `keyTrack` de filtro y `envelopeModulator` propio.
+- **Grupos, Articulaciones y Exclusión (`IGroup`)**:
+  - Conmutación por tecla (*keyswitch*), controladores MIDI CC, grupos de exclusión mutua (*mute/choke groups*, ej. hi-hat cerrado/abierto en MPC/SFZ/Kontakt), polifonía por grupo y modo monofónico/legato/portamento.
+- **Expresividad Hardware (MPCe / MPE / Aftertouch / PitchBend)**:
+  - Rango de `pitchBend` (semitonos arriba/abajo), matrices de modulación (ModWheel, Aftertouch, Velocidad, ejes X/Y de pad MPCe) hacia corte de filtro, tono, volumen y panorámica.
+
+### 33.2 Capa de Abstracción Universal y Mapeo de Parámetros (`UniversalSamplerModel`)
+- Diseñar un descriptor canónico intermedio (`UniversalSamplerInstrument` -> `UniversalGroup[]` -> `UniversalZone[]`) con unidades físicas normalizadas:
+  - Frecuencias en **Hz**, tiempos en **segundos**, niveles y ganancias en **dB**, afinación en **semitonos + cents**, panorámica en **-1..+1**, curvas en **-1..+1**, índices MIDI en **0..127**.
+- **Tabla declarativa de capacidades por formato (`FormatCapabilities`)**:
+  - Cada lector/escritor declara qué campos soporta de forma nativa, cuáles requieren aproximación (p. ej. dividir >4 capas en MPC, proyectar N capas a 2 capas en Hartmann Classic) y cuáles se descartan, generando un informe automático de fidelidad/adaptación en el Preflight.
+- **Conversores de unidades puros y verificables**:
+  - Funciones bidireccionales aisladas por formato (ej. timecents SF2 <-> segundos, escala logarítmica MPC `0.001 * 1e5^v` <-> segundos, cutoff MPC <-> Hz) con tests de inversión matemática.
+
+### 33.3 Estudio y Plan de Migración a `@abdsynths/shared` (`ABDShared`)
+- **Qué debe vivir en `@abdsynths/shared`**:
+  - El modelo canónico universal (`UniversalSamplerInstrument`, `UniversalZone`, `FormatCapabilities`).
+  - Los codecs de audio y contenedores puros sin dependencias del DOM (`WavDecoder`, `AiffDecoder`, `DwopDecompressor` REX2, `NcwDecoder` Kontakt, `SliceFileParser` con soporte `cue `/`MARK`/`atem`/`rx2`, `ZipArchive`).
+  - Todos los lectores y escritores de formatos (`Sf2Parser`, `SfzParser`, `DecentSamplerParser`, `KontaktParser`, `MpcXpmFormat`, Bitwig, HALion, y los nuevos de la Fase 32) y los adaptadores de proyección (`extendedAdapter`).
+- **Qué permanece en `ABDNeuModMakr`**:
+  - La interfaz de usuario (`UniversalImportModal`, `RawSamplerExportModal`, `AudioChopperModal`, `BatchProcessorModal`), el flujo de sesión y la comunicación con el Companion Bridge local.
+- **Beneficio para el ecosistema ABDSynths**:
+  - `ABDAxionikVS` (Fase 19 — Modo Rompler Puro) y cualquier otro sintetizador de ABDSynths podrá cargar y exportar directamente `.sf2`, `.sfz`, `.dspreset`, `.nki`/`.ncw`, `.xpm`/`.xpn`, `.rx2`, `.multisample`, etc. importando un único paquete compartido (`@abdsynths/shared/formats/samplers`), cumpliendo estrictamente el principio DRY.
 
 ---
 

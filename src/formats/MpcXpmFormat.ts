@@ -34,6 +34,7 @@ export interface MpcLayer {
   tuneFine: number;      // cents
   sampleStart: number;
   sampleEnd: number;
+  sliceIndex?: number;
   loopStart: number;
   loopEnd: number;
   loopEnabled: boolean;
@@ -193,6 +194,7 @@ export function parseMpcXpmXml(xml: string): MpcProgram {
         tuneFine: tagNum(l.body, 'TuneFine', 0),
         sampleStart: tagNum(l.body, 'SliceStart', tagNum(l.body, 'SampleStart', 0)),
         sampleEnd: tagNum(l.body, 'SliceEnd', tagNum(l.body, 'SampleEnd', 0)),
+        sliceIndex: tagNum(l.body, 'SliceIndex', 128),
         loopStart,
         loopEnd,
         loopEnabled: sliceLoop !== 0,
@@ -296,6 +298,8 @@ export function parseMpcJsonProgram(text: string): MpcProgram {
       if (!sampleName.trim() || l.active === false) continue;
       const rawRoot = asNum(l.rootNote, 0);
       const slice = asObj(l.sliceInfo);
+      const sStart = asNum(l.sampleStart, 0);
+      const sEnd = asNum(l.sampleEnd, 0);
       layers.push({
         sampleName,
         sampleFile: asStr(l.sampleFile) || undefined,
@@ -306,8 +310,9 @@ export function parseMpcJsonProgram(text: string): MpcProgram {
         pan: asNum(l.pan, 0.5),
         tuneCoarse: asNum(l.coarseTune, 0),
         tuneFine: asNum(l.fineTune, 0),
-        sampleStart: asNum(l.sampleStart, asNum(slice.Start, 0)),
-        sampleEnd: asNum(l.sampleEnd, asNum(slice.End, 0)),
+        sampleStart: sStart > 0 ? sStart : asNum(slice.Start, 0),
+        sampleEnd: sEnd > 0 ? sEnd : asNum(slice.End, 0),
+        sliceIndex: asNum(l.sliceIndex, 128),
         loopStart: asNum(l.loopStart, asNum(slice.LoopStart, 0)),
         loopEnd: asNum(l.loopEnd, 0),
         loopEnabled: asNum(l.loop, asNum(slice.LoopMode, 0)) !== 0,
