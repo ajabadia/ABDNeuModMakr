@@ -177,6 +177,7 @@ export interface SynthI18nOptions<TLocale extends string = 'en' | 'es'> {
   defaultLocale?: TLocale;
   storageKey?: string;
   legacyStorageKeys?: string[];
+  detectBrowserLocale?: boolean;
 }
 
 export interface SynthI18nInstance<TLocale extends string = 'en' | 'es', TDict = SharedTranslations> {

@@ -8,6 +8,10 @@
     "./styles": "./Assets/styles/index.css",
     "./styles/*": "./Assets/styles/*",
     "./themes/*": "./Assets/styles/themes/*",
+    "./contracts": {
+      "types": "./Contracts/index.d.ts",
+      "default": "./Contracts/index.js"
+    },
     "./contracts/*": "./Contracts/*",
     "./components": "./Components/index.js",
     "./components/bank/bankShell.js": {
@@ -39,8 +43,8 @@
       "default": "./Components/i18n.js"
     },
     "./i18n": {
-      "types": "./Components/i18n.d.ts",
-      "default": "./Components/i18n.js"
+      "types": "./Components/I18n/index.d.ts",
+      "default": "./Components/I18n/index.js"
     },
     "./components/*": "./Components/*",
     "./icons/*": "./Assets/icons/*",
@@ -48,8 +52,12 @@
     "./utils": "./Utils/index.js",
     "./utils/*": "./Utils/*",
     "./visualizers/*": "./Code/visualizers/*",
+    "./scope": "./Code/Scope/WebUI/src/scope.js",
+    "./scope/*": "./Code/Scope/WebUI/src/*",
     "./formats/neuron": "./Code/NeuronFormats/index.ts",
     "./formats/neuron/*": "./Code/NeuronFormats/*",
+    "./formats/sampler": "./Code/SamplerFormats/index.ts",
+    "./formats/sampler/*": "./Code/SamplerFormats/*",
     "./dsp/neuron-analysis": "./Code/DspCore/NeuronAnalysis/index.ts",
     "./dsp/neuron-analysis/*": "./Code/DspCore/NeuronAnalysis/*"
   },
@@ -60,5 +68,10 @@
     "Assets",
     "Utils",
     "docs"
-  ]
+  ],
+  "dependencies": {
+    "@abdsynths/contracts": "workspace:*",
+    "@abdsynths/i18n": "workspace:*",
+    "@abdsynths/scope": "workspace:*"
+  }
 }

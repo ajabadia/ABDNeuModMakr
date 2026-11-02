@@ -330,8 +330,10 @@ export class MidiTranslationEngine {
   ): number {
     if (wireCodec === 'Bipolar') {
       if (ccValue < 0) {
+        // Signed [-64..+63] or [-128..+127]
         return Math.max(0.0, Math.min(1.0, 0.5 + ccValue / 128.0));
       }
+      // Unsigned 0..127 with hardware center at 64
       if (ccValue === zeroCenter) return 0.5;
       return Math.max(0.0, Math.min(1.0, 0.5 + (ccValue - zeroCenter) / 126.0));
     }

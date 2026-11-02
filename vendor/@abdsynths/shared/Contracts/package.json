@@ -1,0 +1,47 @@
+{
+  "name": "@abdsynths/contracts",
+  "version": "1.0.0",
+  "description": "Canonical data contracts, JSON schemas, parameter specs and hardware profiles for the ABDSynths suite",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./*": "./*",
+    "./*.json": "./*.json"
+  },
+  "files": [
+    "*.json",
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "schemas/",
+    "profiles/",
+    "types/"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [
+    "contracts",
+    "schemas",
+    "sysex",
+    "synthesizer",
+    "midi",
+    "abdsynths"
+  ],
+  "author": "ajabadia",
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajabadia/ABDShared.git",
+    "directory": "Contracts"
+  }
+}

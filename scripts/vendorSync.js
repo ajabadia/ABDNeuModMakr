@@ -107,6 +107,7 @@ export function syncVendor() {
   // Copy needed Code folders from ABDShared
   const codeItems = [
     'NeuronFormats',
+    'SamplerFormats',
     'visualizers',
     path.join('DspCore', 'NeuronAnalysis'),
   ];

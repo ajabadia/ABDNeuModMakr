@@ -1,0 +1,41 @@
+{
+  "name": "@abdsynths/i18n",
+  "version": "1.0.0",
+  "description": "Universal Reactive 2-Tier Internationalization (i18n) Engine for the ABDSynths suite",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./locales/*": "./locales/*"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "locales/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [
+    "i18n",
+    "internationalization",
+    "reactive",
+    "abdsynths"
+  ],
+  "author": "ajabadia",
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajabadia/ABDShared.git",
+    "directory": "Components/I18n"
+  }
+}

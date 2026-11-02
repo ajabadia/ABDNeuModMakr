@@ -91,12 +91,15 @@ function getNestedValue(obj, path) {
  * @param {string} [options.defaultLocale='en'] - Fallback default locale
  * @param {string} [options.storageKey='abdsynths.locale'] - Primary localStorage key
  * @param {string[]} [options.legacyStorageKeys=[]] - Optional fallback storage keys to check/sync
+ * @param {boolean} [options.detectBrowserLocale=true] - When false, an unsaved profile starts in
+ *   `defaultLocale` instead of `navigator.language` (apps whose default language is fixed)
  */
 export function createSynthI18n(options = {}) {
   const customLocales = options.locales || {};
   const defaultLocale = options.defaultLocale || 'en';
   const storageKey = options.storageKey || DEFAULT_STORAGE_KEY;
   const legacyKeys = Array.isArray(options.legacyStorageKeys) ? options.legacyStorageKeys : [];
+  const detectBrowserLocale = options.detectBrowserLocale !== false;
 
   // Build merged dictionary for all supported languages
   const allLangCodes = new Set([
@@ -141,7 +144,7 @@ export function createSynthI18n(options = {}) {
     }
 
     const browserLang =
-      typeof navigator !== 'undefined' && navigator.language
+      detectBrowserLocale && typeof navigator !== 'undefined' && navigator.language
         ? navigator.language.slice(0, 2).toLowerCase()
         : defaultLocale;
 

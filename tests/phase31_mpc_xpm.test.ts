@@ -438,6 +438,47 @@ async function main(): Promise<void> {
     uni.regions[0].loopMode = 'ping_pong';
     const notices = evaluateFormatFidelity(uni, 'mpc_xpm');
     assert.ok(notices.some((n) => n.feature === 'ping_pong_loop'));
+
+    // Fase 33.3 — Verify @abdsynths/shared/formats/sampler unified entry points
+    const {
+      parseUniversalSamplerInstrument,
+      exportUniversalSamplerInstrument,
+      universalInstrumentToNativeImportResult,
+    } = await import('@abdsynths/shared/formats/sampler');
+
+    const parsedUni = await parseUniversalSamplerInstrument(
+      exportedXpn.filename,
+      exportedXpn.data.buffer.slice(
+        exportedXpn.data.byteOffset,
+        exportedXpn.data.byteOffset + exportedXpn.data.byteLength
+      ) as ArrayBuffer
+    );
+    assert.equal(parsedUni.name, 'SynthBell');
+    assert.equal(parsedUni.regions.length, 1);
+    assert.ok(parsedUni.audioPool && parsedUni.audioPool.size === 1);
+
+    const sf2Export = await exportUniversalSamplerInstrument(parsedUni, {
+      format: 'sf2',
+      resolution: 'pcm16',
+      sampleRate: 'original',
+      normalization: 'none',
+      layout: 'monolithic',
+      bankName: 'SynthBell',
+    });
+    assert.equal(sf2Export.filename, 'SynthBell.sf2');
+
+    // Re-import SF2 directly into UniversalSamplerInstrument
+    const sf2Uni = await parseUniversalSamplerInstrument(
+      sf2Export.filename,
+      sf2Export.data.buffer.slice(
+        sf2Export.data.byteOffset,
+        sf2Export.data.byteOffset + sf2Export.data.byteLength
+      ) as ArrayBuffer
+    );
+    assert.equal(sf2Uni.regions.length, 1);
+    assert.equal(sf2Uni.regions[0].rootKey, 60);
+    const nativeRes = universalInstrumentToNativeImportResult(sf2Uni, 'sf2');
+    assert.equal(nativeRes.classicZones.length > 0, true);
   });
 
   console.log(`\n${passed}/${passed + failed} passed${skipped ? `, ${skipped} skipped` : ''}`);

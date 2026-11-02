@@ -819,12 +819,12 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
 
 ---
 
-## Fase 33 — Estudio de Capacidades del Modelo Canónico frente a ConvertWithMoss, Capa de Abstracción Universal de Parámetros y Migración a `@abdsynths/shared` (`ABDShared`) [COMPLETADA (33.1 + 33.2) / EN CURSO (33.3)]
+## Fase 33 — Estudio de Capacidades del Modelo Canónico frente a ConvertWithMoss, Capa de Abstracción Universal de Parámetros y Migración a `@abdsynths/shared` (`ABDShared`) [COMPLETADA]
 
 **Objetivo**: Auditar el modelo intermedio de ConvertWithMoss (`IMultisampleSource`, `IInstrumentSource`, `IGroup`, `ISampleZone`, `IFilter`, `IEnvelope`, `IEnvelopeModulator`, `IPitchModulator`, `IMetadata`) frente a nuestro modelo (`ExtendedRegion`, `SynthArticulationConfig`, `ExtendedModelMetadata`) para garantizar que NeuModMakr soporta todas las características expresivas de esos formatos mediante una capa de abstracción y mapeo bidireccional de parámetros, y evaluar la extracción de los lectores, escritores y transformadores a `@abdsynths/shared` (`ABDShared`) para su reutilización en otros sintetizadores y herramientas de ABDSynths (p. ej. `ABDAxionikVS`).
 
 ### 33.1 Auditoría y Ampliación de Características de Sampler/Síntesis (`ExtendedRegion` & `SynthArticulationConfig`) [COMPLETADA]
-Implementado en `src/core/types.ts`, `src/core/extendedAdapter.ts` y `src/core/sessionSchema.ts`, cubriendo todos los parámetros de `de/mossgrabers/convertwithmoss/core/model/`:
+Implementado en `ABDShared/Code/SamplerFormats/SamplerTypes.ts`, `ABDShared/Code/SamplerFormats/ExtendedAdapter.ts`, `src/core/types.ts` y `src/core/sessionSchema.ts`, cubriendo todos los parámetros de `de/mossgrabers/convertwithmoss/core/model/`:
 - [x] **Recorte y Reproducción de Muestra (`ISampleZone`)**:
   - `sampleStartFrame` / `sampleEndFrame` (offset de inicio y fin de reproducción dentro del WAV sin recortar destructivamente), inversión (`reversed`), `pitchKeytrack` continuo (0..100%), `playLogic` (`'always' | 'round_robin' | 'random' | 'velocity'`), `velToVolumeDepth` (-1..+1) y `velToPitchCents`.
 - [x] **Bucles Múltiples y Modos (`ISampleLoop` / `SampleLoopDescriptor`)**:
@@ -842,26 +842,24 @@ Implementado en `src/core/types.ts`, `src/core/extendedAdapter.ts` y `src/core/s
   - Rango de `pitchBendUpSt` / `pitchBendDownSt` y rutas de modulación tipadas.
 
 ### 33.2 Capa de Abstracción Universal y Compatibilidad con los Contratos de Parámetros de `ABDShared` (`MidiTranslationEngine` / Diccionario de Datos) [COMPLETADA]
-Implementado en `ABDShared/Contracts/sampler_voice_parameter_spec.json`, `ABDShared/Contracts/parameter_dictionary.schema.json`, `ABDShared/Contracts/MidiTranslationEngine.ts`, `ABDShared/Docs/specs/COMMON_DATA_DICTIONARY_AND_INTEGRATION.md` y `src/core/sampler/UniversalSamplerModel.ts`:
+Implementado en `ABDShared/Contracts/sampler_voice_parameter_spec.json`, `ABDShared/Contracts/parameter_dictionary.schema.json`, `ABDShared/Contracts/MidiTranslationEngine.ts`, `ABDShared/Docs/specs/COMMON_DATA_DICTIONARY_AND_INTEGRATION.md` y `ABDShared/Code/SamplerFormats/UniversalSamplerModel.ts`:
 - [x] **Nivel 1 — Diccionario Común de Parámetros de Voz de Sampler (`sampler_voice_parameter_spec.json` + `MidiTranslationEngine.ts` v2.0)**:
-  - 34 parámetros canónicos (`Global`, `AmpEnv`, `Filter`, `FilterEnv`, `PitchEnv`, `LFO`, `Zone`) con curvas invertibles (`Linear`, `Exp`, `Pow`, `Switch`) y unidades físicas (`Hz`, `s`, `dB`, `cents`, `%`, `st`).
+  - 41 parámetros canónicos (`Global`, `AmpEnv`, `Filter`, `FilterEnv`, `PitchEnv`, `LFO`, `Zone`, `Loop`) con curvas invertibles (`Linear`, `Exp`, `Pow`, `Switch`) y unidades físicas (`Hz`, `s`, `dB`, `cents`, `%`, `st`, `frames`, `ms`).
   - Funciones `extractNormalizedDictionaryParams()` y `applyNormalizedDictionaryParams()` en `UniversalSamplerModel.ts` que proyectan cualquier región/articulación a valores normalizados `[0..1]` y de vuelta a unidades físicas DSP.
 - [x] **Nivel 2 — Matriz de Modulación (`UniversalSamplerModRoute`)**:
-  - Rutas compatibles con `ABDShared/Contracts/modulation_matrix.schema.json` (`velocity`, `keytrack`, `mod_wheel`, `aftertouch`, `pitch_bend`, `lfo1`, `lfo2`, `amp_env`, `filter_env`, `pitch_env`, `mpce_x`, `mpce_y`, `random` $\rightarrow$ `pitch_cents`, `filter_cutoff_cents`, `filter_resonance`, `volume_db`, `pan`, `sample_start`, `loop_start`, `lfo1_rate`, `lfo1_depth`).
+  - Rutas compatibles con `ABDShared/Contracts/modulation_matrix.schema.json`.
 - [x] **Nivel 3 — Grafo Estructural (`UniversalSamplerInstrument` / `UniversalSamplerGroup`)**:
-  - Conversores bidireccionales sin pérdida `sessionToUniversalSamplerInstrument(session)` y `universalSamplerInstrumentToSessionPatch(instrument)`.
+  - Conversores bidireccionales sin pérdida `sessionToUniversalSamplerInstrument()`, `universalSamplerInstrumentToSessionPatch()`, `nativeImportResultToUniversalInstrument()`, `universalInstrumentToNativeImportResult()`, `parsedSamplerPresetToUniversalInstrument()`, `universalInstrumentToParsedSamplerPreset()`, `parseUniversalSamplerInstrument()` y `exportUniversalSamplerInstrument()`.
 - [x] **Registro Declarativo de Capacidades por Formato (`FORMAT_CAPABILITIES_REGISTRY` + `evaluateFormatFidelity()`)**:
-  - Perfiles declarativos para `neuronik_extended`, `hartmann_classic`, `sfz`, `sf2`, `decent_sampler`, `kontakt_nki`, `mpc_xpm`, `mpc_xpn`, `bitwig_multisample`, `halion_vstpreset` y `exs24`, con evaluación automática de avisos de adaptación/pérdida (`FidelityWarning[]`).
+  - Perfiles declarativos para `legacy-neuron`, `modern-neural`, `sfz`, `sf2`, `dspreset`, `nki`, `mpc_xpm`, `mpc_xpn`, `multisample` y `vstpreset`, con evaluación automática de avisos de adaptación/pérdida (`FormatAdaptationNotice[]`).
 
-### 33.3 Estudio y Plan de Migración a `@abdsynths/shared` (`ABDShared`)
-- **Qué debe vivir en `@abdsynths/shared`**:
-  - El diccionario de parámetros de voz de sampler (`Contracts/sampler_voice_parameter_spec.json`) compatible con `MidiTranslationEngine.ts` y `modulation_matrix.schema.json`, junto con el modelo estructural (`UniversalSamplerInstrument`, `UniversalGroup`, `UniversalZone`, `FormatCapabilities`).
-  - Los codecs de audio y contenedores puros sin dependencias del DOM (`WavDecoder`, `AiffDecoder`, `DwopDecompressor` REX2, `NcwDecoder` Kontakt, `SliceFileParser` con soporte `cue `/`MARK`/`atem`/`rx2`, `ZipArchive`).
-  - Todos los lectores y escritores de formatos (`Sf2Parser`, `SfzParser`, `DecentSamplerParser`, `KontaktParser`, `MpcXpmFormat`, Bitwig, HALion, y los nuevos de la Fase 32) y los adaptadores de proyección (`extendedAdapter`).
-- **Qué permanece en `ABDNeuModMakr`**:
-  - La interfaz de usuario (`UniversalImportModal`, `RawSamplerExportModal`, `AudioChopperModal`, `BatchProcessorModal`), el flujo de sesión y la comunicación con el Companion Bridge local.
-- **Beneficio para el ecosistema ABDSynths**:
-  - `ABDAxionikVS` (Fase 19 — Modo Rompler Puro), un futuro **Sampler dedicado de ABDSynths** y cualquier otro instrumento podrán tanto cargar/exportar todos los formatos de sampler como enlazar sus controles de UI, MIDI CC/NRPN y unidades físicas DSP usando exactamente la misma infraestructura de contratos de `@abdsynths/shared`.
+### 33.3 Migración a `@abdsynths/shared/formats/sampler` (`ABDShared/Code/SamplerFormats`) [COMPLETADA]
+- [x] **Núcleo centralizado en `ABDShared/Code/SamplerFormats/`** (exportado como `@abdsynths/shared/formats/sampler` y sincronizado a `vendor/@abdsynths/shared` mediante `npm run vendor:sync`):
+  - `SamplerTypes.ts`, `SamplerUtils.ts`, `ExtendedAdapter.ts`, `UniversalSamplerModel.ts`.
+  - Codecs de audio y slicers puros: `WavAiffDecoder.ts` (en `NeuronFormats` con soporte PCM 24-bit/96kHz y `smpl` loops), `SliceFileParser.ts` (`cue `, `MARK`, `atem`, `.ot`, `.rx2`), `DwopDecompressor.ts` (REX2 DWOP), `KontaktParser.ts` (con decodificador NCW).
+  - Lectores y escritores de formatos: `Sf2Parser.ts`, `soundfont2Writer.ts`, `SfzParser.ts`, `DecentSamplerParser.ts`, `KontaktParser.ts`, `MpcXpmFormat.ts`, `sampleChainWriter.ts`, `rawSamplerTypes.ts`, `rawSamplerPreflight.ts`, `rawSamplerParsers.ts`, `RawSamplerExporter.ts`.
+- [x] **Re-exportación limpia en `ABDNeuModMakr`**:
+  - Todos los módulos locales en `src/formats/`, `src/core/sampler/`, `src/core/export/`, `src/core/import/rawSamplerParsers.ts`, `src/core/extendedAdapter.ts` y `src/core/dsp/{WavDecoder,SliceFileParser,DwopDecompressor}.ts` re-exportan desde `@abdsynths/shared/formats/sampler` y `@abdsynths/shared/formats/neuron` como única fuente de verdad.
 
 ---
 
