@@ -53,6 +53,26 @@ import {
   listAkaiDiskPrograms,
   parseAkaiDiskProgram,
 } from './AkaiDiskFormat.ts';
+import {
+  isEmuDiskImage,
+  listEmuDiskPrograms,
+  parseEmuDiskProgram,
+} from './EmuDiskFormat.ts';
+import {
+  isRolandDiskImage,
+  listRolandDiskPrograms,
+  parseRolandDiskProgram,
+} from './RolandDiskFormat.ts';
+import {
+  isEnsoniqDiskImage,
+  listEnsoniqDiskPrograms,
+  parseEnsoniqDiskProgram,
+} from './EnsoniqDiskFormat.ts';
+import {
+  isYamahaDiskImage,
+  listYamahaDiskPrograms,
+  parseYamahaDiskProgram,
+} from './YamahaDiskFormat.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -69,7 +89,11 @@ export type RawSamplerFormat =
   | 'tx16wx'
   | 'korg_kmp'
   | 'dls'
-  | 'akai_disk';
+  | 'akai_disk'
+  | 'emu_disk'
+  | 'roland_disk'
+  | 'ensoniq_disk'
+  | 'yamaha_disk';
 
 export interface ParsedImportRegion {
   id: string;
@@ -1819,14 +1843,18 @@ export interface ArchiveSamplerProgramInfo {
     | 'tx16wx'
     | 'korg_kmp'
     | 'dls'
-    | 'akai_disk';
+    | 'akai_disk'
+    | 'emu_disk'
+    | 'roland_disk'
+    | 'ensoniq_disk'
+    | 'yamaha_disk';
   regionCount?: number;
   detail?: string;
 }
 
 /**
  * Lists all playable sampler program files inside a container:
- * .zip / .xpn archives or Akai S-Series SCSI/floppy disk images (.iso, .img, .dsk).
+ * .zip / .xpn archives or vintage sampler disk images (Akai, E-mu, Roland, Ensoniq, Yamaha).
  */
 export async function listZipSamplerPrograms(
   filename: string,
@@ -1834,13 +1862,56 @@ export async function listZipSamplerPrograms(
 ): Promise<ArchiveSamplerProgramInfo[]> {
   const lower = filename.toLowerCase();
 
-  // Akai S-Series Disk Image (.iso, .img, .dsk)
-  if (typeof data !== 'string' && (/\.(iso|img|dsk)$/i.test(lower) || isAkaiDiskImage(data))) {
-    try {
-      const akaiProgs = listAkaiDiskPrograms(data);
-      if (akaiProgs.length > 0) return akaiProgs;
-    } catch {
-      // Fallback
+  // Vintage Sampler Disk Images (.iso, .img, .dsk, .out, .hda, .efe, .ede)
+  if (typeof data !== 'string') {
+    // 1. Akai S-Series Disk Image
+    if (isAkaiDiskImage(data)) {
+      try {
+        const akaiProgs = listAkaiDiskPrograms(data);
+        if (akaiProgs.length > 0) return akaiProgs;
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 2. E-mu Emulator III / EOS Disk Image
+    if (isEmuDiskImage(data)) {
+      try {
+        const emuProgs = listEmuDiskPrograms(data);
+        if (emuProgs.length > 0) return emuProgs;
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 3. Roland S-7xx Disk Image
+    if (isRolandDiskImage(data)) {
+      try {
+        const rolandProgs = listRolandDiskPrograms(data);
+        if (rolandProgs.length > 0) return rolandProgs;
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 4. Ensoniq EPS / ASR Disk Image
+    if (isEnsoniqDiskImage(data)) {
+      try {
+        const ensoniqProgs = listEnsoniqDiskPrograms(data);
+        if (ensoniqProgs.length > 0) return ensoniqProgs;
+      } catch {
+        // Fallback
+      }
+    }
+
+    // 5. Yamaha A-Series Disk Image
+    if (isYamahaDiskImage(data)) {
+      try {
+        const yamahaProgs = listYamahaDiskPrograms(data);
+        if (yamahaProgs.length > 0) return yamahaProgs;
+      } catch {
+        // Fallback
+      }
     }
   }
 
@@ -1993,9 +2064,23 @@ export async function parseUniversalSampler(
   const targetProgramPath =
     typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
 
-  // 0. Akai S-Series SCSI CD-ROM / Floppy / Gotek disk image (.iso, .img, .dsk)
-  if (typeof data !== 'string' && (/\.(iso|img|dsk)$/i.test(lower) || isAkaiDiskImage(data))) {
-    return parseAkaiDiskProgram(data, targetProgramPath);
+  // 0. Vintage Sampler Disk Images (Akai, E-mu, Roland, Ensoniq, Yamaha)
+  if (typeof data !== 'string') {
+    if (isAkaiDiskImage(data)) {
+      return parseAkaiDiskProgram(data, targetProgramPath);
+    }
+    if (isEmuDiskImage(data)) {
+      return parseEmuDiskProgram(data, targetProgramPath);
+    }
+    if (isRolandDiskImage(data)) {
+      return parseRolandDiskProgram(data, targetProgramPath);
+    }
+    if (isEnsoniqDiskImage(data)) {
+      return parseEnsoniqDiskProgram(data, targetProgramPath);
+    }
+    if (isYamahaDiskImage(data)) {
+      return parseYamahaDiskProgram(data, targetProgramPath);
+    }
   }
 
   // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn, Bitwig .multisample)

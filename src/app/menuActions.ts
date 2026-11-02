@@ -51,6 +51,7 @@ export interface MenuContext {
   openModelConfig?: (tab?: import('../ui/ModelConfigModal').ModelConfigTab) => void;
   openAiCoverGenerator?: () => void;
   openAudioChopper?: () => void;
+  openAudioRecorder?: () => void;
   openLoopEditor?: () => void;
   openRawSamplerExport?: () => void;
   openUniversalImportModal?: () => void;
@@ -391,6 +392,7 @@ export class MenuActions {
       onOpenModelConfig: () => this.ctx.openModelConfig?.('general'),
       onOpenAiCoverGenerator: () => this.ctx.openAiCoverGenerator?.(),
       onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
+      onOpenAudioRecorder: () => this.ctx.openAudioRecorder?.(),
       onOpenLoopEditor: () => this.ctx.openLoopEditor?.(),
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();

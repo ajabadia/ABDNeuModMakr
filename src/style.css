@@ -8901,3 +8901,178 @@ textarea.form-control::placeholder {
   display: none;
 }
 
+
+/* ─────────────────────────────────────────────────────────
+   Audio Recorder Modal (Fase 34) — solo tokens ABDShared.
+   Estructura nmm-modal-* / btn / panel-badge / val-pill común;
+   aquí solo lo específico del grabador.
+   ───────────────────────────────────────────────────────── */
+.nmm-recorder-window {
+  max-width: 640px;
+}
+
+.nmm-recorder-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.nmm-recorder-rec-dot {
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  flex: none;
+}
+
+.nmm-recorder-rec-dot.is-rec {
+  background: var(--color-led-active);
+  box-shadow: var(--color-led-glow);
+  animation: nmm-recorder-blink 1s steps(2, start) infinite;
+}
+
+.nmm-recorder-rec-dot.is-paused {
+  background: var(--color-warning);
+}
+
+@keyframes nmm-recorder-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.nmm-recorder-devicebar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-device-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  letter-spacing: 0.05em;
+}
+
+.nmm-recorder-device-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-panel-surface);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.nmm-recorder-lcdrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-lcd {
+  flex: 1;
+  background: var(--color-lcd-bg);
+  border: 1px solid var(--color-lcd-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+}
+
+.nmm-recorder-lcd span {
+  font-family: var(--font-lcd);
+  font-size: var(--text-2xl);
+  color: var(--color-lcd-text);
+}
+
+.nmm-recorder-meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+}
+
+.nmm-recorder-meter-track {
+  flex: 1;
+  height: var(--space-3);
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.nmm-recorder-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--color-vu-gradient);
+  transition: width var(--transition-fast);
+}
+
+.nmm-recorder-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-takes-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.05em;
+  color: var(--color-text-dim);
+  border-top: 1px solid var(--color-panel-border-dim);
+  padding-top: var(--space-3);
+}
+
+.nmm-recorder-takes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.nmm-recorder-takes-empty {
+  color: var(--color-text-dim);
+  font-size: var(--text-lg);
+  padding: var(--space-4);
+  text-align: center;
+  border: 1px dashed var(--color-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.nmm-recorder-take {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.nmm-recorder-take-name {
+  font-weight: 700;
+  color: var(--color-text-main);
+  font-size: var(--text-lg);
+  flex: none;
+}
+
+.nmm-recorder-take-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}

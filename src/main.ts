@@ -31,6 +31,7 @@ import { BatchProcessorModal } from './ui/BatchProcessorModal';
 import { ModelConfigModal } from './ui/ModelConfigModal';
 import { AiCoverGeneratorModal } from './ui/AiCoverGeneratorModal';
 import { AudioChopperModal } from './ui/AudioChopperModal';
+import { AudioRecorderModal } from './ui/AudioRecorderModal.ts';
 import { LoopEditorModal } from './ui/LoopEditorModal';
 import { RawSamplerExportModal } from './ui/RawSamplerExportModal';
 import { UniversalImportModal } from './ui/UniversalImportModal';
@@ -65,6 +66,7 @@ class App {
   private modelConfigModal!: ModelConfigModal;
   private aiCoverModal!: AiCoverGeneratorModal;
   private audioChopperModal!: AudioChopperModal;
+  private audioRecorderModal!: AudioRecorderModal;
   private loopEditorModal!: LoopEditorModal;
   private rawSamplerExportModal!: RawSamplerExportModal;
   private universalImportModal!: UniversalImportModal;
@@ -181,6 +183,18 @@ class App {
       },
       onStopAudition: () => {
         self.stopAuditionPcm();
+      },
+    });
+
+    this.audioRecorderModal = new AudioRecorderModal({
+      onAuditionPcm: (pcm, sRate) => {
+        self.playAuditionPcm(pcm, sRate);
+      },
+      onStopAudition: () => {
+        self.stopAuditionPcm();
+      },
+      onSendToChopper: (wavBytes, filename) => {
+        self.audioChopperModal.openWithAudioBuffer(wavBytes, filename);
       },
     });
 
@@ -380,6 +394,7 @@ class App {
       openModelConfig: (tab) => self.modelConfigModal.open(tab),
       openAiCoverGenerator: () => self.aiCoverModal.open(),
       openAudioChopper: () => void self.openAudioChopper(),
+      openAudioRecorder: () => self.audioRecorderModal.open(),
       openLoopEditor: () => self.openLoopEditor(),
       openRawSamplerExport: () => self.rawSamplerExportModal.open(),
       openUniversalImportModal: () => self.universalImportModal.open(),

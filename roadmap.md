@@ -827,7 +827,7 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
 ### 32.2 Arquitectura Común [COMPLETADA]
 - [x] Capa intermedia única (`UniversalSamplerInstrument` en `ABDShared/Code/SamplerFormats/UniversalSamplerModel.ts`): todos los lectores producen `ExtendedRegion[]` + articulación + metadatos; todos los escritores parten de ese modelo.
 - [x] Registro declarativo de formatos (`FORMAT_CAPABILITIES_REGISTRY`, 16 formatos activos) con detección por extensión y firma binaria, capacidades declaradas y avisos de pérdida (`evaluateFormatFidelity`).
-- [x] Lector de imágenes de disco (Akai S-Series S900/S1000/S3000 ISO/Floppy Gotek) en ABDShared/Code/SamplerFormats/AkaiDiskFormat.ts (Bloque 3 en curso: E-mu, Roland, Ensoniq pendientes).
+- [x] Lector de imágenes de disco (Akai S-Series S900/S1000/S3000, E-mu Emulator III/EOS E4, Roland S-7xx, Ensoniq EPS/ASR y Yamaha A-Series en ABDShared/Code/SamplerFormats/).
 - [x] Integración con el triaje batch de la Fase 29 y la exportación multiformato de la Fase 16 (`RawSamplerExportModal.ts`, `UniversalImportModal.ts`).
 
 ### 32.3 Mejora de los Formatos Existentes [COMPLETADA]
@@ -864,19 +864,22 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
      - [ ] **Sequential Prophet X** (`.pxi`).
      - [ ] **Roland SP-404MKII / MC-707 / Zen-Core** (`.svz` / kits).
 3. [ ] **Bloque 3 — Formatos Binarios Clásicos e Imágenes de Disco (CD/SCSI/Floppy/Gotek)**:
-   - [ ] **Akai S-Series Vintage & MESA**:
-     - **Akai S900 / S950** (`.img`, `.dsk`, `.hfe`, discos de 3.5" DD 720KB/HD 1.44MB para emuladores Gotek FlashFloppy y disqueteras físicas, descompresión por grupos de 10 muestras con bit-count variable de 12-bit).
-     - **Akai S1000 / S1100 / S2000 / S3000** (`.iso`, `.img`, `.hfe`, imágenes de CD-ROM SCSI, discos duros y disquetes 3.5" Gotek).
+   - [x] **Akai S-Series Vintage & MESA [COMPLETADO]**:
+     - **Akai S900 / S950** (`.img`, `.dsk`, discos de 3.5" DD 720KB/HD 1.44MB para emuladores Gotek FlashFloppy y disqueteras físicas, descompresión por grupos de 10 muestras con bit-count variable de 12-bit).
+     - **Akai S1000 / S1100 / S2000 / S3000** (`.iso`, `.img`, `.dsk`, imágenes de CD-ROM SCSI, discos duros y disquetes 3.5" Gotek).
        - Parser del sistema de archivos propietario Akai: tabla de particiones (bloques de 8192 bytes `AKAI_BLOCK_SIZE`), volúmenes, árbol de directorios con `AkaiDirEntry` ('P' programas, 'S' muestras, 'T' tomas).
        - Deserialización de programas Akai S1000/S3000 (`.p` / `.s3p` / MESA): cabecera de programa, keygroups de 4 zonas con split por tecla y velocidad, envolventes Akai de 4 tasas/4 niveles (`AkaiS1000Envelope`), filtros resonantes, tuning y bucles (`AkaiS1000SampleLoop`).
        - Extracción de audio Akai S1000/S3000 a WAV PCM16 (conversión Big/Little Endian y frecuencias Akai 22050/44100).
+   - [x] **E-MU Emulator III / EOS Emulator IV [COMPLETADO]** (`.e4b`, `.esi`, `.iso`, `.img` con filesystem `EMU3` y bancos IFF FORM `E4B0` / `EMULATOR THREE`).
+   - [x] **Roland S-7xx (S-770 / S-750 / S-760 / SP-700) [COMPLETADO]** (`.out`, `.img`, `.iso` con sector map Roland `770`, FAT y directorios de Patches, Partials y Samples).
+   - [x] **Ensoniq EPS / EPS-16+ / ASR-10 [COMPLETADO]** (`.efe`, `.ede`, `.eda`, `.gkh`, `.img`, `.iso`, imágenes de disquete Gotek y SCSI con firma `5B` / sector map, cabeceras GKH y EFE).
+   - [x] **Yamaha A3000 / A4000 / A5000 / YSFC [COMPLETADO]** (`.iso`, `.img`, `.hda`, `.hds`, `.x7u`, `.x7l`, `.x8l` con decodificación de sistemas SFS y YSFC).
+   - [x] **Motor Universal de Imágenes de Disco e ISO [COMPLETADO]** (`rawSamplerParsers.ts` con detección automática de Akai S-Series, E-mu, Roland, Ensoniq, Yamaha e imágenes de disco/floppy, con selección interactiva o lote batch vía `MultiInstrumentModal`).
    - [ ] **Akai S5000 / S6000 / Z4 / Z8** (`.AKP` RIFF `APRG` + WAVs de muestras en carpeta).
    - [ ] **Akai MPC Clásico** (`.PGM` / `.SND` para MPC60, MPC2000, MPC2000XL, MPC1000, MPC2500, imágenes de disco Gotek MPC2000 con cabecera bootsector `EB FE 90 4D 50 43 32 30 30 30`).
-   - [ ] **E-MU Emulator II / III / IV / Emax / EmulatorX** (`.e4b`, `.esi`, `.exb`, imágenes ISO con filesystem `EMU3`).
-   - [ ] **Ensoniq Mirage / EPS / ASR-10** (`.ede`, `.gkh`, `.img`, imágenes de disquete Gotek y SCSI con firma `5B` / sector map).
    - [ ] **Kurzweil K2000 / K2500 / K2600** (`.krz`, `.k25`, `.k26`).
-   - [ ] **Roland S-50 / S-550 / S-330 / S-7xx** (`.out`, `.img`, `.iso` con sector map S5xx / S7xx).
-   - [ ] **Yamaha A3000 / A4000 / A5000 / Motif** y serie **Montage/MODX** (`.x7u`/`.x8u`).
+   - [ ] **Roland S-50 / S-550 / S-330** (`.out`, `.img`, `.iso` con sector map S5xx).
+   - [ ] **Yamaha Motif** y serie **Montage/MODX** (`.x7u`/`.x8u`).
    - [ ] **Korg Multisample Moderno** (`.korgmultisample` para Kronos/Nautilus/WaveState).
    - [ ] **Casio FZ-1 / FZ-10M** (`.fzv`, `.fzf`, imágenes de floppy dump).
    - [ ] **Fairlight CMI IIx/III** (`cmi3`) y **Synclavier II**.

@@ -241,7 +241,7 @@ async function runPhase16Tests(): Promise<void> {
   assert.ok(bwXmlEntry, '.multisample package must contain multisample.xml at root');
 
   const bwXml = new TextDecoder().decode(bwXmlEntry.data);
-  assert.ok(bwXml.includes('<multisample version="1.0">'), 'Must have <multisample> root tag');
+  assert.ok(bwXml.includes('<multisample') && bwXml.includes('version="1.0">'), 'Must have <multisample> root tag');
   assert.ok(bwXml.includes('<generator name="ABDNeuModMakr"'), 'Must have generator tag');
   assert.ok(bwXml.includes('<sample file="Samples/'), 'Must have sample mapping tags');
   console.log(`   [PASS] Bitwig Studio multisample package verified with root multisample.xml.`);

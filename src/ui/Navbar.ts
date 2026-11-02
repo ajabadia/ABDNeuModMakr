@@ -52,6 +52,7 @@ export interface NavbarHandlers {
   onOpenModelConfig?: () => void;
   onOpenAiCoverGenerator?: () => void;
   onOpenAudioChopper?: () => void;
+  onOpenAudioRecorder?: () => void;
   onOpenLoopEditor?: () => void;
   onToggleLogs: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
@@ -168,6 +169,7 @@ export class AppNavbar {
           { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
           { id: 3014, label: 'Generate Cover Artwork with AI (Fase 20)...', action: 'openAiCoverGenerator' },
           { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
+          { id: 3016, label: 'Audio Recorder (Takes)...', action: 'openAudioRecorder' },
           { id: 3013, label: 'Waveform AutoLoop Editor...', action: 'openLoopEditor' },
           { id: 301, label: 'Process Model Now...', action: 'startProcess', shortcut: 'Ctrl+P' },
           { id: 3015, label: 'Batch Process Models (Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
@@ -678,6 +680,7 @@ export class AppNavbar {
       case 'openModelConfig': this.handlers.onOpenModelConfig?.(); break;
       case 'openAiCoverGenerator': this.handlers.onOpenAiCoverGenerator?.(); break;
       case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
+      case 'openAudioRecorder': this.handlers.onOpenAudioRecorder?.(); break;
       case 'openLoopEditor': this.handlers.onOpenLoopEditor?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
     }

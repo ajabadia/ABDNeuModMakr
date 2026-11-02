@@ -110,6 +110,30 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.iso',
     mimeType: 'application/octet-stream',
   },
+  emu_disk: {
+    title: 'E-mu EOS / EIII Disk Image (.iso, .img, .hda, .e4b, .esi)',
+    description: 'Imagen de disco del sistema de archivos EMU3 y bancos nativos de samplers E-mu Emulator III, EIIIX, ESI-32/4000 y serie Emulator IV (EOS).',
+    extension: '.iso',
+    mimeType: 'application/octet-stream',
+  },
+  roland_disk: {
+    title: 'Roland S-7xx Disk Image (.iso, .img, .out)',
+    description: 'Imagen de CD-ROM o disco duro SCSI para samplers Roland S-770, S-750, S-760 y SP-700 con patches, partials y clusters de audio.',
+    extension: '.iso',
+    mimeType: 'application/octet-stream',
+  },
+  ensoniq_disk: {
+    title: 'Ensoniq EPS / ASR Disk Image (.img, .dsk, .efe, .ede)',
+    description: 'Imagen de disquete o disco SCSI y ficheros de instrumento para Ensoniq EPS, EPS-16 Plus y ASR-10.',
+    extension: '.img',
+    mimeType: 'application/octet-stream',
+  },
+  yamaha_disk: {
+    title: 'Yamaha A-Series SFS Disk Image (.iso, .img, .hda)',
+    description: 'Imagen de disco Sampler File System (SFS) y contenedores YSFC para samplers Yamaha A3000, A4000 y A5000.',
+    extension: '.iso',
+    mimeType: 'application/octet-stream',
+  },
   music1010: {
     title: '1010music Blackbox / Tangerine (preset.xml)',
     description: 'Preset XML multi-sample y drum cells para hardware 1010music Blackbox y Nanobox Tangerine.',

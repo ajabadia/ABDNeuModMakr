@@ -186,10 +186,18 @@ El proyecto está optimizado para Vercel:
     - **`.caf` (`caff`, Apple CoreAudio Format)**: Decodificador 100% TypeScript puro con chunks `desc`, `data`, `pakt`, `inst` (nota base, rangos de tecla/velocidad, ganancia) y `regn` (bucles).
     - **`.ncw`**: Formato de audio comprimido sin pérdida de Native Instruments Kontakt.
     - **`.mp3`, `.ogg` / `.oga`, `.m4a` / `.aac`, `.opus` / `.webm`**: Normalización asíncrona automática a WAV en navegador manteniendo las propiedades de instrumento.
-  - **Imágenes de Disco e Imágenes Floppy Akai Serie S (Fase 32.5)**:
-    - **Akai S1000 / S1100 / S2000 / S3000 (`.iso`, `.img`, `.dsk`)**: Imágenes completas de CD-ROM o discos duros SCSI (ZuluSCSI, SCSI2SD). Soporte de hasta 9 particiones ('A'..'I'), sub-volúmenes con programas ('p') y muestras ('s'), keygroups con 4 zonas de velocidad, envolventes ADSR no lineales, filtros pasobajo de 18 dB/octava y extracción de formas de onda PCM16.
-    - **Akai S900 / S950 (`.img`, `.dsk`)**: Imágenes de disquete de 3.5" (720 KB DD y 1.44 MB HD, dumps Gotek FlashFloppy) con tabla de 64 entradas de directorio, programas con capas soft/loud por conmutación o fundido de velocidad y descompresión de audio de 12 bits (no comprimido o ADPCM).
-    - **Gestión Multi-Instrumento / Multi-Volumen**: Si el disco contiene múltiples programas, la interfaz abre automáticamente la ventana `MultiInstrumentModal` permitiendo seleccionar un instrumento individual o derivar toda la colección a `BatchProcessorModal` para procesamiento desatendido por lotes.
+  - **Imágenes de Disco e Imágenes Floppy de Samplers Vintage (Fase 32.5)**:
+    - **Akai S-Series (S1000 / S1100 / S2000 / S3000 / S900 / S950)** (`.iso`, `.img`, `.dsk`):
+      - Imágenes SCSI/CD-ROM o dumps de floppy Gotek FlashFloppy (DD 720 KB y HD 1.44 MB). Soporte de particiones ('A'..'I'), volúmenes, keygroups con 4 zonas de velocidad, descompresión de 12 bits (S900/S950) y audio PCM16.
+    - **E-mu Systems (Emulator III / EIIIX / ESI-32 / EOS Emulator IV)** (`.iso`, `.img`, `.dsk`, `.e4b`):
+      - Soporte del sistema de archivos E-mu `EMU3` (superbloque en sector 0, tabla de asignación de clusters FAT, directorios jerárquicos) y bancos IFF FORM `E4B0` / `EMULATOR THREE` con muestras lineales Little-Endian de 16 bits y extracción de presets y zonas.
+    - **Roland S-7xx (S-770 / S-750 / S-760 / SP-700)** (`.iso`, `.img`, `.out`):
+      - Detección de imágenes SCSI y CD-ROM Roland S-7xx (bloque ID `770`), FAT y directorio de parámetros a partir de `0x10D800` (patrones Patch, Partial, Sample) y extracción de audio lineal de 16 bits agrupado por clusters FAT de 9216 bytes.
+    - **Ensoniq EPS / EPS-16+ / ASR-10** (`.img`, `.dsk`, `.iso`, `.efe`, `.ede`, `.eda`, `.gkh`):
+      - Detección de imágenes de disco y archivos de instrumento nativos Ensoniq (headers GKH `TDDF`, EFE CRLF, marcadores de sector floppy `ID` a 550 y `DR` a 2558), extracción de instrumentos de tipo `0x02` y muestras de audio PCM.
+    - **Yamaha A-Series & YSFC (A3000 / A4000 / A5000)** (`.iso`, `.img`, `.hda`, `.hds`, `.x7u`, `.x7l`, `.x8l`):
+      - Soporte de sistemas de archivos de disco Yamaha SFS y contenedores estructurados YSFC con decodificación de programas, ondas y asignaciones de teclado.
+    - **Gestión Multi-Instrumento / Multi-Volumen**: Si el disco o imagen contiene múltiples programas o presets, la interfaz abre automáticamente la ventana `MultiInstrumentModal` permitiendo seleccionar un instrumento individual o derivar toda la colección a `BatchProcessorModal` para procesamiento desatendido por lotes.
   - **Formatos Multisample y Presets**: SoundFont 2 (`.sf2`), SFZ (`.sfz`), Decent Sampler (`.dspreset`), Ableton Sampler/Simpler (`.adv`), Apple Logic EXS24 (`.exs`), TAL-Sampler (`.talsmpl`), CWITEC TX16Wx (`.txprog`), Korg Trinity/Triton (`.KMP`), MMA DLS (`.dls`), Akai MPC (`.xpm`, `.xpn`), Kontakt (`.nki`), Steinberg HALion (`.vstpreset`), Bitwig (`.multisample`) y paquetes `.zip`.
   - **Bucles Rebanados y Slices**: ReCycle (`.rx2`, `.rex`, `.rcy`), pistas CUE (`.cue`), y sample chains lineales (WAV/AIFF con marcas `cue ` / `smpl`). Detección automática que ofrece abrir directamente en el **Audio Chopper**.
   - **Audio Crudo Multizona**: Lotes de archivos de audio en cualquiera de los formatos soportados con deducción automática de notas o afinación cromática.
