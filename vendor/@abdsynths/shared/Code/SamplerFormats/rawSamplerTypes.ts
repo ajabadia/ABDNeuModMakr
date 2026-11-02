@@ -33,6 +33,11 @@ export type RawSamplerFormat =
   | 'tx16wx'       // CWITEC TX16Wx (.txprog XML + Samples/ packaged as .txprog.zip)
   | 'korg_kmp'     // Korg Trinity/Triton/M3/Pa (.KMP + .KSF + .KSC packaged as .kmp.zip)
   | 'dls'          // MMA Downloadable Sounds Level 1/2 (.dls RIFF "DLS " monolithic)
+  | 'music1010'    // 1010music Blackbox / Tangerine (preset.xml + samples in .zip)
+  | 'deluge'       // Synthstrom Deluge (SYNTHS/*.XML + SAMPLES/ in .zip)
+  | 'renoise'      // Renoise Instrument (.xrni ZIP with Instrument.xml + FLAC SampleData/)
+  | 'bliss'        // discoDSP Bliss (.zbp ZIP with program.xml + FLAC samples)
+  | 'polyend_pti'  // Polyend Tracker / Play (.pti standalone binary)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';

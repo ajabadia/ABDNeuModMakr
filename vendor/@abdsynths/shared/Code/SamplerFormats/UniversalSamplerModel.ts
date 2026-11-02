@@ -37,12 +37,18 @@ import {
 } from './Sf2Parser.ts';
 import { importSfzToNative } from './SfzParser.ts';
 import { parseDecentSamplerPreset as parseDecentSamplerNative } from './DecentSamplerParser.ts';
+import { importMusic1010Zip } from './Music1010Format.ts';
+import { importDelugeZip } from './DelugeFormat.ts';
+import { importRenoiseXrni } from './RenoiseFormat.ts';
+import { importBlissZip } from './BlissFormat.ts';
+import { parsePolyendTrackerPti } from './PolyendTrackerFormat.ts';
 import {
   parseUniversalSampler,
   type ParsedSamplerPreset,
   type ParsedImportRegion,
 } from './rawSamplerParsers.ts';
 import { exportRawSamplerLibrary } from './RawSamplerExporter.ts';
+import { indexZipArchive } from '../NeuronFormats/ZipArchive.ts';
 import type { RawExportOptions, RawExportResult } from './rawSamplerTypes.ts';
 import {
   MidiTranslationEngine,
@@ -465,6 +471,106 @@ export const FORMAT_CAPABILITIES_REGISTRY: Record<string, FormatCapabilities> = 
     supportedFilterPoles: [2],
     supportsPitchEnvelope: true,
     supportsMuteGroups: true,
+    supportsKeyswitches: false,
+  },
+  music1010: {
+    formatId: 'music1010',
+    title: '1010music Blackbox / Tangerine (preset.xml)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 'unlimited',
+    maxLoopsPerZone: 1,
+    supportsPingPongLoop: false,
+    supportsReversePlayback: true,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: false,
+    supportsReleaseTrigger: false,
+    supportsNoteCrossfade: false,
+    supportsVelocityCrossfade: false,
+    supportsFilter: true,
+    supportedFilterPoles: [2, 4],
+    supportsPitchEnvelope: false,
+    supportsMuteGroups: true,
+    supportsKeyswitches: false,
+  },
+  deluge: {
+    formatId: 'deluge',
+    title: 'Synthstrom Deluge (SYNTHS/*.XML)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 1,
+    maxLoopsPerZone: 1,
+    supportsPingPongLoop: false,
+    supportsReversePlayback: false,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: false,
+    supportsReleaseTrigger: false,
+    supportsNoteCrossfade: false,
+    supportsVelocityCrossfade: false,
+    supportsFilter: true,
+    supportedFilterPoles: [2, 4],
+    supportsPitchEnvelope: false,
+    supportsMuteGroups: false,
+    supportsKeyswitches: false,
+  },
+  renoise: {
+    formatId: 'renoise',
+    title: 'Renoise Instrument (.xrni)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 'unlimited',
+    maxLoopsPerZone: 1,
+    supportsPingPongLoop: true,
+    supportsReversePlayback: true,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: true,
+    supportsReleaseTrigger: true,
+    supportsNoteCrossfade: false,
+    supportsVelocityCrossfade: false,
+    supportsFilter: true,
+    supportedFilterPoles: [2, 4],
+    supportsPitchEnvelope: true,
+    supportsMuteGroups: true,
+    supportsKeyswitches: false,
+  },
+  bliss: {
+    formatId: 'bliss',
+    title: 'discoDSP Bliss (.zbp)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 'unlimited',
+    maxLoopsPerZone: 1,
+    supportsPingPongLoop: true,
+    supportsReversePlayback: false,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: false,
+    supportsReleaseTrigger: false,
+    supportsNoteCrossfade: false,
+    supportsVelocityCrossfade: false,
+    supportsFilter: true,
+    supportedFilterPoles: [2],
+    supportsPitchEnvelope: true,
+    supportsMuteGroups: true,
+    supportsKeyswitches: false,
+  },
+  polyend_pti: {
+    formatId: 'polyend_pti',
+    title: 'Polyend Tracker / Play (.pti)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 1,
+    maxLoopsPerZone: 1,
+    supportsPingPongLoop: true,
+    supportsReversePlayback: true,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: false,
+    supportsReleaseTrigger: false,
+    supportsNoteCrossfade: false,
+    supportsVelocityCrossfade: false,
+    supportsFilter: true,
+    supportedFilterPoles: [2],
+    supportsPitchEnvelope: false,
+    supportsMuteGroups: false,
     supportsKeyswitches: false,
   },
 };
@@ -1201,6 +1307,226 @@ export async function parseUniversalSamplerInstrument(
     }
     const dsRes = parseDecentSamplerNative(text, audioPayloads, filename.replace(/\.dspreset$/i, ''));
     return nativeImportResultToUniversalInstrument(dsRes);
+  }
+
+  // Direct decoders for Sub-bloque 2A: Polyend PTI, Renoise XRNI, Bliss ZBP
+  if (lower.endsWith('.pti')) {
+    const pti = parsePolyendTrackerPti(buffer, filename);
+    return parsedSamplerPresetToUniversalInstrument({
+      format: 'polyend_pti' as unknown as ParsedSamplerPreset['format'],
+      formatLabel: 'Polyend Tracker (.pti)',
+      presetName: pti.presetName,
+      modelName: pti.presetName.slice(0, 11),
+      detectedCategory: 'Instrument',
+      suggestedParameterSet: 0,
+      filter: pti.articulation.filter,
+      envelope: pti.articulation.ampEnvEnabled ? {
+        delay: pti.articulation.ampEnv.delaySec,
+        attack: pti.articulation.ampEnv.attackSec,
+        hold: pti.articulation.ampEnv.holdSec,
+        decay: pti.articulation.ampEnv.decaySec,
+        sustain: pti.articulation.ampEnv.sustainLevel,
+        release: pti.articulation.ampEnv.releaseSec,
+      } : undefined,
+      regions: pti.regions.map(r => ({
+        id: r.id,
+        sampleName: r.sampleName,
+        samplePath: r.sampleName,
+        rootKey: r.rootKey,
+        lowKey: r.lowKey,
+        highKey: r.highKey,
+        lowVel: r.lowVel,
+        highVel: r.highVel,
+        detuneCents: r.detune,
+        volumeDb: r.volume,
+        pan: r.pan,
+        loopMode: r.loopMode,
+        loopStart: r.loopStart,
+        loopEnd: r.loopEnd,
+        reversed: r.reversed,
+        sampleStartFrame: r.sampleStartFrame,
+        sampleEndFrame: r.sampleEndFrame,
+      })),
+      audioBuffers: pti.audioBuffers,
+    });
+  }
+
+  if (lower.endsWith('.xrni')) {
+    const rRes = importRenoiseXrni(new Uint8Array(buffer));
+    return parsedSamplerPresetToUniversalInstrument({
+      format: 'renoise' as unknown as ParsedSamplerPreset['format'],
+      formatLabel: 'Renoise (.xrni)',
+      presetName: rRes.presetName,
+      modelName: rRes.presetName.slice(0, 11),
+      detectedCategory: 'Instrument',
+      suggestedParameterSet: 0,
+      filter: rRes.articulation.filter,
+      envelope: rRes.articulation.ampEnvEnabled ? {
+        delay: rRes.articulation.ampEnv.delaySec,
+        attack: rRes.articulation.ampEnv.attackSec,
+        hold: rRes.articulation.ampEnv.holdSec,
+        decay: rRes.articulation.ampEnv.decaySec,
+        sustain: rRes.articulation.ampEnv.sustainLevel,
+        release: rRes.articulation.ampEnv.releaseSec,
+      } : undefined,
+      regions: rRes.regions.map(r => ({
+        id: r.id,
+        sampleName: r.sampleName,
+        samplePath: r.sampleName,
+        rootKey: r.rootKey,
+        lowKey: r.lowKey,
+        highKey: r.highKey,
+        lowVel: r.lowVel,
+        highVel: r.highVel,
+        detuneCents: r.detune,
+        volumeDb: r.volume,
+        pan: r.pan,
+        loopMode: r.loopMode,
+        loopStart: r.loopStart,
+        loopEnd: r.loopEnd,
+      })),
+      audioBuffers: rRes.audioBuffers,
+    });
+  }
+
+  if (lower.endsWith('.zbp')) {
+    const bRes = importBlissZip(new Uint8Array(buffer));
+    return parsedSamplerPresetToUniversalInstrument({
+      format: 'bliss' as unknown as ParsedSamplerPreset['format'],
+      formatLabel: 'discoDSP Bliss (.zbp)',
+      presetName: bRes.presetName,
+      modelName: bRes.presetName.slice(0, 11),
+      detectedCategory: 'Instrument',
+      suggestedParameterSet: 0,
+      filter: bRes.articulation.filter,
+      envelope: bRes.articulation.ampEnvEnabled ? {
+        delay: bRes.articulation.ampEnv.delaySec,
+        attack: bRes.articulation.ampEnv.attackSec,
+        hold: bRes.articulation.ampEnv.holdSec,
+        decay: bRes.articulation.ampEnv.decaySec,
+        sustain: bRes.articulation.ampEnv.sustainLevel,
+        release: bRes.articulation.ampEnv.releaseSec,
+      } : undefined,
+      regions: bRes.regions.map(r => ({
+        id: r.id,
+        sampleName: r.sampleName,
+        samplePath: r.sampleName,
+        rootKey: r.rootKey,
+        lowKey: r.lowKey,
+        highKey: r.highKey,
+        lowVel: r.lowVel,
+        highVel: r.highVel,
+        detuneCents: r.detune,
+        volumeDb: r.volume,
+        pan: r.pan,
+        loopMode: r.loopMode,
+        loopStart: r.loopStart,
+        loopEnd: r.loopEnd,
+      })),
+      audioBuffers: bRes.audioBuffers,
+    });
+  }
+
+  // Check for 1010music or Deluge archives (.zip)
+  if (lower.endsWith('.zip')) {
+    const bytes = new Uint8Array(buffer);
+    const entries = indexZipArchive(bytes);
+    const hasPresetXml = entries.some(e => {
+      const p = e.path.toLowerCase();
+      return p.endsWith('/preset.xml') || p.endsWith('\\preset.xml') || p === 'preset.xml';
+    });
+    const hasDelugeXml = entries.some(e => {
+      const p = e.path.toLowerCase();
+      return p.endsWith('.xml') && (p.includes('synths') || p.includes('kits'));
+    });
+
+    if (hasPresetXml) {
+      try {
+        const m1010 = importMusic1010Zip(bytes);
+        if (m1010.regions.length > 0) {
+          return parsedSamplerPresetToUniversalInstrument({
+            format: 'music1010' as unknown as ParsedSamplerPreset['format'],
+            formatLabel: '1010music Blackbox (preset.xml)',
+            presetName: m1010.presetName,
+            modelName: m1010.presetName.slice(0, 11),
+            detectedCategory: 'Instrument',
+            suggestedParameterSet: 0,
+            filter: m1010.articulation.filter,
+            envelope: m1010.articulation.ampEnvEnabled ? {
+              delay: m1010.articulation.ampEnv.delaySec,
+              attack: m1010.articulation.ampEnv.attackSec,
+              hold: m1010.articulation.ampEnv.holdSec,
+              decay: m1010.articulation.ampEnv.decaySec,
+              sustain: m1010.articulation.ampEnv.sustainLevel,
+              release: m1010.articulation.ampEnv.releaseSec,
+            } : undefined,
+            regions: m1010.regions.map(r => ({
+              id: r.id,
+              sampleName: r.sampleName,
+              samplePath: r.sampleName,
+              rootKey: r.rootKey,
+              lowKey: r.lowKey,
+              highKey: r.highKey,
+              lowVel: r.lowVel,
+              highVel: r.highVel,
+              detuneCents: r.detune,
+              volumeDb: r.volume,
+              pan: r.pan,
+              loopMode: r.loopMode,
+              loopStart: r.loopStart,
+              loopEnd: r.loopEnd,
+              reversed: r.reversed,
+              sampleEndFrame: r.sampleEndFrame,
+            })),
+            audioBuffers: m1010.audioBuffers,
+          });
+        }
+      } catch {
+        // Not a valid 1010music preset
+      }
+    }
+
+    if (hasDelugeXml) {
+      try {
+        const del = importDelugeZip(bytes);
+        return parsedSamplerPresetToUniversalInstrument({
+          format: 'deluge' as unknown as ParsedSamplerPreset['format'],
+          formatLabel: 'Synthstrom Deluge (SYNTHS/*.XML)',
+          presetName: del.presetName,
+          modelName: del.presetName.slice(0, 11),
+          detectedCategory: 'Instrument',
+          suggestedParameterSet: 0,
+          filter: del.articulation.filter,
+          envelope: del.articulation.ampEnvEnabled ? {
+            delay: del.articulation.ampEnv.delaySec,
+            attack: del.articulation.ampEnv.attackSec,
+            hold: del.articulation.ampEnv.holdSec,
+            decay: del.articulation.ampEnv.decaySec,
+            sustain: del.articulation.ampEnv.sustainLevel,
+            release: del.articulation.ampEnv.releaseSec,
+          } : undefined,
+          regions: del.regions.map(r => ({
+            id: r.id,
+            sampleName: r.sampleName,
+            samplePath: r.sampleName,
+            rootKey: r.rootKey,
+            lowKey: r.lowKey,
+            highKey: r.highKey,
+            lowVel: r.lowVel,
+            highVel: r.highVel,
+            detuneCents: r.detune,
+            volumeDb: r.volume,
+            pan: r.pan,
+            loopMode: r.loopMode,
+            loopStart: r.loopStart,
+            loopEnd: r.loopEnd,
+          })),
+          audioBuffers: del.audioBuffers,
+        });
+      } catch {
+        // Not a valid Deluge archive
+      }
+    }
   }
 
   // Fallback to multi-container / archive / MPC / Kontakt / Bitwig / HALion / Slicer parser

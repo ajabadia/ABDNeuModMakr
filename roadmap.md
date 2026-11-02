@@ -920,6 +920,64 @@ Implementado en `ABDShared/Contracts/sampler_voice_parameter_spec.json`, `ABDSha
 - Contadores `26 / 354 PRESETS`, `181 / 341 IN LIBRARY`, `341 MODELS`.
 - **Consigna**: no tocar nada de esto ahora. Al llegar a esta tarea, decidir si hace falta algún ajuste en BankDrawer/BankManager o si se cierra sin cambios.
 
+---
+
+## Revisión — Utilidad de Grabación/Clasificación/Procesado de Audio (Rec Recorder) [PLANIFICADA]
+
+**Auditoría 2026-11-02** (petición: grabar audio, decidir si es cromático o drums, pasarlo por enhanced → autoslider → detector de notas → corte de silencios, con monitor, transporte play/pausa/ff/rw/stop vía MIDI de mesa, visor de onda + editor básico, normalizador, detectores de ruido/silencio/nota/tipo de drum, e inyección final a la zona central). Veredicto: **viable; ~70% ya existe**. Arquitectura propuesta:
+
+```
+AudioRecorderModal (nuevo: captura + VuMeter/Spectrum + transporte)
+  → classifyTake() (AcousticIntelligence: chromatic | drums)
+  → enhance (MasterWaveEnhancer / PipelineRunner) → autoslice (AudioSlicerEngine)
+  → silence trim (detector Fase 30) → normalize (nuevo, ver 34.5)
+  → detectores: notas (YIN→hzToMidi) o drums (GM map) / ruido (Fase 30)
+  → AudioChopperModal (revisar cortes, borrar zonas)
+  → onInjectClassicZones / onInjectExtendedRegions → ZoneInspector/Ribbon
+Transporte ⟵ MidiTransportService (Web MIDI nuevo + NOTE/MMC en midiLearnStore)
+Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRPN
+```
+
+### 34.1 Lo que ya se reutiliza sin cambios
+- **Monitor**: `VuMeter` (`ABDShared/Components/vuMeter.js`): IN/OUT, dBFS −60..0, pico + clip, zero-allocation; más `SpectrumPlotter`, `ledLadder`, `peakLED`. Solo hay que alimentarlos desde el `AnalyserNode` de captura (nadie lo hace hoy).
+- **Clasificación chromatic vs drums**: `AcousticIntelligence.ts` (`detectPitchYinMpm` + harmonicidad, detector percusivo/ruido, `classifyAcousticSample` 0..9) + `gmDrumMap.ts` + modos `drums`/`vocals`/cromático del chopper. Falta solo el `classifyTake()` router (harmonicity alta + f0 estable → cromático; densidad de transitorios alta + harmonicidad baja → drums).
+- **Enhanced → autoslice → detectores**: `MasterWaveEnhancer` (+ puentes IA AudioSR/HTDemucs/BigVGAAN), `AudioSlicerEngine` (Spectral Flux, zero-crossing snap, silencios manuales, palabras fonéticas, import ReCycle), `detectPitchYinMpm` + `hzToMidiAndCents` + `estimateFundamentalPitchHz`, `analyzeDrumCollisions`, `WebNeuralEngine` (BYOK), botones Whisper-tiny y Demucs del chopper.
+- **Onda + editor de cortes**: `AudioChopperModal.ts` YA es visor + `splitSliceAtFrame` (cortar) + `deleteSlice` (borrar) + `moveSliceBoundary` + lupa ±256 + snap a zero-crossing + silencios manuales. No construir editor nuevo: reutilizarlo como paso final.
+- **Destino zonas**: `onInjectClassicZones` / `onInjectExtendedRegions` → `Zone` / `ExtendedRegion` (`src/core/types.ts`) → `ZoneInspector` + `ZoneRibbon`. Ruta abierta.
+
+### 34.2 Piezas que YA están previstas en el roadmap (adelantar, no crear)
+- **Fase 30 (PLANIFICADA) — Detector de Silencio, Suelo de Ruido y Huella de Ruido**: cubre exactamente "detector de silencios (con y sin IA)", "detector de señal de ruido" y limpieza DSP/IA. **Adelantar la Fase 30** desbloquea los pasos *silence trim* y *noise gate* del pipeline de grabación; el `noiseProfile` (nivel dBFS, espectro por bandas) debe exportarse como metadato para que el enhancer no refuerce el ruido al upsamplear.
+- **Fase 22.1 (PLANIFICADA) — Mod Matrix / Release Triggers / Round-Robin**: cubre enrutado de CC1/Expresión/Aftertouch y triggers key-off. Extender su alcance con los bindings de transporte (play/stop/rec vía nota/CC) evita dos matrices MIDI paralelas.
+- **Fase 16.1 (COMPLETADA) — `normalizeChannels` en `RawSamplerExporter`**: el primitivo DSP de normalización de pico (0 dBFS / −0.3 dBFS True-Peak) ya existe; solo hay que exponerlo como herramienta de edición (ver 34.5).
+- **Fase 33 (COMPLETADA) — Capa de abstracción universal (`MidiTranslationEngine` + diccionario de parámetros)**: es el patrón a seguir para los modelos de grabación/transporte en `ABDShared/Contracts` (ver 34.4).
+
+### 34.3 Huecos NO previstos: captura + transporte + entrada MIDI viva
+- **Sin captura**: cero `getUserMedia` / `MediaRecorder` / `MediaStreamAudioSource` en `src`. Crear `AudioCaptureService` (`src/core/`): selector de dispositivo, `getUserMedia` → `MediaStreamAudioSourceNode`, grabación (MediaRecorder para takes largos o `AudioWorklet` con buffer circular para edición precisa) + `AnalyserNode` en paralelo para monitorización sin latencia.
+- **Transporte a medias**: `AudioPreviewService` (`src/core/audioPreview.ts`) tiene play/stop de audición con `playbackRate`, pero **sin pausa, sin FF/RW, sin seek**. Crear `TransportService` con tracking de offset (pausa = stop + guardar offset; FF/RW = salto ±N s o jog por `playbackRate` temporal).
+- **Sin MIDI en vivo**: no hay `requestMIDIAccess` en ningún sitio; hoy no entra MIDI en la web. Crear capa de entrada Web MIDI. `midiLearnStore.js` (ABDShared) solo modela `CC / NRPN / AFTERTOUCH / PITCH_BEND` (con curva, macros N:M y export JSON) — **sin NOTE, sin SysEx, sin MMC**. Las mesas (Mackie/HUI/genéricas) mandan transporte como Note/CC/Pitch Bend (encajarían añadiendo tipo `NOTE`), pero **MMC es SysEx universal (`F0 7F …`)** y exige un tipo nuevo `SYSEX_TRANSPORT` con matcher por plantilla de bytes; los mapeos de transporte evalúan a eventos discretos, no a 0..1 (extender `evaluateMidiMapping` + `formatMidiSourceBadge`).
+
+### 34.4 Capa de abstracción de formatos/modelos en ABDShared (análoga a CC/NRPN)
+- `RecordingSession` (dispositivo, formato, takes, clasificación chromatic/drums, `noiseProfile` de Fase 30) y `TransportBinding` (play/pause/stop/ff/rw/record ← fuente MIDI) como Contracts versionados, con conversores bidireccionales al estilo `sessionToUniversalSamplerInstrument()` (Fase 33.3).
+- La utilidad vive en la app (`AudioRecorderModal`, `AudioCaptureService`, `TransportService`, `MidiTransportService`); los modelos y los tipos de fuente MIDI (`NOTE`, `SYSEX_TRANSPORT`) viven en `ABDShared`, igual que hoy CC/NRPN.
+
+### 34.5 Editor: solo falta el normalizador dedicado
+- `detectSilenceRanges()` (energía RMS + histéresis hangover) va en la **Fase 30 adelantada**, no aquí.
+- Crear `normalizePeak/RMS + DC-blocker` en `LoopEditorTools.ts` reutilizando `normalizeChannels` de Fase 16 como núcleo, con preview no destructivo y deshacer (coherente con Fase 5 Undo/Redo).
+
+### 34.6 Fases de implementación sugeridas
+1. **Captura + monitor + transporte local** (sin MIDI): `AudioCaptureService`, `TransportService`, modal con `VuMeter`.
+2. **Adelantar Fase 30** (DSP puro, testeable con vitest: tono + ruido a SNR conocida, hum 50 Hz, silencios con cola).
+3. **Normalizador + router chromatic/drums** + cableado enhance→slicer→chopper→zonas.
+4. **MIDI en vivo**: Web MIDI input + `NOTE`/`SYSEX_TRANSPORT` en `midiLearnStore` + bindings de mesa; modelos en `ABDShared`.
+
+### 34.7 Adelanto ejecutado 2026-11-02 (base compartida en ABDShared)
+- **DSP portable** `Code/DspCore/TakeDsp/takeDsp.ts` (cero deps, sin DOM): `normalizePeak` / `normalizeRms` (con tope `maxGainDb`) / `dcBlock` / `detectSilenceRanges` (RMS + hangover) / `trimSilence` / `computeNoiseProfile` (nivel + bandas log + hum 50/60 Hz) / `classifyTake` (router chromatic/drums). Export `@abdsynths/shared/dsp/take`. Cubre 34.5 y el núcleo portable de la Fase 30 (falta solo la validación metrológica con SNR conocida y la reducción IA, que siguen en Fase 30).
+- **Contratos** `Contracts/recordingSession.ts` + `recording_session.schema.json` (patrón `MidiTranslationEngine`): `RecordingSession` / `RecordingTake` / `TransportBinding` / `TakeNoiseProfile`, versión `1.0.0`, factories + `isTransportAction`. Cubre 34.4 (modelos).
+- **MIDI transporte** en `midiLearnStore.js`: `NOTE` (4) + `SYSEX_TRANSPORT` (5), `MMC_COMMAND_NAMES`, `parseMmcCommand()` (SysEx universal `F0 7F … 06 cmd F7`), `isDiscreteTriggerSourceType()`, badges `NOTE n` / `MMC PLAY…`; drawer con opciones Note + MMC Transport. Cubre la mitad Shared de 34.3 (falta el input Web MIDI vivo en la app).
+- **Queda en la app** (no portable): `AudioCaptureService` (`getUserMedia`), `TransportService` (pausa/seek), `AudioRecorderModal`, capa Web MIDI input (`requestMIDIAccess` → `parseMmcCommand` → `handleIncomingMidi`), y cableado enhance→slicer→chopper→zonas.
+- **IA a Shared (estudio, no movido)**: `WebNeuralEngine` solo depende de `DspMath` → portable tal cual como abstracción de provider (WebGPU/WASM/DSP); el núcleo YIN/descriptores/clasificador de `AcousticIntelligence.ts` es portable tras desacoplar imports de app (`Sf2Parser`, `GridIndicator`, `SpectralAnalyzer`, `ZoneRibbon` en el slicer). Migración propuesta: extraer a `Code/DspCore/NeuronAnalysis/takeClassification.ts` con re-export fino en la app, mismo patrón que `LayerClustering.ts`. `AudioSlicerEngine`/`MasterWaveEnhancer` no son portables hoy (dependen de UI/decoders de app).
+- **Verificación**: `ABDShared` vitest 35 ficheros, 543 passed + 13 nuevos (takeDsp 8, midiTransport 5), 1 skipped; `vendor:sync` ampliado con `DspCore/TakeDsp`; NeuModMakr 22/23 (fallo único `phase16_raw_export`: tag `<multisample name=…>` de Fase 32.3 vs aserción exacta del test — ajeno a esta tarea, pendiente del workstream 32.x).
+
 
 
 

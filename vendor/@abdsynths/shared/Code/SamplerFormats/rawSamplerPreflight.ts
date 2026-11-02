@@ -104,6 +104,36 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.dls',
     mimeType: 'audio/x-dls',
   },
+  music1010: {
+    title: '1010music Blackbox / Tangerine (preset.xml)',
+    description: 'Preset XML multi-sample y drum cells para hardware 1010music Blackbox y Nanobox Tangerine.',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
+  deluge: {
+    title: 'Synthstrom Deluge (SYNTHS/*.XML)',
+    description: 'Preset XML de sintetizador o kit para tarjeta SD de Synthstrom Deluge con sampleRanges y filtros 12/24dB.',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
+  renoise: {
+    title: 'Renoise Instrument (.xrni)',
+    description: 'Instrumento completo de Renoise con Instrument.xml y muestras en formato FLAC en SampleData/.',
+    extension: '.xrni',
+    mimeType: 'application/zip',
+  },
+  bliss: {
+    title: 'discoDSP Bliss (.zbp)',
+    description: 'Archivo de banco o programa ZIP para discoDSP Bliss con program.xml y muestras FLAC.',
+    extension: '.zbp',
+    mimeType: 'application/zip',
+  },
+  polyend_pti: {
+    title: 'Polyend Tracker / Play (.pti)',
+    description: 'Instrumento binario para Polyend Tracker y Play (cabecera TI + parámetros + audio PCM16 44.1kHz).',
+    extension: '.pti',
+    mimeType: 'application/octet-stream',
+  },
   sample_chain: {
     title: 'Sample Chain Lineal con Cue Markers (.wav)',
     description: 'Audio continuo concatenado con marcas RIFF cue/smpl para Octatrack, SP-404, electribe y OP-1.',

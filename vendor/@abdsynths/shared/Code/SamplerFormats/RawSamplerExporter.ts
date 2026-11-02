@@ -59,6 +59,12 @@ import { buildTalSamplerXml } from './TalSamplerFormat.ts';
 import { buildTx16WxProgramXml } from './Tx16WxFormat.ts';
 import { buildKorgKmpPackage } from './KorgKmpKsfFormat.ts';
 import { buildDlsBinary } from './DlsFormat.ts';
+import { exportMusic1010Zip } from './Music1010Format.ts';
+import { exportDelugeZip } from './DelugeFormat.ts';
+import { exportRenoiseXrni } from './RenoiseFormat.ts';
+import { exportBlissZip } from './BlissFormat.ts';
+import { exportPolyendTrackerPti } from './PolyendTrackerFormat.ts';
+import { sessionToUniversalSamplerInstrument } from './UniversalSamplerModel.ts';
 
 const textEncoder = new TextEncoder();
 
@@ -938,6 +944,63 @@ ${zoneXmlLines.join('\n')}
         filter: session.articulation?.filter,
         pitchEnv: session.articulation?.pitchEnv,
       });
+      totalFiles = 1;
+      break;
+    }
+
+    case 'music1010': {
+      const sampleMap = new Map<string, ArrayBuffer>();
+      for (const [name, ps] of processedSamplesMap.entries()) {
+        sampleMap.set(name, ps.wavBuffer);
+      }
+      const inst = sessionToUniversalSamplerInstrument(session, sampleMap);
+      outData = exportMusic1010Zip(inst, sampleMap);
+      totalFiles = validRegions.length + 1;
+      break;
+    }
+
+    case 'deluge': {
+      const sampleMap = new Map<string, ArrayBuffer>();
+      for (const [name, ps] of processedSamplesMap.entries()) {
+        sampleMap.set(name, ps.wavBuffer);
+      }
+      const inst = sessionToUniversalSamplerInstrument(session, sampleMap);
+      outData = exportDelugeZip(inst, sampleMap);
+      totalFiles = validRegions.length + 1;
+      break;
+    }
+
+    case 'renoise': {
+      const sampleMap = new Map<string, ArrayBuffer>();
+      for (const [name, ps] of processedSamplesMap.entries()) {
+        sampleMap.set(name, ps.wavBuffer);
+      }
+      const inst = sessionToUniversalSamplerInstrument(session, sampleMap);
+      outData = exportRenoiseXrni(inst, sampleMap);
+      totalFiles = validRegions.length + 1;
+      break;
+    }
+
+    case 'bliss': {
+      const sampleMap = new Map<string, ArrayBuffer>();
+      for (const [name, ps] of processedSamplesMap.entries()) {
+        sampleMap.set(name, ps.wavBuffer);
+      }
+      const inst = sessionToUniversalSamplerInstrument(session, sampleMap);
+      outData = exportBlissZip(inst, sampleMap);
+      totalFiles = validRegions.length + 1;
+      break;
+    }
+
+    case 'polyend_pti': {
+      const sampleMap = new Map<string, ArrayBuffer>();
+      for (const [name, ps] of processedSamplesMap.entries()) {
+        sampleMap.set(name, ps.wavBuffer);
+      }
+      const inst = sessionToUniversalSamplerInstrument(session, sampleMap);
+      outData = exportPolyendTrackerPti(inst, sampleMap);
+      outFilename = `${cleanBankName}.pti`;
+      mimeType = 'application/octet-stream';
       totalFiles = 1;
       break;
     }

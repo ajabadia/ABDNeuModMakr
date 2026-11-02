@@ -110,6 +110,7 @@ export function syncVendor() {
     'SamplerFormats',
     'visualizers',
     path.join('DspCore', 'NeuronAnalysis'),
+    path.join('DspCore', 'TakeDsp'),
   ];
   for (const cItem of codeItems) {
     const s = path.join(SHARED_SRC, 'Code', cItem);
