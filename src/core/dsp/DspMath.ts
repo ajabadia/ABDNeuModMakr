@@ -12,6 +12,11 @@ export function clamp(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, value));
 }
 
+/** Clamps `Math.round(value)` into [`lo`, `hi`] (integer variant). */
+export function clampInt(value: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, Math.round(value)));
+}
+
 /**
  * Linear amplitude → dB (`20 * log10`), with a hard floor.
  * Values at/below `eps` return `floorDb` instead of `-Infinity`.

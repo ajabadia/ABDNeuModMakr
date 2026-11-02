@@ -36,12 +36,17 @@ export interface Sf2BankData {
 
 // SoundFont 2 Generator Operators (SF2 Spec 2.04 section 8.1.3)
 const SFGEN_pan = 17;
+const SFGEN_attackVolEnv = 34;
+const SFGEN_decayVolEnv = 36;
+const SFGEN_sustainVolEnv = 37;
 const SFGEN_releaseVolEnv = 38;
 const SFGEN_keyRange = 43;
 const SFGEN_velRange = 44;
 const SFGEN_fineTune = 52;
 const SFGEN_sampleID = 53;
 const SFGEN_sampleModes = 54;
+const SFGEN_scaleTuning = 56;
+const SFGEN_exclusiveClass = 57;
 const SFGEN_overridingRootKey = 58;
 
 function writeStr(view: DataView, offset: number, str: string): number {
@@ -187,8 +192,8 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
   // - imod: 1 terminal = 10 bytes
   const imodBytes = 10;
 
-  // - igen: Each region has 8 generators + 1 terminal = (regionCount * 8 + 1) * 4 bytes
-  const GENS_PER_REGION = 8;
+  // - igen: Each region has 13 generators + 1 terminal = (regionCount * 13 + 1) * 4 bytes
+  const GENS_PER_REGION = 13;
   const igenCount = regionCount * GENS_PER_REGION + 1;
   const igenBytes = igenCount * 4;
 
@@ -418,14 +423,45 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
     v.setUint16(ptr + 2, reg.loopMode !== 'no_loop' ? 1 : 0, true);
     ptr += 4;
 
-    // Gen 7: releaseVolEnv (in timecents, default ~0.25s = -2400)
+    // Gen 7: attackVolEnv
+    v.setUint16(ptr, SFGEN_attackVolEnv, true);
+    const atkSec = reg.ampEnvelope?.attackSec ?? 0.005;
+    const atkTc = Math.round(1200 * Math.log2(Math.max(0.001, atkSec)));
+    v.setInt16(ptr + 2, clamp(atkTc, -12000, 8000), true);
+    ptr += 4;
+
+    // Gen 8: decayVolEnv
+    v.setUint16(ptr, SFGEN_decayVolEnv, true);
+    const decSec = reg.ampEnvelope?.decaySec ?? 0.25;
+    const decTc = Math.round(1200 * Math.log2(Math.max(0.001, decSec)));
+    v.setInt16(ptr + 2, clamp(decTc, -12000, 8000), true);
+    ptr += 4;
+
+    // Gen 9: sustainVolEnv (in centibels of attenuation, 0..1000)
+    v.setUint16(ptr, SFGEN_sustainVolEnv, true);
+    const susLvl = clamp(reg.ampEnvelope?.sustainLevel ?? 1.0, 0, 1);
+    const susCb = Math.round((1.0 - susLvl) * 1000);
+    v.setInt16(ptr + 2, clamp(susCb, 0, 1000), true);
+    ptr += 4;
+
+    // Gen 10: releaseVolEnv (in timecents, default ~0.25s = -2400)
     v.setUint16(ptr, SFGEN_releaseVolEnv, true);
     const relSec = reg.ampEnvelope?.releaseSec ?? 0.25;
     const timecents = Math.round(1200 * Math.log2(Math.max(0.001, relSec)));
     v.setInt16(ptr + 2, clamp(timecents, -12000, 8000), true);
     ptr += 4;
 
-    // Gen 8: sampleID
+    // Gen 11: scaleTuning (0..100 cents/semitone)
+    v.setUint16(ptr, SFGEN_scaleTuning, true);
+    v.setInt16(ptr + 2, clamp(Math.round(reg.pitchKeytrack ?? 100), 0, 100), true);
+    ptr += 4;
+
+    // Gen 12: exclusiveClass (muteGroup 0..127)
+    v.setUint16(ptr, SFGEN_exclusiveClass, true);
+    v.setUint16(ptr + 2, clamp(reg.muteGroup ?? 0, 0, 127), true);
+    ptr += 4;
+
+    // Gen 13: sampleID (MUST be last generator in zone per SF2 spec 8.1.2)
     v.setUint16(ptr, SFGEN_sampleID, true);
     v.setUint16(ptr + 2, sIdx, true);
     ptr += 4;

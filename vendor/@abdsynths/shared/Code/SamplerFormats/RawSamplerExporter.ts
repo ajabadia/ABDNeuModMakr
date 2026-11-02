@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Raw Multi-Format Sampler Exporter (Fase 16)
+// ABDNeuModMakr — Raw Multi-Format Sampler Exporter (Fase 16 + Fase 32.3/32.4)
 //
 // Exports raw samples and zone/region mappings (unaltered by
 // Scape/Sphere resynthesis) to industry standard sampler formats:
@@ -9,6 +9,13 @@
 // - Bitwig Studio Multisample (.multisample zip package)
 // - Native Instruments Kontakt (.nki.zip with XML definition)
 // - Steinberg HALion (.vstpreset.zip with XML definition)
+// - Akai MPC Keygroup / Drum (.xpm.zip & .xpn)
+// - Ableton Sampler / Simpler (.adv.zip with GZIP .adv + Samples/Imported/)
+// - Apple Logic EXS24 / Sampler (.exs.zip with binary .exs + Samples/)
+// - Togu Audio Line TAL-Sampler (.talsmpl.zip)
+// - CWITEC TX16Wx Software Sampler (.txprog.zip)
+// - Korg Trinity / Triton / M3 / Pa (.kmp.zip with .KMP + .KSF + .KSC)
+// - MMA Downloadable Sounds Level 2 (.dls RIFF "DLS ")
 // - Linear Sample Chain (.wav with RIFF cue markers + slice index)
 // ─────────────────────────────────────────────────────────
 
@@ -46,6 +53,12 @@ import {
   type MpcSourceRegion,
   type MpcProgramType,
 } from './MpcXpmFormat.ts';
+import { buildAbletonAdvXml, packAbletonAdvGzip } from './AbletonAdvFormat.ts';
+import { buildExs24Binary } from './Exs24Format.ts';
+import { buildTalSamplerXml } from './TalSamplerFormat.ts';
+import { buildTx16WxProgramXml } from './Tx16WxFormat.ts';
+import { buildKorgKmpPackage } from './KorgKmpKsfFormat.ts';
+import { buildDlsBinary } from './DlsFormat.ts';
 
 const textEncoder = new TextEncoder();
 
@@ -147,10 +160,9 @@ export async function exportRawSamplerLibrary(
       resampleChannel(ch, decoded.sampleRate, targetRate)
     );
 
-    // Apply normalization
     channels = normalizeChannels(channels, options.normalization);
 
-    // Prepare 16-bit PCM mono for SF2
+    // Prepare 16-bit PCM mono for SF2 / Korg KSF / DLS
     const monoChan = channels.length === 1 ? channels[0] : new Float32Array(channels[0].length);
     if (channels.length > 1) {
       for (let i = 0; i < channels[0].length; i++) {
@@ -163,8 +175,11 @@ export async function exportRawSamplerLibrary(
       pcm16Mono[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
     }
 
-    // Determine target bit depth WAV
-    const isPcm16 = options.resolution === 'pcm16' || options.format === 'sf2';
+    const isPcm16 =
+      options.resolution === 'pcm16' ||
+      options.format === 'sf2' ||
+      options.format === 'korg_kmp' ||
+      options.format === 'dls';
     const wavBuffer = isPcm16
       ? encodeWavPcm16(channels, targetRate, decoded.instrument)
       : encodeWavPcm24(channels, targetRate, decoded.instrument);
@@ -184,7 +199,6 @@ export async function exportRawSamplerLibrary(
     totalRawDurationSec += decoded.durationSec;
   }
 
-  // Filter out regions without audio
   const validRegions = regions.filter((r) => processedSamplesMap.has(r.sampleName));
 
   let outFilename = `${cleanBankName}${meta.extension}`;
@@ -195,7 +209,6 @@ export async function exportRawSamplerLibrary(
   // ── 2. Format-Specific Generation ───────────────────────
   switch (options.format) {
     case 'sf2': {
-      // SoundFont 2.04 binary RIFF
       const sf2Samples: Sf2SampleEntry[] = [];
       const sampleIndexMap = new Map<string, number>();
 
@@ -217,7 +230,9 @@ export async function exportRawSamplerLibrary(
       const sf2Regions = validRegions.map((r) => ({
         ...r,
         sampleIndex: sampleIndexMap.get(r.sampleName) ?? 0,
-        loopMode: (r.loopMode === 'loop_continuous' ? 'loop_continuous' : 'no_loop') as 'loop_continuous' | 'no_loop',
+        loopMode: (r.loopMode !== 'no_loop' && r.loopMode !== 'one_shot' ? 'loop_continuous' : 'no_loop') as
+          | 'loop_continuous'
+          | 'no_loop',
       }));
 
       const bankData: Sf2BankData = {
@@ -235,7 +250,7 @@ export async function exportRawSamplerLibrary(
     }
 
     case 'sfz': {
-      // SFZ text + Samples/ in ZIP
+      // SFZ v1/v2 text + Samples/ in ZIP (with Fase 32.3 opcodes)
       const sfzLines: string[] = [
         '// ========================================================',
         `// ABDNeuModMakr SFZ Definition: ${bankName}`,
@@ -249,8 +264,49 @@ export async function exportRawSamplerLibrary(
         '<global>',
         `// ${description}`,
         'volume=0',
-        '',
       ];
+
+      const art = session.articulation;
+      if (art?.pitchBendUpSt !== undefined) sfzLines.push(`bend_up=${Math.round(art.pitchBendUpSt * 100)}`);
+      if (art?.pitchBendDownSt !== undefined) sfzLines.push(`bend_down=${-Math.round(art.pitchBendDownSt * 100)}`);
+      if (art?.polyphony !== undefined) sfzLines.push(`polyphony=${art.polyphony}`);
+
+      const globalFlt = art?.filter;
+      if (globalFlt?.enabled) {
+        const poles = globalFlt.poles ?? 2;
+        const filType =
+          globalFlt.type === 'hpf'
+            ? `hpf_${poles}p`
+            : globalFlt.type === 'bpf'
+              ? `bpf_${poles}p`
+              : globalFlt.type === 'brf' || globalFlt.type === 'notch'
+                ? 'brf_2p'
+                : `lpf_${poles}p`;
+        sfzLines.push(`fil_type=${filType}`);
+        sfzLines.push(`cutoff=${Math.round(globalFlt.cutoffHz)}`);
+        if (globalFlt.resonanceDb > 0) sfzLines.push(`resonance=${globalFlt.resonanceDb.toFixed(1)}`);
+        if (globalFlt.keytrackCents) sfzLines.push(`fil_keytrack=${Math.round(globalFlt.keytrackCents)}`);
+        if (globalFlt.envToFilterCents) {
+          sfzLines.push(`fileg_depth=${Math.round(globalFlt.envToFilterCents)}`);
+          const fe = globalFlt.filterEnv ?? art?.modEnv;
+          if (fe) {
+            sfzLines.push(`fileg_attack=${(fe.attackSec ?? 0.005).toFixed(3)}`);
+            sfzLines.push(`fileg_decay=${(fe.decaySec ?? 0.25).toFixed(3)}`);
+            sfzLines.push(`fileg_sustain=${Math.round((fe.sustainLevel ?? 0.5) * 100)}`);
+            sfzLines.push(`fileg_release=${(fe.releaseSec ?? 0.2).toFixed(3)}`);
+          }
+        }
+      }
+
+      const globalPitchEnv = art?.pitchEnv;
+      if (globalPitchEnv?.enabled && globalPitchEnv.depthCents) {
+        sfzLines.push(`pitcheg_depth=${Math.round(globalPitchEnv.depthCents)}`);
+        sfzLines.push(`pitcheg_attack=${(globalPitchEnv.env.attackSec ?? 0.005).toFixed(3)}`);
+        sfzLines.push(`pitcheg_decay=${(globalPitchEnv.env.decaySec ?? 0.15).toFixed(3)}`);
+        sfzLines.push(`pitcheg_sustain=${Math.round((globalPitchEnv.env.sustainLevel ?? 0) * 100)}`);
+        sfzLines.push(`pitcheg_release=${(globalPitchEnv.env.releaseSec ?? 0.1).toFixed(3)}`);
+      }
+      sfzLines.push('');
 
       for (const reg of validRegions) {
         const ps = processedSamplesMap.get(reg.sampleName);
@@ -266,13 +322,47 @@ export async function exportRawSamplerLibrary(
 
         if (reg.detuneCents !== 0) sfzLines.push(`tune=${reg.detuneCents}`);
         if (reg.volumeDb !== 0) sfzLines.push(`volume=${reg.volumeDb.toFixed(1)}`);
-        if (reg.pan !== 0) sfzLines.push(`pan=${Math.round(reg.pan * 2)}`); // -50..+50 -> -100..+100
+        if (reg.pan !== 0) sfzLines.push(`pan=${Math.round(reg.pan * 2)}`);
         if (reg.pitchKeytrack !== 100) sfzLines.push(`pitch_keytrack=${reg.pitchKeytrack}`);
+        if (reg.sampleStartFrame && reg.sampleStartFrame > 0) sfzLines.push(`offset=${Math.round(reg.sampleStartFrame)}`);
+        if (reg.sampleEndFrame && reg.sampleEndFrame > 0) sfzLines.push(`end=${Math.round(reg.sampleEndFrame)}`);
+        if (reg.reversed) sfzLines.push('direction=reverse');
+        if (reg.trigger && reg.trigger !== 'attack') sfzLines.push(`trigger=${reg.trigger}`);
+        if (reg.seqLength && reg.seqLength > 1) sfzLines.push(`seq_length=${reg.seqLength}`);
+        if (reg.seqPosition && reg.seqPosition >= 1) sfzLines.push(`seq_position=${reg.seqPosition}`);
+        if (reg.muteGroup && reg.muteGroup > 0) {
+          sfzLines.push(`group=${reg.muteGroup}`);
+          sfzLines.push(`off_by=${reg.muteGroup}`);
+        }
+        if (reg.groupName) sfzLines.push(`group_label=${reg.groupName}`);
+        if (reg.keyswitchNote !== undefined) sfzLines.push(`sw_last=${reg.keyswitchNote}`);
 
-        if (reg.loopMode !== 'no_loop' && reg.loopEnd > reg.loopStart) {
-          sfzLines.push('loop_mode=loop_continuous');
+        if ((reg.keyFadeIn ?? 0) > 0) {
+          sfzLines.push(`xfin_lokey=${reg.lowKey}`);
+          sfzLines.push(`xfin_hikey=${Math.min(reg.highKey, reg.lowKey + reg.keyFadeIn!)}`);
+        }
+        if ((reg.keyFadeOut ?? 0) > 0) {
+          sfzLines.push(`xfout_lokey=${Math.max(reg.lowKey, reg.highKey - reg.keyFadeOut!)}`);
+          sfzLines.push(`xfout_hikey=${reg.highKey}`);
+        }
+        if ((reg.velFadeIn ?? 0) > 0) {
+          sfzLines.push(`xfin_lovel=${reg.lowVel}`);
+          sfzLines.push(`xfin_hivel=${Math.min(reg.highVel, reg.lowVel + reg.velFadeIn!)}`);
+        }
+        if ((reg.velFadeOut ?? 0) > 0) {
+          sfzLines.push(`xfout_lovel=${Math.max(reg.lowVel, reg.highVel - reg.velFadeOut!)}`);
+          sfzLines.push(`xfout_hivel=${reg.highVel}`);
+        }
+
+        if (reg.loopMode === 'one_shot') {
+          sfzLines.push('loop_mode=one_shot');
+        } else if (reg.loopMode !== 'no_loop' && reg.loopEnd > reg.loopStart) {
+          sfzLines.push(`loop_mode=${reg.loopMode === 'loop_sustain' ? 'loop_sustain' : 'loop_continuous'}`);
           sfzLines.push(`loop_start=${Math.round(reg.loopStart)}`);
           sfzLines.push(`loop_end=${Math.round(reg.loopEnd)}`);
+          if (reg.loopCrossfadeMs > 0) {
+            sfzLines.push(`loop_crossfade=${(reg.loopCrossfadeMs / 1000).toFixed(4)}`);
+          }
         }
 
         const env = reg.ampEnvelope;
@@ -306,39 +396,71 @@ export async function exportRawSamplerLibrary(
     }
 
     case 'dspreset': {
-      // Decent Sampler XML + Samples/ in ZIP
+      // Decent Sampler XML + Samples/ in ZIP (with Fase 32.3 attributes)
       const sampleXmlLines: string[] = [];
 
       for (const reg of validRegions) {
         const ps = processedSamplesMap.get(reg.sampleName);
         if (!ps) continue;
 
-        const hasLoop = reg.loopMode !== 'no_loop' && reg.loopEnd > reg.loopStart;
+        const hasLoop = reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot' && reg.loopEnd > reg.loopStart;
         const loopStart = hasLoop ? Math.round(reg.loopStart) : 0;
         const loopEnd = hasLoop ? Math.round(reg.loopEnd) : ps.processedChannels[0].length - 1;
+        const loopXfadeFrames = Math.round(((reg.loopCrossfadeMs ?? 0) / 1000) * ps.sampleRate);
         const panNorm = (reg.pan / 50).toFixed(2);
         const volNorm = reg.volumeDb !== 0 ? `${reg.volumeDb.toFixed(1)}dB` : '0dB';
         const tuning = (reg.detuneCents / 100).toFixed(2);
 
+        const extraAttrs: string[] = [];
+        if (reg.sampleStartFrame && reg.sampleStartFrame > 0) extraAttrs.push(`start="${Math.round(reg.sampleStartFrame)}"`);
+        if (reg.sampleEndFrame && reg.sampleEndFrame > 0) extraAttrs.push(`end="${Math.round(reg.sampleEndFrame)}"`);
+        if (loopXfadeFrames > 0) extraAttrs.push(`loopCrossfade="${loopXfadeFrames}"`);
+        if (reg.trigger && reg.trigger !== 'attack') extraAttrs.push(`trigger="${reg.trigger}"`);
+        if (reg.playLogic === 'round_robin') extraAttrs.push('seqMode="round_robin"');
+        else if (reg.playLogic === 'random') extraAttrs.push('seqMode="random"');
+        if (reg.seqPosition && reg.seqPosition >= 1) extraAttrs.push(`seqPosition="${reg.seqPosition}"`);
+        if (reg.seqLength && reg.seqLength > 1) extraAttrs.push(`seqLength="${reg.seqLength}"`);
+        if (reg.muteGroup && reg.muteGroup > 0) {
+          extraAttrs.push(`tags="mute_${reg.muteGroup}" silencedByTags="mute_${reg.muteGroup}" silencingMode="fast"`);
+        }
+
         sampleXmlLines.push(
-          `      <sample path="Samples/${ps.cleanName}" rootNote="${reg.rootKey}" loNote="${reg.lowKey}" hiNote="${reg.highKey}" loVel="${reg.lowVel}" hiVel="${reg.highVel}" tuning="${tuning}" volume="${volNorm}" pan="${panNorm}" loopEnabled="${hasLoop ? 'true' : 'false'}" loopStart="${loopStart}" loopEnd="${loopEnd}"/>`
+          `      <sample path="Samples/${ps.cleanName}" rootNote="${reg.rootKey}" loNote="${reg.lowKey}" hiNote="${reg.highKey}" loVel="${reg.lowVel}" hiVel="${reg.highVel}" tuning="${tuning}" volume="${volNorm}" pan="${panNorm}" loopEnabled="${hasLoop ? 'true' : 'false'}" loopStart="${loopStart}" loopEnd="${loopEnd}"${extraAttrs.length > 0 ? ' ' + extraAttrs.join(' ') : ''}/>`
         );
       }
 
+      const env = session.articulation?.ampEnv;
+      const gAtk = (env?.attackSec ?? 0.01).toFixed(3);
+      const gDec = (env?.decaySec ?? 0.1).toFixed(3);
+      const gSus = (env?.sustainLevel ?? 1.0).toFixed(2);
+      const gRel = (env?.releaseSec ?? 0.3).toFixed(3);
+
+      const flt = session.articulation?.filter;
+      const fltType =
+        flt?.type === 'hpf'
+          ? 'highpass'
+          : flt?.type === 'bpf'
+            ? 'bandpass'
+            : flt?.type === 'notch' || flt?.type === 'brf'
+              ? 'notch'
+              : 'lowpass';
+      const fltCutoff = (flt?.enabled ? flt.cutoffHz : 20000).toFixed(1);
+      const fltRes = (0.7 + ((flt?.resonanceDb ?? 0) / 6)).toFixed(2);
+
       const dsXml = `<?xml version="1.0" encoding="UTF-8"?>
 <DecentSampler minVersion="1.0.0">
-  <!-- Generated by ABDNeuModMakr v1.2 Raw Sampler Exporter -->
+  <!-- Generated by ABDNeuModMakr Raw Sampler Exporter -->
   <!-- Bank: ${cleanBankName} | Author: ${author} | License: ${license} -->
   <ui width="812" height="375" layoutMode="relative" bgMode="top_left">
     <tab name="main">
       <labeled-knob x="200" y="75" width="90" textSize="16" textColor="AAFFFFFF"
         trackForegroundColor="CC00F0FF" trackBackgroundColor="66222222"
-        label="Attack" type="float" minValue="0.0" maxValue="4.0" value="0.01">
+        label="Attack" type="float" minValue="0.0" maxValue="4.0" value="${gAtk}">
         <binding type="amp" level="instrument" position="0" parameter="ENV_ATTACK"/>
       </labeled-knob>
       <labeled-knob x="320" y="75" width="90" textSize="16" textColor="AAFFFFFF"
         trackForegroundColor="CC00F0FF" trackBackgroundColor="66222222"
-        label="Release" type="float" minValue="0.0" maxValue="8.0" value="0.3">
+        label="Release" type="float" minValue="0.0" maxValue="8.0" value="${gRel}">
         <binding type="amp" level="instrument" position="0" parameter="ENV_RELEASE"/>
       </labeled-knob>
       <labeled-knob x="440" y="75" width="90" textSize="16" textColor="AAFFFFFF"
@@ -354,13 +476,13 @@ export async function exportRawSamplerLibrary(
       </labeled-knob>
     </tab>
   </ui>
-  <groups attack="0.01" decay="0.1" sustain="1.0" release="0.3" volume="0dB">
-    <group>
+  <groups attack="${gAtk}" decay="${gDec}" sustain="${gSus}" release="${gRel}" volume="0dB">
+    <group name="Main">
 ${sampleXmlLines.join('\n')}
     </group>
   </groups>
   <effects>
-    <effect type="lowpass" frequency="20000.0"/>
+    <effect type="${fltType}" frequency="${fltCutoff}" resonance="${fltRes}"/>
   </effects>
 </DecentSampler>
 `;
@@ -385,33 +507,53 @@ ${sampleXmlLines.join('\n')}
     }
 
     case 'multisample': {
-      // Bitwig Studio Multisample package (multisample.xml + Samples/ in ZIP)
+      // Bitwig Studio Multisample package (multisample.xml + WAVs) — Upgraded Fase 32.3
       const sampleXmlLines: string[] = [];
 
       for (const reg of validRegions) {
         const ps = processedSamplesMap.get(reg.sampleName);
         if (!ps) continue;
 
-        const hasLoop = reg.loopMode !== 'no_loop' && reg.loopEnd > reg.loopStart;
-        const loopStart = hasLoop ? Math.round(reg.loopStart) : 0;
-        const loopEnd = hasLoop ? Math.round(reg.loopEnd) : ps.processedChannels[0].length - 1;
+        const totalFrames = ps.processedChannels[0].length;
+        const startFrame = Math.max(0, Math.round(reg.sampleStartFrame ?? 0));
+        const stopFrame =
+          reg.sampleEndFrame && reg.sampleEndFrame > startFrame
+            ? Math.round(reg.sampleEndFrame)
+            : totalFrames;
 
-        sampleXmlLines.push(
-          `      <sample file="Samples/${ps.cleanName}" root="${reg.rootKey}" low="${reg.lowKey}" high="${reg.highKey}" low-vel="${reg.lowVel}" high-vel="${reg.highVel}" tune="${reg.detuneCents}" gain="${reg.volumeDb.toFixed(1)}" pan="${(reg.pan / 50).toFixed(2)}" loop="${hasLoop ? 'true' : 'false'}" loop-start="${loopStart}" loop-end="${loopEnd}"/>`
-        );
+        const hasLoop = reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot' && reg.loopEnd > reg.loopStart;
+        const loopModeStr = !hasLoop ? 'off' : reg.loopMode === 'ping_pong' ? 'ping-pong' : 'loop';
+        const loopStart = hasLoop ? Math.round(reg.loopStart) : 0;
+        const loopStop = hasLoop ? Math.round(reg.loopEnd) : stopFrame;
+        const loopLen = Math.max(1, loopStop - loopStart);
+        const loopFadeFrac = hasLoop
+          ? Math.max(0, Math.min(1, (((reg.loopCrossfadeMs ?? 0) / 1000) * ps.sampleRate) / loopLen))
+          : 0;
+
+        const tuneSt = (reg.detuneCents / 100).toFixed(2);
+        const trackVal = ((reg.pitchKeytrack ?? 100) / 100).toFixed(4);
+        const zoneLogic = reg.playLogic === 'round_robin' ? ' zone-logic="round-robin"' : ' zone-logic="always-play"';
+
+        sampleXmlLines.push(`    <sample file="Samples/${ps.cleanName}" group="0" sample-start="${startFrame.toFixed(3)}" sample-stop="${stopFrame.toFixed(3)}" gain="${reg.volumeDb.toFixed(2)}" pan="${(reg.pan / 50).toFixed(2)}" tune="${tuneSt}" reverse="${reg.reversed ? 'true' : 'false'}"${zoneLogic} root="${reg.rootKey}" low="${reg.lowKey}" high="${reg.highKey}" low-vel="${reg.lowVel}" high-vel="${reg.highVel}" loop="${hasLoop ? 'true' : 'false'}" loop-start="${loopStart}" loop-end="${loopStop}">
+      <key root="${reg.rootKey}" low="${reg.lowKey}" high="${reg.highKey}" low-fade="${reg.keyFadeIn ?? 0}" high-fade="${reg.keyFadeOut ?? 0}" tune="${tuneSt}" track="${trackVal}"/>
+      <velocity low="${reg.lowVel}" high="${reg.highVel}" low-fade="${reg.velFadeIn ?? 0}" high-fade="${reg.velFadeOut ?? 0}"/>
+      <loop mode="${loopModeStr}" start="${loopStart.toFixed(3)}" stop="${loopStop.toFixed(3)}" fade="${loopFadeFrac.toFixed(4)}"/>
+    </sample>`);
       }
 
       const bitwigXml = `<?xml version="1.0" encoding="UTF-8"?>
-<multisample version="1.0">
+<multisample name="${cleanBankName}" version="1.0">
   <generator name="ABDNeuModMakr" version="1.2.0"/>
-  <category>Synthesizer</category>
+  <category>${session.detectedInstrumentCategory || 'Synthesizer'}</category>
   <creator>${author}</creator>
-  <comment>${description} (License: ${license})</comment>
-  <groups>
-    <group name="Default">
+  <description>${description} (License: ${license})</description>
+  <keywords>
+    <keyword>multisample</keyword>
+  </keywords>
+  <group name="Default" color="d92e24"/>
+  <layer name="Default">
 ${sampleXmlLines.join('\n')}
-    </group>
-  </groups>
+  </layer>
 </multisample>
 `;
 
@@ -435,7 +577,6 @@ ${sampleXmlLines.join('\n')}
     }
 
     case 'nki': {
-      // Kontakt structured definition (.nki.xml + Samples/ in ZIP)
       const zoneXmlLines: string[] = [];
 
       for (const reg of validRegions) {
@@ -443,7 +584,7 @@ ${sampleXmlLines.join('\n')}
         if (!ps) continue;
 
         zoneXmlLines.push(
-          `        <zone id="${reg.id}" sample="Samples/${ps.cleanName}" rootKey="${reg.rootKey}" lowKey="${reg.lowKey}" highKey="${reg.highKey}" lowVel="${reg.lowVel}" highVel="${reg.highVel}" tune="${reg.detuneCents}" volume="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}"/>`
+          `        <zone id="${reg.id}" sample="Samples/${ps.cleanName}" rootKey="${reg.rootKey}" lowKey="${reg.lowKey}" highKey="${reg.highKey}" lowVel="${reg.lowVel}" highVel="${reg.highVel}" tune="${reg.detuneCents}" volume="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" sampleStart="${Math.round(reg.sampleStartFrame ?? 0)}" sampleEnd="${Math.round(reg.sampleEndFrame ?? ps.processedChannels[0].length)}"/>`
         );
       }
 
@@ -480,23 +621,38 @@ ${zoneXmlLines.join('\n')}
     }
 
     case 'vstpreset': {
-      // Steinberg HALion program preset (.vstpreset.xml + Samples/ in ZIP)
+      // Steinberg HALion program preset (.vstpreset.xml + Samples/ in ZIP) — Upgraded Fase 32.3
       const zoneXmlLines: string[] = [];
 
       for (const reg of validRegions) {
         const ps = processedSamplesMap.get(reg.sampleName);
         if (!ps) continue;
 
+        const startFrame = Math.round(reg.sampleStartFrame ?? 0);
+        const endFrame =
+          reg.sampleEndFrame && reg.sampleEndFrame > startFrame
+            ? Math.round(reg.sampleEndFrame)
+            : ps.processedChannels[0].length;
+
         zoneXmlLines.push(
-          `        <zone name="${cleanFilename(reg.sampleName)}" file="Samples/${ps.cleanName}" keyLow="${reg.lowKey}" keyHigh="${reg.highKey}" rootKey="${reg.rootKey}" velLow="${reg.lowVel}" velHigh="${reg.highVel}" tune="${reg.detuneCents}" gain="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" loop="${reg.loopMode !== 'no_loop'}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}"/>`
+          `        <zone name="${cleanFilename(reg.sampleName)}" file="Samples/${ps.cleanName}" keyLow="${reg.lowKey}" keyHigh="${reg.highKey}" rootKey="${reg.rootKey}" velLow="${reg.lowVel}" velHigh="${reg.highVel}" keyFadeIn="${reg.keyFadeIn ?? 0}" keyFadeOut="${reg.keyFadeOut ?? 0}" velFadeIn="${reg.velFadeIn ?? 0}" velFadeOut="${reg.velFadeOut ?? 0}" tune="${reg.detuneCents}" gain="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" keytrack="${reg.pitchKeytrack ?? 100}" sampleStart="${startFrame}" sampleEnd="${endFrame}" reverse="${Boolean(reg.reversed)}" loop="${reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot'}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" loopCrossfadeMs="${reg.loopCrossfadeMs ?? 0}" muteGroup="${reg.muteGroup ?? 0}" trigger="${reg.trigger ?? 'attack'}"${reg.keyswitchNote !== undefined ? ` keyswitchNote="${reg.keyswitchNote}"` : ''}/>`
         );
       }
+
+      const env = session.articulation?.ampEnv;
+      const flt = session.articulation?.filter;
+      const envXml = env
+        ? `  <amp-envelope attack="${(env.attackSec ?? 0.005).toFixed(3)}" decay="${(env.decaySec ?? 0.25).toFixed(3)}" sustain="${(env.sustainLevel ?? 1).toFixed(3)}" release="${(env.releaseSec ?? 0.2).toFixed(3)}"/>\n`
+        : '';
+      const fltXml = flt
+        ? `  <filter enabled="${Boolean(flt.enabled)}" type="${flt.type}" poles="${flt.poles ?? 4}" cutoff="${Math.round(flt.cutoffHz)}" resonance="${(flt.resonanceDb ?? 0).toFixed(1)}" envDepth="${Math.round(flt.envToFilterCents ?? 0)}" keytrack="${Math.round(flt.keytrackCents ?? 0)}"/>\n`
+        : '';
 
       const halionXml = `<?xml version="1.0" encoding="UTF-8"?>
 <HALionProgram name="${cleanBankName}" version="7.0">
   <author>${author}</author>
   <license>${license}</license>
-  <element name="Layer 1">
+${envXml}${fltXml}  <element name="Layer 1">
     <zone-list>
 ${zoneXmlLines.join('\n')}
     </zone-list>
@@ -584,7 +740,6 @@ ${zoneXmlLines.join('\n')}
         data: textEncoder.encode(xpmXml),
       });
 
-      // MPC expects WAVs in the same directory as the .xpm
       for (const [, ps] of processedSamplesMap) {
         zipEntries.push({
           path: ps.cleanName,
@@ -597,8 +752,197 @@ ${zoneXmlLines.join('\n')}
       break;
     }
 
+    case 'ableton_adv': {
+      const advRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          cleanFileName: ps.cleanName,
+          totalFrames: ps.processedChannels[0]?.length ?? 0,
+        };
+      });
+      const advXml = buildAbletonAdvXml({
+        presetName: bankName,
+        regions: advRegions,
+        ampEnv: session.articulation?.ampEnv,
+        filter: session.articulation?.filter,
+        pitchEnv: session.articulation?.pitchEnv,
+      });
+      const advGzip = packAbletonAdvGzip(advXml);
+      const cleanFolder = bankName.replace(/[^a-zA-Z0-9_\- ]/g, '_').trim() || 'AbletonSampler';
+      const zipEntries: ZipEntryInput[] = [
+        {
+          path: `${cleanBankName}.adv`,
+          data: advGzip,
+        },
+      ];
+      for (const [, ps] of processedSamplesMap) {
+        zipEntries.push({
+          path: `Samples/Imported/${cleanFolder}/${ps.cleanName}`,
+          data: new Uint8Array(ps.wavBuffer),
+        });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'exs24': {
+      const exsRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          cleanFileName: ps.cleanName,
+          totalFrames: ps.processedChannels[0]?.length ?? 0,
+          sampleRate: ps.sampleRate,
+          bitDepth: options.resolution === 'pcm16' ? 16 : 24,
+          channels: ps.processedChannels.length,
+          byteLength: ps.wavBuffer.byteLength,
+        };
+      });
+      const exsBin = buildExs24Binary({
+        presetName: bankName,
+        regions: exsRegions,
+        ampEnv: session.articulation?.ampEnv,
+        filter: session.articulation?.filter,
+        polyphony: session.articulation?.polyphony,
+        pitchBendUpSt: session.articulation?.pitchBendUpSt,
+        pitchBendDownSt: session.articulation?.pitchBendDownSt,
+      });
+      const zipEntries: ZipEntryInput[] = [
+        {
+          path: `${cleanBankName}.exs`,
+          data: exsBin,
+        },
+      ];
+      for (const [, ps] of processedSamplesMap) {
+        zipEntries.push({
+          path: `Samples/${ps.cleanName}`,
+          data: new Uint8Array(ps.wavBuffer),
+        });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'tal_sampler': {
+      const talRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          cleanFileName: ps.cleanName,
+          totalFrames: ps.processedChannels[0]?.length ?? 0,
+        };
+      });
+      const talXml = buildTalSamplerXml({
+        presetName: bankName,
+        regions: talRegions,
+        ampEnv: session.articulation?.ampEnv,
+        filter: session.articulation?.filter,
+        pitchEnv: session.articulation?.pitchEnv,
+        polyphony: session.articulation?.polyphony,
+        pitchBendRangeSt: session.articulation?.pitchBendUpSt,
+      });
+      const zipEntries: ZipEntryInput[] = [
+        {
+          path: `${cleanBankName}.talsmpl`,
+          data: textEncoder.encode(talXml),
+        },
+      ];
+      for (const [, ps] of processedSamplesMap) {
+        zipEntries.push({
+          path: `Samples/${ps.cleanName}`,
+          data: new Uint8Array(ps.wavBuffer),
+        });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'tx16wx': {
+      const txRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          cleanFileName: ps.cleanName,
+          totalFrames: ps.processedChannels[0]?.length ?? 0,
+        };
+      });
+      const txXml = buildTx16WxProgramXml({
+        presetName: bankName,
+        author,
+        regions: txRegions,
+        ampEnv: session.articulation?.ampEnv,
+        filter: session.articulation?.filter,
+        pitchEnv: session.articulation?.pitchEnv,
+        polyphony: session.articulation?.polyphony,
+      });
+      const zipEntries: ZipEntryInput[] = [
+        {
+          path: `${cleanBankName}.txprog`,
+          data: textEncoder.encode(txXml),
+        },
+      ];
+      for (const [, ps] of processedSamplesMap) {
+        zipEntries.push({
+          path: `Samples/${ps.cleanName}`,
+          data: new Uint8Array(ps.wavBuffer),
+        });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'korg_kmp': {
+      const korgRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          pcm16Mono: ps.pcm16Mono,
+          sampleRate: ps.sampleRate,
+        };
+      });
+      const pkg = buildKorgKmpPackage({
+        presetName: bankName,
+        regions: korgRegions,
+      });
+      const zipEntries: ZipEntryInput[] = [
+        { path: pkg.kscFileName, data: textEncoder.encode(pkg.kscText) },
+        { path: pkg.kmpFileName, data: pkg.kmpData },
+        ...pkg.ksfFiles.map((kf) => ({ path: kf.fileName, data: kf.data })),
+      ];
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'dls': {
+      const dlsRegions = validRegions.map((reg) => {
+        const ps = processedSamplesMap.get(reg.sampleName)!;
+        return {
+          ...reg,
+          pcm16Mono: ps.pcm16Mono,
+          sampleRate: ps.sampleRate,
+        };
+      });
+      outData = buildDlsBinary({
+        bankName,
+        author,
+        copyright: license,
+        comment: description,
+        regions: dlsRegions,
+        ampEnv: session.articulation?.ampEnv,
+        filter: session.articulation?.filter,
+        pitchEnv: session.articulation?.pitchEnv,
+      });
+      totalFiles = 1;
+      break;
+    }
+
     case 'sample_chain': {
-      // Concatenated linear sample chain WAV with RIFF cue markers
       const chainRegions = validRegions.map((r) => {
         const ps = processedSamplesMap.get(r.sampleName)!;
         return {
@@ -612,7 +956,6 @@ ${zoneXmlLines.join('\n')}
       const chainResult = buildLinearSampleChainWav(chainRegions, resTag, options.chainGapSamples ?? 0);
 
       if (options.layout === 'folder_samples') {
-        // Zip with WAV + Slice Documentation Map
         const zipEntries: ZipEntryInput[] = [
           {
             path: `${cleanBankName}_chain.wav`,
@@ -628,7 +971,6 @@ ${zoneXmlLines.join('\n')}
         outData = createZipArchive(zipEntries);
         totalFiles = 2;
       } else {
-        // Monolithic .wav with embedded markers
         outFilename = `${cleanBankName}_chain.wav`;
         mimeType = 'audio/wav';
         outData = new Uint8Array(chainResult.wavBuffer);

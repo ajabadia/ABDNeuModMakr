@@ -14,6 +14,8 @@ import type { BankDrawer } from '../ui/BankDrawer';
 import type { ImportHandlers } from './importHandlers';
 import { confirmDialog, toast } from '../ui/notify';
 import { pwaManager } from './pwa';
+import { sanitizeFileName } from '../core/pathUtils.ts';
+import { downloadBytes } from '../ui/download.ts';
 
 export interface MenuShell {
   getNavbar(): AppNavbar;
@@ -66,16 +68,8 @@ export class MenuActions {
     if (!this.ctx.session) return;
     await this.ctx.core.saveSession(this.ctx.session);
     const jsonText = this.ctx.core.exportSessionJson();
-    const blob = new Blob([jsonText], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safeName = this.ctx.session.name.replace(/[^A-Za-z0-9_-]/g, '_');
-    a.href = url;
-    a.download = `${safeName}.nmsession.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const safeName = sanitizeFileName(this.ctx.session.name, 'session');
+    downloadBytes(jsonText, `${safeName}.nmsession.json`, 'application/json');
     this.ctx.shell.getTelemetry().addLog(
       `Session "${this.ctx.session.name}" saved to localStorage and downloaded as ${safeName}.nmsession.json`
     );
@@ -91,16 +85,8 @@ export class MenuActions {
     this.ctx.session.processConfig.modelName = newName;
     await this.ctx.core.saveSession(this.ctx.session);
     const jsonText = this.ctx.core.exportSessionJson();
-    const blob = new Blob([jsonText], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safeName = newName.replace(/[^A-Za-z0-9_-]/g, '_');
-    a.href = url;
-    a.download = `${safeName}.nmsession.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const safeName = sanitizeFileName(newName, 'session');
+    downloadBytes(jsonText, `${safeName}.nmsession.json`, 'application/json');
     this.ctx.shell.getTelemetry().addLog(
       `Session renamed to "${newName}" and saved as ${safeName}.nmsession.json`
     );

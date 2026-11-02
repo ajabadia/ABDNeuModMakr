@@ -22,14 +22,9 @@
 
 import { CONTROL_ICONS } from '../icons.js';
 import { formatMidiSourceBadge, formatMidiMappingSummary } from './midiLearnStore.js';
+import { escapeHtml } from '../../Utils/escape.js';
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+
 
 /**
  * Attaches universal MIDI Learn DOM delegation, context menu, and visual dot indicators.

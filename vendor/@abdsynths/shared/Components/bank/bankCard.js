@@ -1,3 +1,4 @@
+import { escAttr, escText } from '../../Utils/escape.js';
 /**
  * bankCard — tarjeta canónica del catálogo NeuronDB (paquete compartido).
  * ======================================================================
@@ -139,15 +140,6 @@ export function bindBankCards (container, handlers = {})
   };
 }
 
-function escText (s)
-{
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
-function escAttr (s)
-{
-  return escText(s).replace(/"/g, '&quot;');
-}
+
+

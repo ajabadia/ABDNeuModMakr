@@ -18,6 +18,8 @@ import type {
   ExtendedModelMetadata,
   ExtendedRegion,
   LoopMode,
+  SampleLoopDescriptor,
+  SamplerPlayLogic,
   TriggerMode,
 } from './SamplerTypes.ts';
 import {
@@ -124,10 +126,17 @@ interface DsSampleEntry {
   loopEnd: number;
   loopCrossfade: number;
   releaseDecay: number;
+  startFrame?: number;
+  endFrame?: number;
+  groupName?: string;
+  silencedByTag?: string;
 }
 
 // ─── Group-level defaults ─────────────────────────────────────────────────
 interface DsGroupDefaults {
+  name?: string;
+  tags?: string;
+  silencedByTags?: string;
   loKey: number;
   hiKey: number;
   loVel: number;
@@ -144,6 +153,9 @@ interface DsGroupDefaults {
 
 function readGroupDefaults(group: Element): DsGroupDefaults {
   return {
+    name:          attr(group, 'name') ?? attr(group, 'tags'),
+    tags:          attr(group, 'tags'),
+    silencedByTags: attr(group, 'silencedByTags'),
     loKey:         parseDsNote(attr(group, 'loNote') ?? attr(group, 'loKey'), 0),
     hiKey:         parseDsNote(attr(group, 'hiNote') ?? attr(group, 'hiKey'), 127),
     loVel:         Math.round(numAttr(group, 'loVel', 1)),
@@ -184,6 +196,9 @@ function parseSampleElement(
   const hiKey   = parseDsNote(attr(sample, 'hiNote') ?? attr(sample, 'hiKey'), gd.hiKey);
   const rootKey = parseDsNote(attr(sample, 'rootNote') ?? attr(sample, 'root'), Math.round((loKey + hiKey) / 2));
 
+  const rawStart = attr(sample, 'start');
+  const rawEnd = attr(sample, 'end');
+
   return {
     path,
     loKey,
@@ -206,6 +221,10 @@ function parseSampleElement(
     loopEnd:       Math.round(numAttr(sample, 'loopEnd', 0)),
     loopCrossfade: numAttr(sample, 'loopCrossfade', 0),
     releaseDecay:  numAttr(sample, 'releaseDecay', gd.releaseDecay),
+    startFrame:    rawStart !== undefined ? Math.max(0, Math.round(parseFloat(rawStart) || 0)) : undefined,
+    endFrame:      rawEnd !== undefined ? Math.max(0, Math.round(parseFloat(rawEnd) || 0)) : undefined,
+    groupName:     gd.name,
+    silencedByTag: attr(sample, 'silencedByTags') ?? gd.silencedByTags,
   };
 }
 
@@ -330,7 +349,42 @@ export function parseDecentSamplerPreset(
 
   // ── Build ExtendedRegion[] ────────────────────────────────────────────
   let idCounter = 0;
+  const muteTagMap = new Map<string, number>();
   const extendedRegions: ExtendedRegion[] = allSamples.map((s) => {
+    let muteGroup: number | undefined;
+    if (s.silencedByTag) {
+      const tagKey = s.silencedByTag.trim().toLowerCase();
+      if (tagKey) {
+        if (!muteTagMap.has(tagKey)) {
+          muteTagMap.set(tagKey, Math.min(32, muteTagMap.size + 1));
+        }
+        muteGroup = muteTagMap.get(tagKey);
+      }
+    }
+
+    const playLogic: SamplerPlayLogic =
+      s.seqMode === 'random' || s.seqMode === 'true_random'
+        ? 'random'
+        : s.seqLength > 1
+          ? 'round_robin'
+          : s.seqMode === 'always'
+            ? 'always'
+            : 'velocity';
+
+    const loops: SampleLoopDescriptor[] | undefined =
+      s.loopMode !== 'no_loop' && s.loopEnd > s.loopStart
+        ? [
+            {
+              id: 'loop-1',
+              mode: s.loopMode,
+              startFrame: s.loopStart,
+              endFrame: s.loopEnd,
+              crossfadeMs: s.loopCrossfade,
+              crossfadeCurve: 'linear',
+            },
+          ]
+        : undefined;
+
     const region: ExtendedRegion = {
       id: `ds-${idCounter++}`,
       sampleName: basename(s.path) || s.path,
@@ -346,6 +400,7 @@ export function parseDecentSamplerPreset(
       trigger: s.trigger,
       seqPosition: s.seqLength > 1 ? s.seqPosition : undefined,
       seqLength: s.seqLength > 1 ? s.seqLength : undefined,
+      playLogic,
       keyFadeIn: 0,
       keyFadeOut: 0,
       velFadeIn: 0,
@@ -355,6 +410,12 @@ export function parseDecentSamplerPreset(
       loopStart: s.loopStart,
       loopEnd: s.loopEnd,
       loopCrossfadeMs: s.loopCrossfade,
+      sampleStartFrame: s.startFrame,
+      sampleEndFrame: s.endFrame,
+      groupName: s.groupName,
+      groupId: s.groupName ? `grp-${s.groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : undefined,
+      muteGroup,
+      loops,
       hasPlaybackOverride: s.trigger !== 'attack' || s.pitchKeyTrack !== 100,
     };
     return region;
@@ -375,7 +436,7 @@ export function parseDecentSamplerPreset(
   const classicZones = projectExtendedRegionsToClassicZones(extendedRegions).zones;
   const articulation = createDefaultArticulation();
 
-  // Detect ADSR from envelope modulator if present
+  // Detect ADSR from envelope modulator or groups element attributes
   const envMod = modulators.find((m) => m.type === 'envelope');
   if (envMod) {
     articulation.ampEnvEnabled = true;
@@ -383,6 +444,57 @@ export function parseDecentSamplerPreset(
     articulation.ampEnv.decaySec     = Math.max(0.001, envMod.decay   ?? 0.1);
     articulation.ampEnv.sustainLevel = Math.max(0,     Math.min(1, envMod.sustain ?? 1));
     articulation.ampEnv.releaseSec   = Math.max(0.001, envMod.release ?? 0.4);
+  } else if (groupsEl && (attr(groupsEl, 'attack') || attr(groupsEl, 'release'))) {
+    articulation.ampEnvEnabled = true;
+    articulation.ampEnv.attackSec    = Math.max(0.001, numAttr(groupsEl, 'attack', 0.002));
+    articulation.ampEnv.decaySec     = Math.max(0.001, numAttr(groupsEl, 'decay', 0.1));
+    articulation.ampEnv.sustainLevel = Math.max(0, Math.min(1, numAttr(groupsEl, 'sustain', 1)));
+    articulation.ampEnv.releaseSec   = Math.max(0.001, numAttr(groupsEl, 'release', 0.4));
+  }
+
+  // Detect filter from <effects>
+  const filterFx = effects.find(
+    (e) =>
+      e.type.includes('lowpass') ||
+      e.type.includes('highpass') ||
+      e.type.includes('bandpass') ||
+      e.type.includes('notch') ||
+      e.type === 'effect'
+  );
+  if (filterFx) {
+    const fxType = String(filterFx.params.type ?? filterFx.type).toLowerCase();
+    if (
+      fxType.includes('lowpass') ||
+      fxType.includes('highpass') ||
+      fxType.includes('bandpass') ||
+      fxType.includes('notch')
+    ) {
+      articulation.filter = {
+        ...articulation.filter,
+        enabled: true,
+        type: fxType.includes('highpass')
+          ? 'hpf'
+          : fxType.includes('bandpass')
+            ? 'bpf'
+            : fxType.includes('notch')
+              ? 'notch'
+              : 'lpf',
+        poles: fxType.includes('4pl') ? 4 : 2,
+        cutoffHz: clamp(Number(filterFx.params.frequency ?? 18000) || 18000, 20, 20000),
+        resonanceDb: clamp((Number(filterFx.params.resonance ?? 0.7) || 0) * 12, 0, 40),
+      };
+    }
+  }
+
+  // Detect LFO from <modulators>
+  const lfoMod = modulators.find((m) => m.type === 'lfo');
+  if (lfoMod && lfoMod.frequency) {
+    articulation.vibLfo = {
+      ...articulation.vibLfo,
+      enabled: true,
+      freqHz: clamp(lfoMod.frequency, 0.01, 50),
+      toPitchCents: (lfoMod.amount ?? 0.1) * 100,
+    };
   }
 
   const classification = classifyInstrumentAndParameterSet(presetName);

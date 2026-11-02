@@ -757,6 +757,13 @@ export function importSf2PresetToNative(
     };
     articulation.modEnvToPitchCents = modToPitch;
     articulation.modEnvEnabled = Boolean(hasModEnv && (Math.abs(modToPitch) > 0 || Math.abs(modToFilter) > 0));
+    if (Math.abs(modToPitch) > 0) {
+      articulation.pitchEnv = {
+        enabled: true,
+        depthCents: modToPitch,
+        env: { ...articulation.modEnv },
+      };
+    }
 
     // 3. Filter (ops 8 = initialFilterFc in abs cents, 9 = initialFilterQ in cB)
     const filterFcCents = getGenS(8, 13500);
@@ -766,11 +773,13 @@ export function importSf2PresetToNative(
     articulation.filter = {
       enabled: filterActive,
       type: 'lpf',
+      poles: 2,
       cutoffHz: Math.round(cutoffHz),
       resonanceDb: Number((filterQCb / 10).toFixed(1)),
       envToFilterCents: modToFilter,
       velToFilterCents: 0,
       keytrackCents: 0,
+      filterEnv: Math.abs(modToFilter) > 0 ? { ...articulation.modEnv } : undefined,
     };
 
     // 4. Vibrato LFO (ops 23 = delayVibLFO, 24 = freqVibLFO, 6 = vibLfoToPitch)
@@ -893,6 +902,8 @@ export function importSf2PresetToNative(
       const relLoopStart = Math.max(0, leftZ.startLoopSample - leftZ.startSample);
       const relLoopEnd = Math.max(relLoopStart, Math.min(leftCh.length, leftZ.endLoopSample - leftZ.startSample));
 
+      const stereoExclusive = leftZ.gens.get(57)?.uAmount ?? rightZ.gens.get(57)?.uAmount ?? 0;
+      const stereoMuteGroup = stereoExclusive > 0 ? Math.min(32, stereoExclusive) : undefined;
       extendedRegions.push({
         id: `ext-reg-${regionSeq++}`,
         sampleName: wavName,
@@ -915,6 +926,11 @@ export function importSf2PresetToNative(
         loopStart: relLoopStart,
         loopEnd: relLoopEnd,
         loopCrossfadeMs: 0,
+        muteGroup: stereoMuteGroup,
+        loops:
+          leftZ.loopMode !== 'no_loop' && relLoopEnd > relLoopStart
+            ? [{ id: 'loop-1', mode: leftZ.loopMode, startFrame: relLoopStart, endFrame: relLoopEnd }]
+            : undefined,
         sampleRate,
         numChannels: 2,
       });
@@ -951,6 +967,8 @@ export function importSf2PresetToNative(
 
       const relLoopStart = Math.max(0, zA.startLoopSample - zA.startSample);
       const relLoopEnd = Math.max(relLoopStart, Math.min(monoCh.length, zA.endLoopSample - zA.startSample));
+      const monoExclusive = zA.gens.get(57)?.uAmount ?? 0;
+      const monoMuteGroup = monoExclusive > 0 ? Math.min(32, monoExclusive) : undefined;
 
       extendedRegions.push({
         id: `ext-reg-${regionSeq++}`,
@@ -974,6 +992,11 @@ export function importSf2PresetToNative(
         loopStart: relLoopStart,
         loopEnd: relLoopEnd,
         loopCrossfadeMs: 0,
+        muteGroup: monoMuteGroup,
+        loops:
+          zA.loopMode !== 'no_loop' && relLoopEnd > relLoopStart
+            ? [{ id: 'loop-1', mode: zA.loopMode, startFrame: relLoopStart, endFrame: relLoopEnd }]
+            : undefined,
         sampleRate,
         numChannels: 1,
       });

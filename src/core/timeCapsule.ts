@@ -22,6 +22,7 @@ import {
   serializeStickRec,
   type ZipEntryInput,
 } from '@abdsynths/shared/formats/neuron';
+import { basename } from './pathUtils.ts';
 import type {
   CapsuleLayerId,
   CapsuleLayerStats,
@@ -132,7 +133,7 @@ export function buildTimeCapsuleEntries(
   // ── Layer 01: 01_raw_source/ ────────────────────────────
   if (input.rawSourceSamples && input.rawSourceSamples.size > 0) {
     for (const [sampleName, ab] of input.rawSourceSamples.entries()) {
-      const cleanName = sampleName.split(/[\\/]/).pop() ?? sampleName;
+      const cleanName = basename(sampleName) || sampleName;
       layerEntries['01_raw_source'].push({
         path: `01_raw_source/${cleanName}`,
         data: new Uint8Array(ab),
@@ -185,7 +186,7 @@ export function buildTimeCapsuleEntries(
   // ── Layer 03: 03_enhanced_audio/ (24-bit / 96.000 Hz Master Wave) ──
   if (input.enhancedAudioSamples && input.enhancedAudioSamples.size > 0) {
     for (const [sampleName, ab] of input.enhancedAudioSamples.entries()) {
-      const cleanName = sampleName.split(/[\\/]/).pop() ?? sampleName;
+      const cleanName = basename(sampleName) || sampleName;
       layerEntries['03_enhanced_audio'].push({
         path: `03_enhanced_audio/${cleanName}`,
         data: new Uint8Array(ab),
@@ -462,7 +463,7 @@ export function buildTimeCapsuleEntries(
           }
         }
         for (const [sName, ab] of sampleSet.entries()) {
-          const cleanName = sName.split(/[\\/]/).pop() ?? sName;
+          const cleanName = basename(sName) || sName;
           entries.push({
             path: `Samples/${cleanName}`,
             data: new Uint8Array(ab),

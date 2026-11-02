@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Preflight Inspection Engine (Fase 16)
+// ABDNeuModMakr — Preflight Inspection Engine (Fase 16 + Fase 32.3/32.4)
 //
 // Evaluates session zones, audio buffers, sample rates, loop points,
 // and articulation envelopes against destination sampler specifications.
@@ -52,7 +52,7 @@ export const SAMPLER_FORMAT_METADATA: Record<
   },
   vstpreset: {
     title: 'Steinberg HALion (.vstpreset)',
-    description: 'Preset estructurado XML/FXP de programa HALion con capas de zona.',
+    description: 'Preset estructurado XML/VST3 de programa HALion con capas de zona.',
     extension: '.vstpreset.zip',
     mimeType: 'application/zip',
   },
@@ -67,6 +67,42 @@ export const SAMPLER_FORMAT_METADATA: Record<
     description: 'Paquete de expansión instalable para Akai MPC Software y hardware autónomo (Expansion.xml + programa .xpm + muestras WAV).',
     extension: '.xpn',
     mimeType: 'application/zip',
+  },
+  ableton_adv: {
+    title: 'Ableton Sampler / Simpler (.adv + Samples)',
+    description: 'Preset nativo de Ableton Live (<MultiSampler> GZIP XML) con muestras en Samples/Imported/.',
+    extension: '.adv.zip',
+    mimeType: 'application/zip',
+  },
+  exs24: {
+    title: 'Apple Logic EXS24 / Sampler (.exs + Samples)',
+    description: 'Instrumento binario EXS24 / Logic Pro Sampler (bloques SOBT/TBOS) con zonas, grupos, filtros y muestras WAV.',
+    extension: '.exs.zip',
+    mimeType: 'application/zip',
+  },
+  tal_sampler: {
+    title: 'TAL-Sampler (.talsmpl + Samples)',
+    description: 'Preset XML de Togu Audio Line TAL-Sampler (hasta 4 capas estéreo, envolventes y filtro modelado).',
+    extension: '.talsmpl.zip',
+    mimeType: 'application/zip',
+  },
+  tx16wx: {
+    title: 'CWITEC TX16Wx Software Sampler (.txprog + Samples)',
+    description: 'Programa XML de CWITEC TX16Wx 3.0 con waves, loops, soundshapes (AEG/Filter/Env) y grupos con crossfade.',
+    extension: '.txprog.zip',
+    mimeType: 'application/zip',
+  },
+  korg_kmp: {
+    title: 'Korg Trinity / Triton / M3 / Pa (.KMP + .KSF)',
+    description: 'Multisample hardware Korg Big-Endian (.KMP + muestras .KSF de 16-bit y script .KSC).',
+    extension: '.kmp.zip',
+    mimeType: 'application/zip',
+  },
+  dls: {
+    title: 'MMA Downloadable Sounds Level 2 (.dls)',
+    description: 'Banco binario autocontenido RIFF "DLS " (Level 1/2) con regiones, bloques de articulación (lart/lar2) y wave pool.',
+    extension: '.dls',
+    mimeType: 'audio/x-dls',
   },
   sample_chain: {
     title: 'Sample Chain Lineal con Cue Markers (.wav)',
@@ -99,14 +135,27 @@ export function extractUniformSamplerRegions(session: Session): UniformSamplerRe
       loopEnd: reg.loopEnd ?? 0,
       loopCrossfadeMs: reg.loopCrossfadeMs ?? 0,
       crossfadeCurve: reg.fadeCurve,
+      keyFadeIn: reg.keyFadeIn ?? 0,
+      keyFadeOut: reg.keyFadeOut ?? 0,
+      velFadeIn: reg.velFadeIn ?? 0,
+      velFadeOut: reg.velFadeOut ?? 0,
+      loops: reg.loops,
       ampEnvelope: reg.ampEnvOverride ?? session.articulation?.ampEnv,
       filterConfig: reg.filterOverride ?? session.articulation?.filter,
+      pitchEnvelope: reg.pitchEnvOverride ?? session.articulation?.pitchEnv,
       trigger: reg.trigger,
+      playLogic: reg.playLogic,
       seqPosition: reg.seqPosition,
       seqLength: reg.seqLength,
       sampleStartFrame: reg.sampleStartFrame,
       sampleEndFrame: reg.sampleEndFrame,
+      reversed: reg.reversed,
+      groupId: reg.groupId,
+      groupName: reg.groupName,
       muteGroup: reg.muteGroup,
+      keyswitchNote: reg.keyswitchNote,
+      velToVolumeDepth: reg.velToVolumeDepth,
+      velToPitchCents: reg.velToPitchCents,
     }));
   }
 
@@ -129,8 +178,13 @@ export function extractUniformSamplerRegions(session: Session): UniformSamplerRe
     loopEnd: reg.loopEnd ?? 0,
     loopCrossfadeMs: 0,
     crossfadeCurve: 'equal-power',
+    keyFadeIn: 0,
+    keyFadeOut: 0,
+    velFadeIn: 0,
+    velFadeOut: 0,
     ampEnvelope: session.articulation?.ampEnv,
     filterConfig: session.articulation?.filter,
+    pitchEnvelope: session.articulation?.pitchEnv,
     trigger: 'attack',
   }));
 }
@@ -196,14 +250,14 @@ export function analyzeRawSamplerPreflight(
     }
   }
 
-  if (options.format === 'sf2' && count24Bit > 0) {
+  if ((options.format === 'sf2' || options.format === 'korg_kmp' || options.format === 'dls') && count24Bit > 0) {
     issues.push({
       id: 'sf2-bitdepth-clamp',
       category: 'bit_depth',
       severity: 'warning',
-      title: 'Resolución de Audio Mayor a 16-bit (Límite SoundFont 2.04)',
-      description: `La norma SoundFont 2.04 solo admite PCM entero de 16 bits. ${count24Bit} muestras superan esta resolución o son Float32.`,
-      adaptation: 'Conversión automática a 16-bit PCM con dithering TPDF para preservar rango dinámico sin distorsión de cuantización.',
+      title: 'Resolución de Audio Mayor a 16-bit',
+      description: `El formato ${meta.title} requiere PCM entero de 16 bits. ${count24Bit} muestras superan esta resolución o son Float32.`,
+      adaptation: 'Conversión automática a 16-bit PCM para preservar el rango dinámico.',
       affectedCount: count24Bit,
     });
   } else if (options.resolution === 'pcm16' && count24Bit > 0) {
@@ -283,20 +337,27 @@ export function analyzeRawSamplerPreflight(
     }
   }
 
-  if ((options.format === 'sf2' || options.format === 'mpc_xpm' || options.format === 'mpc_xpn') && pingPongLoops > 0) {
+  if (
+    (options.format === 'sf2' ||
+      options.format === 'mpc_xpm' ||
+      options.format === 'mpc_xpn' ||
+      options.format === 'korg_kmp' ||
+      options.format === 'dls') &&
+    pingPongLoops > 0
+  ) {
     issues.push({
       id: 'sf2-pingpong-adaptation',
       category: 'loop',
       severity: 'warning',
-      title: `Bucles Ping-Pong no Soportados en ${options.format === 'sf2' ? 'SoundFont 2' : 'Akai MPC'}`,
+      title: `Bucles Ping-Pong no Soportados en ${meta.title}`,
       description: `${pingPongLoops} regiones tienen bucle en modo Ping-Pong o Reverse, no soportado nativamente en el formato destino.`,
       adaptation: 'Conversión automática a bucle continuo forward tradicional (loop_continuous).',
       affectedCount: pingPongLoops,
     });
   }
 
-  // MPC 4-layer per instrument spill check
-  if (options.format === 'mpc_xpm' || options.format === 'mpc_xpn') {
+  // MPC / TAL 4-layer per instrument spill check
+  if (options.format === 'mpc_xpm' || options.format === 'mpc_xpn' || options.format === 'tal_sampler') {
     const byKeySpan = new Map<string, number>();
     for (const reg of regions) {
       const k = `${reg.lowKey}:${reg.highKey}`;
@@ -311,21 +372,24 @@ export function analyzeRawSamplerPreflight(
         id: 'mpc-4layer-spill',
         category: 'velocity_layers',
         severity: 'info',
-        title: 'Desbordamiento Automático a Keygroups Solapados (>4 Capas por Rango)',
-        description: `Cada Instrumento de Akai MPC admite hasta 4 capas (Layers 1..4). ${spilledGroups} rangos de teclado superan 4 capas de velocidad o Round-Robin.`,
-        adaptation: 'División automática sin pérdida en Keygroups solapados adicionales dentro de los 128 slots del programa MPC.',
+        title: 'Adaptación de Capas (>4 Capas por Rango)',
+        description: `${spilledGroups} rangos de teclado superan 4 capas de velocidad o Round-Robin.`,
+        adaptation:
+          options.format === 'tal_sampler'
+            ? 'Distribución en los 4 samplelayers de TAL-Sampler.'
+            : 'División automática sin pérdida en Keygroups solapados adicionales dentro de los 128 slots del programa MPC.',
         affectedCount: spilledGroups,
       });
     }
   }
 
-  if ((options.format === 'sf2' || options.format === 'sample_chain') && complexXfades > 0) {
+  if ((options.format === 'sf2' || options.format === 'sample_chain' || options.format === 'korg_kmp' || options.format === 'dls') && complexXfades > 0) {
     issues.push({
       id: 'loop-crossfade-limitation',
       category: 'loop',
       severity: 'info',
       title: 'Micro-Crossfades de Bucle en Sampler Destino',
-      description: `${complexXfades} regiones utilizan crossfade en bucle. En SF2 los puntos de loop son posiciones fijas de muestra sin fundido en tiempo real.`,
+      description: `${complexXfades} regiones utilizan crossfade en bucle. En ${meta.title} los puntos de loop son posiciones fijas de muestra.`,
       adaptation: 'Se incrustan los puntos de bucle exactos calculados para corte por cruce por cero.',
       affectedCount: complexXfades,
     });

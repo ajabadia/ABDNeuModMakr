@@ -22,6 +22,8 @@ import type {
 } from '../core/batch/types.ts';
 import type { ProcessConfig, WorkingMode } from '../core/types.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
+import { fileExtension } from '../core/pathUtils.ts';
+import { downloadBytes } from './download.ts';
 
 export interface BatchModalContext {
   getCurrentProcessConfig: () => ProcessConfig;
@@ -722,8 +724,8 @@ export class BatchProcessorModal {
     try {
       const fileInputs: FolderFileInput[] = [];
       for (const f of files) {
-        const ext = f.name.split('.').pop()?.toLowerCase();
-        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext || '')) {
+        const ext = fileExtension(f.name);
+        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext)) {
           fileInputs.push({
             path: f.webkitRelativePath || f.name,
             name: f.name,
@@ -761,8 +763,8 @@ export class BatchProcessorModal {
     try {
       const fileInputs: FolderFileInput[] = [];
       for (const f of files) {
-        const ext = f.name.split('.').pop()?.toLowerCase();
-        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext || '')) {
+        const ext = fileExtension(f.name);
+        if (['wav', 'aif', 'aiff', 'rx2', 'rex'].includes(ext)) {
           fileInputs.push({
             path: f.name,
             name: f.name,
@@ -823,16 +825,6 @@ export class BatchProcessorModal {
   }
 
   private downloadBlob(bytes: Uint8Array, fileName: string, mimeType: string): void {
-    const blob = new Blob([bytes as any], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      a.remove();
-      URL.revokeObjectURL(url);
-    }, 100);
+    downloadBytes(bytes as unknown as BlobPart, fileName, mimeType);
   }
 }

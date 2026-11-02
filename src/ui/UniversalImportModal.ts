@@ -209,18 +209,18 @@ export class UniversalImportModal {
           <div class="dropzone-icon">${ICONS.folder || ICONS.wave}</div>
           <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .xpm, .xty, .xtd, .xpn, .rx2, .rex, .rcy, .cue, .wav, .aif, .zip</strong>
+            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .rx2, .rex, .rcy, .cue, .wav, .aif, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files">
               ${ICONS.folder || ''} Browse File...
-              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.flac,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.xpm,.xty,.xtd,.xpn,.rx2,.rex,.rcy,.cue,.zip" multiple />
+              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.flac,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
           </div>
         </div>
 
         <div class="uimport-supported-formats-strip">
-          <div class="fmt-chip"><strong>Multisample Banks:</strong> SoundFont 2, SFZ, Decent Sampler, Kontakt XML, HALion, Bitwig</div>
+          <div class="fmt-chip"><strong>Multisample Banks:</strong> SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion, Bitwig, Akai MPC</div>
           <div class="fmt-chip"><strong>Loops &amp; Slices:</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
           <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF (automatically mapped to zones or chopper)</div>
         </div>
@@ -413,9 +413,11 @@ export class UniversalImportModal {
   }
 
   private async handleFileSelection(file: File, allFiles: FileList | File[]): Promise<void> {
-    // Fase 31: an Akai .xpm dropped together with its WAVs is the primary file
-    const xpmFile = Array.from(allFiles).find((f) => /\.(xpm|xty|xtd)$/i.test(f.name));
-    if (xpmFile) file = xpmFile;
+    // Fase 31 + 32.4: a program file (.xpm/.xty/.xtd/.adv/.exs/.talsmpl/.txprog/.kmp) dropped together with its WAVs/.KSFs is the primary file
+    const primaryProgFile = Array.from(allFiles).find((f) =>
+      /\.(xpm|xty|xtd|adv|exs|talsmpl|txprog|kmp)$/i.test(f.name)
+    );
+    if (primaryProgFile) file = primaryProgFile;
     const filename = file.name;
 
     // If multiple raw audio files are dropped (.wav, .aif), offer standard audio batch import
@@ -461,11 +463,13 @@ export class UniversalImportModal {
 
       // Parse universal sampler bank or slice file
       let preset: ParsedSamplerPreset;
-      if (xpmFile) {
-        // Sibling WAVs selected alongside the .xpm are resolved by sample name
+      if (primaryProgFile) {
+        // Sibling WAVs / KSFs selected alongside the program file are resolved by sample name
         const siblings = new Map<string, Uint8Array>();
         for (const f of Array.from(allFiles)) {
-          if (/\.(wav|aif|aiff)$/i.test(f.name)) siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
+          if (/\.(wav|aif|aiff|flac|ksf)$/i.test(f.name)) {
+            siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
+          }
         }
         preset = await parseUniversalSampler(filename, buffer, siblings);
       } else {

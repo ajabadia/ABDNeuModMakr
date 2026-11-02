@@ -12,7 +12,10 @@ import type {
   CustomMetadataTag,
   ExtendedModelMetadata,
   ExtendedRegion,
+  FilterSlopePoles,
   LoopMode,
+  SampleLoopDescriptor,
+  SamplerPlayLogic,
   TriggerMode,
 } from './SamplerTypes.ts';
 import {
@@ -266,6 +269,62 @@ export function importSfzToNative(
     const loopStart = Math.max(0, parseInt(ops.loop_start ?? ops.loopstart ?? '0', 10) || 0);
     const loopEnd = Math.max(loopStart, parseInt(ops.loop_end ?? ops.loopend ?? '0', 10) || 0);
     const loopCrossfadeMs = Math.max(0, Math.round((parseFloat(ops.loop_crossfade ?? '0') || 0) * 1000));
+    const fadeCurve = (ops.xf_keycurve ?? ops.xf_velcurve ?? 'power') === 'gain' ? 'linear' : 'equal-power';
+
+    const sampleStartFrame =
+      ops.offset !== undefined ? Math.max(0, parseInt(ops.offset, 10) || 0) : undefined;
+    const sampleEndFrame =
+      ops.end !== undefined ? Math.max(0, parseInt(ops.end, 10) || 0) : undefined;
+    const reversed =
+      (ops.direction ?? '').toLowerCase() === 'reverse' || loopMode === 'loop_backward'
+        ? true
+        : undefined;
+
+    let playLogic: SamplerPlayLogic | undefined;
+    if (ops.lorand !== undefined || ops.hirand !== undefined) {
+      playLogic = 'random';
+    } else if ((seqLength ?? 0) > 1) {
+      playLogic = 'round_robin';
+    }
+
+    const velToVolumeDepth =
+      ops.amp_veltrack !== undefined
+        ? Math.max(-100, Math.min(100, parseFloat(ops.amp_veltrack) || 100))
+        : undefined;
+    const velToPitchCents =
+      ops.pitch_veltrack !== undefined
+        ? Math.max(-12000, Math.min(12000, parseFloat(ops.pitch_veltrack) || 0))
+        : undefined;
+
+    const muteGroupRaw = parseInt(ops.off_by ?? ops.group ?? '0', 10) || 0;
+    const muteGroup = muteGroupRaw > 0 ? Math.min(32, muteGroupRaw) : undefined;
+    const groupName = ops.group_label ?? ops.master_label;
+    const groupId = groupName
+      ? `grp-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+      : muteGroup
+        ? `grp-mute-${muteGroup}`
+        : undefined;
+
+    const keyswitchNote =
+      ops.sw_last !== undefined
+        ? parseSfzNote(ops.sw_last, 0)
+        : ops.sw_lokey !== undefined
+          ? parseSfzNote(ops.sw_lokey, 0)
+          : undefined;
+
+    const loops: SampleLoopDescriptor[] | undefined =
+      loopMode !== 'no_loop' && loopEnd > loopStart
+        ? [
+            {
+              id: 'loop-1',
+              mode: loopMode,
+              startFrame: loopStart,
+              endFrame: loopEnd,
+              crossfadeMs: loopCrossfadeMs,
+              crossfadeCurve: fadeCurve,
+            },
+          ]
+        : undefined;
 
     extendedRegions.push({
       id: `ext-reg-${seq++}`,
@@ -286,11 +345,22 @@ export function importSfzToNative(
       keyFadeOut: Math.max(0, xfoutHikey - xfoutLokey),
       velFadeIn: Math.max(0, xfinHivel - xfinLovel),
       velFadeOut: Math.max(0, xfoutHivel - xfoutLovel),
-      fadeCurve: (ops.xf_keycurve ?? 'power') === 'gain' ? 'linear' : 'equal-power',
+      fadeCurve,
       loopMode,
       loopStart,
       loopEnd,
       loopCrossfadeMs,
+      sampleStartFrame,
+      sampleEndFrame,
+      reversed,
+      playLogic,
+      velToVolumeDepth,
+      velToPitchCents,
+      groupId,
+      groupName,
+      muteGroup,
+      keyswitchNote,
+      loops,
     });
   }
 
@@ -314,19 +384,86 @@ export function importSfzToNative(
         decaySec: Math.max(0.005, parseFloat(refOps.ampeg_decay ?? '0.25') || 0.25),
         sustainLevel: Math.max(0, Math.min(1, (parseFloat(refOps.ampeg_sustain ?? '100') || 100) / 100)),
         releaseSec: Math.max(0.01, parseFloat(refOps.ampeg_release ?? '0.2') || 0.2),
+        startLevel:
+          refOps.ampeg_start !== undefined
+            ? Math.max(0, Math.min(1, (parseFloat(refOps.ampeg_start) || 0) / 100))
+            : undefined,
+        velModDepth:
+          refOps.amp_veltrack !== undefined
+            ? Math.max(-100, Math.min(100, parseFloat(refOps.amp_veltrack) || 100))
+            : undefined,
       };
     }
 
-    if (refOps.cutoff !== undefined) {
+    if (refOps.cutoff !== undefined || refOps.fil_type !== undefined) {
+      const ft = (refOps.fil_type ?? 'lpf_2p').toLowerCase();
+      let filterType: 'lpf' | 'hpf' | 'bpf' | 'brf' | 'notch' = 'lpf';
+      if (ft.includes('hpf')) filterType = 'hpf';
+      else if (ft.includes('bpf')) filterType = 'bpf';
+      else if (ft.includes('brf')) filterType = 'brf';
+      else if (ft.includes('notch')) filterType = 'notch';
+
+      let poles: FilterSlopePoles = 2;
+      if (ft.includes('1p')) poles = 1;
+      else if (ft.includes('3p')) poles = 3;
+      else if (ft.includes('4p')) poles = 4;
+      else if (ft.includes('6p')) poles = 6;
+
+      const hasFilEg =
+        refOps.fileg_attack !== undefined ||
+        refOps.fileg_decay !== undefined ||
+        refOps.fileg_sustain !== undefined ||
+        refOps.fileg_release !== undefined;
+
       articulation.filter = {
         enabled: true,
-        type: refOps.fil_type?.includes('hpf') ? 'hpf' : refOps.fil_type?.includes('bpf') ? 'bpf' : 'lpf',
-        cutoffHz: Math.max(20, Math.min(20000, Math.round(parseFloat(refOps.cutoff) || 18000))),
+        type: filterType,
+        poles,
+        cutoffHz: Math.max(20, Math.min(20000, Math.round(parseFloat(refOps.cutoff ?? '18000') || 18000))),
         resonanceDb: Math.max(0, Math.min(40, parseFloat(refOps.resonance ?? '0') || 0)),
         envToFilterCents: parseFloat(refOps.fileg_depth ?? '0') || 0,
         velToFilterCents: parseFloat(refOps.fil_veltrack ?? '0') || 0,
         keytrackCents: parseFloat(refOps.fil_keytrack ?? '0') || 0,
+        filterEnv: hasFilEg
+          ? {
+              delaySec: Math.max(0, parseFloat(refOps.fileg_delay ?? '0') || 0),
+              attackSec: Math.max(0.001, parseFloat(refOps.fileg_attack ?? '0.005') || 0.005),
+              holdSec: Math.max(0, parseFloat(refOps.fileg_hold ?? '0') || 0),
+              decaySec: Math.max(0.001, parseFloat(refOps.fileg_decay ?? '0.25') || 0.25),
+              sustainLevel: Math.max(0, Math.min(1, (parseFloat(refOps.fileg_sustain ?? '100') || 100) / 100)),
+              releaseSec: Math.max(0.001, parseFloat(refOps.fileg_release ?? '0.2') || 0.2),
+            }
+          : undefined,
       };
+    }
+
+    if (refOps.pitcheg_depth !== undefined || refOps.pitcheg_attack !== undefined) {
+      const depthCents = parseFloat(refOps.pitcheg_depth ?? '0') || 0;
+      articulation.modEnvToPitchCents = depthCents;
+      articulation.pitchEnv = {
+        enabled: depthCents !== 0,
+        depthCents,
+        velModDepth:
+          refOps.pitcheg_vel2depth !== undefined ? parseFloat(refOps.pitcheg_vel2depth) || 0 : undefined,
+        env: {
+          delaySec: Math.max(0, parseFloat(refOps.pitcheg_delay ?? '0') || 0),
+          attackSec: Math.max(0.001, parseFloat(refOps.pitcheg_attack ?? '0.005') || 0.005),
+          holdSec: Math.max(0, parseFloat(refOps.pitcheg_hold ?? '0') || 0),
+          decaySec: Math.max(0.001, parseFloat(refOps.pitcheg_decay ?? '0.25') || 0.25),
+          sustainLevel: Math.max(0, Math.min(1, (parseFloat(refOps.pitcheg_sustain ?? '0') || 0) / 100)),
+          releaseSec: Math.max(0.001, parseFloat(refOps.pitcheg_release ?? '0.2') || 0.2),
+        },
+      };
+    }
+
+    if (refOps.bend_up !== undefined) {
+      articulation.pitchBendUpSt = Math.round((parseFloat(refOps.bend_up) || 200) / 100);
+    }
+    if (refOps.bend_down !== undefined) {
+      articulation.pitchBendDownSt = Math.round(Math.abs(parseFloat(refOps.bend_down) || 200) / 100);
+    }
+    if (refOps.polyphony !== undefined) {
+      articulation.polyphony = Math.max(1, Math.min(128, parseInt(refOps.polyphony, 10) || 16));
     }
 
     if (refOps.pitchlfo_depth !== undefined || refOps.lfo01_pitch !== undefined) {

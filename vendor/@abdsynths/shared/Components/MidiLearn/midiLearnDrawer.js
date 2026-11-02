@@ -23,19 +23,14 @@
  */
 
 import { CONTROL_ICONS } from '../icons.js';
+import { escapeHtml } from '../../Utils/escape.js';
 import {
   MIDI_SOURCE_TYPES,
   MIDI_CURVE_TYPES,
   formatMidiSourceBadge,
 } from './midiLearnStore.js';
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+
 
 /**
  * Creates the DOM content for the canonical MIDI Learn Drawer.

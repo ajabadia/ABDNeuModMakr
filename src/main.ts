@@ -38,6 +38,8 @@ import { ConfigHealthModal } from './ui/ConfigHealthModal';
 import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
+import { yieldToUI } from './core/asyncUtils.ts';
+import { formatKb } from './core/pathUtils.ts';
 import { createUniqueModelSlug } from './core/modelSlug';
 import { confirmDialog, toast } from './ui/notify';
 import { pwaManager } from './app/pwa';
@@ -1243,12 +1245,12 @@ class App {
       }
       this.processPanel?.setCoverConverting(true, file.name);
       // Yield one frame so the converting spinner and message render visibly
-      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+      await yieldToUI(60);
 
       const art = await this.core.convertAndSetModelCoverArtwork(file, file.name);
       this.session = this.core.getSession()!;
       this.processPanel?.setCoverConverting(false);
-      const kb = (art.byteLength / 1024).toFixed(1);
+      const kb = formatKb(art.byteLength);
       this.telemetryDrawer.addLog(
         `Cover Artwork converted to WebP: ${art.width}×${art.height} (${kb} KB) from "${file.name}" -> 05_extended_model/cover.webp`
       );

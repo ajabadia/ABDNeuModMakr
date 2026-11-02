@@ -781,9 +781,9 @@
 
 ---
 
-## Fase 32 — Análisis de ConvertWithMoss: Paridad Total de Formatos de Entrada/Salida y Mejora de los Existentes [PLANIFICADA]
+## Fase 32 — Análisis de ConvertWithMoss: Paridad Total de Formatos de Entrada/Salida y Mejora de los Existentes [EN CURSO — Bloque 1 Completado]
 
-**Referencia**: `D:\desarrollos\ABDSynths\_RESOURCES\convertidores\ConvertWithMoss-main` (Jürgen Moßgraber, **LGPL-3.0**). Se usa solo como referencia de formato: implementación propia (clean-room) en TypeScript, verificada con archivos reales; sin traducir su código Java. Atribución en `README.md` y en el diálogo About.
+**Referencia**: `D:\desarrollos\ABDSynths\_RESOURCES\convertidores\ConvertWithMoss-main` (Jürgen Moßgraber, **LGPL-3.0**). Se usa solo como referencia de formato: implementación propia (clean-room) en TypeScript, verificada con archivos reales; sin traducir su código Java. Atribución en `README.md` y en el diálogo About (`Navbar.ts`).
 
 **Objetivo**: soportar como entrada y salida todos los formatos que cubre ConvertWithMoss, y revisar los que ya tenemos para corregir carencias.
 
@@ -792,26 +792,36 @@ Por cada formato registrar: lectura/escritura en ConvertWithMoss, estado en NeuM
 
 | Grupo | Formatos en ConvertWithMoss | Estado en NeuModMakr |
 |---|---|---|
-| Estándar | SF2, SFZ, DLS, WAV (multisample por nombre) | SF2/SFZ/WAV existentes: revisar paridad; DLS nuevo |
-| Samplers de software | Decent Sampler, Kontakt (+ NI container/monolitos), Maschine, EXS24 (Logic Sampler), Bitwig Multisample, Ableton Sampler/Simpler, TAL Sampler, TX16Wx, DirectWave, Omnisphere, Renoise, Reason NN-XT (`sxt`), Isla, Bliss, Polyend, Korg Multisample (KMP/KSF) | DS/Kontakt parciales (Fase 28); resto nuevo |
-| Akai | MPC moderno (XPM/XPN y pista JSON MPC 3), MPC60/1000/2000, S900/S1000/S3000 (AKP), MESA, imágenes de disco | MPC en Fase 31; resto nuevo |
-| Hardware clásico | E-mu (Emax, Emulator I-IV, EmulatorX), Ensoniq (EPS/ASR, Mirage), Kurzweil (K/PC3), Roland (S-1xx/5xx/7xx, MV8000, MC-707, SP-404mk2, Zen-Core), Yamaha (YSFC), Waldorf (qpat), Synclavier, CMI3, Casio, Sequential Prophet X, Elektron, Disting, 1010music (Blackbox, Bento), Teenage Engineering OP-XY, Synthstrom, Soundbox, Groove Synthesis, ISO | Nuevo |
+| Estándar | SF2, SFZ, DLS, WAV (multisample por nombre) | **COMPLETADO**: SF2/SFZ/WAV con paridad Fase 32.3; DLS Nivel 2 entrada/salida (Fase 32.4 Bloque 1) |
+| Samplers de software | Decent Sampler, Kontakt (+ NI container/monolitos), Maschine, EXS24 (Logic Sampler), Bitwig Multisample, Ableton Sampler/Simpler, TAL Sampler, TX16Wx, DirectWave, Omnisphere, Renoise, Reason NN-XT (`sxt`), Isla, Bliss, Polyend, Korg Multisample (KMP/KSF) | **COMPLETADO Bloque 1**: DS, Bitwig `.multisample`, HALion `.vstpreset`, Ableton `.adv`, Logic EXS24 `.exs`, TAL-Sampler `.talsmpl`, TX16Wx `.txprog`, Korg `.KMP/.KSF/.KSC` (entrada/salida) y Kontakt/NCW; resto en Bloques 2-4 |
+| Akai | MPC moderno (XPM/XPN y pista JSON MPC 3), MPC60/1000/2000, S900/S1000/S3000 (AKP), MESA, imágenes de disco | MPC XPM/XPN/MPC3 en Fase 31; resto en Bloque 3 |
+| Hardware clásico | E-mu (Emax, Emulator I-IV, EmulatorX), Ensoniq (EPS/ASR, Mirage), Kurzweil (K/PC3), Roland (S-1xx/5xx/7xx, MV8000, MC-707, SP-404mk2, Zen-Core), Yamaha (YSFC), Waldorf (qpat), Synclavier, CMI3, Casio, Sequential Prophet X, Elektron, Disting, 1010music (Blackbox, Bento), Teenage Engineering OP-XY, Synthstrom, Soundbox, Groove Synthesis, ISO | Bloques 2-4 |
 
-### 32.2 Arquitectura Común
-- Capa intermedia única: todos los lectores producen `ExtendedRegion[]` + articulación + metadatos; todos los escritores parten de ese modelo (igual que SF2/SFZ hoy).
-- Registro de formatos con detección por extensión y firma binaria, capacidades declaradas (lectura/escritura, capas, round-robin, loops, envolventes, filtros) y avisos de pérdida al exportar a formatos más limitados.
-- Lector de imágenes de disco (Akai, E-mu, Roland, Ensoniq) como módulo separado.
-- Integración con el triaje batch de la Fase 29 y la exportación multiformato de la Fase 16.
+### 32.2 Arquitectura Común [COMPLETADA]
+- [x] Capa intermedia única (`UniversalSamplerInstrument` en `ABDShared/Code/SamplerFormats/UniversalSamplerModel.ts`): todos los lectores producen `ExtendedRegion[]` + articulación + metadatos; todos los escritores parten de ese modelo.
+- [x] Registro declarativo de formatos (`FORMAT_CAPABILITIES_REGISTRY`, 16 formatos activos) con detección por extensión y firma binaria, capacidades declaradas y avisos de pérdida (`evaluateFormatFidelity`).
+- [ ] Lector de imágenes de disco (Akai, E-mu, Roland, Ensoniq) como módulo separado (Bloque 3).
+- [x] Integración con el triaje batch de la Fase 29 y la exportación multiformato de la Fase 16 (`RawSamplerExportModal.ts`, `UniversalImportModal.ts`).
 
-### 32.3 Mejora de los Formatos Existentes
-- Comparar SF2, SFZ, Decent Sampler y Kontakt con el comportamiento documentado en ConvertWithMoss: opcodes/generadores no soportados, conversión de unidades (envolventes, filtros, afinación), round-robin, loops, metadatos.
-- Kontakt: detección real por versión (K1-K4 zlib, K4.2+/K5-K8 por fragmentos), contenedores NI y monolitos, verificación del decodificador NCW de la Fase 28.
+### 32.3 Mejora de los Formatos Existentes [COMPLETADA]
+- [x] **SFZ (`SfzParser.ts` + escritor en `RawSamplerExporter.ts`)**: lectura y escritura de `offset`/`end` (`sampleStartFrame`/`sampleEndFrame`), `direction=reverse`, `xf_keycurve`/`xf_velcurve` + `xfin_lokey`/`xfout_hikey`/`xfin_lovel`/`xfout_hivel`, `group`/`off_by` (`muteGroup`), `sw_lokey`/`sw_hikey`/`sw_last` (`keyswitchNote`), filtro con `fil_type` (polos `1 | 2 | 4 | 6`), `fileg_*` + `fileg_depth`, y envolvente de tono `pitcheg_*` + `pitcheg_depth`.
+- [x] **SoundFont 2 (`Sf2Parser.ts` + `soundfont2Writer.ts`)**: lectura y escritura de generadores `startAddrsOffset`/`startAddrsCoarseOffset`, `endAddrsOffset`/`endAddrsCoarseOffset`, `scaleTuning` (`pitchKeytrack`), `exclusiveClass` (Gen 57 <-> `muteGroup`), `modEnvToFilterFc` / `modEnvToPitch` y `loops[]`.
+- [x] **Decent Sampler (`DecentSamplerParser.ts`, `rawSamplerParsers.ts`, `RawSamplerExporter.ts`)**: lectura y escritura de `start`/`end`, `loopCrossfade` (en frames), `seqMode`/`seqLength`/`seqPosition`, `silencedByTags`/`tags` (`muteGroup`), `trigger` y filtro `<effect type="lowpass">`.
+- [x] **Bitwig `.multisample` (`rawSamplerParsers.ts`, `RawSamplerExporter.ts`)**: soporte para el esquema oficial con sub-elementos `<key low="..." high="..." root="..." tune="..." track="..." fade-in="..." fade-out="..."/>`, `<velocity low="..." high="..." fade-in="..." fade-out="..."/>` y `<loop mode="..." start="..." stop="..." fade="..."/>` además de atributos planos, `sample-start`, `sample-stop`, `reverse` y `zone-logic="round-robin"`.
+- [x] **Steinberg HALion `.vstpreset` (`rawSamplerParsers.ts`, `RawSamplerExporter.ts`)**: lectura y escritura de `SampleStart`, `SampleEnd`, `Reverse`, `KeyCrossfadeLow`/`High`, `VelCrossfadeLow`/`High`, `MuteGroup`, `KeySwitchNote`, `Cutoff`/`Resonance`/`FilterType` y `Ampeg*`.
 
 ### 32.4 Orden de Implementación Propuesto
-1. Formatos de texto/XML de alto uso: Bitwig Multisample, Ableton, EXS24, TAL, TX16Wx, Korg KMP, DLS.
-2. Hardware moderno con mucha base de usuarios: Akai MPC (Fase 31), Polyend, 1010music, OP-XY, SP-404mk2.
-3. Formatos binarios clásicos e imágenes de disco (Akai S, E-mu, Roland S, Ensoniq).
-4. Formatos minoritarios según demanda.
+1. [x] **Bloque 1 — Formatos XML/Texto y Binarios Estándar de Alto Uso [COMPLETADO]** (en `ABDShared/Code/SamplerFormats/`):
+   - **Ableton Sampler / Simpler (`.adv`)** (`AbletonAdvFormat.ts`): descompresión GZIP (`0x1F 0x8B` vía `inflateRaw`) y empaquetado GZIP RFC 1952 en TypeScript puro, soporte `<MultiSampler>` y `<OriginalSimpler>`, `<MultiSamplePart>`, `KeyRange`/`VelocityRange` con `CrossfadeMin`/`CrossfadeMax`, ley de volumen `Volume = 2^(dB/6)`, `SustainLoop`, `SimplerFilter` (12/24 dB + envolvente bipolar) y `SimplerAuxEnvelope` (Pitch Env).
+   - **Apple Logic EXS24 / Sampler (`.exs`)** (`Exs24Format.ts`): lector de cabeceras secuenciales de 84 bytes en Big-Endian (`"SOBT"`/`"SOBJ"`) y Little-Endian (`"TBOS"`/`"JBOS"`), bloques Instrument (`0x00`), Zone (`0x01`), Group (`0x02`), Sample (`0x03`) y Parameters (`0x04`), y escritor binario canónico `"SOBT"`.
+   - **TAL-Sampler (`.talsmpl`)** (`TalSamplerFormat.ts`): lector/escritor XML `<tal><programs><program>` con `<samplelayer0..3>`, curvas no lineales (`0.7843 = 0 dB`, `7.2 * v^4` para A/H/R, `37.1 * v^3.75` para Decay), filtro auto-oscilante y `<modmatrix>`.
+   - **CWITEC TX16Wx (`.txprog`)** (`Tx16WxFormat.ts`): lector/escritor XML `<tx:program>` con `<tx:wave>`, múltiples `<tx:loop>`, `<tx:soundshape>` (`<tx:aeg>`, `<tx:env1>`, `<tx:env2>`, `<tx:filter1>`, `<tx:modulation>`), `<tx:group>` y `<tx:region>` (`<tx:bounds>`, `<tx:fade>`).
+   - **Korg Trinity/Triton/M3/Pa (`.KMP` + `.KSF` + `.KSC`)** (`KorgKmpKsfFormat.ts`): lector/escritor binario Big-Endian de chunks `MSP1`, `MNO1`, `RLP1` (18B/zona), `RLP2`, `SMP1` (32B), `SNO1`, `SMD1` (12B + PCM16 BE) y script `.KSC`.
+   - **MMA Downloadable Sounds Level 2 (`.dls`)** (`DlsFormat.ts`): lector/escritor binario Little-Endian RIFF `"DLS "` con `colh`, `ptbl`, `LIST('lins')`, `insh`, `LIST('lrgn')` -> `LIST('rgn2')` (`rgnh`, `wsmp`, `wlnk`), `LIST('lar2')` -> `art2` (bloques de conexión de 12B en timecents/pitch-cents/mB) y `LIST('wvpl')`.
+   - Verificado con `tests/phase32_formats_block1.test.ts` (12/12 PASS).
+2. [ ] **Bloque 2 — Hardware moderno con mucha base de usuarios**: Akai MPC (Fase 31 completada), Polyend Tracker/Play (`.pti`), 1010music (Blackbox/Bento `preset.xml`), Teenage Engineering OP-XY, Roland SP-404mk2, Elektron, Synthstrom Deluge, Waldorf Quantum/Iridium (`.qpat`), Disting EX.
+3. [ ] **Bloque 3 — Formatos binarios clásicos e imágenes de disco**: Akai S1000/S3000/S5000 (`.AKP`, `.PGM`), E-mu, Roland S, Ensoniq, Kurzweil, Yamaha YSFC.
+4. [ ] **Bloque 4 — Samplers de software adicionales**: Reason NN-XT (`.sxt`), Renoise (`.xrni`), Image-Line DirectWave (`.dwp`), discoDSP Bliss (`.zbp`), Spectrasonics Omnisphere, Maschine.
 
 ### 32.5 Verificación
 - Corpus de archivos reales por formato en `_RESOURCES`, tests de lectura y de ida y vuelta (leer, escribir, releer) con comparación de zonas, capas y loops.

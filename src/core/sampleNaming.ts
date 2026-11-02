@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { MidiNote } from './types.ts';
+import { basename } from './pathUtils.ts';
 
 export interface ParsedSampleFilename {
   sampleName: string;
@@ -28,7 +29,7 @@ export function parseSampleFilenameByName(
   filename: string,
   fallbackRoot: MidiNote = 60
 ): ParsedSampleFilename {
-  const base = (filename.split(/[\\/]/).pop() ?? filename).replace(/\.[^.]+$/, '');
+  const base = basename(filename).replace(/\.[^.]+$/, '') || basename(filename) || filename;
   const lower = base.toLowerCase();
 
   let velocityLayer: 1 | 2 = 1;
@@ -75,7 +76,7 @@ export function parseSampleFilenameByName(
  * Supports patterns like `Piano_60_36.wav`, `Bass_C2.wav`, `Cellos_F#3.wav`, `12 String Gtr-A2.aif`.
  */
 export function parseRootKeyFromFilename(filename: string, fallback: MidiNote = 60): MidiNote {
-  const base = filename.split(/[\\/]/).pop() ?? filename;
+  const base = basename(filename) || filename;
 
   // 1. Check Hartmann `name_rootkey_lowkey` numeric tokens first
   const hartmannMatch = /^[^_]+_(\d{1,3})_(\d{1,3})(?:_|$|\.)/.exec(base);
@@ -129,7 +130,7 @@ export const DEFAULT_SAMPLE_NAME = 'Strings_60_C4.wav';
  * and note names (`_C4`, `-E2`).
  */
 export function deriveModelNameFromSample(filename: string, maxLen = 11): string {
-  const base = (filename.split(/[\\/]/).pop() ?? filename).replace(/\.[^.]+$/, '');
+  const base = basename(filename).replace(/\.[^.]+$/, '') || basename(filename) || filename;
   const cleaned = base
     .replace(/(?:[_\-\s](?:v1|v2|low|lo|high|hi|vel1|vel2|pp|ff))$/i, '')
     .replace(/_\d{1,3}_\d{1,3}$/, '')

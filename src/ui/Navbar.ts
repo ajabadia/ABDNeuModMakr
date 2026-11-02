@@ -318,7 +318,7 @@ export class AppNavbar {
         subtitle: 'Hartmann Spectral Reconstructor & Dual-Target Model Generator',
         version: '1.2.0',
         buildInfo: 'NASAnalysis.dll 1:1 WebAudio DSP + Dual-Target (.model/.sound + .nmmodel). ' +
-          'Format research credits: ConvertWithMoss by Juergen Mossgraber (LGPL-3.0, mossgrabers.de) used as a format reference for Akai MPC and Kontakt/NCW; independent implementation.',
+          'Format research credits: ConvertWithMoss by Juergen Mossgraber (LGPL-3.0, mossgrabers.de) used as a format specification reference for Akai MPC, Kontakt/NCW, Ableton .adv, Logic .exs, TAL-Sampler, TX16Wx, Korg KMP/KSF, DLS, Bitwig .multisample, Decent Sampler, SF2 and SFZ; independent clean-room TypeScript implementation in @abdsynths/shared/formats/sampler.',
         author: 'ABDSynths',
         copyright: '© 2026 ABDSynths',
       },

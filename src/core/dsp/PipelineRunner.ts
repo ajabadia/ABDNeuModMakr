@@ -27,6 +27,7 @@ import {
   computeDspQualityScore,
   extractAcousticDescriptors,
 } from './AcousticIntelligence.ts';
+import { yieldToUI } from '../asyncUtils.ts';
 
 export interface PreservedSourceBinary {
   scapeBinary: Uint8Array;
@@ -242,7 +243,7 @@ export async function runMultiZonePipeline(
     });
 
     // Yield to event loop so cancel messages / UI updates can be processed
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    await yieldToUI(10);
 
     if (isCancelled()) {
       throw new Error('Process cancelled by user');

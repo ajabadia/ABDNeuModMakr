@@ -209,7 +209,7 @@ El proyecto está optimizado para Vercel:
 
 ## Créditos y Atribuciones
 
-- **ConvertWithMoss** — Jürgen Moßgraber, https://www.mossgrabers.de/Software/ConvertWithMoss/ (licencia LGPL-3.0). Usado como referencia de documentación de formatos (Akai MPC `.xpm`/`.xpn`, Kontakt `.nki`, NCW). La implementación de NeuModMakr es independiente, escrita en TypeScript y verificada con archivos reales; no incluye ni traduce código de ConvertWithMoss.
+- **ConvertWithMoss** — Jürgen Moßgraber, https://www.mossgrabers.de/Software/ConvertWithMoss/ (licencia LGPL-3.0). Usado como referencia de documentación de formatos (Akai MPC `.xpm`/`.xpn`, Kontakt `.nki`, NCW, Ableton `.adv`, Logic EXS24 `.exs`, TAL-Sampler `.talsmpl`, CWITEC TX16Wx `.txprog`, Korg `.KMP`/`.KSF`, MMA DLS `.dls`, Bitwig `.multisample`, Decent Sampler `.dspreset`, SF2 y SFZ). La implementación de `@abdsynths/shared/formats/sampler` y NeuModMakr es independiente (clean-room en TypeScript); no incluye ni traduce código de ConvertWithMoss.
 
 ---
 

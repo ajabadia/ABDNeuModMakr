@@ -18,6 +18,8 @@ import type { MidiNote, ProcessConfig, Zone } from '../types.ts';
 import { sliceAudioBuffer, buildMidiFileBuffer, type SlicerMode } from '../dsp/AudioSlicerEngine.ts';
 import { decodeWav, decodeAiff, encodePcm16Wav } from '../dsp/WavDecoder.ts';
 import { isRx2Buffer, decompressRx2Audio } from '../dsp/DwopDecompressor.ts';
+import { fileExtension } from '../pathUtils.ts';
+import { delay, yieldToUI } from '../asyncUtils.ts';
 
 export type BatchQueueEvent =
   | 'progress'
@@ -179,7 +181,7 @@ export class BatchQueue {
 
       // Handle pause loop
       while (this.isPaused && !this.isCancelled) {
-        await new Promise((r) => setTimeout(r, 100));
+        await delay(100);
       }
 
       if (this.isCancelled) break;
@@ -211,7 +213,7 @@ export class BatchQueue {
       }
 
       // Yield event loop
-      await new Promise((r) => setTimeout(r, 10));
+      await yieldToUI(10);
       this.emit('progress', this.getProgressState());
     }
 
@@ -438,7 +440,7 @@ export class BatchQueue {
     midiBuffer: Uint8Array | null;
   } {
     const rawSamples = new Map<string, ArrayBuffer>();
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const ext = fileExtension(file.name);
     const isRx2 = ext === 'rx2' || ext === 'rex' || isRx2Buffer(file.buffer);
 
     let pcm: Float32Array;

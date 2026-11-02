@@ -27,8 +27,9 @@
  *   enhanceRangeInputs(document.body, { spriteUrl: '/assets/fader.png' });
  */
 import { FilmstripFader } from '../Components/index.js';
+import { clamp01 } from './number.js';
 
-function clamp01(v) { return Math.min(1, Math.max(0, v)); }
+
 
 function parseFloatOr(v, def) {
     const n = parseFloat(v);

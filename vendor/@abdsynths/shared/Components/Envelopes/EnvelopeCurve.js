@@ -1,3 +1,4 @@
+import { clamp01 } from '../../Utils/number.js';
 /**
  * EnvelopeCurve — la geometria de la curva ADSR y la VISTA de fabrica.
  * ============================================================================
@@ -37,7 +38,7 @@ const PAD = 2;                  // margen en px del viewBox, para que el trazo n
 const SUSTAIN_SHARE = 0.18;     // ancho del tramo de sostenido, en fraccion del total
 const MIN_SEGMENT_SHARE = 0.05; // ninguna rampa se queda en nada (1 ms tiene que verse)
 
-const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**

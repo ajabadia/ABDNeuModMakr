@@ -20,6 +20,7 @@
 import { attachDrag } from './drag-core.js';
 import { applySkin, CONTROL_KIND } from './skins/index.js';
 import { announceSettled, createContinuousNotices } from './continuousNotices.js';
+import { clamp01 } from '../Utils/number.js';
 
 /**
  * @param {HTMLElement|string} container
@@ -235,4 +236,4 @@ export class Slider
     }
 }
 
-function clamp01 (v) { return Math.min(1, Math.max(0, v)); }
+

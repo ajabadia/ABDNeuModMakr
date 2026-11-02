@@ -36,6 +36,7 @@
  *   onChange / onDragStart / onDragEnd  callbacks
  */
 import { attachDrag } from './drag-core.js';
+import { clamp01 } from '../../Utils/number.js';
 
 export class FilmstripFader {
     /**
@@ -200,4 +201,3 @@ export class FilmstripFader {
     }
 }
 
-function clamp01(v) { return Math.min(1, Math.max(0, v)); }

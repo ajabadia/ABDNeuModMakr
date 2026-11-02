@@ -57,6 +57,7 @@ import {
 import { ICONS } from './icons';
 import { confirmDialog } from './notify';
 import { escAttr, escHtml } from './escape';
+import { formatBytes } from '../core/pathUtils.ts';
 import {
   basenameOf,
   formatRegionModeBadge,
@@ -850,9 +851,7 @@ export class ZoneInspector {
 
     const formatByteSize = (bytes?: number): string => {
       if (!bytes || bytes <= 0) return '—';
-      if (bytes < 1024) return `${bytes} B`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+      return formatBytes(bytes);
     };
 
     const renderTechSpecsBox = (info: NonNullable<ReturnType<NonNullable<ZoneInspectorHandlers['getZoneSampleFormatInfo']>>>) => {

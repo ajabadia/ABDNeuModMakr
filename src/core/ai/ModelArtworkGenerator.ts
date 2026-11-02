@@ -15,6 +15,7 @@ import { convertImageToCoverWebp } from '../coverArtwork.ts';
 import type { ModelCoverArtwork } from '../types.ts';
 import { cloudByokClient } from './CloudByokClient.ts';
 import { generateProceduralArtwork } from './ProceduralAcousticArtwork.ts';
+import { delay } from '../asyncUtils.ts';
 
 export type ArtworkStylePreset =
   | 'cyberpunk'
@@ -959,7 +960,7 @@ async function generateWithReplicate(
       throw new Error(`Replicate generation failed: ${prediction.error || 'Unknown error'}`);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await delay(3000);
 
     const pollRes = await fetch(getUrl, {
       method: 'GET',

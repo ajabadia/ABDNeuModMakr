@@ -5,6 +5,8 @@
 // multi-file decode, model processing) so the app never feels frozen.
 // ─────────────────────────────────────────────────────────
 
+import { yieldToUI } from '../core/asyncUtils.ts';
+
 export class LoadingModal {
   private backdropEl: HTMLElement | null = null;
   private titleEl: HTMLElement | null = null;
@@ -83,7 +85,7 @@ export async function withLoading<T>(
 ): Promise<T> {
   loadingModal.show(title, subtitle);
   // Yield 50ms so browser paints the loading card and spinner
-  await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  await yieldToUI(50);
   try {
     return await task();
   } finally {

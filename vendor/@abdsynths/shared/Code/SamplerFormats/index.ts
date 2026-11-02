@@ -6,6 +6,8 @@
 //   - Extended <-> Classic Region Projection & Safe Sound Mapping
 //   - Multi-Format Importers & Exporters (SF2, SFZ, Decent Sampler, Kontakt,
 //     Akai MPC .xpm/.xpn, Bitwig .multisample, Steinberg HALion .vstpreset,
+//     Ableton .adv, Logic EXS24 .exs, TAL-Sampler .talsmpl, CWITEC TX16Wx .txprog,
+//     Korg .KMP/.KSF/.KSC, MMA Downloadable Sounds .dls,
 //     Linear Sample Chains, REX2 DWOP, Octatrack .ot, RIFF cue/atem/AIFF MARK)
 // ─────────────────────────────────────────────────────────
 
@@ -20,6 +22,12 @@ export * from './SfzParser.ts';
 export * from './DecentSamplerParser.ts';
 export * from './KontaktParser.ts';
 export * from './MpcXpmFormat.ts';
+export * from './AbletonAdvFormat.ts';
+export * from './Exs24Format.ts';
+export * from './TalSamplerFormat.ts';
+export * from './Tx16WxFormat.ts';
+export * from './KorgKmpKsfFormat.ts';
+export * from './DlsFormat.ts';
 export * from './rawSamplerTypes.ts';
 export * from './rawSamplerPreflight.ts';
 export * from './soundfont2Writer.ts';
@@ -34,6 +42,12 @@ export {
   parseHalionVstPreset,
   parseBitwigMultisample,
   mpcProgramToPreset,
+  parseAbletonAdvPreset,
+  parseExs24Preset,
+  parseTalSamplerPreset,
+  parseTx16WxPreset,
+  parseKorgKmpPreset,
+  parseDlsPreset,
   parseSampleChainAudio,
   parseRex2Sampler,
   listZipSamplerPrograms,

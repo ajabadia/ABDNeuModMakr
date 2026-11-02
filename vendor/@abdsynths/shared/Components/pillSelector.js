@@ -1,50 +1,6 @@
-/**
- * ABD PillSelector — Unified, tokenized pill and chip selector component
- * for the ABDSynths suite.
- * ======================================================================
- *
- * Implements DRY, tokenized option selection via pills/chips across
- * synth drawers, toolbars, category filters, and setting dialogs.
- *
- * Provides both:
- * 1. A stateful DOM Class (`PillSelector`) with setValue/getValue/onChange/destroy.
- * 2. Pure HTML string template helpers (`pillSelectorHtml`, `pillItemHtml`, `bindPillSelector`)
- *    for reactive drawer views and fast virtual rendering.
- */
+import { escAttr, escText } from '../Utils/escape.js';
+export { escAttr, escText };
 
-/**
- * @typedef {object} PillItem
- * @property {string|number} id         Option identifier returned in onChange.
- * @property {string} label             Display text (e.g. 'LP 24dB', '100% (Normal)').
- * @property {string} [title]           Tooltip title.
- * @property {number} [count]           Optional count badge (rendered in .abd-pill__count).
- * @property {string} [iconHtml]        Optional trusted SVG/HTML icon string.
- * @property {string} [catClass]        Optional category class ('cat-0'..'cat-9', 'cat-neutral').
- * @property {string} [variant]         Custom tokenized modifier (e.g. 'accent', 'outline').
- * @property {string} [theme]           Theme ID for theme preview pills ('ms2000', 'audiolab', etc.).
- * @property {boolean} [disabled]       Whether this option is disabled.
- */
-
-/**
- * Escapes plain text for safe HTML rendering.
- * @param {any} s
- * @returns {string}
- */
-export function escText(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/**
- * Escapes attributes for safe HTML rendering.
- * @param {any} s
- * @returns {string}
- */
-export function escAttr(s) {
-  return escText(s).replace(/"/g, '&quot;');
-}
 
 /**
  * Renders a single pill button HTML string.

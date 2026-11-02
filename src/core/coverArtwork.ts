@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { ModelCoverArtwork } from './types.ts';
+import { clampInt } from './dsp/DspMath.ts';
 
 export const DEFAULT_COVER_SIZE_PX = 512;
 export const DEFAULT_COVER_WEBP_QUALITY = 0.88;
@@ -279,7 +280,7 @@ export async function convertImageToCoverWebp(
 
 function clampCoverSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_COVER_SIZE_PX;
-  return Math.max(64, Math.min(2048, Math.round(size)));
+  return clampInt(size, 64, 2048);
 }
 
 function guessImageMimeFromBytes(bytes: Uint8Array, name?: string): string {

@@ -1,11 +1,18 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Raw Multi-Format Sampler Parsers (Fase 18.8)
+// ABDNeuModMakr — Raw Multi-Format Sampler Parsers (Fase 18.8 + Fase 32.3/32.4)
 //
 // High-fidelity importers for:
 //   1. Decent Sampler (.dspreset XML / .zip)
 //   2. Native Instruments Kontakt (.nki unencrypted XML / structured descriptor)
 //   3. Steinberg HALion (.vstpreset XML / VST3 chunk container)
 //   4. Bitwig Studio Multisample (.multisample / multisample.xml)
+//   4b. Akai MPC Keygroup / Drum Program (.xpm / .xpn / .xty / .xtd)
+//   4c. Ableton Sampler / Simpler (.adv GZIP / XML)
+//   4d. Apple Logic EXS24 / Sampler (.exs binary)
+//   4e. Togu Audio Line TAL-Sampler (.talsmpl XML)
+//   4f. CWITEC TX16Wx Software Sampler (.txprog XML)
+//   4g. Korg Trinity / Triton / M3 / Pa (.KMP / .KSF / .KSC)
+//   4h. MMA Downloadable Sounds Level 1/2 (.dls RIFF "DLS ")
 //   5. Linear Sample Chains (Octatrack / SP-404 / OP-1 RIFF cue & uniform slices)
 //
 // Symmetric counterpart to `RawSamplerExporter.ts`.
@@ -22,8 +29,23 @@ import {
 } from '../NeuronFormats/index.ts';
 import { parseSliceFile, parseWavSliceCues, type ParsedSliceMarker } from './SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from './DwopDecompressor.ts';
-import type { LoopMode } from './SamplerTypes.ts';
+import type {
+  CrossfadeCurve,
+  LoopMode,
+  MidiNote,
+  PitchEnvelopeConfig,
+  RegionFilterConfig,
+  SampleLoopDescriptor,
+  SamplerPlayLogic,
+  TriggerMode,
+} from './SamplerTypes.ts';
 import { parseMpcXpm, mpcGainToDb, type MpcProgram } from './MpcXpmFormat.ts';
+import { parseAbletonAdv } from './AbletonAdvFormat.ts';
+import { isExs24Buffer, parseExs24 } from './Exs24Format.ts';
+import { parseTalSampler } from './TalSamplerFormat.ts';
+import { parseTx16WxProgram } from './Tx16WxFormat.ts';
+import { isKorgKmpOrKsfBuffer, parseKorgKmp, parseKorgKsf } from './KorgKmpKsfFormat.ts';
+import { isDlsBuffer, parseDlsBank } from './DlsFormat.ts';
 
 export type RawSamplerFormat =
   | 'dspreset'
@@ -33,7 +55,13 @@ export type RawSamplerFormat =
   | 'samplechain'
   | 'sfz'
   | 'sf2'
-  | 'xpm';
+  | 'xpm'
+  | 'ableton_adv'
+  | 'exs24'
+  | 'tal_sampler'
+  | 'tx16wx'
+  | 'korg_kmp'
+  | 'dls';
 
 export interface ParsedImportRegion {
   id: string;
@@ -50,6 +78,28 @@ export interface ParsedImportRegion {
   loopMode: LoopMode;
   loopStart: number;
   loopEnd: number;
+  // Fase 33.1 / 32.3 extended zone fields
+  pitchKeytrack?: number; // 0..100
+  sampleStartFrame?: number;
+  sampleEndFrame?: number;
+  reversed?: boolean;
+  keyFadeIn?: number;
+  keyFadeOut?: number;
+  velFadeIn?: number;
+  velFadeOut?: number;
+  fadeCurve?: CrossfadeCurve;
+  loopCrossfadeMs?: number;
+  loops?: SampleLoopDescriptor[];
+  trigger?: TriggerMode;
+  playLogic?: SamplerPlayLogic;
+  seqPosition?: number;
+  seqLength?: number;
+  groupId?: string;
+  groupName?: string;
+  muteGroup?: number;
+  keyswitchNote?: MidiNote;
+  velToVolumeDepth?: number;
+  velToPitchCents?: number;
 }
 
 export interface ParsedSamplerPreset {
@@ -61,13 +111,20 @@ export interface ParsedSamplerPreset {
   suggestedParameterSet: number;
   regions: ParsedImportRegion[];
   audioBuffers: Map<string, ArrayBuffer>;
-  envelope?: { attack: number; decay: number; sustain: number; release: number };
+  envelope?: { attack: number; decay: number; sustain: number; release: number; delay?: number; hold?: number };
+  filter?: Partial<RegionFilterConfig>;
+  pitchEnv?: Partial<PitchEnvelopeConfig>;
+  polyphony?: number;
+  pitchBendUpSt?: number;
+  pitchBendDownSt?: number;
+  author?: string;
+  description?: string;
   isEncrypted?: boolean;
   encryptionNotice?: string;
   isSliceChain?: boolean;
   sliceFrames?: number[];
   sliceMarkers?: ParsedSliceMarker[];
-  /** Number of programs found in a multi-program container (e.g. Akai .xpn). */
+  /** Number of programs found in a multi-program container (e.g. Akai .xpn, .dls). */
   programCount?: number;
 }
 
@@ -75,7 +132,7 @@ export interface ParsedSamplerPreset {
  * Decodes XML string attribute or returns fallback.
  */
 function getAttr(tag: string, attrName: string, fallback: string = ''): string {
-  const match = tag.match(new RegExp(`${attrName}=["']([^"']*)["']`, 'i'));
+  const match = tag.match(new RegExp(`\\b${attrName}=["']([^"']*)["']`, 'i'));
   return match ? match[1] : fallback;
 }
 
@@ -92,10 +149,9 @@ function parseNoteNumber(val: string | undefined, fallback: number = 60): number
   if (/^-?\d+$/.test(trimmed)) {
     return Math.max(0, Math.min(127, parseInt(trimmed, 10)));
   }
-  // Named note e.g. "C4", "F#3", "Bb2"
   const offsets: Record<string, number> = {
     c: 0, 'c#': 1, db: 1, d: 2, 'd#': 3, eb: 3, e: 4, f: 5,
-    'f#': 6, gb: 6, g: 7, 'g#': 8, ab: 8, a: 9, 'a#': 10, bb: 10, b: 11
+    'f#': 6, gb: 6, g: 7, 'g#': 8, ab: 8, a: 9, 'a#': 10, bb: 10, b: 11,
   };
   const m = /^([a-g][#b]?)(-?\d+)$/i.exec(trimmed);
   if (!m) return fallback;
@@ -107,7 +163,9 @@ function parseNoteNumber(val: string | undefined, fallback: number = 60): number
 
 function cleanBasename(filename: string): string {
   const parts = filename.replace(/\\/g, '/').split('/');
-  return parts[parts.length - 1] || filename;
+  const last = parts[parts.length - 1] || filename;
+  const colonIdx = last.lastIndexOf(':');
+  return colonIdx >= 0 ? last.slice(colonIdx + 1) : last;
 }
 
 function classifyPresetCategory(name: string): { category: string; parameterSet: number } {
@@ -124,14 +182,12 @@ function classifyPresetCategory(name: string): { category: string; parameterSet:
 
 // ─────────────────────────────────────────────────────────
 // 1. Decent Sampler Parser (.dspreset)
-// Compliant with DecentSampler official spec & DecentSamples/DecentSampler-Sample-Library-Examples
 // ─────────────────────────────────────────────────────────
 
 export function parseDecentSamplerPreset(
   xmlText: string,
   audioFiles: Map<string, ArrayBuffer> = new Map()
 ): ParsedSamplerPreset {
-  // Check if valid Decent Sampler XML
   if (!/<DecentSampler/i.test(xmlText) && !/<sample/i.test(xmlText)) {
     throw new Error('Not a valid Decent Sampler preset (missing <DecentSampler> root tag).');
   }
@@ -146,7 +202,6 @@ export function parseDecentSamplerPreset(
   const regions: ParsedImportRegion[] = [];
   let regIndex = 0;
 
-  // Extract global groups envelope if defined on <groups>
   let defaultEnvelope: { attack: number; decay: number; sustain: number; release: number } | undefined;
   const groupsMatch = xmlText.match(/<groups\b([^>]*)>/i);
   if (groupsMatch) {
@@ -159,8 +214,38 @@ export function parseDecentSamplerPreset(
     };
   }
 
-  // Parse by <group> tags to handle group-level inheritance of properties
-  // (seqMode, loNote, hiNote, loVel, hiVel, volume, pan, tuning, loopEnabled, etc.)
+  // Parse filter effect if present
+  let filter: Partial<RegionFilterConfig> | undefined;
+  const effectMatch = /<effect\b([^>]*\btype=["'](?:lowpass|highpass|bandpass|notch)[^"']*["'][^>]*)\/?>/i.exec(xmlText);
+  if (effectMatch) {
+    const eTag = effectMatch[1];
+    const tStr = getAttr(eTag, 'type', 'lowpass').toLowerCase();
+    const cutoff = getAttrNum(eTag, 'frequency', 20000);
+    const res = getAttrNum(eTag, 'resonance', 0.7);
+    filter = {
+      enabled: cutoff < 19900,
+      type: tStr.includes('high') ? 'hpf' : tStr.includes('band') ? 'bpf' : tStr.includes('notch') ? 'notch' : 'lpf',
+      poles: tStr.includes('12') || tStr.includes('2') ? 2 : 4,
+      cutoffHz: Math.max(20, Math.min(22000, cutoff)),
+      resonanceDb: Math.max(0, Math.min(24, (res - 0.7) * 6)),
+      envToFilterCents: 0,
+      velToFilterCents: 0,
+      keytrackCents: 0,
+    };
+  }
+
+  const muteTagMap = new Map<string, number>();
+  const getMuteGroupForTag = (tag: string): number => {
+    const key = tag.trim().toLowerCase();
+    if (!key) return 0;
+    let id = muteTagMap.get(key);
+    if (!id) {
+      id = Math.min(32, muteTagMap.size + 1);
+      muteTagMap.set(key, id);
+    }
+    return id;
+  };
+
   const groupRegex = /<group\b([^>]*)>([\s\S]*?)<\/group>/gi;
   let groupMatch: RegExpExecArray | null;
   let foundAnyGroups = false;
@@ -170,6 +255,7 @@ export function parseDecentSamplerPreset(
     const groupAttrs = groupMatch[1];
     const groupBody = groupMatch[2];
 
+    const grpName = getAttr(groupAttrs, 'name') || getAttr(groupAttrs, 'tags');
     const grpLoNote = getAttr(groupAttrs, 'loNote');
     const grpHiNote = getAttr(groupAttrs, 'hiNote');
     const grpLoVel = getAttr(groupAttrs, 'loVel');
@@ -180,8 +266,13 @@ export function parseDecentSamplerPreset(
     const grpLoopEnabled = getAttr(groupAttrs, 'loopEnabled');
     const grpLoopStart = getAttr(groupAttrs, 'loopStart');
     const grpLoopEnd = getAttr(groupAttrs, 'loopEnd');
+    const grpLoopXfade = getAttr(groupAttrs, 'loopCrossfade');
+    const grpTrigger = getAttr(groupAttrs, 'trigger');
+    const grpSeqMode = getAttr(groupAttrs, 'seqMode');
+    const grpSeqLength = getAttr(groupAttrs, 'seqLength');
+    const grpSeqPos = getAttr(groupAttrs, 'seqPosition');
+    const grpSilencedBy = getAttr(groupAttrs, 'silencedByTags');
 
-    // Parse samples inside this group
     const sampleRegex = /<sample\b([^>]*)\/?>/gi;
     let sMatch: RegExpExecArray | null;
 
@@ -228,6 +319,30 @@ export function parseDecentSamplerPreset(
       const rawLoopEnd = getAttr(tag, 'loopEnd') || grpLoopEnd || '0';
       const loopStart = parseInt(rawLoopStart, 10) || 0;
       const loopEnd = parseInt(rawLoopEnd, 10) || 0;
+      const loopXfadeFrames = parseInt(getAttr(tag, 'loopCrossfade') || grpLoopXfade || '0', 10) || 0;
+      const loopCrossfadeMs = Math.round((loopXfadeFrames / 44.1) * 10) / 10;
+
+      const startFrame = parseInt(getAttr(tag, 'start', '0'), 10) || 0;
+      const endFrameRaw = parseInt(getAttr(tag, 'end', '0'), 10) || 0;
+      const sampleEndFrame = endFrameRaw > startFrame ? endFrameRaw : undefined;
+
+      const trigStr = (getAttr(tag, 'trigger') || grpTrigger || 'attack').toLowerCase();
+      const trigger: TriggerMode =
+        trigStr === 'release' ? 'release' : trigStr === 'first' ? 'first' : trigStr === 'legato' ? 'legato' : 'attack';
+
+      const seqModeStr = (getAttr(tag, 'seqMode') || grpSeqMode || '').toLowerCase();
+      const seqPosition = parseInt(getAttr(tag, 'seqPosition') || grpSeqPos || '0', 10) || undefined;
+      const seqLength = parseInt(getAttr(tag, 'seqLength') || grpSeqLength || '0', 10) || undefined;
+      const playLogic: SamplerPlayLogic =
+        seqModeStr === 'random'
+          ? 'random'
+          : seqModeStr === 'round_robin' || seqModeStr === 'true_random' || (seqPosition && seqPosition > 0)
+            ? 'round_robin'
+            : 'velocity';
+
+      const silencedTag = getAttr(tag, 'silencedByTags') || grpSilencedBy;
+      const muteGroup = silencedTag ? getMuteGroupForTag(silencedTag.split(',')[0]) : undefined;
+      const loopMode: LoopMode = loopEnabled && loopEnd > loopStart ? 'loop_continuous' : 'no_loop';
 
       regIndex++;
       regions.push({
@@ -242,14 +357,26 @@ export function parseDecentSamplerPreset(
         detuneCents,
         volumeDb,
         pan,
-        loopMode: loopEnabled && loopEnd > loopStart ? 'loop_continuous' : 'no_loop',
+        loopMode,
         loopStart,
         loopEnd,
+        loopCrossfadeMs,
+        loops:
+          loopMode !== 'no_loop'
+            ? [{ id: 'loop-1', mode: loopMode, startFrame: loopStart, endFrame: loopEnd, crossfadeMs: loopCrossfadeMs }]
+            : [],
+        sampleStartFrame: startFrame > 0 ? startFrame : undefined,
+        sampleEndFrame,
+        trigger,
+        playLogic,
+        seqPosition,
+        seqLength,
+        groupName: grpName || undefined,
+        muteGroup,
       });
     }
   }
 
-  // Fallback: if no <group> tags were matched (e.g. flat <sample> tags inside <groups>)
   if (!foundAnyGroups || regions.length === 0) {
     const sampleRegex = /<sample\b([^>]*)\/?>/gi;
     let match: RegExpExecArray | null;
@@ -287,6 +414,8 @@ export function parseDecentSamplerPreset(
       const loopEnabled = rawLoop === 'true' || rawLoop === '1';
       const loopStart = getAttrNum(tag, 'loopStart', 0);
       const loopEnd = getAttrNum(tag, 'loopEnd', 0);
+      const startFrame = getAttrNum(tag, 'start', 0);
+      const endFrameRaw = getAttrNum(tag, 'end', 0);
 
       regIndex++;
       regions.push({
@@ -304,6 +433,8 @@ export function parseDecentSamplerPreset(
         loopMode: loopEnabled && loopEnd > loopStart ? 'loop_continuous' : 'no_loop',
         loopStart,
         loopEnd,
+        sampleStartFrame: startFrame > 0 ? startFrame : undefined,
+        sampleEndFrame: endFrameRaw > startFrame ? endFrameRaw : undefined,
       });
     }
   }
@@ -318,6 +449,7 @@ export function parseDecentSamplerPreset(
     regions,
     audioBuffers: mapAudioBuffers(audioFiles),
     envelope: defaultEnvelope,
+    filter,
   };
 }
 
@@ -334,7 +466,6 @@ export function parseKontaktNki(
   if (typeof content === 'string') {
     xmlText = content;
   } else {
-    // Check for encrypted binary monolithic container
     const view = new DataView(content);
     if (view.byteLength >= 4) {
       const magic0 = view.getUint8(0);
@@ -342,14 +473,12 @@ export function parseKontaktNki(
       const magic2 = view.getUint8(2);
       const magic3 = view.getUint8(3);
 
-      // NI Monolith / encrypted container check (0x12 0x34 0x56 0x78, 'hsin', 'NI4I', etc.)
       const isEncryptedHeader =
         (magic0 === 0x12 && magic1 === 0x34 && magic2 === 0x56 && magic3 === 0x78) ||
         (magic0 === 0x7e && magic1 === 0x10) ||
-        (magic0 === 0x68 && magic1 === 0x73 && magic2 === 0x69 && magic3 === 0x6e); // 'hsin'
+        (magic0 === 0x68 && magic1 === 0x73 && magic2 === 0x69 && magic3 === 0x6e);
 
       if (isEncryptedHeader && view.byteLength > 64) {
-        // Try searching for embedded unencrypted XML/ASCII descriptor
         const textBytes = new Uint8Array(content);
         let embeddedXml = '';
         try {
@@ -413,9 +542,16 @@ export function parseKontaktNki(
     const pan = Math.max(-50, Math.min(50, getAttrNum(tag, 'pan', 0)));
 
     const loopModeStr = getAttr(tag, 'loopMode', 'no_loop');
-    const loopMode: LoopMode = loopModeStr === 'loop_continuous' || loopModeStr === '1' ? 'loop_continuous' : 'no_loop';
+    const loopMode: LoopMode =
+      loopModeStr === 'ping_pong'
+        ? 'ping_pong'
+        : loopModeStr === 'loop_continuous' || loopModeStr === '1'
+          ? 'loop_continuous'
+          : 'no_loop';
     const loopStart = getAttrNum(tag, 'loopStart', 0);
     const loopEnd = getAttrNum(tag, 'loopEnd', 0);
+    const sampleStartFrame = getAttrNum(tag, 'sampleStart', 0);
+    const sampleEndRaw = getAttrNum(tag, 'sampleEnd', 0);
 
     regIndex++;
     regions.push({
@@ -433,6 +569,8 @@ export function parseKontaktNki(
       loopMode,
       loopStart,
       loopEnd,
+      sampleStartFrame: sampleStartFrame > 0 ? sampleStartFrame : undefined,
+      sampleEndFrame: sampleEndRaw > sampleStartFrame ? sampleEndRaw : undefined,
     });
   }
 
@@ -449,7 +587,7 @@ export function parseKontaktNki(
 }
 
 // ─────────────────────────────────────────────────────────
-// 3. Steinberg HALion Parser (.vstpreset)
+// 3. Steinberg HALion Parser (.vstpreset) — Upgraded Fase 32.3
 // ─────────────────────────────────────────────────────────
 
 export function parseHalionVstPreset(
@@ -461,7 +599,6 @@ export function parseHalionVstPreset(
   if (typeof content === 'string') {
     xmlText = content;
   } else {
-    // Check for VST3 container header ('VST3' = 0x56 0x53 0x54 0x33)
     const view = new DataView(content);
     if (view.byteLength >= 4) {
       const c0 = view.getUint8(0);
@@ -470,7 +607,6 @@ export function parseHalionVstPreset(
       const c3 = view.getUint8(3);
 
       if (c0 === 0x56 && c1 === 0x53 && c2 === 0x54 && c3 === 0x33) {
-        // Search embedded XML chunk inside VST3 preset container
         const raw = new TextDecoder('latin1').decode(new Uint8Array(content));
         const xmlStart = raw.indexOf('<?xml') !== -1 ? raw.indexOf('<?xml') : raw.indexOf('<HALionProgram');
         if (xmlStart >= 0) {
@@ -493,6 +629,37 @@ export function parseHalionVstPreset(
   const presetName = nameMatch ? nameMatch[1].trim() : 'HALionProgram';
   const { category, parameterSet } = classifyPresetCategory(presetName);
 
+  // Extract optional HALion envelope and filter tags
+  let envelope: ParsedSamplerPreset['envelope'];
+  const envMatch = /<amp-envelope\b([^>]*)\/?>/i.exec(xmlText);
+  if (envMatch) {
+    const eTag = envMatch[1];
+    envelope = {
+      attack: getAttrNum(eTag, 'attack', 0.005),
+      decay: getAttrNum(eTag, 'decay', 0.25),
+      sustain: getAttrNum(eTag, 'sustain', 1.0),
+      release: getAttrNum(eTag, 'release', 0.2),
+    };
+  }
+
+  let filter: Partial<RegionFilterConfig> | undefined;
+  const fltMatch = /<filter\b([^>]*)\/?>/i.exec(xmlText);
+  if (fltMatch) {
+    const fTag = fltMatch[1];
+    const tStr = getAttr(fTag, 'type', 'lpf').toLowerCase();
+    const polesNum = getAttrNum(fTag, 'poles', 4);
+    filter = {
+      enabled: getAttr(fTag, 'enabled', 'true').toLowerCase() !== 'false',
+      type: tStr === 'hpf' ? 'hpf' : tStr === 'bpf' ? 'bpf' : tStr === 'notch' ? 'notch' : 'lpf',
+      poles: polesNum === 1 ? 1 : polesNum === 2 ? 2 : 4,
+      cutoffHz: getAttrNum(fTag, 'cutoff', 20000),
+      resonanceDb: getAttrNum(fTag, 'resonance', 0),
+      envToFilterCents: getAttrNum(fTag, 'envDepth', 0),
+      velToFilterCents: 0,
+      keytrackCents: getAttrNum(fTag, 'keytrack', 0),
+    };
+  }
+
   const regions: ParsedImportRegion[] = [];
   const zoneRegex = /<zone\b([^>]*)\/?>/gi;
   let match: RegExpExecArray | null;
@@ -512,10 +679,34 @@ export function parseHalionVstPreset(
     const detuneCents = getAttrNum(tag, 'tune', 0);
     const volumeDb = getAttrNum(tag, 'gain', 0);
     const pan = Math.max(-50, Math.min(50, getAttrNum(tag, 'pan', 0)));
+    const pitchKeytrack = getAttrNum(tag, 'keytrack', 100);
 
     const loop = getAttr(tag, 'loop', 'false').toLowerCase() === 'true';
+    const loopModeAttr = getAttr(tag, 'loopMode', '').toLowerCase();
     const loopStart = getAttrNum(tag, 'loopStart', 0);
     const loopEnd = getAttrNum(tag, 'loopEnd', 0);
+    const loopCrossfadeMs = getAttrNum(tag, 'loopCrossfadeMs', getAttrNum(tag, 'loopXfade', 0));
+    const loopMode: LoopMode =
+      loopModeAttr === 'ping_pong' || loopModeAttr === 'alternating'
+        ? 'ping_pong'
+        : loopModeAttr === 'one_shot'
+          ? 'one_shot'
+          : loop && loopEnd > loopStart
+            ? 'loop_continuous'
+            : 'no_loop';
+
+    const sampleStartFrame = getAttrNum(tag, 'sampleStart', 0);
+    const sampleEndRaw = getAttrNum(tag, 'sampleEnd', 0);
+    const reversed = getAttr(tag, 'reverse', 'false').toLowerCase() === 'true';
+    const keyFadeIn = getAttrNum(tag, 'keyFadeIn', getAttrNum(tag, 'fadeLowKey', 0));
+    const keyFadeOut = getAttrNum(tag, 'keyFadeOut', getAttrNum(tag, 'fadeHighKey', 0));
+    const velFadeIn = getAttrNum(tag, 'velFadeIn', getAttrNum(tag, 'fadeLowVel', 0));
+    const velFadeOut = getAttrNum(tag, 'velFadeOut', getAttrNum(tag, 'fadeHighVel', 0));
+    const muteGroup = getAttrNum(tag, 'muteGroup', 0);
+    const keyswitchRaw = getAttr(tag, 'keyswitchNote');
+    const keyswitchNote = keyswitchRaw ? parseNoteNumber(keyswitchRaw, 0) : undefined;
+    const triggerStr = getAttr(tag, 'trigger', 'attack').toLowerCase();
+    const trigger: TriggerMode = triggerStr === 'release' ? 'release' : 'attack';
 
     regIndex++;
     regions.push({
@@ -530,9 +721,25 @@ export function parseHalionVstPreset(
       detuneCents,
       volumeDb,
       pan,
-      loopMode: loop && loopEnd > loopStart ? 'loop_continuous' : 'no_loop',
+      pitchKeytrack,
+      loopMode,
       loopStart,
       loopEnd,
+      loopCrossfadeMs,
+      loops:
+        loopMode !== 'no_loop' && loopMode !== 'one_shot' && loopEnd > loopStart
+          ? [{ id: 'loop-1', mode: loopMode, startFrame: loopStart, endFrame: loopEnd, crossfadeMs: loopCrossfadeMs }]
+          : [],
+      sampleStartFrame: sampleStartFrame > 0 ? sampleStartFrame : undefined,
+      sampleEndFrame: sampleEndRaw > sampleStartFrame ? sampleEndRaw : undefined,
+      reversed,
+      keyFadeIn,
+      keyFadeOut,
+      velFadeIn,
+      velFadeOut,
+      muteGroup: muteGroup > 0 ? muteGroup : undefined,
+      keyswitchNote,
+      trigger,
     });
   }
 
@@ -545,11 +752,15 @@ export function parseHalionVstPreset(
     suggestedParameterSet: parameterSet,
     regions,
     audioBuffers: mapAudioBuffers(audioFiles),
+    envelope,
+    filter,
   };
 }
 
 // ─────────────────────────────────────────────────────────
-// 4. Bitwig Studio Multisample Parser (.multisample)
+// 4. Bitwig Studio Multisample Parser (.multisample) — Upgraded Fase 32.3
+// Supports both official Bitwig nested tags (<key>, <velocity>, <loop>)
+// and flat legacy attributes on <sample>.
 // ─────────────────────────────────────────────────────────
 
 export function parseBitwigMultisample(
@@ -557,33 +768,112 @@ export function parseBitwigMultisample(
   audioFiles: Map<string, ArrayBuffer> = new Map()
 ): ParsedSamplerPreset {
   const regions: ParsedImportRegion[] = [];
-  const sampleRegex = /<sample\b([^>]*)\/?>/gi;
-  let match: RegExpExecArray | null;
   let regIndex = 0;
 
+  const rootNameMatch = /<multisample\b[^>]*\bname=["']([^"']+)["']/i.exec(xmlText);
+  const presetName = rootNameMatch ? rootNameMatch[1].trim() : 'BitwigMultisample';
   const categoryMatch = xmlText.match(/<category>([^<]+)<\/category>/i);
-  const detectedCategory = categoryMatch ? categoryMatch[1].trim() : 'Synthesizer';
-  const { parameterSet } = classifyPresetCategory(detectedCategory);
+  const detectedCategory = categoryMatch ? categoryMatch[1].trim() : classifyPresetCategory(presetName).category;
+  const { parameterSet } = classifyPresetCategory(detectedCategory + ' ' + presetName);
+  const creatorMatch = xmlText.match(/<creator>([^<]+)<\/creator>/i);
+  const descMatch = xmlText.match(/<(?:description|comment)>([^<]+)<\/(?:description|comment)>/i);
+
+  // Parse <group name="..." /> definitions (0-based index in Bitwig)
+  const groupNames: string[] = [];
+  const groupTagRegex = /<group\b([^>]*)\/?>/gi;
+  let gm: RegExpExecArray | null;
+  while ((gm = groupTagRegex.exec(xmlText)) !== null) {
+    const gName = getAttr(gm[1], 'name');
+    if (gName) groupNames.push(gName);
+  }
+
+  // Match both self-closing <sample .../> and paired <sample ...>...</sample>
+  const sampleRegex = /<sample\b([^>]*)(?:\/>|>([\s\S]*?)<\/sample>)/gi;
+  let match: RegExpExecArray | null;
 
   while ((match = sampleRegex.exec(xmlText)) !== null) {
     const tag = match[1];
+    const body = match[2] || '';
     const file = getAttr(tag, 'file');
     if (!file) continue;
 
     const sampleName = cleanBasename(file);
-    const rootKey = parseNoteNumber(getAttr(tag, 'root'), 60);
-    const lowKey = parseNoteNumber(getAttr(tag, 'low'), rootKey);
-    const highKey = parseNoteNumber(getAttr(tag, 'high'), rootKey);
-    const lowVel = Math.max(1, Math.min(127, getAttrNum(tag, 'low-vel', 1)));
-    const highVel = Math.max(1, Math.min(127, getAttrNum(tag, 'high-vel', 127)));
-    const detuneCents = getAttrNum(tag, 'tune', 0);
+
+    // Nested <key .../> tag (official Bitwig format) or flat attributes
+    const keyMatch = /<key\b([^>]*)\/?>/i.exec(body);
+    const keyAttrs = keyMatch ? keyMatch[1] : '';
+    const rootKey = parseNoteNumber(getAttr(keyAttrs, 'root') || getAttr(tag, 'root'), 60);
+    const lowKey = parseNoteNumber(getAttr(keyAttrs, 'low') || getAttr(tag, 'low'), rootKey);
+    const highKey = parseNoteNumber(getAttr(keyAttrs, 'high') || getAttr(tag, 'high'), rootKey);
+    const keyFadeIn = Math.max(0, Math.round(getAttrNum(keyAttrs, 'low-fade', getAttrNum(tag, 'low-fade', 0))));
+    const keyFadeOut = Math.max(0, Math.round(getAttrNum(keyAttrs, 'high-fade', getAttrNum(tag, 'high-fade', 0))));
+
+    // Track in Bitwig <key track="1.0000"/> or "true"/"false"
+    const trackStr = (getAttr(keyAttrs, 'track') || getAttr(tag, 'track') || '1').toLowerCase();
+    const pitchKeytrack =
+      trackStr === 'false' || trackStr === '0'
+        ? 0
+        : trackStr === 'true'
+          ? 100
+          : Math.round((parseFloat(trackStr) > 1 ? parseFloat(trackStr) / 100 : parseFloat(trackStr)) * 100);
+
+    // Tuning: Bitwig <key tune="0.25"/> or <sample tune="..."/> (in semitones if decimal or small, or cents if legacy)
+    let detuneCents = 0;
+    const keyTuneStr = getAttr(keyAttrs, 'tune');
+    const smpTuneStr = getAttr(tag, 'tune');
+    if (keyTuneStr) {
+      detuneCents = Math.round(parseFloat(keyTuneStr) * 100) || 0;
+    } else if (smpTuneStr) {
+      const val = parseFloat(smpTuneStr) || 0;
+      detuneCents = smpTuneStr.includes('.') && Math.abs(val) <= 12 ? Math.round(val * 100) : Math.round(val);
+    }
+
+    // Nested <velocity .../> tag or flat attributes
+    const velMatch = /<velocity\b([^>]*)\/?>/i.exec(body);
+    const velAttrs = velMatch ? velMatch[1] : '';
+    const lowVel = Math.max(1, Math.min(127, Math.round(getAttrNum(velAttrs, 'low', getAttrNum(tag, 'low-vel', 1)))));
+    const highVel = Math.max(1, Math.min(127, Math.round(getAttrNum(velAttrs, 'high', getAttrNum(tag, 'high-vel', 127)))));
+    const velFadeIn = Math.max(0, Math.round(getAttrNum(velAttrs, 'low-fade', 0)));
+    const velFadeOut = Math.max(0, Math.round(getAttrNum(velAttrs, 'high-fade', 0)));
+
     const volumeDb = getAttrNum(tag, 'gain', 0);
     const panNorm = getAttrNum(tag, 'pan', 0);
     const pan = Math.max(-50, Math.min(50, Math.round(panNorm * 50)));
 
-    const loop = getAttr(tag, 'loop', 'false').toLowerCase() === 'true';
-    const loopStart = getAttrNum(tag, 'loop-start', 0);
-    const loopEnd = getAttrNum(tag, 'loop-end', 0);
+    const sampleStartFrame = Math.max(0, Math.round(getAttrNum(tag, 'sample-start', 0)));
+    const sampleStopRaw = Math.round(getAttrNum(tag, 'sample-stop', 0));
+    const sampleEndFrame = sampleStopRaw > sampleStartFrame ? sampleStopRaw : undefined;
+    const reversed = getAttr(tag, 'reverse', 'false').toLowerCase() === 'true';
+
+    const zoneLogicStr = getAttr(tag, 'zone-logic', '').toLowerCase();
+    const playLogic: SamplerPlayLogic = zoneLogicStr === 'round-robin' ? 'round_robin' : 'velocity';
+
+    const grpIdx = parseInt(getAttr(tag, 'group', '-1'), 10);
+    const groupName = grpIdx >= 0 && grpIdx < groupNames.length ? groupNames[grpIdx] : groupNames[0];
+
+    // Nested <loop .../> tag or flat loop attributes
+    const loopMatch = /<loop\b([^>]*)\/?>/i.exec(body);
+    let loopMode: LoopMode = 'no_loop';
+    let loopStart = 0;
+    let loopEnd = 0;
+    let loopCrossfadeMs = 0;
+
+    if (loopMatch) {
+      const lAttrs = loopMatch[1];
+      const modeStr = getAttr(lAttrs, 'mode', 'off').toLowerCase();
+      loopStart = Math.max(0, Math.round(getAttrNum(lAttrs, 'start', 0)));
+      loopEnd = Math.max(0, Math.round(getAttrNum(lAttrs, 'stop', getAttrNum(lAttrs, 'end', 0))));
+      const fadeFraction = Math.max(0, Math.min(1, getAttrNum(lAttrs, 'fade', 0)));
+      const loopLenFrames = Math.max(0, loopEnd - loopStart);
+      loopCrossfadeMs = Math.round(((fadeFraction * loopLenFrames) / 44.1) * 10) / 10;
+      if (modeStr === 'ping-pong' && loopEnd > loopStart) loopMode = 'ping_pong';
+      else if ((modeStr === 'loop' || modeStr === 'sustain') && loopEnd > loopStart) loopMode = 'loop_continuous';
+    } else {
+      const flatLoop = getAttr(tag, 'loop', 'false').toLowerCase() === 'true';
+      loopStart = Math.max(0, Math.round(getAttrNum(tag, 'loop-start', 0)));
+      loopEnd = Math.max(0, Math.round(getAttrNum(tag, 'loop-end', 0)));
+      if (flatLoop && loopEnd > loopStart) loopMode = 'loop_continuous';
+    }
 
     regIndex++;
     regions.push({
@@ -598,22 +888,38 @@ export function parseBitwigMultisample(
       detuneCents,
       volumeDb,
       pan,
-      loopMode: loop && loopEnd > loopStart ? 'loop_continuous' : 'no_loop',
+      pitchKeytrack: Number.isFinite(pitchKeytrack) ? pitchKeytrack : 100,
+      loopMode,
       loopStart,
       loopEnd,
+      loopCrossfadeMs,
+      loops:
+        loopMode !== 'no_loop'
+          ? [{ id: 'loop-1', mode: loopMode, startFrame: loopStart, endFrame: loopEnd, crossfadeMs: loopCrossfadeMs }]
+          : [],
+      sampleStartFrame: sampleStartFrame > 0 ? sampleStartFrame : undefined,
+      sampleEndFrame,
+      reversed,
+      keyFadeIn,
+      keyFadeOut,
+      velFadeIn,
+      velFadeOut,
+      playLogic,
+      groupName,
     });
   }
 
-  const presetName = 'BitwigMultisample';
   return {
     format: 'multisample',
     formatLabel: 'Bitwig Studio (.multisample)',
     presetName,
-    modelName: presetName.slice(0, 11),
+    modelName: presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
     detectedCategory,
     suggestedParameterSet: parameterSet,
     regions,
     audioBuffers: mapAudioBuffers(audioFiles),
+    author: creatorMatch ? creatorMatch[1].trim() : undefined,
+    description: descMatch ? descMatch[1].trim() : undefined,
   };
 }
 
@@ -646,17 +952,14 @@ function sliceDecodedAudioToWav(
 // 4b. Akai MPC Program (.xpm / .xpn) — Fase 31
 // ─────────────────────────────────────────────────────────
 
-/** Converts a parsed MPC program into the generic preset model, reusing the shared slicer for sliced WAVs. */
 export function mpcProgramToPreset(
   program: MpcProgram,
   audioFiles: Map<string, ArrayBuffer> = new Map()
 ): ParsedSamplerPreset {
   const audioBuffers = mapAudioBuffers(audioFiles);
-  // Resolve "SampleName" (no extension) against available audio, case-insensitive
   const byStem = new Map<string, string>();
   for (const k of audioBuffers.keys()) byStem.set(k.replace(/\.[^.]+$/, '').toLowerCase(), k);
 
-  // Lazy per-WAV cache of parsed slice cues ("atem" / "cue ") and decoded PCM
   const wavCache = new Map<
     string,
     { decoded: DecodedWav | null; markers: ParsedSliceMarker[]; sliceFrames: number[] }
@@ -708,7 +1011,6 @@ export function mpcProgramToPreset(
       let loopStart = l.loopStart;
       let loopEnd = l.loopEnd;
 
-      // Check if this layer references a slice inside a shared WAV (via Akai atem/cue sliceIndex or explicit sampleStart/End)
       if (audioBuffers.has(resolved)) {
         const info = getWavInfo(resolved);
         const totalFrames = info.decoded?.channels[0]?.length ?? 0;
@@ -779,6 +1081,7 @@ export function mpcProgramToPreset(
         loopMode: l.loopEnabled && loopEnd > loopStart ? 'loop_continuous' : inst.triggerMode === 0 ? 'one_shot' : 'no_loop',
         loopStart,
         loopEnd,
+        pitchKeytrack: isDrum ? 0 : 100,
       });
     }
   });
@@ -802,6 +1105,464 @@ export function mpcProgramToPreset(
 }
 
 // ─────────────────────────────────────────────────────────
+// 4c. Ableton Sampler / Simpler (.adv) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseAbletonAdvPreset(
+  content: ArrayBuffer | Uint8Array | string,
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'AbletonSampler'
+): ParsedSamplerPreset {
+  const parsed = parseAbletonAdv(content, fallbackName);
+  const { category, parameterSet } = classifyPresetCategory(parsed.presetName);
+
+  const regions: ParsedImportRegion[] = parsed.parts.map((p, idx) => {
+    const sampleName = cleanBasename(p.samplePath);
+    const loopCrossfadeMs = Math.round((p.loopCrossfadeFrames / 44.1) * 10) / 10;
+    return {
+      id: `adv_zone_${String(idx + 1).padStart(3, '0')}`,
+      sampleName,
+      samplePath: p.samplePath,
+      rootKey: p.rootKey,
+      lowKey: p.lowKey,
+      highKey: p.highKey,
+      lowVel: p.lowVel,
+      highVel: p.highVel,
+      detuneCents: p.detuneCents,
+      volumeDb: Math.round(p.volumeDb * 100) / 100,
+      pan: p.pan,
+      pitchKeytrack: p.pitchKeytrack,
+      sampleStartFrame: p.sampleStartFrame > 0 ? p.sampleStartFrame : undefined,
+      sampleEndFrame: p.sampleEndFrame,
+      reversed: p.reversed,
+      keyFadeIn: p.keyFadeIn,
+      keyFadeOut: p.keyFadeOut,
+      velFadeIn: p.velFadeIn,
+      velFadeOut: p.velFadeOut,
+      loopMode: p.loopMode,
+      loopStart: p.loopStart,
+      loopEnd: p.loopEnd,
+      loopCrossfadeMs,
+      loops:
+        p.loopMode !== 'no_loop'
+          ? [{ id: 'loop-1', mode: p.loopMode, startFrame: p.loopStart, endFrame: p.loopEnd, crossfadeMs: loopCrossfadeMs }]
+          : [],
+      playLogic: parsed.playLogic,
+      velToVolumeDepth: parsed.velToVolumeDepth,
+    };
+  });
+
+  return {
+    format: 'ableton_adv',
+    formatLabel: `Ableton ${parsed.deviceType} (.adv)`,
+    presetName: parsed.presetName,
+    modelName: parsed.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers: mapAudioBuffers(audioFiles),
+    envelope: parsed.ampEnv
+      ? {
+          attack: parsed.ampEnv.attackSec ?? 0.005,
+          decay: parsed.ampEnv.decaySec ?? 0.25,
+          sustain: parsed.ampEnv.sustainLevel ?? 1.0,
+          release: parsed.ampEnv.releaseSec ?? 0.2,
+        }
+      : undefined,
+    filter: parsed.filter,
+    pitchEnv: parsed.pitchEnv,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 4d. Apple Logic EXS24 (.exs) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseExs24Preset(
+  buffer: ArrayBuffer,
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'EXS24Instrument'
+): ParsedSamplerPreset {
+  const parsed = parseExs24(buffer, fallbackName);
+  const { category, parameterSet } = classifyPresetCategory(parsed.presetName);
+
+  const regions: ParsedImportRegion[] = parsed.zones.map((z, idx) => {
+    const smp = parsed.samples[z.sampleIndex];
+    const grp = parsed.groups[z.groupIndex];
+    const rawFile = smp?.fileName || smp?.filePath || `${z.name}.wav`;
+    const sampleName = cleanBasename(rawFile);
+
+    return {
+      id: `exs_zone_${String(idx + 1).padStart(3, '0')}`,
+      sampleName,
+      samplePath: smp?.filePath || sampleName,
+      rootKey: z.rootKey,
+      lowKey: z.lowKey,
+      highKey: z.highKey,
+      lowVel: z.lowVel,
+      highVel: z.highVel,
+      detuneCents: z.coarseTuneSt * 100 + z.fineTuneCents,
+      volumeDb: z.volumeDb + (grp?.volumeDb ?? 0),
+      pan: Math.max(-50, Math.min(50, z.pan + (grp?.pan ?? 0))),
+      pitchKeytrack: z.pitchKeytrack,
+      sampleStartFrame: z.sampleStartFrame > 0 ? z.sampleStartFrame : undefined,
+      sampleEndFrame: z.sampleEndFrame > z.sampleStartFrame ? z.sampleEndFrame : undefined,
+      reversed: z.reversed,
+      keyFadeIn: grp?.keyCrossfade ?? 0,
+      keyFadeOut: grp?.keyCrossfade ?? 0,
+      velFadeIn: grp?.velCrossfade ?? 0,
+      velFadeOut: grp?.velCrossfade ?? 0,
+      fadeCurve: z.loopEqualPower ? 'equal-power' : 'linear',
+      loopMode: z.loopMode,
+      loopStart: z.loopStart,
+      loopEnd: z.loopEnd,
+      loopCrossfadeMs: z.loopCrossfadeMs,
+      loops:
+        z.loopMode !== 'no_loop' && z.loopMode !== 'one_shot'
+          ? [{ id: 'loop-1', mode: z.loopMode, startFrame: z.loopStart, endFrame: z.loopEnd, crossfadeMs: z.loopCrossfadeMs }]
+          : [],
+      groupName: grp?.name,
+      muteGroup: grp && grp.muteGroup > 0 ? grp.muteGroup : undefined,
+      trigger: grp?.trigger ?? 'attack',
+      playLogic: grp?.playLogic ?? 'velocity',
+      keyswitchNote: grp?.keyswitchNote,
+    };
+  });
+
+  return {
+    format: 'exs24',
+    formatLabel: 'Apple Logic EXS24 (.exs)',
+    presetName: parsed.presetName,
+    modelName: parsed.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers: mapAudioBuffers(audioFiles),
+    envelope: {
+      attack: parsed.ampEnv.attackSec,
+      hold: parsed.ampEnv.holdSec,
+      decay: parsed.ampEnv.decaySec,
+      sustain: parsed.ampEnv.sustainLevel,
+      release: parsed.ampEnv.releaseSec,
+    },
+    filter: parsed.filter,
+    polyphony: parsed.polyphony,
+    pitchBendUpSt: parsed.pitchBendUpSt,
+    pitchBendDownSt: parsed.pitchBendDownSt,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 4e. TAL-Sampler (.talsmpl) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseTalSamplerPreset(
+  xmlText: string,
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'TalSamplerPreset'
+): ParsedSamplerPreset {
+  const parsed = parseTalSampler(xmlText, fallbackName);
+  const { category, parameterSet } = classifyPresetCategory(parsed.presetName);
+
+  const regions: ParsedImportRegion[] = parsed.zones.map((z, idx) => {
+    const sampleName = cleanBasename(z.samplePath);
+    const loopCrossfadeMs = Math.round((z.loopCrossfadeFrames / 44.1) * 10) / 10;
+    return {
+      id: `tal_zone_${String(idx + 1).padStart(3, '0')}`,
+      sampleName,
+      samplePath: z.samplePath,
+      rootKey: z.rootKey,
+      lowKey: z.lowKey,
+      highKey: z.highKey,
+      lowVel: z.lowVel,
+      highVel: z.highVel,
+      detuneCents: z.detuneCents,
+      volumeDb: Math.round(z.volumeDb * 100) / 100,
+      pan: z.pan,
+      pitchKeytrack: z.pitchKeytrack,
+      sampleStartFrame: z.sampleStartFrame > 0 ? z.sampleStartFrame : undefined,
+      sampleEndFrame: z.sampleEndFrame,
+      reversed: z.reversed,
+      loopMode: z.loopMode,
+      loopStart: z.loopStart,
+      loopEnd: z.loopEnd,
+      loopCrossfadeMs,
+      loops:
+        z.loopMode !== 'no_loop'
+          ? [{ id: 'loop-1', mode: z.loopMode, startFrame: z.loopStart, endFrame: z.loopEnd, crossfadeMs: loopCrossfadeMs }]
+          : [],
+      groupName: `Layer ${z.layerIndex + 1}`,
+      muteGroup: z.muteGroup > 0 ? z.muteGroup : undefined,
+      playLogic: z.playLogic,
+    };
+  });
+
+  return {
+    format: 'tal_sampler',
+    formatLabel: 'TAL-Sampler (.talsmpl)',
+    presetName: parsed.presetName,
+    modelName: parsed.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers: mapAudioBuffers(audioFiles),
+    envelope: {
+      attack: parsed.ampEnv.attackSec,
+      hold: parsed.ampEnv.holdSec,
+      decay: parsed.ampEnv.decaySec,
+      sustain: parsed.ampEnv.sustainLevel,
+      release: parsed.ampEnv.releaseSec,
+    },
+    filter: parsed.filter,
+    pitchEnv: parsed.pitchEnv,
+    polyphony: parsed.polyphony,
+    pitchBendUpSt: parsed.pitchBendRangeSt,
+    pitchBendDownSt: parsed.pitchBendRangeSt,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 4f. CWITEC TX16Wx (.txprog) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseTx16WxPreset(
+  xmlText: string,
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'TX16WxProgram'
+): ParsedSamplerPreset {
+  const parsed = parseTx16WxProgram(xmlText, fallbackName);
+  const { category, parameterSet } = classifyPresetCategory(parsed.presetName);
+
+  const regions: ParsedImportRegion[] = parsed.regions.map((r) => {
+    const sampleName = cleanBasename(r.samplePath);
+    const loopCrossfadeMs = Math.round((r.loopCrossfadeFrames / 44.1) * 10) / 10;
+    return {
+      id: r.id,
+      sampleName,
+      samplePath: r.samplePath,
+      rootKey: r.rootKey,
+      lowKey: r.lowKey,
+      highKey: r.highKey,
+      lowVel: r.lowVel,
+      highVel: r.highVel,
+      detuneCents: r.detuneCents,
+      volumeDb: r.volumeDb,
+      pan: r.pan,
+      pitchKeytrack: r.pitchKeytrack,
+      sampleStartFrame: r.sampleStartFrame > 0 ? r.sampleStartFrame : undefined,
+      sampleEndFrame: r.sampleEndFrame,
+      reversed: r.reversed,
+      keyFadeIn: r.keyFadeIn,
+      keyFadeOut: r.keyFadeOut,
+      velFadeIn: r.velFadeIn,
+      velFadeOut: r.velFadeOut,
+      loopMode: r.loopMode,
+      loopStart: r.loopStart,
+      loopEnd: r.loopEnd,
+      loopCrossfadeMs,
+      loops: r.loops,
+      groupName: r.groupName,
+      muteGroup: r.muteGroup > 0 ? r.muteGroup : undefined,
+      trigger: r.trigger,
+    };
+  });
+
+  return {
+    format: 'tx16wx',
+    formatLabel: 'CWITEC TX16Wx (.txprog)',
+    presetName: parsed.presetName,
+    modelName: parsed.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers: mapAudioBuffers(audioFiles),
+    envelope: {
+      attack: parsed.primaryAmpEnv.attackSec,
+      decay: parsed.primaryAmpEnv.decaySec,
+      sustain: parsed.primaryAmpEnv.sustainLevel,
+      release: parsed.primaryAmpEnv.releaseSec,
+    },
+    filter: parsed.primaryFilter,
+    pitchEnv: parsed.primaryPitchEnv,
+    author: parsed.author,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 4g. Korg (.KMP + .KSF) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseKorgKmpPreset(
+  kmpBuffer: ArrayBuffer,
+  siblingFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'KorgMultisample'
+): ParsedSamplerPreset {
+  const kmp = parseKorgKmp(kmpBuffer, fallbackName);
+  const { category, parameterSet } = classifyPresetCategory(kmp.presetName);
+  const audioBuffers = new Map<string, ArrayBuffer>();
+  const ksfByUpper = new Map<string, ArrayBuffer>();
+  for (const [k, v] of siblingFiles.entries()) {
+    const base = cleanBasename(k);
+    ksfByUpper.set(base.toUpperCase(), v);
+    if (base.toLowerCase().endsWith('.wav')) {
+      audioBuffers.set(base, v);
+    }
+  }
+
+  const regions: ParsedImportRegion[] = [];
+  kmp.zones.forEach((z, idx) => {
+    const ksfKey = cleanBasename(z.ksfFilename).toUpperCase();
+    const ksfBuf = ksfByUpper.get(ksfKey);
+    const wavName = ksfKey.replace(/\.KSF$/i, '') + '.wav';
+    let loopMode: LoopMode = 'no_loop';
+    let loopStart = 0;
+    let loopEnd = 0;
+    let reversed = false;
+    let startFrame = 0;
+
+    if (ksfBuf && isKorgKmpOrKsfBuffer(ksfBuf) === 'ksf') {
+      const parsedKsf = parseKorgKsf(ksfBuf, ksfKey);
+      audioBuffers.set(wavName, parsedKsf.wavBuffer);
+      loopMode = parsedKsf.loopEnabled ? 'loop_continuous' : 'no_loop';
+      loopStart = parsedKsf.loopStartFrame;
+      loopEnd = parsedKsf.loopEndFrame;
+      reversed = parsedKsf.reversed;
+      startFrame = kmp.useSecondStart ? parsedKsf.secondStartFrame : parsedKsf.startFrame;
+    }
+
+    regions.push({
+      id: `korg_zone_${String(idx + 1).padStart(3, '0')}`,
+      sampleName: wavName,
+      samplePath: wavName,
+      rootKey: z.rootKey,
+      lowKey: z.lowKey,
+      highKey: z.highKey,
+      lowVel: 1,
+      highVel: 127,
+      detuneCents: z.detuneCents,
+      volumeDb: z.volumeDb,
+      pan: z.pan,
+      pitchKeytrack: z.pitchKeytrack,
+      sampleStartFrame: startFrame > 0 ? startFrame : undefined,
+      reversed,
+      loopMode,
+      loopStart,
+      loopEnd,
+      loops:
+        loopMode !== 'no_loop'
+          ? [{ id: 'loop-1', mode: loopMode, startFrame: loopStart, endFrame: loopEnd, crossfadeMs: 0 }]
+          : [],
+    });
+  });
+
+  return {
+    format: 'korg_kmp',
+    formatLabel: 'Korg Trinity/Triton/M3 (.KMP/.KSF)',
+    presetName: kmp.presetName,
+    modelName: kmp.presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 4h. MMA Downloadable Sounds (.dls) -> ParsedSamplerPreset
+// ─────────────────────────────────────────────────────────
+
+export function parseDlsPreset(
+  buffer: ArrayBuffer,
+  instrumentIndex = 0,
+  fallbackName = 'DLSBank'
+): ParsedSamplerPreset {
+  const bank = parseDlsBank(buffer, fallbackName);
+  const inst = bank.instruments[Math.max(0, Math.min(bank.instruments.length - 1, instrumentIndex))] ?? {
+    index: 0,
+    bank: 0,
+    program: 0,
+    isDrum: false,
+    name: bank.bankName,
+    regions: [],
+    ampEnv: {
+      delaySec: 0,
+      attackSec: 0.005,
+      holdSec: 0,
+      decaySec: 0.25,
+      sustainLevel: 1,
+      releaseSec: 0.2,
+      velModDepth: 100,
+    },
+    filter: {
+      enabled: false,
+      type: 'lpf' as const,
+      poles: 2 as const,
+      cutoffHz: 20000,
+      resonanceDb: 0,
+      envToFilterCents: 0,
+      velToFilterCents: 0,
+      keytrackCents: 0,
+    },
+  };
+
+  const audioBuffers = new Map<string, ArrayBuffer>();
+  for (const w of bank.waves) {
+    audioBuffers.set(w.name, w.wavBuffer);
+  }
+
+  const regions: ParsedImportRegion[] = inst.regions.map((r, idx) => {
+    const wave = bank.waves[r.waveIndex];
+    const sampleName = wave?.name ?? `DLS_Wave_${r.waveIndex + 1}.wav`;
+    return {
+      id: `dls_zone_${String(idx + 1).padStart(3, '0')}`,
+      sampleName,
+      samplePath: sampleName,
+      rootKey: r.rootKey,
+      lowKey: r.lowKey,
+      highKey: r.highKey,
+      lowVel: r.lowVel,
+      highVel: r.highVel,
+      detuneCents: r.detuneCents,
+      volumeDb: r.volumeDb,
+      pan: r.pan,
+      loopMode: r.loopMode,
+      loopStart: r.loopStart,
+      loopEnd: r.loopEnd,
+      loops:
+        r.loopMode !== 'no_loop'
+          ? [{ id: 'loop-1', mode: r.loopMode, startFrame: r.loopStart, endFrame: r.loopEnd, crossfadeMs: 0 }]
+          : [],
+      muteGroup: r.keyGroup > 0 ? r.keyGroup : undefined,
+    };
+  });
+
+  const { category, parameterSet } = classifyPresetCategory(inst.name);
+  return {
+    format: 'dls',
+    formatLabel: 'MMA Downloadable Sounds (.dls)',
+    presetName: inst.name,
+    modelName: inst.name.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: inst.isDrum ? 'Drums & Percussion' : category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers,
+    envelope: {
+      delay: inst.ampEnv.delaySec,
+      attack: inst.ampEnv.attackSec,
+      hold: inst.ampEnv.holdSec,
+      decay: inst.ampEnv.decaySec,
+      sustain: inst.ampEnv.sustainLevel,
+      release: inst.ampEnv.releaseSec,
+    },
+    filter: inst.filter,
+    pitchEnv: inst.pitchEnv,
+    author: bank.author,
+    description: bank.comment,
+    programCount: bank.instruments.length,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
 // 5. Linear Sample Chains Parser (Octatrack / SP-404 / OP-1)
 // ─────────────────────────────────────────────────────────
 
@@ -814,7 +1575,6 @@ export function parseSampleChainAudio(
   const cleanName = cleanBasename(baseName);
   const { category, parameterSet } = classifyPresetCategory(cleanName);
 
-  // 1. Try parsing embedded slice markers (RIFF 'cue ' / AIFF 'MARK')
   const sliceResult = parseSliceFile(buffer, filename);
   let sliceFrames: number[] = [];
   let markers: ParsedSliceMarker[] = [];
@@ -823,7 +1583,6 @@ export function parseSampleChainAudio(
     sliceFrames = [...sliceResult.sliceFrames];
     markers = [...sliceResult.markers];
   } else if (options?.gridSlices && options.gridSlices > 1) {
-    // Decode audio to find length
     const decoded = filename.toLowerCase().endsWith('.aif') || filename.toLowerCase().endsWith('.aiff')
       ? decodeAiff(buffer)
       : decodeWav(buffer);
@@ -837,7 +1596,6 @@ export function parseSampleChainAudio(
     }
   }
 
-  // If still no slice markers found, check filename conventions like _16slice, _chain, _32
   if (sliceFrames.length <= 1) {
     const gridMatch = filename.match(/_(\d+)(?:slice|hit|chain|steps?)/i);
     const suggestedGrid = gridMatch ? parseInt(gridMatch[1], 10) : 0;
@@ -860,14 +1618,13 @@ export function parseSampleChainAudio(
   const regions: ParsedImportRegion[] = [];
   const audioBuffers = new Map<string, ArrayBuffer>();
 
-  // If slices were found, slice the audio and generate individual regions
   if (sliceFrames.length > 0) {
     const decoded = filename.toLowerCase().endsWith('.aif') || filename.toLowerCase().endsWith('.aiff')
       ? decodeAiff(buffer)
       : decodeWav(buffer);
 
     const totalFrames = decoded.channels[0].length;
-    const baseMidi = 36; // C1 starting note
+    const baseMidi = 36;
 
     for (let i = 0; i < sliceFrames.length; i++) {
       const start = sliceFrames[i];
@@ -900,7 +1657,6 @@ export function parseSampleChainAudio(
       });
     }
   } else {
-    // Single non-sliced file fallback
     const singleName = cleanBasename(filename);
     audioBuffers.set(singleName, buffer);
     regions.push({
@@ -958,14 +1714,14 @@ export function parseRex2Sampler(
       const decompressed = decompressRx2Audio(buffer);
       activeWav = decompressed.wavBuffer;
     } catch {
-      // Audio remains offline/empty if DWOP chunk is missing
+      // ignore
     }
   }
 
   if (activeWav && activeWav.byteLength > 44) {
     const decoded = decodeWav(activeWav);
     const totalFrames = decoded.channels[0].length;
-    const baseMidi = 36; // C1 starting note
+    const baseMidi = 36;
 
     if (sliceFrames.length > 0) {
       for (let i = 0; i < sliceFrames.length; i++) {
@@ -1025,7 +1781,19 @@ export interface ArchiveSamplerProgramInfo {
   id: string;
   index: number;
   name: string;
-  format: 'xpm' | 'dspreset' | 'nki' | 'vstpreset' | 'multisample' | 'sfz';
+  format:
+    | 'xpm'
+    | 'dspreset'
+    | 'nki'
+    | 'vstpreset'
+    | 'multisample'
+    | 'sfz'
+    | 'ableton_adv'
+    | 'exs24'
+    | 'tal_sampler'
+    | 'tx16wx'
+    | 'korg_kmp'
+    | 'dls';
   regionCount?: number;
   detail?: string;
 }
@@ -1115,6 +1883,54 @@ export async function listZipSamplerPrograms(
         format: 'sfz',
         detail: 'SFZ Instrument',
       });
+    } else if (nLower.endsWith('.adv')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.adv$/i, ''),
+        format: 'ableton_adv',
+        detail: 'Ableton Sampler / Simpler',
+      });
+    } else if (nLower.endsWith('.exs')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.exs$/i, ''),
+        format: 'exs24',
+        detail: 'Logic EXS24 Instrument',
+      });
+    } else if (nLower.endsWith('.talsmpl')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.talsmpl$/i, ''),
+        format: 'tal_sampler',
+        detail: 'TAL-Sampler Preset',
+      });
+    } else if (nLower.endsWith('.txprog')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.txprog$/i, ''),
+        format: 'tx16wx',
+        detail: 'CWITEC TX16Wx Program',
+      });
+    } else if (nLower.endsWith('.kmp')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.kmp$/i, ''),
+        format: 'korg_kmp',
+        detail: 'Korg Multisample (.KMP)',
+      });
+    } else if (nLower.endsWith('.dls')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.dls$/i, ''),
+        format: 'dls',
+        detail: 'Downloadable Sounds (.DLS)',
+      });
     }
   }
 
@@ -1139,12 +1955,13 @@ export async function parseUniversalSampler(
   const targetProgramPath =
     typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
 
-  // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn expansions)
+  // 1. If it's a ZIP archive containing a bank + samples (also Akai .xpn, Bitwig .multisample)
   if (lower.endsWith('.zip') || lower.endsWith('.xpn') || (!zipEntries && typeof data !== 'string' && isZipHeader(data))) {
     const rawZipBytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const zipIndex = indexZipArchive(rawZipBytes);
     const indexMap = new Map<string, ZipCentralEntry>();
     const audioEntries: ZipCentralEntry[] = [];
+    const ksfEntries: ZipCentralEntry[] = [];
 
     for (const entry of zipIndex) {
       const norm = entry.path.replace(/\\/g, '/');
@@ -1152,14 +1969,21 @@ export async function parseUniversalSampler(
       const nLower = norm.toLowerCase();
       if (nLower.endsWith('.wav') || nLower.endsWith('.aif') || nLower.endsWith('.aiff') || nLower.endsWith('.flac')) {
         audioEntries.push(entry);
+      } else if (nLower.endsWith('.ksf')) {
+        ksfEntries.push(entry);
       }
     }
 
-    // Look for preset definition file inside the ZIP
     let dspresetEntry: string | undefined;
     let nkiEntry: string | undefined;
     let vstpresetEntry: string | undefined;
     let multisampleEntry: string | undefined;
+    let advEntry: string | undefined;
+    let exsEntry: string | undefined;
+    let talEntry: string | undefined;
+    let txprogEntry: string | undefined;
+    let kmpEntry: string | undefined;
+    let dlsEntry: string | undefined;
     const xpmEntries: string[] = [];
 
     const normTarget = targetProgramPath?.replace(/\\/g, '/');
@@ -1170,7 +1994,12 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.nki.xml') || nLower.endsWith('.nki')) nkiEntry = name;
       else if (nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.vstpreset')) vstpresetEntry = name;
       else if (nLower.endsWith('multisample.xml')) multisampleEntry = name;
-      // MPC programs: .xpm (MPC 1/2/3) and MPC 3 track files .xty (keygroup) / .xtd (drum)
+      else if (nLower.endsWith('.adv')) advEntry = name;
+      else if (nLower.endsWith('.exs')) exsEntry = name;
+      else if (nLower.endsWith('.talsmpl')) talEntry = name;
+      else if (nLower.endsWith('.txprog')) txprogEntry = name;
+      else if (nLower.endsWith('.kmp')) kmpEntry = name;
+      else if (nLower.endsWith('.dls')) dlsEntry = name;
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
@@ -1202,10 +2031,39 @@ export async function parseUniversalSampler(
       const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(multisampleEntry)!));
       return parseBitwigMultisample(xml, extractAudioBuffers());
     }
+    if (advEntry) {
+      const bytes = extractZipEntry(rawZipBytes, indexMap.get(advEntry)!);
+      return parseAbletonAdvPreset(bytes, extractAudioBuffers(), cleanBasename(advEntry).replace(/\.adv$/i, ''));
+    }
+    if (exsEntry) {
+      const bytes = extractZipEntry(rawZipBytes, indexMap.get(exsEntry)!);
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      return parseExs24Preset(buf, extractAudioBuffers(), cleanBasename(exsEntry).replace(/\.exs$/i, ''));
+    }
+    if (talEntry) {
+      const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(talEntry)!));
+      return parseTalSamplerPreset(xml, extractAudioBuffers(), cleanBasename(talEntry).replace(/\.talsmpl$/i, ''));
+    }
+    if (txprogEntry) {
+      const xml = new TextDecoder('utf-8').decode(extractZipEntry(rawZipBytes, indexMap.get(txprogEntry)!));
+      return parseTx16WxPreset(xml, extractAudioBuffers(), cleanBasename(txprogEntry).replace(/\.txprog$/i, ''));
+    }
+    if (kmpEntry) {
+      const kmpBytes = extractZipEntry(rawZipBytes, indexMap.get(kmpEntry)!);
+      const kmpBuf = kmpBytes.buffer.slice(kmpBytes.byteOffset, kmpBytes.byteOffset + kmpBytes.byteLength) as ArrayBuffer;
+      const siblingMap = extractAudioBuffers();
+      for (const ke of ksfEntries) {
+        const kb = extractZipEntry(rawZipBytes, ke);
+        siblingMap.set(cleanBasename(ke.path), kb.buffer.slice(kb.byteOffset, kb.byteOffset + kb.byteLength) as ArrayBuffer);
+      }
+      return parseKorgKmpPreset(kmpBuf, siblingMap, cleanBasename(kmpEntry).replace(/\.kmp$/i, ''));
+    }
+    if (dlsEntry) {
+      const dlsBytes = extractZipEntry(rawZipBytes, indexMap.get(dlsEntry)!);
+      const dlsBuf = dlsBytes.buffer.slice(dlsBytes.byteOffset, dlsBytes.byteOffset + dlsBytes.byteLength) as ArrayBuffer;
+      return parseDlsPreset(dlsBuf, 0, cleanBasename(dlsEntry).replace(/\.dls$/i, ''));
+    }
     if (xpmEntries.length > 0) {
-      // Expansions often bundle several programs. Prefer root-level programs over
-      // project copies ([ProjectData]/[TrackData]) and pick the one whose samples
-      // are actually present in the archive before decompressing audio.
       const availStems = new Set<string>();
       for (const ae of audioEntries) {
         availStems.add(cleanBasename(ae.path).replace(/\.[^.]+$/, '').toLowerCase());
@@ -1252,35 +2110,112 @@ export async function parseUniversalSampler(
     }
   }
 
-  // Akai MPC program (MPC2 XML or MPC3 GZIP/JSON). Sibling WAVs may be supplied via zipEntries.
-  if (/\.(xpm|xty|xtd)$/.test(lower)) {
-    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
-    const audioFiles = new Map<string, ArrayBuffer>();
+  // Helper to convert optional zipEntries Map<string, Uint8Array> into Map<string, ArrayBuffer>
+  const siblingAudioBuffers = (): Map<string, ArrayBuffer> => {
+    const map = new Map<string, ArrayBuffer>();
     if (zipEntries) {
       for (const [name, b] of zipEntries.entries()) {
-        audioFiles.set(cleanBasename(name), b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
+        map.set(cleanBasename(name), b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer);
       }
     }
-    return mpcProgramToPreset(await parseMpcXpm(bytes), audioFiles);
+    return map;
+  };
+
+  // Akai MPC program (MPC2 XML or MPC3 GZIP/JSON)
+  if (/\.(xpm|xty|xtd)$/.test(lower)) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    return mpcProgramToPreset(await parseMpcXpm(bytes), siblingAudioBuffers());
+  }
+
+  // Ableton Sampler / Simpler (.adv)
+  if (lower.endsWith('.adv')) {
+    const bytes = typeof data === 'string' ? data : new Uint8Array(data);
+    return parseAbletonAdvPreset(bytes, siblingAudioBuffers(), cleanBasename(filename).replace(/\.adv$/i, ''));
+  }
+
+  // Apple Logic EXS24 (.exs)
+  if (lower.endsWith('.exs') || (typeof data !== 'string' && isExs24Buffer(data))) {
+    const buf = typeof data === 'string' ? new TextEncoder().encode(data).buffer : data;
+    return parseExs24Preset(buf as ArrayBuffer, siblingAudioBuffers(), cleanBasename(filename).replace(/\.exs$/i, ''));
+  }
+
+  // TAL-Sampler (.talsmpl)
+  if (lower.endsWith('.talsmpl')) {
+    const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
+    return parseTalSamplerPreset(xml, siblingAudioBuffers(), cleanBasename(filename).replace(/\.talsmpl$/i, ''));
+  }
+
+  // CWITEC TX16Wx (.txprog)
+  if (lower.endsWith('.txprog')) {
+    const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
+    return parseTx16WxPreset(xml, siblingAudioBuffers(), cleanBasename(filename).replace(/\.txprog$/i, ''));
+  }
+
+  // Korg Trinity/Triton/M3/Pa (.kmp / .ksf)
+  if (lower.endsWith('.kmp') || lower.endsWith('.ksf') || (typeof data !== 'string' && isKorgKmpOrKsfBuffer(data) !== null)) {
+    const buf = (typeof data === 'string' ? new TextEncoder().encode(data).buffer : data) as ArrayBuffer;
+    const kind = isKorgKmpOrKsfBuffer(buf);
+    if (kind === 'ksf' || lower.endsWith('.ksf')) {
+      const ksf = parseKorgKsf(buf, cleanBasename(filename).replace(/\.ksf$/i, ''));
+      const wavName = `${ksf.sampleName.replace(/[^a-zA-Z0-9_]/g, '_') || 'KorgSample'}.wav`;
+      const audioMap = new Map<string, ArrayBuffer>([[wavName, ksf.wavBuffer]]);
+      return {
+        format: 'korg_kmp',
+        formatLabel: 'Korg Sample (.KSF)',
+        presetName: ksf.sampleName,
+        modelName: ksf.sampleName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+        detectedCategory: classifyPresetCategory(ksf.sampleName).category,
+        suggestedParameterSet: classifyPresetCategory(ksf.sampleName).parameterSet,
+        regions: [
+          {
+            id: 'ksf_zone_001',
+            sampleName: wavName,
+            samplePath: wavName,
+            rootKey: 60,
+            lowKey: 0,
+            highKey: 127,
+            lowVel: 1,
+            highVel: 127,
+            detuneCents: 0,
+            volumeDb: 0,
+            pan: 0,
+            sampleStartFrame: ksf.startFrame > 0 ? ksf.startFrame : undefined,
+            reversed: ksf.reversed,
+            loopMode: ksf.loopEnabled ? 'loop_continuous' : 'no_loop',
+            loopStart: ksf.loopStartFrame,
+            loopEnd: ksf.loopEndFrame,
+          },
+        ],
+        audioBuffers: audioMap,
+      };
+    }
+    return parseKorgKmpPreset(buf, siblingAudioBuffers(), cleanBasename(filename).replace(/\.kmp$/i, ''));
+  }
+
+  // MMA Downloadable Sounds (.dls)
+  if (lower.endsWith('.dls') || (typeof data !== 'string' && isDlsBuffer(data))) {
+    const buf = (typeof data === 'string' ? new TextEncoder().encode(data).buffer : data) as ArrayBuffer;
+    const instIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
+    return parseDlsPreset(buf, instIdx, cleanBasename(filename).replace(/\.dls$/i, ''));
   }
 
   // 2. Direct format dispatch by extension / contents
   if (lower.endsWith('.dspreset')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseDecentSamplerPreset(xml);
+    return parseDecentSamplerPreset(xml, siblingAudioBuffers());
   }
 
   if (lower.endsWith('.nki') || lower.endsWith('.nki.xml')) {
-    return parseKontaktNki(data);
+    return parseKontaktNki(data, siblingAudioBuffers());
   }
 
   if (lower.endsWith('.vstpreset') || lower.endsWith('.vstpreset.xml')) {
-    return parseHalionVstPreset(data);
+    return parseHalionVstPreset(data, siblingAudioBuffers());
   }
 
   if (lower.endsWith('.multisample') || lower.endsWith('multisample.xml')) {
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
-    return parseBitwigMultisample(xml);
+    return parseBitwigMultisample(xml, siblingAudioBuffers());
   }
 
   // 3. Audio / Sample chain / Slices

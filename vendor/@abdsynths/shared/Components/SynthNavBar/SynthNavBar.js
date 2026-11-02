@@ -12,6 +12,7 @@
  */
 
 import { AboutDialog, createAboutDialog } from '../AboutDialog/index.js';
+import { escapeHtml } from '../../Utils/escape.js';
 
 /**
  * Menús estándar por defecto para sintetizadores de la suite.
@@ -123,13 +124,7 @@ export function renderMenuItemHtml(item, activeValues) {
   `;
 }
 
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+
 
 /**
  * Componente SynthNavBar.

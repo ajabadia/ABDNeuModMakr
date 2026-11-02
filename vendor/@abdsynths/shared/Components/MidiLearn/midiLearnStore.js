@@ -1,3 +1,4 @@
+import { clamp01 } from '../../Utils/number.js';
 /**
  * ABDShared — midiLearnStore.js
  * =========================================================================
@@ -33,7 +34,7 @@ export const MIDI_CURVE_TYPES = {
 
 export const PROTECTED_CCS = new Set([6, 38, 98, 99, 100, 101, 120, 121, 123]);
 
-const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
 
 /**
  * Formats a MIDI source into a compact badge string (e.g. "CC 74", "NRPN 1:12", "AT", "PB").

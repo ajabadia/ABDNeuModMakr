@@ -22,6 +22,7 @@ import { escAttr, escHtml } from './escape.ts';
 import { ICONS } from './icons.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { toast } from './notify.ts';
+import { sanitizeFileName } from '../core/pathUtils.ts';
 
 export interface AiCoverGeneratorModalContext {
   getConfig: () => ProcessConfig;
@@ -661,7 +662,7 @@ export class AiCoverGeneratorModal {
 
   private downloadArtwork(artwork: ModelCoverArtwork): void {
     const config = this.context.getConfig();
-    const slug = (config.modelName || 'cover').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const slug = sanitizeFileName((config.modelName || 'cover').toLowerCase(), 'cover');
     const a = document.createElement('a');
     a.href = artwork.webpDataUrl;
     a.download = `${slug}_cover_512x512.webp`;

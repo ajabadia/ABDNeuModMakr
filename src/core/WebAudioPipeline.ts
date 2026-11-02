@@ -119,6 +119,7 @@ import {
 import { AudioPreviewService } from './audioPreview.ts';
 import { BankService, BankLoadError, buildBankLoadPlan } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
+import { basename } from './pathUtils.ts';
 import { createInitialSession, createZone } from './sessionFactory.ts';
 import {
   buildZoneRibbonWaveforms,
@@ -190,7 +191,7 @@ export class WebAudioPipeline implements CoreService {
     setSampleBuffer: (name: string, buffer: ArrayBuffer) => {
       this.sampleBuffers.set(name, buffer);
       if (name) {
-        const base = name.split(/[\\/]/).pop();
+        const base = basename(name) || undefined;
         if (base && base !== name) this.sampleBuffers.set(base, buffer);
       }
     },
@@ -2809,7 +2810,7 @@ export class WebAudioPipeline implements CoreService {
    */
   private lookupSampleBuffer(name: string | null | undefined): ArrayBuffer | undefined {
     if (!name) return undefined;
-    const base = name.split(/[\\/]/).pop() || name;
+    const base = basename(name) || name;
     const candidates = base !== name ? [name, base] : [name];
     for (const key of candidates) {
       const hit = this.sampleBuffers.get(key);

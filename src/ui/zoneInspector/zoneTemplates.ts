@@ -45,6 +45,7 @@ import {
 } from '../ZoneRibbon.ts';
 import { ICONS } from '../icons.ts';
 import { escAttr, escHtml } from '../escape.ts';
+import { basename } from '../../core/pathUtils.ts';
 
 /** Shared table options: view mode + audition highlight. */
 export interface ZoneTableTemplateOptions {
@@ -100,8 +101,7 @@ export interface ModelCommonTemplateDeps {
 }
 
 export function basenameOf(samplePath: string | null | undefined): string {
-  if (!samplePath) return '';
-  return samplePath.split(/[\\/]/).pop() || samplePath;
+  return basename(samplePath);
 }
 
 export function formatRegionModeBadge(reg: ExtendedRegion): string {

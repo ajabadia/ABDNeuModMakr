@@ -33,8 +33,9 @@
  */
 
 import { announceSettled, createContinuousNotices } from './continuousNotices.js';
+import { clamp01 } from '../../Utils/number.js';
 
-const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
 
 const CORNER_POSITIONS = ['tl', 'tr', 'bl', 'br'];
 

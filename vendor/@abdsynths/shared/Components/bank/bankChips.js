@@ -1,3 +1,4 @@
+import { escAttr, escText } from '../../Utils/escape.js';
 /**
  * bankChips — fila de pastillas de filtro del catálogo NeuronDB
  * (paquete compartido).
@@ -66,15 +67,6 @@ export function bindBankChips (container, onPick)
   };
 }
 
-function escText (s)
-{
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
-function escAttr (s)
-{
-  return escText(s).replace(/"/g, '&quot;');
-}
+
+

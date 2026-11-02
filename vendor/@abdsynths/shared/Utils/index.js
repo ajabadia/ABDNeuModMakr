@@ -16,3 +16,5 @@ export {
   comprobarContraElEsquema,
   contratoDerivaIgual,
 } from './quarantine.js';
+export { clamp01 } from './number.js';
+export { escAttr, escText, escapeHtml } from './escape.js';

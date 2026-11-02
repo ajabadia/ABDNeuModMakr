@@ -1,12 +1,22 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Raw Multi-Format Sampler Exporter Types (Fase 16)
+// ABDNeuModMakr — Raw Multi-Format Sampler Exporter Types (Fase 16 + Fase 32.3/32.4)
 //
 // Types and contracts for exporting pristine raw samples and
 // zone/region mappings (unprocessed by Scape/Sphere resynthesis)
 // to standard sampler formats.
 // ─────────────────────────────────────────────────────────
 
-import type { CrossfadeCurve, DahdsrEnvelope, LoopMode, MidiNote, RegionFilterConfig, TriggerMode } from './SamplerTypes.ts';
+import type {
+  CrossfadeCurve,
+  DahdsrEnvelope,
+  LoopMode,
+  MidiNote,
+  PitchEnvelopeConfig,
+  RegionFilterConfig,
+  SampleLoopDescriptor,
+  SamplerPlayLogic,
+  TriggerMode,
+} from './SamplerTypes.ts';
 
 export type RawSamplerFormat =
   | 'sfz'          // SFZ format (.sfz + Samples/ folder packaged as .zip)
@@ -17,6 +27,12 @@ export type RawSamplerFormat =
   | 'multisample'  // Bitwig Studio Multisample package (.multisample zip with multisample.xml)
   | 'mpc_xpm'      // Akai MPC Program (.xpm XML + sibling WAVs packaged as .zip)
   | 'mpc_xpn'      // Akai MPC Expansion Pack (.xpn with Expansion.xml + .xpm + WAVs)
+  | 'ableton_adv'  // Ableton Sampler / Simpler (.adv GZIP XML + Samples/Imported/ packaged as .adv.zip)
+  | 'exs24'        // Apple Logic EXS24 / Sampler (.exs binary + Samples/ packaged as .exs.zip)
+  | 'tal_sampler'  // TAL-Sampler (.talsmpl XML + Samples/ packaged as .talsmpl.zip)
+  | 'tx16wx'       // CWITEC TX16Wx (.txprog XML + Samples/ packaged as .txprog.zip)
+  | 'korg_kmp'     // Korg Trinity/Triton/M3/Pa (.KMP + .KSF + .KSC packaged as .kmp.zip)
+  | 'dls'          // MMA Downloadable Sounds Level 1/2 (.dls RIFF "DLS " monolithic)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';
@@ -87,21 +103,34 @@ export interface UniformSamplerRegion {
   highVel: number;
   detuneCents: number;
   volumeDb: number;
-  pan: number; // -50..+50 or -100..+100
+  pan: number; // -50..+50
   pitchKeytrack: number; // 0..100%
   loopMode: LoopMode;
   loopStart: number;
   loopEnd: number;
   loopCrossfadeMs: number;
   crossfadeCurve?: CrossfadeCurve;
+  keyFadeIn?: number;
+  keyFadeOut?: number;
+  velFadeIn?: number;
+  velFadeOut?: number;
+  loops?: SampleLoopDescriptor[];
   ampEnvelope?: Partial<DahdsrEnvelope>;
   filterConfig?: Partial<RegionFilterConfig>;
+  pitchEnvelope?: Partial<PitchEnvelopeConfig>;
   trigger?: TriggerMode;
+  playLogic?: SamplerPlayLogic;
   seqPosition?: number;
   seqLength?: number;
   sampleStartFrame?: number;
   sampleEndFrame?: number;
+  reversed?: boolean;
+  groupId?: string;
+  groupName?: string;
   muteGroup?: number;
+  keyswitchNote?: MidiNote;
+  velToVolumeDepth?: number;
+  velToPitchCents?: number;
 }
 
 export interface RawExportResult {

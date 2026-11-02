@@ -37,8 +37,9 @@ import {
     envelopePoints,
 } from './envelopeCurve.js';
 import { ENVELOPE_HANDLES, HANDLE_NAMES, attachEnvelopeHandle } from './envelopeGestures.js';
+import { clamp01 } from '../Utils/number.js';
 
-const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+
 
 /**
  * El control (ver la cabecera del fichero para el contrato y el value model).

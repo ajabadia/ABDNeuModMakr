@@ -13,6 +13,7 @@ import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
+import { downloadBlob } from './download.ts';
 import { encodePcm16Wav, decodeWav, decodeAiff } from '../core/dsp/WavDecoder.ts';
 import {
   computeZoomedWaveformEnvelope,
@@ -2001,12 +2002,7 @@ export class AudioChopperModal {
         if (!this.currentResult) return;
         const midiBytes = this.currentResult.midiFileBuffer;
         const blob = new Blob([midiBytes.buffer as ArrayBuffer], { type: 'audio/midi' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${(this.sourceFilename || 'sliced_audio').replace(/\.[^/.]+$/, '')}_slices.mid`;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, `${(this.sourceFilename || 'sliced_audio').replace(/\.[^/.]+$/, '')}_slices.mid`);
         toast('Downloaded Standard MIDI pattern for sliced audio.', 'success');
       });
     }

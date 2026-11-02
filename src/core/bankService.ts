@@ -31,6 +31,8 @@ import {
 } from './timeCapsule.ts';
 import { bridgeClient, type AxionikSaveFileEntry } from './bridge/BridgeClient.ts';
 import { createUniqueModelSlug, slugifyModelName } from './modelSlug.ts';
+import { basename, sanitizeFileName } from './pathUtils.ts';
+import { downloadBlob, downloadBytes } from '../ui/download.ts';
 import type { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
 import type {
   BankSummary,
@@ -404,39 +406,21 @@ export class BankService {
         );
 
       if (typeof document !== 'undefined') {
-        const blob = new Blob([jsonContent], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download =
-          targetPath.split(/[\\/]/).pop() ??
-          `Model_${String(activeSlot).padStart(3, '0')}.nmmodel`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const fallback = `Model_${String(activeSlot).padStart(3, '0')}.nmmodel`;
+        downloadBytes(jsonContent, basename(targetPath) || fallback, 'application/json');
       }
       return;
     }
 
     const zipBytes = this.buildModelZipBytes(activeSlot);
     if (typeof document !== 'undefined') {
-      const blob = new Blob([zipBytes as unknown as BlobPart], {
-        type: 'application/zip',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const safeName = modelName.replace(/[^A-Za-z0-9_-]/g, '_');
+      const safeName = sanitizeFileName(modelName, 'model');
       const defaultZipName = `NeuronModel_${String(activeSlot).padStart(3, '0')}_${safeName}.zip`;
-      const requestedName = targetPath.split(/[\\/]/).pop() ?? defaultZipName;
-      a.download = requestedName.endsWith('.zip')
-        ? requestedName
-        : defaultZipName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const requestedName = basename(targetPath) || defaultZipName;
+      downloadBlob(
+        new Blob([zipBytes as unknown as BlobPart], { type: 'application/zip' }),
+        requestedName.endsWith('.zip') ? requestedName : defaultZipName
+      );
     }
   }
 
@@ -632,15 +616,10 @@ export class BankService {
       // Browser fallback: download as .axmodel.zip
       const zipBytes = this.buildModelZipBytes(activeSlot);
       if (typeof document !== 'undefined') {
-        const blob = new Blob([zipBytes as unknown as BlobPart], { type: 'application/zip' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${slug}.axmodel.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(
+          new Blob([zipBytes as unknown as BlobPart], { type: 'application/zip' }),
+          `${slug}.axmodel.zip`
+        );
       }
       savedPath = `${slug}.axmodel.zip`;
       filesWritten = entries.length;
@@ -715,15 +694,7 @@ export class BankService {
     const bytes = new Uint8Array(aiffAb);
 
     if (typeof document !== 'undefined') {
-      const blob = new Blob([aiffAb], { type: 'audio/aiff' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBytes(aiffAb, filename, 'audio/aiff');
     }
 
     return { filename, bytes };

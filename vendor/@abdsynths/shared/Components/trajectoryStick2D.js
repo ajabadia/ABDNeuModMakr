@@ -1,3 +1,4 @@
+import { clamp01 } from '../Utils/number.js';
 /**
  * ABD TrajectoryStick2D — Reusable 2D Circular Vector Stick for the ABDSynths suite.
  *
@@ -22,7 +23,7 @@
  *   stick.setValue(0, { x: 0.5, y: 0.5 });
  */
 
-const clamp01 = (v) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0.5));
+
 
 export class TrajectoryStick2D {
   /**
@@ -268,8 +269,8 @@ export class TrajectoryStick2D {
       dy /= dist;
     }
 
-    const normX = clamp01((dx + 1.0) * 0.5);
-    const normY = clamp01((dy + 1.0) * 0.5);
+    const normX = clamp01((dx + 1.0) * 0.5, 0.5);
+    const normY = clamp01((dy + 1.0) * 0.5, 0.5);
 
     this.coords[this.activeLayer] = { x: normX, y: normY };
     this.updatePuckPosition();
@@ -465,15 +466,15 @@ export class TrajectoryStick2D {
   setPosition(layerIdx, x, y, notify = true) {
     if (layerIdx >= 0 && layerIdx < this.options.numLayers) {
       // Clamping estricto al círculo físico unitario
-      let dx = clamp01(x) * 2.0 - 1.0;
-      let dy = clamp01(y) * 2.0 - 1.0;
+      let dx = clamp01(x, 0.5) * 2.0 - 1.0;
+      let dy = clamp01(y, 0.5) * 2.0 - 1.0;
       const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist > 1.0) {
         dx /= dist;
         dy /= dist;
       }
-      const normX = clamp01((dx + 1.0) * 0.5);
-      const normY = clamp01((dy + 1.0) * 0.5);
+      const normX = clamp01((dx + 1.0) * 0.5, 0.5);
+      const normY = clamp01((dy + 1.0) * 0.5, 0.5);
 
       this.coords[layerIdx] = {
         x: normX,
