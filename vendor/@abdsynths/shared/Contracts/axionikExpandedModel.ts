@@ -29,19 +29,34 @@
 export const AXIONIK_EXPANDED_MODEL_CONTRACT_VERSION = '2.0.0';
 
 /**
- * Engine generations able to load an expanded model.
- * Follows the `ABDJUNiO601` single-codebase CMake variant pattern:
- * - `classic`: 100% frozen Hartmann 2002 engine
- * - `classic-enhanced`: classic engine with improved independent filter/FX chain
- * - `expanded-v1`: full next-gen Resynator v2 + HD spectral + hybrid transient engine
+ * Canonical ABDAxionikVS modes / CMake build variants (`ABDJUNiO601` pattern):
+ * - `classic` (0): 100% frozen Hartmann 2002 engine
+ * - `plus` (1): classic Resynator with improved independent filter/FX chain
+ * - `expanded` (2): full next-gen ABDAxionikVS Resynator v2 + HD spectral + hybrid transient engine
+ */
+export type AxionikCanonicalMode = 'classic' | 'plus' | 'expanded';
+
+export const AXIONIK_CANONICAL_MODES: readonly AxionikCanonicalMode[] = [
+  'classic',
+  'plus',
+  'expanded',
+];
+
+/**
+ * Engine generations able to load a model.
+ * Canonical names are `classic`, `plus`, and `expanded` (without `ABD` or `Neuron`).
+ * Legacy strings `classic-enhanced` and `expanded-v1` are accepted as aliases and
+ * normalized to `plus` and `expanded` respectively.
  */
 export type AxionikEngineGeneration =
-  | 'classic'
+  | AxionikCanonicalMode
   | 'classic-enhanced'
   | 'expanded-v1';
 
 export const AXIONIK_ENGINE_GENERATIONS: readonly AxionikEngineGeneration[] = [
   'classic',
+  'plus',
+  'expanded',
   'classic-enhanced',
   'expanded-v1',
 ];
@@ -53,6 +68,48 @@ export function isAxionikEngineGeneration(
     typeof v === 'string' &&
     (AXIONIK_ENGINE_GENERATIONS as readonly string[]).includes(v)
   );
+}
+
+/** Normalizes any engine generation or alias to its canonical mode (`classic` | `plus` | `expanded`). */
+export function normalizeAxionikEngineGeneration(
+  gen: AxionikEngineGeneration
+): AxionikCanonicalMode {
+  if (gen === 'plus' || gen === 'classic-enhanced') return 'plus';
+  if (gen === 'expanded' || gen === 'expanded-v1') return 'expanded';
+  return 'classic';
+}
+
+/**
+ * Strict Drag & Drop / model-loading format rule per mode/Resynator (Gate Decision 4, 2026-11-03):
+ * Each mode/Resynator (`classic`, `plus`, `expanded`) ONLY admits its own model format
+ * and rejects (with an explicit user-facing warning) all other model formats.
+ */
+export interface AxionikModeFormatValidation {
+  allowed: boolean;
+  engineMode: AxionikCanonicalMode;
+  modelFormat: AxionikCanonicalMode;
+  reason?: string;
+}
+
+export function validateModelFormatForMode(
+  engineMode: AxionikEngineGeneration,
+  modelFormat: AxionikEngineGeneration
+): AxionikModeFormatValidation {
+  const canonicalEngine = normalizeAxionikEngineGeneration(engineMode);
+  const canonicalModel = normalizeAxionikEngineGeneration(modelFormat);
+  if (canonicalEngine !== canonicalModel) {
+    return {
+      allowed: false,
+      engineMode: canonicalEngine,
+      modelFormat: canonicalModel,
+      reason: `mode-format-mismatch: Resynator/mode '${canonicalEngine}' only accepts '${canonicalEngine}' format models and rejects '${canonicalModel}' models`,
+    };
+  }
+  return {
+    allowed: true,
+    engineMode: canonicalEngine,
+    modelFormat: canonicalModel,
+  };
 }
 
 /**
@@ -334,8 +391,8 @@ export interface AxionikArticulation {
 }
 
 /**
- * Explicit Sonic Matter Shapers for the proprietary Resynator v2
- * (aligned with `ABDNeural::DSP::CoreModules::Resonator` and Gate Decision 2).
+ * Explicit Sonic Matter Shapers for the proprietary ABDAxionikVS Resynator v2
+ * (expanded mode, Gate Decision 2).
  */
 export interface AxionikResonatorShapers {
   /**
@@ -501,12 +558,12 @@ export type AxionikSpatialOutputMode =
   | 'pseudo-surround-stereo';
 
 /**
- * Canonical capability profile for each of the 3 CMake build variants
- * (`ABDJUNiO601` pattern: 0 = classic, 1 = classic-enhanced, 2 = expanded-v1).
+ * Canonical capability profile for each of the 3 ABDAxionikVS CMake build variants / modes
+ * (`ABDJUNiO601` pattern: 0 = classic, 1 = plus, 2 = expanded).
  */
 export interface AxionikEngineVariantProfile {
   variantIndex: 0 | 1 | 2;
-  generation: AxionikEngineGeneration;
+  generation: AxionikCanonicalMode;
   caps: readonly AxionikEngineCap[];
   maxPartials: number;
   maxFrames: number;
@@ -522,21 +579,27 @@ export const AXIONIK_CLASSIC_ENGINE_PROFILE: AxionikEngineVariantProfile = {
   spatialOutputMode: 'pseudo-surround-stereo',
 };
 
-export const AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE: AxionikEngineVariantProfile = {
+export const AXIONIK_PLUS_ENGINE_PROFILE: AxionikEngineVariantProfile = {
   variantIndex: 1,
-  generation: 'classic-enhanced',
+  generation: 'plus',
   caps: ['filter-v2', 'fx-v2'],
   maxPartials: 64,
   maxFrames: 16,
   spatialOutputMode: 'pseudo-surround-stereo',
 };
 
-export const AXIONIK_EXPANDED_V1_ENGINE_PROFILE: AxionikEngineVariantProfile = {
+export const AXIONIK_EXPANDED_ENGINE_PROFILE: AxionikEngineVariantProfile = {
   variantIndex: 2,
-  generation: 'expanded-v1',
+  generation: 'expanded',
   caps: AXIONIK_ENGINE_CAPS,
   maxPartials: 1024,
   maxFrames: 256,
   spatialOutputMode: 'pseudo-surround-stereo',
 };
+
+/** Backward-compatible profile aliases. */
+export const AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE: AxionikEngineVariantProfile =
+  AXIONIK_PLUS_ENGINE_PROFILE;
+export const AXIONIK_EXPANDED_V1_ENGINE_PROFILE: AxionikEngineVariantProfile =
+  AXIONIK_EXPANDED_ENGINE_PROFILE;
 

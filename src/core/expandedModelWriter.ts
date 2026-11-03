@@ -17,7 +17,9 @@ import {
   AXIONIK_EXPANDED_MODEL_CONTRACT_VERSION,
   isAxionikExpandedModel,
   isAxionikEngineCap,
+  isAxionikEngineGeneration,
   meetsEngineCaps,
+  validateModelFormatForMode,
   type AxionikAiStep,
   type AxionikArticulation,
   type AxionikDahdsr,
@@ -144,7 +146,7 @@ const BARK_BAND_EDGES_HZ = [
 ] as const;
 
 /**
- * Derives physical and spectral Resonator v2 shapers (`ABDNeural` sonic matter model)
+ * Derives physical and spectral Resonator v2 shapers (ABDAxionikVS expanded mode sonic matter model)
  * from deterministic `AcousticDescriptors`.
  */
 export function deriveResonatorShapersFromDescriptors(
@@ -718,7 +720,7 @@ export function buildAxionikExpandedModel(
       hasAi: aiSteps.length > 0,
     });
 
-  // Build Resynator v2 definitions, auto-attaching ABDNeural shapers if acousticDescriptors are provided
+  // Build Resynator v2 definitions, auto-attaching ABDAxionikVS expanded shapers if acousticDescriptors are provided
   const derivedShapers = input.acousticDescriptors
     ? deriveResonatorShapersFromDescriptors(input.acousticDescriptors)
     : undefined;
@@ -752,7 +754,7 @@ export function buildAxionikExpandedModel(
       slug: slugifyModelName(fullName),
       expandedName: fullName,
       modelName: (input.processConfig.modelName || fullName).slice(0, 11),
-      engineMin: input.engineMin ?? 'expanded-v1',
+      engineMin: input.engineMin ?? 'expanded',
       requiredCaps,
     },
     spectral,
@@ -848,7 +850,9 @@ export interface ExpandedAxionikPreflightReport {
 
 const ENGINE_GENERATION_RANK: Record<string, number> = {
   classic: 0,
+  plus: 1,
   'classic-enhanced': 1,
+  expanded: 2,
   'expanded-v1': 2,
 };
 
@@ -911,10 +915,24 @@ export function preflightExpandedModelForAxionik(
     errors.push(
       `unknown-engine: generation '${engine.generation}' is not a known Axionik engine`
     );
-  } else if (haveRank < needRank) {
-    errors.push(
-      `engine-too-old: document requires '${model.identity.engineMin}' but engine is '${engine.generation}'`
-    );
+  } else {
+    if (haveRank < needRank) {
+      errors.push(
+        `engine-too-old: document requires '${model.identity.engineMin}' but engine is '${engine.generation}'`
+      );
+    }
+    if (
+      isAxionikEngineGeneration(engine.generation) &&
+      isAxionikEngineGeneration(model.identity.engineMin)
+    ) {
+      const modeCheck = validateModelFormatForMode(
+        engine.generation,
+        model.identity.engineMin
+      );
+      if (!modeCheck.allowed && modeCheck.reason) {
+        errors.push(modeCheck.reason);
+      }
+    }
   }
 
   const missingCaps = requiredCaps.filter((c) => !engine.caps.includes(c));

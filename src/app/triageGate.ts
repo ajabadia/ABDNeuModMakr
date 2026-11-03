@@ -13,6 +13,14 @@ import {
 } from '../formats/MultiAssetDiscovery.ts';
 import { isSupportedAudioFileName } from '@abdsynths/shared/formats/neuron';
 import type { FolderFileInput } from '../core/batch/FolderBatchExtractor';
+import { extractFolderFilesToCandidates } from '../core/batch/FolderBatchExtractor';
+import type { BatchModelCandidate } from '../core/batch/types.ts';
+import {
+  parseUniversalSampler,
+  type ParsedSamplerPreset,
+} from '../core/import/rawSamplerParsers.ts';
+import { applyPreflightImportAdaptations } from '../core/import/importPreflight.ts';
+import { slugifyModelName } from '../core/modelSlug.ts';
 
 export interface TriageExpandedFile {
   name: string;
@@ -33,6 +41,12 @@ export const TRIAGE_CONTAINER_EXTENSIONS = [
   '.adv',
   '.exs',
   '.xpm',
+  '.xty',
+  '.xtd',
+  '.talsmpl',
+  '.txprog',
+  '.kmp',
+  '.dls',
 ];
 
 function normalizeTriagePath(p: string): string {
@@ -162,4 +176,119 @@ export function partitionTriageSelection(
     part.skipped.push(item);
   }
   return part;
+}
+
+/**
+ * Parses a non-SF2, non-SFZ sampler definition item (`.dspreset`, `.exs`, `.xpm`,
+ * `.adv`, `.vstpreset`, `.multisample`, `.talsmpl`, `.txprog`, `.kmp`, `.dls`, `.nki`, `.rx2`)
+ * together with its resolved companion audio buffers using `parseUniversalSampler`.
+ */
+export async function parseTriageDefinitionItem(
+  item: DiscoveredSamplerItem,
+  byPath: Map<string, TriageExpandedFile>
+): Promise<ParsedSamplerPreset | null> {
+  const files = resolveTriageItemFiles(item, byPath);
+  if (files.length === 0) return null;
+  const primaryNorm = normalizeTriagePath(item.primaryFilePath);
+  const primaryBase = triageBasename(item.primaryFilePath);
+  const primaryFile =
+    files.find((f) => normalizeTriagePath(f.name) === primaryNorm) ??
+    files.find((f) => triageBasename(f.name).toLowerCase() === primaryBase.toLowerCase()) ??
+    files[0];
+  const siblings = new Map<string, Uint8Array>();
+  for (const f of files) {
+    if (f === primaryFile) continue;
+    siblings.set(triageBasename(f.name), new Uint8Array(f.buffer));
+    siblings.set(f.name.replace(/\\/g, '/'), new Uint8Array(f.buffer));
+  }
+  try {
+    return await parseUniversalSampler(primaryBase, primaryFile.buffer, siblings);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts exotic sampler definition items (`.sfz`, `.dspreset`, `.exs`, `.xpm`, etc.)
+ * from `partitionTriageSelection().skipped` into ready-to-run `BatchModelCandidate`s
+ * whenever their companion audio buffers are present and parseable.
+ */
+export async function extractTriageDefinitionCandidates(
+  items: DiscoveredSamplerItem[],
+  byPath: Map<string, TriageExpandedFile>
+): Promise<{
+  candidates: BatchModelCandidate[];
+  unparseable: DiscoveredSamplerItem[];
+}> {
+  const candidates: BatchModelCandidate[] = [];
+  const unparseable: DiscoveredSamplerItem[] = [];
+
+  for (const item of items) {
+    const files = resolveTriageItemFiles(item, byPath);
+    const primaryBase = triageBasename(item.primaryFilePath).toLowerCase();
+
+    if (primaryBase.endsWith('.sfz')) {
+      const audioOnly = files.filter((f) =>
+        isSupportedAudioFileName(triageBasename(f.name).toLowerCase())
+      );
+      if (audioOnly.length > 0) {
+        const extracted = extractFolderFilesToCandidates(
+          audioOnly.map((f) => ({
+            path: f.name,
+            name: triageBasename(f.name),
+            buffer: f.buffer,
+          })),
+          { defaultOriginName: item.name }
+        );
+        if (extracted.length > 0) {
+          for (const c of extracted) {
+            c.name = item.name || c.name;
+            c.slug = slugifyModelName(c.name);
+            c.sourceOrigin = item.primaryFilePath;
+            candidates.push(c);
+          }
+          continue;
+        }
+      }
+      unparseable.push(item);
+      continue;
+    }
+
+    const preset = await parseTriageDefinitionItem(item, byPath);
+    if (!preset || preset.audioBuffers.size === 0) {
+      unparseable.push(item);
+      continue;
+    }
+    const adapted = applyPreflightImportAdaptations(preset, {
+      autoExtendOuterZones: true,
+      adaptVelocityLayers: true,
+      switchToExtendedMode: true,
+      currentWorkingMode: 'extended',
+    });
+    const batchFiles = Array.from(adapted.audioBuffers.entries(), ([name, buffer]) => ({
+      name,
+      buffer,
+    }));
+    const rawParamSet = Number(preset.suggestedParameterSet);
+    const paramSet = Number.isFinite(rawParamSet) ? Math.max(0, Math.min(9, rawParamSet)) : 0;
+    const displayName = preset.presetName || item.name || 'Instrument';
+    candidates.push({
+      id: `triage-${item.id}`,
+      name: displayName,
+      slug: slugifyModelName(displayName),
+      sourceType: 'folder-pack',
+      sourceOrigin: item.primaryFilePath,
+      zoneCount: Math.max(1, adapted.classicZones.length || adapted.extendedRegions.length),
+      detectedCategory: preset.detectedCategory || 'Auto',
+      suggestedParameterSet: paramSet,
+      suggestedComplexity: 8,
+      status: 'pending',
+      progressPct: 0,
+      files: batchFiles,
+      classicZones: adapted.classicZones,
+      extendedRegions: adapted.extendedRegions,
+    });
+  }
+
+  return { candidates, unparseable };
 }

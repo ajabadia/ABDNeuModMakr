@@ -10,8 +10,10 @@ import { discoverSamplerAssets } from '../src/formats/MultiAssetDiscovery.ts';
 import {
   buildTriageVfs,
   discoverTriageReport,
+  extractTriageDefinitionCandidates,
   indexTriageBuffers,
   isTriageAudioItem,
+  parseTriageDefinitionItem,
   partitionTriageSelection,
   resolveTriageItemFiles,
   shouldOpenTriageGate,
@@ -137,6 +139,42 @@ async function runPhase35Tests(): Promise<void> {
       '4. empty report must NOT open the gate'
     );
     console.log('  [OK] 4. Single-format fast paths preserved');
+  }
+
+  // 5. Definition items (.sfz, .dspreset) convert to BatchModelCandidates and ParsedSamplerPreset
+  {
+    const dspresetXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DecentSampler>
+  <groups>
+    <group>
+      <sample path="Bass/bass_C2.wav" rootNote="36" loNote="24" hiNote="48" loVel="1" hiVel="127" />
+    </group>
+  </groups>
+</DecentSampler>`;
+    const files: TriageExpandedFile[] = [
+      { name: 'Drums/kick.wav', buffer: makeDummyWav().buffer as ArrayBuffer },
+      { name: 'Keys/piano.sfz', buffer: enc('<region> sample=piano_C4.wav key=60').buffer as ArrayBuffer },
+      { name: 'Keys/piano_C4.wav', buffer: makeDummyWav(140).buffer as ArrayBuffer },
+      { name: 'Bass/bass.dspreset', buffer: enc(dspresetXml).buffer as ArrayBuffer },
+      { name: 'Bass/bass_C2.wav', buffer: makeDummyWav(160).buffer as ArrayBuffer },
+    ];
+    const report = await discoverTriageReport(files, 'MixedPack');
+    assert(report !== null && shouldOpenTriageGate(report), '5. mixed pack must open the gate');
+    const byPath = indexTriageBuffers(files);
+    const part = partitionTriageSelection(report!.items, byPath);
+    const defRes = await extractTriageDefinitionCandidates(part.skipped, byPath);
+    assert(
+      defRes.candidates.length === 2,
+      `5. both SFZ and Decent Sampler definitions must extract to BatchModelCandidates (got ${defRes.candidates.length})`
+    );
+    assert(defRes.unparseable.length === 0, '5. zero unparseable items when companion audio is present');
+    const dsItem = report!.items.find((it) => it.format === 'dspreset')!;
+    const singlePreset = await parseTriageDefinitionItem(dsItem, byPath);
+    assert(
+      singlePreset !== null && singlePreset.regions.length === 1 && singlePreset.audioBuffers.size === 1,
+      '5. parseTriageDefinitionItem must parse .dspreset with companion audio for direct session load'
+    );
+    console.log('  [OK] 5. Triage definition items (.sfz, .dspreset) convert to Batch & Session presets');
   }
 
   console.log('=== ALL PHASE 35 TESTS PASSED ===');

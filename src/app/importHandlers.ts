@@ -34,10 +34,13 @@ import { extractSf2PresetsToCandidates } from '../core/batch/Sf2BatchExtractor';
 import type { BatchModelCandidate } from '../core/batch/types';
 import { MultiAssetTriageModal } from '../ui/MultiAssetTriageModal';
 import type { DiscoveredSamplerItem } from '../formats/MultiAssetDiscovery.ts';
+import { applyPreflightImportAdaptations } from '../core/import/importPreflight.ts';
 import {
   discoverTriageReport,
+  extractTriageDefinitionCandidates,
   indexTriageBuffers,
   isTriageAudioItem,
+  parseTriageDefinitionItem,
   partitionTriageSelection,
   resolveTriageItemFiles,
   shouldOpenTriageGate,
@@ -704,6 +707,22 @@ export class ImportHandlers {
     // 3. Otherwise collect `.wav` / `.aif` / `.aiff` audio files (recursively up to 1 level)
     // Refresh never replaces the editor session with audio imports.
     if (opts?.applyToSession === false) return;
+
+    // Fase 35 — DirectoryHandle triage gate (`showDirectoryPicker`):
+    // Mixed folders carrying preset containers + audio/models open the triage gate.
+    const mixedDirFiles = await this.readMixedDirectoryHandleForTriage(rootHandle);
+    if (
+      mixedDirFiles &&
+      (await this.maybeOpenTriageGate(
+        mixedDirFiles,
+        rootHandle.name || 'Selected Folder',
+        'samples',
+        preferredKind
+      ))
+    ) {
+      return;
+    }
+
     const folderInputs: FolderFileInput[] = [];
     const collectAudio = async (dir: FileSystemDirectoryHandle, relPrefix: string, depth: number): Promise<void> => {
       for await (const entry of (dir as IterDir).values()) {
@@ -1108,6 +1127,85 @@ export class ImportHandlers {
       }
       return;
     }
+    if (primaryBase.endsWith('.sfz')) {
+      const sfzFile =
+        files.find((f) => f.name.toLowerCase().endsWith('.sfz')) ?? files[0];
+      const companionAudio = files.filter((f) =>
+        isSupportedAudioFileName((f.name.split('/').pop() ?? f.name).toLowerCase())
+      );
+      try {
+        await withLoading(
+          'IMPORTING SFZ INSTRUMENT...',
+          `Decoding opcodes from "${item.name}" and mapping regions...`,
+          async () => {
+            if (sfzFile.buffer.byteLength > MAX_SFZ_TEXT_BYTES) {
+              throw new Error(
+                `SFZ file too large (${sfzFile.buffer.byteLength} bytes, max ${MAX_SFZ_TEXT_BYTES})`
+              );
+            }
+            const sfzText = new TextDecoder('utf-8').decode(sfzFile.buffer);
+            const normalizedSfzAudio: { name: string; buffer: ArrayBuffer }[] = [];
+            for (const af of companionAudio) {
+              const baseName = af.name.split('/').pop() ?? af.name;
+              const normBuf = await transcodeAnyAudioToWavBuffer(af.buffer, baseName);
+              normalizedSfzAudio.push({ name: baseName, buffer: normBuf });
+            }
+            const session = await this.ctx.core.importSfzText(
+              sfzText,
+              sfzFile.name.split('/').pop() ?? sfzFile.name,
+              normalizedSfzAudio
+            );
+            this.ctx.session = session;
+            this.ctx.selectedZoneId = session.zones[0]?.id || null;
+            this.ctx.log(
+              `${sourceLabel} (triage): imported SFZ "${item.name}" (${session.extendedRegions?.length ?? 0} regions, ${normalizedSfzAudio.length} companion audio file(s)).`
+            );
+            this.ctx.refresh();
+          }
+        );
+      } catch (err) {
+        toast(
+          `Failed to load SFZ "${item.name}": ${err instanceof Error ? err.message : String(err)}`,
+          'error'
+        );
+      }
+      return;
+    }
+
+    // Attempt direct universal sampler definition parse (.dspreset, .exs, .xpm, .adv, .vstpreset, .multisample, etc.)
+    const parsedPreset = await parseTriageDefinitionItem(item, byPath);
+    if (parsedPreset && parsedPreset.regions.length > 0) {
+      const currentMode = this.ctx.session?.processConfig.workingMode ?? 'classic';
+      const adapted = applyPreflightImportAdaptations(parsedPreset, {
+        autoExtendOuterZones: true,
+        adaptVelocityLayers: true,
+        switchToExtendedMode: currentMode === 'extended',
+        currentWorkingMode: currentMode,
+      });
+      if (!this.ctx.session) {
+        this.ctx.session = await this.ctx.core.newSession(parsedPreset.modelName || item.name);
+      }
+      for (const [name, buf] of adapted.audioBuffers.entries()) {
+        this.ctx.core.registerSampleBuffer(name, buf);
+      }
+      const rawParamSet = Number(parsedPreset.suggestedParameterSet);
+      const paramSet = Number.isFinite(rawParamSet) ? Math.max(0, Math.min(9, rawParamSet)) : 0;
+      this.ctx.session.name = parsedPreset.modelName || item.name;
+      this.ctx.session.processConfig.modelName = (parsedPreset.modelName || item.name).slice(0, 11);
+      this.ctx.session.processConfig.expandedName = parsedPreset.presetName || item.name;
+      this.ctx.session.processConfig.parameterSet = paramSet;
+      this.ctx.session.processConfig.workingMode = adapted.suggestedWorkingMode;
+      this.ctx.session.zones = adapted.classicZones;
+      this.ctx.session.extendedRegions = adapted.extendedRegions;
+      this.ctx.session.dirty = true;
+      this.ctx.selectedZoneId = adapted.classicZones[0]?.id ?? null;
+      this.ctx.log(
+        `${sourceLabel} (triage): loaded ${parsedPreset.formatLabel} "${parsedPreset.presetName}" (${adapted.classicZones.length} zones).`
+      );
+      this.ctx.refresh();
+      return;
+    }
+
     toast(
       `"${item.name}" (${item.formatLabel}) goes through Batch or Universal Import (Ctrl+I) — direct session load here supports audio packs and SF2.`,
       'warning'
@@ -1144,14 +1242,22 @@ export class ImportHandlers {
         );
       }
     }
+    let remainingSkipped = part.skipped;
+    if (part.skipped.length > 0) {
+      const defResult = await extractTriageDefinitionCandidates(part.skipped, byPath);
+      if (defResult.candidates.length > 0) {
+        candidates.push(...defResult.candidates);
+      }
+      remainingSkipped = defResult.unparseable;
+    }
     if (candidates.length === 0) {
       toast('Nothing batch-processable in the selection — use Universal Import (Ctrl+I) for these formats.', 'warning');
       return;
     }
-    if (part.skipped.length > 0) {
-      const kinds = [...new Set(part.skipped.map((s) => s.formatLabel))].join(', ');
+    if (remainingSkipped.length > 0) {
+      const kinds = [...new Set(remainingSkipped.map((s) => s.formatLabel))].join(', ');
       toast(
-        `Skipped ${part.skipped.length} (${kinds}): batch takes audio packs and SF2 — the rest go via Universal Import (Ctrl+I).`,
+        `Skipped ${remainingSkipped.length} (${kinds}): batch takes audio packs and SF2 — the rest go via Universal Import (Ctrl+I).`,
         'warning'
       );
     }
@@ -1160,6 +1266,52 @@ export class ImportHandlers {
     } else {
       this.ctx.onOpenBatchProcessor?.();
     }
+  }
+
+  /**
+   * DirectoryHandle (`showDirectoryPicker`) variant: reads mixed folders carrying
+   * preset containers + audio/other files so the triage gate can inspect them.
+   */
+  private async readMixedDirectoryHandleForTriage(
+    rootHandle: FileSystemDirectoryHandle
+  ): Promise<TriageExpandedFile[] | null> {
+    type IterDir = FileSystemDirectoryHandle & {
+      values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
+    };
+    const entries: { rel: string; handle: FileSystemFileHandle }[] = [];
+    let hasContainer = false;
+    let hasOther = false;
+    const walk = async (dir: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<void> => {
+      for await (const entry of (dir as IterDir).values()) {
+        if (entry.name.startsWith('.') || entry.name.startsWith('._') || entry.name === '__MACOSX') {
+          continue;
+        }
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.kind === 'file') {
+          const lower = entry.name.toLowerCase();
+          if (TRIAGE_CONTAINER_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+            hasContainer = true;
+          } else {
+            hasOther = true;
+          }
+          entries.push({ rel, handle: entry as FileSystemFileHandle });
+        } else if (entry.kind === 'directory' && depth < 2) {
+          await walk(entry as FileSystemDirectoryHandle, rel, depth + 1);
+        }
+      }
+    };
+    await walk(rootHandle, '', 0);
+    if (!hasContainer || !hasOther || entries.length < 2) return null;
+    const expanded: TriageExpandedFile[] = [];
+    for (const item of entries) {
+      try {
+        const f = await item.handle.getFile();
+        expanded.push({ name: item.rel, buffer: await f.arrayBuffer() });
+      } catch {
+        // skip unreadable file
+      }
+    }
+    return expanded.length >= 2 ? expanded : null;
   }
 
   /**

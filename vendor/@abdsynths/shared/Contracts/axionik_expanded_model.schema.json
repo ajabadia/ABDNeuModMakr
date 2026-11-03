@@ -23,7 +23,7 @@
         "slug": { "type": "string", "minLength": 1 },
         "expandedName": { "type": "string", "minLength": 1 },
         "modelName": { "type": "string", "maxLength": 11 },
-        "engineMin": { "enum": ["classic", "classic-enhanced", "expanded-v1"] },
+        "engineMin": { "enum": ["classic", "plus", "expanded", "classic-enhanced", "expanded-v1"] },
         "requiredCaps": {
           "type": "array",
           "items": {

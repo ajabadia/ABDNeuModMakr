@@ -9,9 +9,12 @@
 
 import {
   AXIONIK_CLASSIC_ENGINE_PROFILE,
+  AXIONIK_PLUS_ENGINE_PROFILE,
+  AXIONIK_EXPANDED_ENGINE_PROFILE,
   AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE,
   AXIONIK_EXPANDED_V1_ENGINE_PROFILE,
   isAxionikExpandedModel,
+  validateModelFormatForMode,
 } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 import {
   buildAxionikExpandedModel,
@@ -204,7 +207,7 @@ async function runPhase11Tests(): Promise<void> {
       `11.1 classic-equivalent doc must require no caps (got ${doc.identity.requiredCaps})`
     );
     assert(
-      doc.identity.engineMin === 'expanded-v1',
+      doc.identity.engineMin === 'expanded',
       '11.1 default engineMin must be expanded-v1'
     );
     assert(doc.identity.modelName === 'TESTMODEL11', '11.1 11-char modelName kept');
@@ -663,14 +666,36 @@ async function runPhase11Tests(): Promise<void> {
     );
   }
 
-  // 11.13 Tres variantes CMake (`ABDJUNiO601` pattern) y adaptación espacial dual (`Pseudo-Surround` vs `Quad`).
+  // 11.13 Tres modos canónicos (`classic`, `plus`, `expanded`), Drag & Drop por modo y adaptación espacial dual.
   {
     assert(
       AXIONIK_CLASSIC_ENGINE_PROFILE.generation === 'classic' &&
-        AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE.generation ===
-          'classic-enhanced' &&
-        AXIONIK_EXPANDED_V1_ENGINE_PROFILE.generation === 'expanded-v1',
-      '11.13 canonical 3-variant CMake profiles must be exported from ABDShared'
+        AXIONIK_PLUS_ENGINE_PROFILE.generation === 'plus' &&
+        AXIONIK_EXPANDED_ENGINE_PROFILE.generation === 'expanded' &&
+        AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE.generation === 'plus' &&
+        AXIONIK_EXPANDED_V1_ENGINE_PROFILE.generation === 'expanded',
+      '11.13 canonical 3-mode profiles (classic, plus, expanded) must be exported from ABDShared'
+    );
+    assert(
+      validateModelFormatForMode('classic', 'classic').allowed &&
+        validateModelFormatForMode('plus', 'plus').allowed &&
+        validateModelFormatForMode('expanded', 'expanded').allowed &&
+        !validateModelFormatForMode('classic', 'expanded').allowed &&
+        !validateModelFormatForMode('plus', 'expanded').allowed &&
+        !validateModelFormatForMode('expanded', 'classic').allowed &&
+        !validateModelFormatForMode('expanded', 'plus').allowed,
+      '11.13 each mode/Resynator must admit only its own model format and reject all others'
+    );
+    const classicDocOnExpanded = preflightExpandedModelForAxionik(
+      buildAxionikExpandedModel(makeBaseInput({ engineMin: 'classic' })),
+      AXIONIK_EXPANDED_ENGINE_PROFILE
+    );
+    assert(
+      !classicDocOnExpanded.ok &&
+        classicDocOnExpanded.errors.some((e) =>
+          e.startsWith('mode-format-mismatch')
+        ),
+      '11.13 expanded engine must reject a classic-targeted document with mode-format-mismatch'
     );
     const quadDoc = buildAxionikExpandedModel(
       makeBaseInput({
@@ -679,7 +704,7 @@ async function runPhase11Tests(): Promise<void> {
     );
     const stereoHostReport = preflightExpandedModelForAxionik(
       quadDoc,
-      AXIONIK_EXPANDED_V1_ENGINE_PROFILE
+      AXIONIK_EXPANDED_ENGINE_PROFILE
     );
     assert(
       stereoHostReport.ok &&
@@ -691,7 +716,7 @@ async function runPhase11Tests(): Promise<void> {
       '11.13 Quad 4.0 model on stereo/WASM host must succeed with explicit Pseudo-Surround adaptation'
     );
     const discreteQuadReport = preflightExpandedModelForAxionik(quadDoc, {
-      ...AXIONIK_EXPANDED_V1_ENGINE_PROFILE,
+      ...AXIONIK_EXPANDED_ENGINE_PROFILE,
       spatialOutputMode: 'discrete-quad',
     });
     assert(
@@ -702,7 +727,7 @@ async function runPhase11Tests(): Promise<void> {
       '11.13 Quad 4.0 model on discrete-quad bus renders natively without downmix adaptation'
     );
     console.log(
-      '  [OK] 11.13 3-variant CMake profiles and dual Surround/Pseudo-Surround preflight verified'
+      '  [OK] 11.13 3 canonical modes (classic, plus, expanded), strict Drag & Drop format rule, and dual Surround/Pseudo-Surround verified'
     );
   }
 
