@@ -1083,12 +1083,12 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
   - Tests `tests/phase35_triage_gate.test.ts` (5/5 en verde; fase 29 sigue 33/33; `tsc` sin errores en `src/`).
   - Estandarización gráfica (2026-11-03, con el sistema de la suite de laboratorios): la triage adopta ventana 1100px/95%/92vh, cabecera `.nmm-modal-header` (icono + título humano + badge de formatos + cierre), 4 niveles (resumen → búsqueda/selección con `.val-pill` → tabla con scroll 200px → pie con Cerrar + Procesar), botones `btn-sm`, badges compartidos y cero colores literales (ya fusionado en `src/style.css`; pie canónico global). Título humano, sin coletilla de fase. `MultiInstrumentModal` convergida al mismo kit (ventana L 820px, resumen + búsqueda + tabla + pie compartidos, focus-trap + Escape/clic-fuera; su listener manual de Escape, con fuga, eliminado). Esqueleto canónico DRY en `style.css`: tallas XL/L/M, pie, `.modal-icon` y `.nmm-dropzone` unificada (Batch + Universal Import). Chopper/Loop sin inline (`.is-hidden-file`/`.is-hidden`).
 
-### 35.1 Bancos Hartmann/Neuronik como un formato más
+### 35.1 Bancos Hartmann/Neuronik como un formato más — Implementado
 - Los bancos legacy entran por **Importar**, no por el Bank Browser. El Browser organiza lo propio; no es puerta de entrada.
-- [ ] Añadir el banco a la lista de formatos de Universal Smart Import (detección por firma, hoy ausente del chip de formatos).
-- [ ] Parser de banco como contenedor (igual que SF2: extraer modelos → zonas). Media tubería ya existe: `.neuronikmodel` reconocido en `importHandlers.ts`, límite de 11 caracteres y 2 capas en `menuActions.ts`, 10 Parameter Sets en `WebNeuralEngine`.
-- [ ] Adaptaciones de preflight del banco (nombres a 11, proyección de capas, sugerencia de modo) usando la puerta común de 35.3.
-- [ ] Decidir en la revisión del Bank Browser: solo gestiona, no importa.
+- [x] Añadir el banco a la lista de formatos de Universal Smart Import (detección por firma `csAN`/`psAN`/`MapVersionMajor`/`MName` y extensión `.model`/`.neuronikmodel`/`.nmmodel`/`.scape`/`.sphere`/`.zip` en `src/core/import/neuronBankImporter.ts` y chip de formatos en `UniversalImportModal.ts`).
+- [x] Parser de banco como contenedor (igual que SF2: listar múltiples modelos en `NeuronDB` `.zip` mediante `listNeuronBankModels` → abrir `MultiInstrumentModal` → extraer modelo → zonas y WAVs resintetizados o de Cápsula del Tiempo con `parseNeuronBankOrModelToPreset`).
+- [x] Adaptaciones de preflight del banco (nombres a 11 caracteres `INFO_CLASSIC_NAME_11_CHARS`, proyección de capas de velocidad a 2 y sugerencia de modo Extended) usando la puerta común de 35.3 (`fromImportPreflightReport` + `renderCommonPreflightGate`).
+- [x] Decidir en la revisión del Bank Browser (`BankDrawer.ts`): solo gestiona y organiza modelos/sublibrerías generados o enlazados (`Refresh / Folder / Clear`), no importa archivos sueltos.
 
 ### 35.2 Exportar por destino (empezar aquí: lo más barato) — Implementado
 - [x] Una pantalla con tarjetas de destino ("Para tocar en AxionikVS → Cápsula del Tiempo", "Para otros samplers → Kontakt/Decent/SFZ…", "Solo audio → WAV/AIFF") que llaman a los exportadores existentes (`onExportModel`, `exportSampler`, `exportZoneAiff`). Ningún exportador se reescribe. (`src/app/exportDestinations.ts`, `src/ui/ExportDestinationModal.ts` con esqueleto canónico DRY `nmm-modal-window nmm-modal-l` y accesos desde `File → Export Instrument (Choose Destination)...` `Ctrl+Shift+X`, `ProcessPanel` y `ProcessModal` al terminar el procesado).
@@ -1098,9 +1098,9 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - [x] Renombrar con el término técnico como subtítulo: "Revisión antes de importar" (Preflight), "Huella de ruido de esta grabación" (Noise Print), "Ajustar cortes al cruce por cero" (zc-snap), "Reconstructor de agudos" (BWE) (`MUSICIAN_TERMS` en `src/ui/preflightGateView.ts`, conectado en `UniversalImportModal`, `RawSamplerExportModal`, `BatchProcessorModal`, `AudioRecorderModal`, `AudioChopperModal`, `LoopEditorModal`, `SettingsModal`).
 - [x] Unificar los tres preflights (importación, lote, exportación) en un único componente visual: qué voy a cambiar + [Continuar] [Ajustar]. La lógica ya existe (`importPreflight`, preflight de batch, `rawSamplerPreflight`) (`fromImportPreflightReport`, `fromBatchPreflightSummary`, `fromRawSamplerPreflightReport` + `renderCommonPreflightGate` en `src/ui/preflightGateView.ts`, verificado en `tests/phase35_preflight_gate.test.ts`).
 
-### 35.4 Honestidad IA
-- [ ] Indicador único de estado (local / bridge / nube / sin conexión).
-- [ ] Cada botón IA declara motor y alternativa antes de actuar; sin fallbacks silenciosos.
+### 35.4 Honestidad IA — Implementado
+- [x] Indicador único de estado (`local / bridge / nube / sin conexión`) unificado en `resolveAiSystemStatus` (`src/core/ai/aiHonesty.ts`) y conectado en `Navbar.ts` (`#hud-ai-pill` / `#hud-ai-text` pasando `localProvider: webNeuralEngine.getDeviceStatus().activeProvider`) y `ProcessPanel.ts` (`#hud-card-ai` y rail colapsado).
+- [x] Cada botón IA declara motor principal y alternativa determinista antes de actuar (`resolveAiActionDeclaration`), y pide confirmación explícita (`confirmDialog`) cuando el motor primario no está disponible — cero fallbacks silenciosos en `AudioRecorderModal.ts` (`BWE`), `AudioChopperModal.ts` (`BWE`, `Whisper-tiny`, `HTDemucs` con alternativa `separateStemsDspFallback`) y `AiCoverGeneratorModal.ts` (`Generate Artwork` y `Enhance Prompt`).
 
 ### 35.5 Asistente guiado (el grande, para el final)
 - [ ] Modal nuevo en 4 pasos copiando el patrón `BatchModalStep` (descubrir → revisar → ejecutar → informe): 1 Material (Grabar / Importar) → 2 Limpiar → 3 Cortar y mapear ("¿batería o melodía?" con "detectar solo" por defecto vía clasificador cat-0..9) → 4 Generar y exportar (ProcessPanel simplificado + pantalla de 35.2). Los modales actuales pasan a "taller avanzado".
@@ -1109,8 +1109,56 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 ### Orden de ejecución
 35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5.
 
+---
 
+## Fase 36 — Internacionalización (i18n) en `@abdsynths/shared` (`ABDShared`) y `ABDNeuModMakr` [PLANIFICADA]
 
+**Objetivo**: Dotar a la aplicación y a la librería compartida `ABDShared` de un sistema de internacionalización (i18n) ligero, tipado y sin dependencias pesadas (por defecto `en` / `es`, extensible a más idiomas), unificando los textos hoy mezclados entre inglés y español.
 
+### 36.1 Parte en `@abdsynths/shared` (`ABDShared`)
+- [ ] **Contrato y runtime ligero de `i18n` en `ABDShared`**:
+  - Módulo compartido (`@abdsynths/shared/i18n`) con selector de locale activo (`getLocale`, `setLocale`, `onLocaleChange`), persistencia en `localStorage` (`abd_locale`), detección de `navigator.language` y función `t(key, params?)` con fallback seguro a inglés/clave base.
+- [ ] **Internacionalización de componentes UI compartidos en `ABDShared/UI/Components/`**:
+  - `SynthNavBar` (menús, atajos y diálogos estándar).
+  - `AboutDialog` (`createAboutDialog`: cabeceras de versión, autor, créditos).
+  - `bank/bankShell.js`, `bank/bankCard.js`, `bank/bankChips.js`, `bank/bankCategories.js` (buscador, pestañas `MODELS / PRESETS / LIBRARY`, contadores, estados vacíos, botones `Refresh / Folder / Clear / Close / Load`).
+- [ ] **Textos en español ya detectados en `ABDShared` (para traducir por diccionario sin tener que buscarlos)**:
+  - `Code/SamplerFormats/rawSamplerPreflight.ts`:
+    - `SAMPLER_FORMAT_METADATA`: descripciones en español de los formatos (`Decent Sampler`, `Native Instruments Kontakt`, `Steinberg HALion`, `Bitwig Studio Multisample`, `Linear Sample Chain`, `SoundFont 2`, `SFZ v2`, `Akai MPC Keygroup`, `Apple Logic EXS24`, `Ableton Sampler`, `Reason NN-XT`, `FL Studio DirectWave`, `Audiomodern Soundbox`, `Spectrasonics Omnisphere`, `NI Maschine`, `Korg KMP/KSF`, `Kurzweil K2000`, `Roland S-7xx`, `E-mu EOS`, `Ensoniq ASR-10`, `Akai S1000/S3000`, `Casio FZ-1`, `Synclavier II`, `Fairlight CMI`, `Yamaha Motif/Montage`).
+    - `analyzeRawSamplerPreflight`: títulos, `description` y `adaptation` de todos los avisos de preflight de exportación (`NO_REGIONS`, `NO_VALID_AUDIO`, `LOSSY_8BIT_QUANTIZATION`, `DOWNSAMPLING_NYQUIST`, `UPSAMPLING_INTERPOLATION`, `SAMPLE_CHAIN_FLATTEN`, `MONOLITHIC_CONTAINER_UNSUPPORTED`, `HALION_VST3_STEALTH_CONTAINER`, `SF2_16BIT_ONLY`, `SF2_NO_ROUND_ROBIN`, `MPC_MAX_4_LAYERS`, etc.).
 
+### 36.2 Parte en `ABDNeuModMakr` e Inventario de Puntos ya en Español
+- [ ] **Selector de idioma en `SettingsModal.ts` (pestaña General) y sincronización con `ABDShared`**.
+- [ ] **Inventario de archivos en `ABDNeuModMakr` que ya contienen cadenas en español (localizados para no tener que buscarlos luego)**:
+  1. `src/ui/preflightGateView.ts`:
+     - Diccionario `MUSICIAN_TERMS` (`Revisión antes de importar (Preflight)`, `Revisión antes de procesar el lote (Preflight)`, `Revisión antes de exportar (Preflight)`, `Huella de ruido de esta grabación (Noise Print)`, `Ajustar cortes al cruce por cero (zc-snap)`, `Reconstructor de agudos (BWE)`).
+     - Textos de `fromImportPreflightReport`, `fromRawSamplerPreflightReport`, `fromBatchPreflightSummary` y `renderCommonPreflightGate` (`"Qué voy a cambiar"`, `"Compatible al 100 %..."`, `"Listo para importar con adaptaciones automáticas"`, tarjetas de cambios y etiquetas de botones `Ajustar` / `Continuar`).
+  2. `src/app/exportDestinations.ts` y `src/ui/ExportDestinationModal.ts`:
+     - Constante `TIME_CAPSULE_ES_LABEL` (`Cápsula del Tiempo (.zip)`).
+     - Tarjetas de destino (`"Para tocar en AxionikVS"`, `"Para otros samplers"`, `"Solo audio"`, subtítulos, descripciones, badges y `actionLabel`).
+     - Cabecera, resumen de sesión, nota informativa y botones del pie (`Cerrar`, `Continuar`).
+  3. `src/ui/UniversalImportModal.ts`:
+     - Badge de cabecera (`IMPORTADOR UNIVERSAL`), estado de inspección (`Analizando estructura del banco y muestras de audio...`), título `"Ajustes de adaptación al importar"` y botones del pie (`Ajustar / Elegir otro archivo`, `Continuar e importar`).
+  4. `src/ui/RawSamplerExportModal.ts`:
+     - Cabecera (`Exportar Instrumento a Formato Sampler`), subtítulos de parámetros de audio (`Resolución (Bit Depth)`, `Frecuencia de Muestreo`, `Normalización de Pico`, `Disposición de Archivos`, `Autor / Creador`, `Licencia`) y estado de exportación (`Renderizando DSP y empaquetando archivo ZIP...`).
+  5. `src/ui/BatchProcessorModal.ts`:
+     - Indicador del paso 2 (`2. Revisión antes de procesar (Preflight)`) y botones del pie en preflight.
+  6. `src/ui/MultiAssetTriageModal.ts` y `src/ui/MultiInstrumentModal.ts`:
+     - Cabeceras (`Selección de archivos del paquete`, `Selección de instrumento del contenedor`), resúmenes, buscadores, cabeceras de tabla (`Incluir`, `Archivo`, `Tipo`, `Tamaño`, `Destino`, `Acción`), badges de tipo, notas al pie y botones (`Todo`, `Nada`, `Solo audio`, `Solo bancos`, `Cargar`, `Enviar al procesador por lotes`).
+  7. `src/ui/ConfigHealthModal.ts` y `src/core/configHealth.ts`:
+     - Títulos, descripciones, etiquetas de severidad (`Crítico`, `Advertencia`, `Óptimo`), resumen de salud y botones de acción (`Reparar`, `Abrir Ajustes`, `Cerrar`).
+  8. `src/ui/AudioRecorderModal.ts`, `src/ui/AudioChopperModal.ts`, `src/ui/LoopEditorModal.ts` y `src/ui/SettingsModal.ts`:
+     - Referencias visibles y tooltips de `MUSICIAN_TERMS` (`noisePrint`, `bwe`, `zcSnap`) y subtítulo en Stage 1 de `SettingsModal.ts`.
+  9. `src/ui/Navbar.ts`:
+     - Línea 413: `title` del botón de modo claro/oscuro (`'Cambiar a Modo Oscuro'` / `'Cambiar a Modo Claro'`).
+  10. `src/ui/ProcessPanel.ts`:
+     - Línea 492: badge `'IA ACTIVA'` en la tarjeta de estado de IA.
+  11. `src/core/ai/WebNeuralEngine.ts`:
+     - Líneas 96, 107, 115: `statusMessage` de inicialización (`'[WebGPU] Aceleracion GPU Activa'`, `'[WASM] WebAssembly SIMD Activo'`, `'[DSP] Modo DSP Local'`).
+  12. `src/app/menuActions.ts`:
+     - Textos del diálogo de confirmación en `checkExportPreflight` (`"El preflight del banco detectó N problema(s)..."`, `"Exportar de todos modos"`, `"Cancelar"`).
+  13. `src/core/ai/aiHonesty.ts` y `src/ui/AiCoverGeneratorModal.ts` (Fase 35.4):
+     - Textos de estado unificado (`IA: LOCAL / BRIDGE / NUBE / SIN CONEXIÓN`) y diálogos de consentimiento explícito de alternativa (`resolveAiActionDeclaration`).
+  14. `src/core/import/importPreflight.ts` y `src/core/import/neuronBankImporter.ts` (Fase 35.1):
+     - Aviso `INFO_CLASSIC_NAME_11_CHARS` y etiquetas de contenedor (`Cápsula del Tiempo (.zip)`).
 

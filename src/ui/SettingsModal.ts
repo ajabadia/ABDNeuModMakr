@@ -30,6 +30,7 @@ import { ICONS } from './icons';
 import { confirmDialog, toast } from './notify';
 import { escHtml, escAttr } from './escape';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap';
+import { MUSICIAN_TERMS } from './preflightGateView';
 
 export interface SettingsModalHandlers {
   onUpdateAiConfig: (config: AiAssistanceConfig) => void;
@@ -626,7 +627,7 @@ export class SettingsModal {
           <div class="stage-header">
             <span class="stage-num">1</span>
             <div class="stage-info">
-              <h4 class="stage-title">Master Wave Standard (24-bit / 96 kHz) · Reconstructor de agudos (BWE)</h4>
+              <h4 class="stage-title">Master Wave Standard (24-bit / 96 kHz) · ${escHtml(MUSICIAN_TERMS.bwe)}</h4>
               <p class="stage-desc text-muted">High-fidelity sample rate conversion and upper harmonic reconstruction.</p>
             </div>
           </div>

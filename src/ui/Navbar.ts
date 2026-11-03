@@ -6,6 +6,8 @@
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
 import { cloudByokClient } from '../core/ai/CloudByokClient';
+import { webNeuralEngine } from '../core/ai/WebNeuralEngine';
+import { resolveAiSystemStatus } from '../core/ai/aiHonesty';
 import { TIME_CAPSULE_CANONICAL_LABEL } from '../app/exportDestinations';
 import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
@@ -463,35 +465,19 @@ export class AppNavbar {
 
   public updateAiState(aiConfig?: AiAssistanceConfig, isBridgeConnected = false): void {
     if (!this.aiPillElement || !this.aiTextElement) return;
-    const enabled = aiConfig?.enabled ?? false;
-    if (!enabled) {
-      this.aiPillElement.className = 'hud-pill hud-ai-pill is-ai-off';
-      this.aiTextElement.textContent = 'AI MODE: OFF (DSP)';
-      this.aiPillElement.title = 'Algorithmic DSP mode (AI Off). Click to configure AI assistance.';
-      return;
-    }
-
-    let count = 0;
-    if (aiConfig?.masterWave === 'ai') count++;
-    if (aiConfig?.separation === 'ai') count++;
-    if (aiConfig?.loopExpansion === 'ai') count++;
-    if (aiConfig?.classifier === 'ai') count++;
-    if (aiConfig?.denoise === 'ai') count++;
-
-    const isAllAi = count === 5;
     const byok = cloudByokClient.getConfig();
-    const isCloudByok = byok.enabled && cloudByokClient.hasValidKey();
-    const providerLabel = isBridgeConnected
-      ? 'LOCAL GPU'
-      : isCloudByok
-        ? 'CLOUD BYOK'
-        : 'WEBGPU';
+    const isCloudReady = Boolean(byok.enabled && cloudByokClient.hasValidKey());
+    const status = resolveAiSystemStatus({
+      aiConfig,
+      isBridgeConnected,
+      isCloudReady,
+      localProvider: webNeuralEngine.getDeviceStatus().activeProvider,
+    });
 
-    this.aiPillElement.className = `hud-pill hud-ai-pill ${isAllAi ? 'is-ai-active' : 'is-ai-hybrid'}`;
-    this.aiTextElement.textContent = isAllAi
-      ? `AI MODE: ${providerLabel} (5/5)`
-      : `AI MODE: ${providerLabel} (${count}/5)`;
-    this.aiPillElement.title = `AI Assistance: ${count}/5 stages active [${providerLabel}]. Click to open modular configuration.`;
+    this.aiPillElement.className = `hud-pill hud-ai-pill ${status.pillClass}`;
+    this.aiPillElement.dataset.aiMode = status.mode;
+    this.aiTextElement.textContent = status.badgeText;
+    this.aiPillElement.title = status.tooltip;
   }
 
 

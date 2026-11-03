@@ -177,7 +177,21 @@ export function analyzeImportPreflight(
     });
   }
 
-  // 5. Sample Chains
+  // 5. Hartmann Classic 11-character MName truncation & bank mode adaptation (Fase 35.1)
+  const trimmedPresetName = preset.presetName.trim();
+  const truncated11 = trimmedPresetName.slice(0, 11);
+  if (trimmedPresetName.length > 11 && currentWorkingMode === 'classic') {
+    issues.push({
+      code: 'INFO_CLASSIC_NAME_11_CHARS',
+      category: 'format',
+      severity: 'info',
+      title: `Ajuste de nombre a 11 caracteres para hardware Classic ("${truncated11}")`,
+      description: `El nombre original "${trimmedPresetName}" (${trimmedPresetName.length} caracteres) supera el límite de 11 caracteres ASCII de MName en Hartmann Neuron Classic.`,
+      resolutionText: `En modo Classic se guardará como "${truncated11}" en MName conservando el nombre completo en metadatos; o cambia a Modo Extended para usar nombres largos sin recorte.`,
+    });
+  }
+
+  // 6. Sample Chains
   if (preset.isSliceChain) {
     issues.push({
       code: 'INFO_SAMPLE_CHAIN',

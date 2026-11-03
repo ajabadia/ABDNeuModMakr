@@ -19,6 +19,10 @@ import {
   parseUniversalSampler,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
+import {
+  isNeuronBankOrModelInput,
+  parseNeuronBankOrModelToPreset,
+} from '../core/import/neuronBankImporter.ts';
 import { applyPreflightImportAdaptations } from '../core/import/importPreflight.ts';
 import { slugifyModelName } from '../core/modelSlug.ts';
 
@@ -47,7 +51,20 @@ export const TRIAGE_CONTAINER_EXTENSIONS = [
   '.txprog',
   '.kmp',
   '.dls',
+  '.model',
+  '.nmpack',
+  '.neuronikmodel',
+  '.nmmodel',
+  '.scape',
+  '.sphere',
+  '.script',
 ];
+
+export function isTriageContainerFileName(name: string): boolean {
+  const lower = triageBasename(name).toLowerCase();
+  if (lower === 'mname' || lower === 'map.script') return true;
+  return TRIAGE_CONTAINER_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
 
 function normalizeTriagePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
@@ -195,6 +212,30 @@ export async function parseTriageDefinitionItem(
     files.find((f) => normalizeTriagePath(f.name) === primaryNorm) ??
     files.find((f) => triageBasename(f.name).toLowerCase() === primaryBase.toLowerCase()) ??
     files[0];
+
+  if (
+    item.format === 'neuron_bank' ||
+    isNeuronBankOrModelInput(
+      primaryFile.name,
+      primaryFile.buffer,
+      files.map((f) => f.name)
+    )
+  ) {
+    try {
+      const entries = files.map((f) => ({
+        name: f.name,
+        data: new Uint8Array(f.buffer),
+      }));
+      return await parseNeuronBankOrModelToPreset(
+        primaryBase,
+        primaryFile.buffer,
+        entries
+      );
+    } catch {
+      return null;
+    }
+  }
+
   const siblings = new Map<string, Uint8Array>();
   for (const f of files) {
     if (f === primaryFile) continue;

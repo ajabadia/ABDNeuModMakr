@@ -47,6 +47,11 @@ const TEST_FILES = [
   'phase29_virtual_fs_triage.test.ts',
   'phase30_noise_print.test.ts',
   'phase34_audio_recorder.test.ts',
+  'phase35_triage_gate.test.ts',
+  'phase35_export_destinations.test.ts',
+  'phase35_preflight_gate.test.ts',
+  'phase35_ai_honesty.test.ts',
+  'phase35_neuron_bank_import.test.ts',
 ];
 
 interface TestResult {

@@ -22,7 +22,8 @@
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
 import { MUSICIAN_TERMS } from './preflightGateView.ts';
-import { toast } from './notify.ts';
+import { confirmDialog, toast } from './notify.ts';
+import { resolveAiActionDeclaration } from '../core/ai/aiHonesty.ts';
 import { downloadBlob } from './download.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { AudioCaptureService } from '../core/AudioCaptureService.ts';
@@ -624,10 +625,21 @@ export class AudioRecorderModal {
       await bridgeClient.checkHealth();
     }
 
-    if (!bridgeClient.isConnected()) {
-      // Fallback algorítmico local: aplica DSP Denoise + DC Block + Peak Normalize
+    const aiDecl = resolveAiActionDeclaration('recorder-bwe-enhance', {
+      isBridgeConnected: bridgeClient.isConnected(),
+    });
+
+    if (aiDecl.requiresFallbackConsent) {
+      const accepted = await confirmDialog(aiDecl.consentMessage, {
+        title: aiDecl.consentTitle,
+        confirmLabel: aiDecl.consentConfirmLabel,
+        cancelLabel: 'Cancelar',
+      });
+      if (!accepted) {
+        return false;
+      }
       toast(
-        'Companion Bridge offline: applying local DSP Spectral Denoise + DC Block + Peak Normalization.',
+        `Aplicando ${aiDecl.fallbackEngine} (confirmado por el usuario)...`,
         'info'
       );
       this.applyDspDenoiseToTake(st.id);
@@ -954,6 +966,9 @@ export class AudioRecorderModal {
     const npSummary = np
       ? `Floor: ${np.levelDbfs.toFixed(1)} dBFS · 50Hz: ${np.hum50HzDb.toFixed(1)} dB · 60Hz: ${np.hum60HzDb.toFixed(1)} dB ${st.noiseRegionLabel ? `[${st.noiseRegionLabel}]` : ''}`
       : 'No Noise Print captured yet';
+    const recBweDecl = resolveAiActionDeclaration('recorder-bwe-enhance', {
+      isBridgeConnected: bridgeClient.isConnected(),
+    });
 
     container.innerHTML = `
       <div class="nmm-recorder-inspector-card">
@@ -1019,8 +1034,8 @@ export class AudioRecorderModal {
               <button type="button" class="btn btn-sm btn-outline" id="btn-rec-normalize" title="Apply DC Block and Peak Normalize to -1.0 dBFS">
                 ${ICONS.zap} Norm -1 dB + DC
               </button>
-              <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" title="${escHtml(MUSICIAN_TERMS.bwe)} + limpieza con ${escHtml(MUSICIAN_TERMS.noisePrint)}">
-                ${ICONS.sparkle} ${escHtml(MUSICIAN_TERMS.bwe)}
+              <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" title="${escHtml(recBweDecl.buttonTooltip)}">
+                ${ICONS.sparkle} ${escHtml(recBweDecl.buttonLabel)}
               </button>
             </div>
 

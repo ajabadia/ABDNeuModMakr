@@ -244,7 +244,8 @@ export type RawSamplerFormat =
   | 'directwave'
   | 'soundbox'
   | 'omnisphere'
-  | 'ni_maschine';
+  | 'ni_maschine'
+  | 'neuron_bank';
 
 export interface ParsedImportRegion {
   id: string;

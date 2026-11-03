@@ -12,7 +12,11 @@
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
 import { MUSICIAN_TERMS } from './preflightGateView.ts';
-import { toast } from './notify.ts';
+import { confirmDialog, toast } from './notify.ts';
+import {
+  resolveAiActionDeclaration,
+  separateStemsDspFallback,
+} from '../core/ai/aiHonesty.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
 import { downloadBlob } from './download.ts';
 import {
@@ -781,6 +785,10 @@ export class AudioChopperModal {
 
     const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
     const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
+    const isBridgeConn = bridgeClient.isConnected();
+    const demucsDecl = resolveAiActionDeclaration('chopper-demucs-split', { isBridgeConnected: isBridgeConn });
+    const whisperDecl = resolveAiActionDeclaration('chopper-whisper-align', { isBridgeConnected: isBridgeConn });
+    const bweDecl = resolveAiActionDeclaration('chopper-bwe-enhance', { isBridgeConnected: isBridgeConn });
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-chopper-window" role="dialog" aria-modal="true" aria-labelledby="chopper-title">
@@ -982,14 +990,14 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
                     ${ICONS.sliders} DSP Denoise
                   </button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
-                    ${ICONS.wave} Separate Stems
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-demucs-split" title="${escHtml(demucsDecl.buttonTooltip)}">
+                    ${ICONS.wave} ${escHtml(demucsDecl.buttonLabel)}
                   </button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-whisper-align" title="Align vocal phrases and syllables with OpenAI Whisper-tiny">
-                    ${ICONS.sparkle} AI Vocal Align
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-whisper-align" title="${escHtml(whisperDecl.buttonTooltip)}">
+                    ${ICONS.sparkle} ${escHtml(whisperDecl.buttonLabel)}
                   </button>
-                  <button type="button" class="btn btn-sm btn-ai-accent" id="btn-chopper-ai-enhance" title="Enhance audio via Bridge AI, taking captured noise profile into account to remove it">
-                    ${ICONS.sparkle} AI Enhance
+                  <button type="button" class="btn btn-sm btn-ai-accent" id="btn-chopper-ai-enhance" title="${escHtml(bweDecl.buttonTooltip)}">
+                    ${ICONS.sparkle} ${escHtml(bweDecl.buttonLabel)}
                   </button>
                 </div>
               </div>
@@ -2073,9 +2081,38 @@ export class AudioChopperModal {
       }
     });
 
-    // Fase 30: AI Enhance button passing captured noise profile to bridge
+    // Fase 30 & 35.4: AI Enhance button passing captured noise profile to bridge (with explicit fallback consent)
     this.backdropEl.querySelector('#btn-chopper-ai-enhance')?.addEventListener('click', async () => {
       if (this.pcm.length === 0) return;
+      if (!bridgeClient.isConnected()) {
+        await bridgeClient.checkHealth();
+      }
+      const decl = resolveAiActionDeclaration('chopper-bwe-enhance', {
+        isBridgeConnected: bridgeClient.isConnected(),
+      });
+      if (decl.requiresFallbackConsent) {
+        const ok = await confirmDialog(decl.consentMessage, {
+          title: decl.consentTitle,
+          confirmLabel: decl.consentConfirmLabel,
+          cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+        const profile = this.capturedNoiseProfile || {
+          levelDbfs: -48,
+          spectrumBands: new Array(16).fill(1 / 16),
+          hum50HzDb: -80,
+          hum60HzDb: -80,
+        };
+        this.pcm = reduceNoiseWithProfile(this.pcm, this.sampleRate, profile, {
+          reductionDb: 15,
+          removeHum: true,
+        });
+        this.recomputeSlices(false);
+        this.render();
+        toast(`Aplicada ${decl.fallbackEngine} (confirmado por el usuario).`, 'success');
+        return;
+      }
+
       try {
         const wavBytes = encodePcm16Wav(this.pcm, this.sampleRate);
         toast('Sending audio to AI Bridge with noise profile removal...', 'info');
@@ -2610,6 +2647,28 @@ export class AudioChopperModal {
       return;
     }
 
+    if (!bridgeClient.isConnected()) {
+      await bridgeClient.checkHealth();
+    }
+    const decl = resolveAiActionDeclaration('chopper-whisper-align', {
+      isBridgeConnected: bridgeClient.isConnected(),
+    });
+    if (decl.requiresFallbackConsent) {
+      const ok = await confirmDialog(decl.consentMessage, {
+        title: decl.consentTitle,
+        confirmLabel: decl.consentConfirmLabel,
+        cancelLabel: 'Cancelar',
+      });
+      if (!ok) return;
+      this.options.mode = 'vocals';
+      this.manualSilenceRanges = [];
+      this.manualCutFrames.clear();
+      this.recomputeSlices(true);
+      this.render();
+      toast(`Aplicada ${decl.fallbackEngine} (confirmado por el usuario).`, 'success');
+      return;
+    }
+
     const btn = this.backdropEl?.querySelector('#btn-chopper-whisper-align') as HTMLButtonElement | null;
     if (btn) btn.disabled = true;
 
@@ -2741,23 +2800,19 @@ export class AudioChopperModal {
         return;
       }
 
-      if (runBtn) runBtn.disabled = true;
-      if (processingEl) processingEl.classList.remove('is-hidden');
+      if (!bridgeClient.isConnected()) {
+        await bridgeClient.checkHealth();
+      }
+      const decl = resolveAiActionDeclaration('chopper-demucs-split', {
+        isBridgeConnected: bridgeClient.isConnected(),
+      });
 
-      try {
-        const wavBuf = encodePcm16Wav(this.pcm, this.sampleRate);
-        const res = await bridgeClient.separateStems(wavBuf, { stems });
-
-        if (!res.success) {
-          toast(`Demucs separation failed: ${res.error || 'Unknown error'}`, 'error');
-          return;
-        }
-
+      const renderStemRows = (stemMap: Record<string, ArrayBuffer>, usedLabel: string) => {
         if (resultsContainer && listEl) {
           resultsContainer.classList.remove('is-hidden');
           listEl.innerHTML = '';
 
-          const stemEntries = Object.entries(res.stems);
+          const stemEntries = Object.entries(stemMap);
           if (stemEntries.length === 0) {
             listEl.innerHTML = '<div class="nmm-recorder-takes-empty">No stems were returned.</div>';
           }
@@ -2801,8 +2856,39 @@ export class AudioChopperModal {
             listEl.appendChild(row);
           }
         }
+        toast(usedLabel, 'success');
+      };
 
-        toast('Stem separation completed successfully!', 'success');
+      if (decl.requiresFallbackConsent) {
+        const ok = await confirmDialog(decl.consentMessage, {
+          title: decl.consentTitle,
+          confirmLabel: decl.consentConfirmLabel,
+          cancelLabel: 'Cancelar',
+        });
+        if (!ok) return;
+        const fallbackStems = separateStemsDspFallback(
+          this.pcm,
+          this.sampleRate,
+          stems,
+          (samples, sr) => encodePcm16Wav(samples, sr)
+        );
+        renderStemRows(fallbackStems, `Stems separados con ${decl.fallbackEngine} (confirmado por el usuario).`);
+        return;
+      }
+
+      if (runBtn) runBtn.disabled = true;
+      if (processingEl) processingEl.classList.remove('is-hidden');
+
+      try {
+        const wavBuf = encodePcm16Wav(this.pcm, this.sampleRate);
+        const res = await bridgeClient.separateStems(wavBuf, { stems });
+
+        if (!res.success) {
+          toast(`Demucs separation failed: ${res.error || 'Unknown error'}`, 'error');
+          return;
+        }
+
+        renderStemRows(res.stems, 'Stem separation completed successfully via HTDemucs Bridge!');
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         toast(`Stem separation error: ${msg}`, 'error');

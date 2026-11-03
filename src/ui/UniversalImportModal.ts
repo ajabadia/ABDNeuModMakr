@@ -18,6 +18,11 @@ import {
   parseUniversalSampler,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
+import {
+  isNeuronBankOrModelInput,
+  listNeuronBankModels,
+  parseNeuronBankOrModelToPreset,
+} from '../core/import/neuronBankImporter.ts';
 import { MultiInstrumentModal } from './MultiInstrumentModal.ts';
 import {
   analyzeImportPreflight,
@@ -122,6 +127,14 @@ export class UniversalImportModal {
     }
 
     const currentMode = this.context.getCurrentWorkingMode();
+    const activeGateModel =
+      this.preflightReport && this.parsedPreset
+        ? fromImportPreflightReport(this.preflightReport, this.parsedPreset, currentMode, {
+            autoExtendOuterZones: this.optAutoExtend,
+            adaptVelocityLayers: this.optAdaptVelocity,
+            switchToExtendedMode: this.optSwitchToExtended,
+          })
+        : null;
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window universal-import-modal-window" role="dialog" aria-modal="true" aria-labelledby="universal-import-title">
@@ -143,11 +156,11 @@ export class UniversalImportModal {
             <div class="uimport-inspecting-state">
               <div class="neural-pulse-spinner">${ICONS.spinner}</div>
               <h3>${escHtml(MUSICIAN_TERMS.preflightImport)}…</h3>
-              <p>Scanning zone descriptors, velocity ranges, keybed coverage, and embedded audio buffers.</p>
+              <p>Analizando descriptores de zonas, capas de velocidad, cobertura de teclado y muestras de audio.</p>
             </div>
           `
-              : this.preflightReport && this.parsedPreset
-                ? this.renderPreflightView(this.preflightReport, this.parsedPreset, currentMode)
+              : this.preflightReport && this.parsedPreset && activeGateModel
+                ? this.renderPreflightView(this.preflightReport, this.parsedPreset, currentMode, activeGateModel)
                 : this.renderDropZoneView()
           }
 
@@ -166,7 +179,7 @@ export class UniversalImportModal {
         <footer class="nmm-modal-footer">
           <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-uimport-cancel" ${this.isInspecting ? 'disabled' : ''}>
-            ${this.preflightReport ? 'Ajustar / Elegir otro archivo' : 'Cancelar'}
+            ${activeGateModel ? escHtml(activeGateModel.adjustLabel) : 'Cancelar'}
           </button>
           ${
             this.preflightReport && (this.preflightReport.canImport || (this.preflightReport.isSliceChain && this.context.onOpenInAudioChopper))
@@ -175,16 +188,16 @@ export class UniversalImportModal {
               this.preflightReport.isSliceChain && this.context.onOpenInAudioChopper
                 ? `
               <button type="button" class="btn btn-secondary" id="btn-uimport-chopper">
-                ${ICONS.wave} Open in Audio Chopper
+                ${ICONS.wave} Abrir en Audio Chopper
               </button>
             `
                 : ''
             }
             ${
-              this.preflightReport.canImport
+              this.preflightReport.canImport && activeGateModel
                 ? `
               <button type="button" class="btn btn-primary" id="btn-uimport-proceed">
-                ${ICONS.check} Continuar e importar
+                ${ICONS.check} ${escHtml(activeGateModel.continueLabel)}
               </button>
             `
                 : ''
@@ -217,18 +230,18 @@ export class UniversalImportModal {
           <div class="dropzone-icon">${ICONS.folder}</div>
           <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
+            Supported formats: <strong>.model, .neuronikmodel, .nmmodel, .scape, .sphere, .sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files">
               ${ICONS.folder} Browse File...
-              <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
+              <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.script,.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
           </div>
         </div>
 
         <div class="uimport-supported-formats-strip">
-          <div class="fmt-chip"><strong>Multisample Banks &amp; Disks:</strong> Akai S-Series, E-mu (Emulator III / EOS E4), Roland S-7xx, Ensoniq (EPS/ASR), Yamaha (A-Series/YSFC) (.iso/.img/.dsk/.out/.hda/.efe), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion, Bitwig, Akai MPC</div>
+          <div class="fmt-chip"><strong>Multisample Banks &amp; Disks:</strong> Hartmann Neuron / Neuronik (.model / .neuronikmodel / .nmmodel / .scape / .sphere / NeuronDB .zip), Akai S-Series, E-mu (Emulator III / EOS E4), Roland S-7xx, Ensoniq (EPS/ASR), Yamaha (A-Series/YSFC) (.iso/.img/.dsk/.out/.hda/.efe), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion, Bitwig, Akai MPC</div>
           <div class="fmt-chip"><strong>Loops &amp; Slices:</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
           <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF/AIFC, FLAC, MP3, OGG, M4A/AAC, Opus, CAF, NCW (auto-mapped to zones or chopper)</div>
         </div>
@@ -239,13 +252,13 @@ export class UniversalImportModal {
   private renderPreflightView(
     report: ImportPreflightReport,
     preset: ParsedSamplerPreset,
-    currentMode: WorkingMode
-  ): string {
-    const gateModel = fromImportPreflightReport(report, preset, currentMode, {
+    currentMode: WorkingMode,
+    gateModel = fromImportPreflightReport(report, preset, currentMode, {
       autoExtendOuterZones: this.optAutoExtend,
       adaptVelocityLayers: this.optAdaptVelocity,
       switchToExtendedMode: this.optSwitchToExtended,
-    });
+    })
+  ): string {
     return `
       <div class="uimport-preflight-layout">
         <!-- Preset Header Summary Card -->
@@ -289,24 +302,24 @@ export class UniversalImportModal {
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-auto-extend" ${this.optAutoExtend ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Auto-extend outer zones to 0 and 127</strong>
-                <span>Stretches note boundaries of the lowest and highest zones to prevent gaps in Hartmann resynthesis.</span>
+                <strong>Extender automáticamente las zonas extremas hasta MIDI 0 y 127</strong>
+                <span>Estira los límites de la zona más grave y más aguda para cubrir todo el teclado sin huecos en la resíntesis.</span>
               </div>
             </label>
 
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-adapt-vel" ${this.optAdaptVelocity ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Adapt velocity layers to Classic 2-layer model (Low 1..63, High 64..127)</strong>
-                <span>Folds multi-velocity layers into softest and loudest samples with automated velocity gain compensation.</span>
+                <strong>Proyectar capas de velocidad al modelo Classic de 2 capas (Low 1..63, High 64..127)</strong>
+                <span>Pliega instrumentos multicapa en las muestras más suave y más fuerte con compensación automática de ganancia.</span>
               </div>
             </label>
 
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-switch-ext" ${this.optSwitchToExtended || currentMode === 'extended' ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Switch session to Extended Mode (Preserve all ${report.maxVelocityLayers} velocity layers)</strong>
-                <span>Enables 2D velocity regions, unlimited dynamic layers, and extended time capsule metadata.</span>
+                <strong>Cambiar la sesión a Modo Extended (Conservar las ${report.maxVelocityLayers} capas de velocidad)</strong>
+                <span>Activa regiones 2D ilimitadas, articulación completa y metadatos extendidos de Cápsula del Tiempo.</span>
               </div>
             </label>
           </div>
@@ -444,6 +457,93 @@ export class UniversalImportModal {
         } catch (e) {
           console.warn('Bridge REX2 decode failed:', e);
         }
+      }
+
+      // Fase 35.1: Hartmann Neuron / Neuronik bank & model container detection (by signature & extension)
+      const allNames = Array.from(allFiles).map((f) => f.name);
+      if (isNeuronBankOrModelInput(filename, buffer, allNames)) {
+        // Check if any selected file is a multi-model NeuronDB .zip / .nmpack / .model archive
+        let zipFileName = filename;
+        let zipBuffer = buffer;
+        const zipFileCandidate = Array.from(allFiles).find((f) =>
+          /\.(zip|nmpack|model)$/i.test(f.name)
+        );
+        if (zipFileCandidate && zipFileCandidate !== file) {
+          zipFileName = zipFileCandidate.name;
+          zipBuffer = await zipFileCandidate.arrayBuffer();
+        }
+        const neuronModels = listNeuronBankModels(zipFileName, zipBuffer);
+        if (neuronModels.length > 1) {
+          this.isInspecting = false;
+          this.render();
+          const multiModal = new MultiInstrumentModal();
+          multiModal.open({
+            fileName: zipFileName,
+            format: 'zip',
+            items: neuronModels.map((m) => ({
+              id: m.id,
+              index: m.index,
+              name: m.name,
+              regionCount: m.regionCount,
+              detail: m.detail,
+            })),
+            onSelect: (chosen) => {
+              void (async () => {
+                try {
+                  this.isInspecting = true;
+                  this.render();
+                  const selectedPreset = await parseNeuronBankOrModelToPreset(
+                    zipFileName,
+                    zipBuffer,
+                    undefined,
+                    chosen.id
+                  );
+                  const rep = analyzeImportPreflight(selectedPreset, this.context.getCurrentWorkingMode());
+                  this.parsedPreset = selectedPreset;
+                  this.preflightReport = rep;
+                  this.optAutoExtend = rep.defaultActions.autoExtendOuterZones;
+                  this.optAdaptVelocity = rep.defaultActions.adaptVelocityLayers;
+                  this.optSwitchToExtended = rep.defaultActions.switchToExtendedMode;
+                  this.isInspecting = false;
+                  this.render();
+                } catch (err) {
+                  this.isInspecting = false;
+                  this.inspectionError = err instanceof Error ? err.message : String(err);
+                  this.render();
+                }
+              })();
+            },
+            onProcessBatch: () => {
+              this.close();
+              this.context.onOpenBatchProcessor?.();
+            },
+          });
+          return;
+        }
+
+        const extraEntries: { name: string; data: Uint8Array }[] = [];
+        if (allFiles.length > 1) {
+          for (const f of Array.from(allFiles)) {
+            extraEntries.push({
+              name: f.name,
+              data: new Uint8Array(await f.arrayBuffer()),
+            });
+          }
+        }
+        const neuronPreset = await parseNeuronBankOrModelToPreset(
+          filename,
+          buffer,
+          extraEntries.length > 0 ? extraEntries : undefined
+        );
+        const neuronReport = analyzeImportPreflight(neuronPreset, this.context.getCurrentWorkingMode());
+        this.parsedPreset = neuronPreset;
+        this.preflightReport = neuronReport;
+        this.optAutoExtend = neuronReport.defaultActions.autoExtendOuterZones;
+        this.optAdaptVelocity = neuronReport.defaultActions.adaptVelocityLayers;
+        this.optSwitchToExtended = neuronReport.defaultActions.switchToExtendedMode;
+        this.isInspecting = false;
+        this.render();
+        return;
       }
 
       // Parse universal sampler bank or slice file

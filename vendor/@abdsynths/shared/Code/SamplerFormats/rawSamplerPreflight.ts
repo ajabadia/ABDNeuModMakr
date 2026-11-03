@@ -194,6 +194,12 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.wav',
     mimeType: 'audio/wav',
   },
+  neuron_bank: {
+    title: 'Hartmann Neuron / Neuronik Bank (.model / .neuronikmodel)',
+    description: 'Banco o modelo espectral Hartmann Neuron (MName, map.script, .scape/.sphere) y contenedor extendido Neuronik (.neuronikmodel / .nmmodel).',
+    extension: '.zip',
+    mimeType: 'application/zip',
+  },
 };
 
 /**

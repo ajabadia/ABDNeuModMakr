@@ -17,11 +17,13 @@ import {
   type ArtworkStylePreset,
 } from '../core/ai/ModelArtworkGenerator.ts';
 import { cloudByokClient } from '../core/ai/CloudByokClient.ts';
+import { resolveAiActionDeclaration } from '../core/ai/aiHonesty.ts';
+import { bridgeClient } from '../core/bridge/BridgeClient.ts';
 import type { ModelCoverArtwork, ProcessConfig } from '../core/types.ts';
 import { escAttr, escHtml } from './escape.ts';
 import { ICONS } from './icons.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
-import { toast } from './notify.ts';
+import { confirmDialog, toast } from './notify.ts';
 import { sanitizeFileName } from '../core/pathUtils.ts';
 
 export interface AiCoverGeneratorModalContext {
@@ -184,6 +186,17 @@ export class AiCoverGeneratorModal {
     }
 
     const providerKeyStatus = this.getProviderKeyStatus(this.selectedProvider);
+    const isBridgeConn = bridgeClient.isConnected();
+    const activeTextLlm = cloudByokClient.getFirstAvailableTextProvider();
+    const llmPromptDecl = resolveAiActionDeclaration('artwork-llm-prompt', {
+      isBridgeConnected: isBridgeConn,
+      activeTextLlmProvider: activeTextLlm,
+    });
+    const artworkGenDecl = resolveAiActionDeclaration('artwork-generate', {
+      isBridgeConnected: isBridgeConn,
+      selectedArtworkProvider: this.selectedProvider,
+      artworkProviderReady: providerKeyStatus.isReady,
+    });
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window ai-cover-modal-window" role="dialog" aria-modal="true" aria-labelledby="ai-cover-title">
@@ -292,10 +305,10 @@ export class AiCoverGeneratorModal {
                       type="button"
                       class="btn btn-xs btn-outline"
                       id="btn-enhance-prompt-llm"
-                      title="Enrich prompt with sensory timbre descriptors using BYOK LLM (Claude/GPT/OpenRouter)"
+                      title="${escAttr(llmPromptDecl.buttonTooltip)}"
                       ${this.isEnhancingPrompt ? 'disabled' : ''}
                     >
-                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle} Enhance with LLM`}
+                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle} ${escHtml(llmPromptDecl.buttonLabel)}`}
                     </button>
                     <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="Reset prompt to acoustic default">
                       ${ICONS.refresh} Reset
@@ -364,9 +377,9 @@ export class AiCoverGeneratorModal {
           <button type="button" class="btn btn-outline" id="btn-ai-cover-cancel" ${this.isGenerating ? 'disabled' : ''}>
             Close
           </button>
-          <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating || !providerKeyStatus.isReady ? 'disabled' : ''} title="${!providerKeyStatus.isReady ? 'Please configure provider credentials in Settings before generating' : 'Generate 512×512 WebP Artwork'}">
+          <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating ? 'disabled' : ''} title="${escAttr(artworkGenDecl.buttonTooltip)}">
             ${this.isGenerating ? ICONS.spinner : ICONS.sparkle}
-            ${this.isGenerating ? 'Generating Artwork...' : !providerKeyStatus.isReady ? 'Setup Required' : 'Generate Artwork'}
+            ${this.isGenerating ? 'Generating Artwork...' : escHtml(artworkGenDecl.buttonLabel)}
           </button>
           </div>
         </footer>
@@ -401,11 +414,19 @@ export class AiCoverGeneratorModal {
       };
     }
     if (provider === 'bridge') {
+      if (bridgeClient.isConnected()) {
+        return {
+          message: 'Companion Bridge active at http://127.0.0.1:7860.',
+          statusClass: 'status-ok',
+          showSettingsLink: false,
+          isReady: true,
+        };
+      }
       return {
-        message: 'Companion Bridge active at http://127.0.0.1:7860.',
-        statusClass: 'status-ok',
+        message: 'Companion Bridge offline (:7860). Generating will ask confirmation before using the Procedural fallback.',
+        statusClass: 'status-warn',
         showSettingsLink: false,
-        isReady: true,
+        isReady: false,
       };
     }
 
@@ -555,11 +576,40 @@ export class AiCoverGeneratorModal {
       this.render();
     });
 
-    // Enhance prompt with BYOK LLM button
+    // Enhance prompt with BYOK LLM button (or local template fallback with explicit consent)
     this.backdropEl.querySelector('#btn-enhance-prompt-llm')?.addEventListener('click', async () => {
       const activeTextProvider = cloudByokClient.getFirstAvailableTextProvider();
-      if (!activeTextProvider) {
-        toast('No BYOK language model key found. Configure Claude, OpenRouter, or OpenAI in Settings.', 'info');
+      const decl = resolveAiActionDeclaration('artwork-llm-prompt', {
+        isBridgeConnected: bridgeClient.isConnected(),
+        activeTextLlmProvider: activeTextProvider,
+      });
+
+      const config = this.context.getConfig();
+      const modelName = config.modelName?.trim() || 'Neural Synthesizer';
+      const pSet = config.parameterSet ?? 0;
+      const category = config.extendedMetadata?.category ?? 'Synthesizer';
+      const sampleNames = this.context.getSampleNames ? this.context.getSampleNames() : [];
+      const promptSeed =
+        this.customPrompt.trim() ||
+        buildAcousticArtworkPrompt({
+          modelName,
+          category,
+          parameterSet: pSet,
+          sampleNames,
+          style: this.selectedStyle,
+        });
+
+      if (decl.requiresFallbackConsent) {
+        const accepted = await confirmDialog(decl.consentMessage, {
+          title: decl.consentTitle,
+          confirmLabel: decl.consentConfirmLabel,
+          cancelLabel: 'Cancelar',
+        });
+        if (!accepted) return;
+
+        this.customPrompt = `${promptSeed}, tactile spectral resonance, volumetric harmonic ridges, precision studio micro-detail, high-contrast acoustic geometry`;
+        toast('Prompt enriquecido con la plantilla descriptiva acústica local.', 'info');
+        this.render();
         return;
       }
 
@@ -567,20 +617,9 @@ export class AiCoverGeneratorModal {
       this.render();
 
       try {
-        const config = this.context.getConfig();
-        const modelName = config.modelName?.trim() || 'Neural Synthesizer';
-        const pSet = config.parameterSet ?? 0;
-        const category = config.extendedMetadata?.category ?? 'Synthesizer';
-        const promptSeed = this.customPrompt.trim() || buildAcousticArtworkPrompt({
-          modelName,
-          category,
-          parameterSet: pSet,
-          style: this.selectedStyle,
-        });
-
         const enhanced = await enhancePromptWithByokLlm(promptSeed, modelName, category, `Set ${pSet + 1}`);
         this.customPrompt = enhanced;
-        toast(`Prompt enriched with ${activeTextProvider.toUpperCase()} acoustic descriptors.`, 'success');
+        toast(`Prompt enriched with ${activeTextProvider!.toUpperCase()} acoustic descriptors.`, 'success');
       } catch (err) {
         toast(`Failed to enrich prompt: ${String(err)}`, 'error');
       } finally {
@@ -625,6 +664,24 @@ export class AiCoverGeneratorModal {
   private async triggerGenerate(): Promise<void> {
     if (this.isGenerating) return;
 
+    const providerKeyStatus = this.getProviderKeyStatus(this.selectedProvider);
+    const decl = resolveAiActionDeclaration('artwork-generate', {
+      isBridgeConnected: bridgeClient.isConnected(),
+      selectedArtworkProvider: this.selectedProvider,
+      artworkProviderReady: providerKeyStatus.isReady,
+    });
+
+    let effectiveProvider: ArtworkProvider = this.selectedProvider;
+    if (decl.requiresFallbackConsent) {
+      const accepted = await confirmDialog(decl.consentMessage, {
+        title: decl.consentTitle,
+        confirmLabel: decl.consentConfirmLabel,
+        cancelLabel: 'Cancelar',
+      });
+      if (!accepted) return;
+      effectiveProvider = 'procedural';
+    }
+
     const config = this.context.getConfig();
     const modelName = config.modelName || 'NewModel';
     const expandedName = config.expandedName || modelName;
@@ -634,7 +691,10 @@ export class AiCoverGeneratorModal {
 
     this.isGenerating = true;
     this.generationError = null;
-    this.generationStatusText = `Connecting to ${this.selectedProvider}...`;
+    this.generationStatusText =
+      effectiveProvider === 'procedural'
+        ? 'Rendering mathematical procedural spectrogram...'
+        : `Connecting to ${effectiveProvider}...`;
     this.render();
 
     const result = await generateModelArtwork({
@@ -645,7 +705,7 @@ export class AiCoverGeneratorModal {
       sampleNames,
       style: this.selectedStyle,
       customPrompt: this.customPrompt,
-      provider: this.selectedProvider,
+      provider: effectiveProvider,
     });
 
     this.isGenerating = false;

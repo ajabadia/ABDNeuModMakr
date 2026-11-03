@@ -64,6 +64,7 @@ export type DiscoveredAssetFormat =
   | 'casio_fz'
   | 'synclavier'
   | 'fairlight_cmi'
+  | 'neuron_bank'
   | 'sample_pack'
   | 'loop_slice';
 
@@ -182,6 +183,92 @@ export async function discoverSamplerAssets(
     }
     return matched;
   };
+
+  // 1b. Hartmann Neuron / Neuronik Banks & Models (.model, .nmpack, .neuronikmodel, .nmmodel, MName, map.script, .scape, .sphere)
+  const neuronDirs = new Map<string, VirtualFileEntry[]>();
+  for (const f of allFiles) {
+    if (handledFiles.has(f.path)) continue;
+    const lower = f.name.toLowerCase();
+    // Standalone .neuronikmodel / .nmmodel / .model / .nmpack file
+    if (/\.(neuronikmodel|nmmodel|model|nmpack)$/i.test(lower)) {
+      handledFiles.add(f.path);
+      const companions = getCompanionSamplesForDef(f.path);
+      for (const c of companions) handledFiles.add(c);
+      items.push({
+        id: f.path,
+        name: cleanNameFromPath(f.path),
+        format: 'neuron_bank',
+        formatLabel: 'Hartmann Neuron / Neuronik',
+        primaryFilePath: f.path,
+        companionFilePaths: companions,
+        sampleCount: Math.max(1, companions.length),
+        totalSizeBytes: f.size + companions.reduce((acc, c) => acc + (vfs.getFile(c)?.size || 0), 0),
+        detail: `Hartmann / Neuronik Model (${companions.length > 0 ? `${companions.length} companion audio` : 'self-contained'})`,
+      });
+      continue;
+    }
+    // Directory-based Hartmann Neuron model (MName, map.script, .scape, .sphere)
+    if (
+      lower === 'mname' ||
+      lower === 'map.script' ||
+      lower.endsWith('.scape') ||
+      lower.endsWith('.sphere')
+    ) {
+      const parts = f.path.split('/');
+      const dir = parts.length > 1 ? parts.slice(0, parts.length - 1).join('/') : '';
+      const grp = neuronDirs.get(dir) ?? [];
+      grp.push(f);
+      neuronDirs.set(dir, grp);
+    }
+  }
+
+  for (const [dir, nFiles] of neuronDirs.entries()) {
+    for (const nf of nFiles) handledFiles.add(nf.path);
+    // Also claim any sibling audio files in the same model directory
+    const prefix = dir ? `${dir}/` : '';
+    const dirCompanions: VirtualFileEntry[] = [...nFiles];
+    for (const af of audioFiles) {
+      if (handledFiles.has(af.path)) continue;
+      const afDir = af.path.includes('/') ? af.path.slice(0, af.path.lastIndexOf('/')) : '';
+      if (afDir === dir || (dir !== '' && af.path.startsWith(prefix))) {
+        handledFiles.add(af.path);
+        dirCompanions.push(af);
+      }
+    }
+
+    const mnameFile = nFiles.find((nf) => nf.name.toLowerCase() === 'mname');
+    const mapScriptFile = nFiles.find((nf) => nf.name.toLowerCase() === 'map.script');
+    const scapeCount = nFiles.filter((nf) => nf.name.toLowerCase().endsWith('.scape')).length;
+    const primaryEntry = mnameFile ?? mapScriptFile ?? nFiles[0];
+
+    let displayName = dir ? cleanNameFromPath(dir) : cleanNameFromPath(primaryEntry.path);
+    if (mnameFile) {
+      try {
+        const rawBytes = await Promise.resolve(mnameFile.getData());
+        const txt = new TextDecoder('latin1').decode(rawBytes).replace(/\0+/g, '').trim();
+        if (txt) displayName = txt;
+      } catch {
+        // fallback to directory name
+      }
+    }
+
+    const totalBytes = dirCompanions.reduce((acc, cf) => acc + cf.size, 0);
+    const companionPaths = dirCompanions
+      .map((cf) => cf.path)
+      .filter((p) => p !== primaryEntry.path);
+
+    items.push({
+      id: `neuron_bank_${dir || primaryEntry.path}`,
+      name: displayName || 'Hartmann Neuron Model',
+      format: 'neuron_bank',
+      formatLabel: 'Hartmann Neuron / Neuronik',
+      primaryFilePath: primaryEntry.path,
+      companionFilePaths: companionPaths,
+      sampleCount: Math.max(1, scapeCount || dirCompanions.length),
+      totalSizeBytes: totalBytes,
+      detail: `Hartmann Neuron Bank (${scapeCount > 0 ? `${scapeCount} scape/sphere` : `${dirCompanions.length} files`})`,
+    });
+  }
 
   // 2. Specialized Sampler definitions
   const DEF_SPECS: Array<{

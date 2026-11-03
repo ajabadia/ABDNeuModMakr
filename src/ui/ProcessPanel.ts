@@ -8,6 +8,10 @@ import type {
   ParameterSetInfo,
   Zone,
 } from '../core/types';
+import { bridgeClient } from '../core/bridge/BridgeClient';
+import { cloudByokClient } from '../core/ai/CloudByokClient';
+import { webNeuralEngine } from '../core/ai/WebNeuralEngine';
+import { resolveAiSystemStatus } from '../core/ai/aiHonesty';
 import { ICONS } from './icons';
 import { escAttr, escHtml } from './escape';
 import type { ModelConfigTab } from './ModelConfigModal';
@@ -190,7 +194,14 @@ export class ProcessPanel {
 
     const meta = this.currentConfig.extendedMetadata ?? {};
     const tagCount = Object.keys(meta.tags ?? {}).length;
-    const isAi = this.currentConfig.aiConfig?.enabled ?? false;
+    const byok = cloudByokClient.getConfig();
+    const aiStatus = resolveAiSystemStatus({
+      aiConfig: this.currentConfig.aiConfig,
+      isBridgeConnected: bridgeClient.isConnected(),
+      isCloudReady: Boolean(byok.enabled && cloudByokClient.hasValidKey()),
+      localProvider: webNeuralEngine.getDeviceStatus().activeProvider,
+    });
+    const isAi = aiStatus.mode !== 'offline';
 
     // Apply class to parent column or workspace container
     const processMount = this.container.closest('.column-process');
@@ -298,7 +309,7 @@ export class ProcessPanel {
             type="button"
             class="rail-icon-btn ${isAi ? 'is-ai-active' : ''}"
             id="rail-btn-ai"
-            title="AI Engine: ${isAi ? 'Active' : 'Pure DSP'} • Click to configure"
+            title="${escAttr(aiStatus.tooltip)}"
           >
             ${isAi ? ICONS.ai : ICONS.sliders}
           </button>
@@ -481,7 +492,7 @@ export class ProcessPanel {
           </div>
 
           <!-- Card 5: AI Engine Assistance Status -->
-          <div class="hud-card" id="hud-card-ai" title="Configure AI Assistance / BYOK">
+          <div class="hud-card" id="hud-card-ai" title="${escAttr(aiStatus.tooltip)}">
             <div class="hud-card-header">
               <span class="hud-card-label">${ICONS.ai} AI ASSISTANCE</span>
               <button type="button" class="btn-hud-link" id="btn-hud-edit-ai">Settings</button>
@@ -489,9 +500,9 @@ export class ProcessPanel {
             <div class="hud-card-body">
               <div class="ai-status-row">
                 <span class="ai-status-badge ${isAi ? 'badge-ai-active' : 'badge-ai-off'}">
-                  ${isAi ? `${ICONS.ai} <span>IA ACTIVA</span>` : `${ICONS.cpu} <span>100% DSP</span>`}
+                  ${isAi ? `${ICONS.ai} <span>${escHtml(aiStatus.cardBadgeText)}</span>` : `${ICONS.cpu} <span>${escHtml(aiStatus.cardBadgeText)}</span>`}
                 </span>
-                <span class="text-muted">WebGPU &bull; Companion Bridge &bull; Cloud</span>
+                <span class="text-muted">${escHtml(aiStatus.cardSubtitle)}</span>
               </div>
             </div>
           </div>

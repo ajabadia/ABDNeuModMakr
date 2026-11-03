@@ -254,45 +254,48 @@ export function fromBatchPreflightSummary(
     ? 'Marca al menos un modelo en la tabla inferior o vuelve al paso anterior para ajustar el origen.'
     : `Se compilarán ${summary.selectedCount} instrumentos hacia ${summary.executionProfile.destinationLabel} (${summary.executionProfile.destinationPathOrName}).`;
 
-  const changes: CommonPreflightChangeItem[] = [
-    {
-      severity: 'info',
-      title: `Modo y formato de salida: ${summary.executionProfile.workingModeLabel}`,
-      categoryTag: 'formato',
-      severityTag: summary.executionProfile.workingMode,
-      description: `Perfil de exportación activo: ${summary.executionProfile.targetFormatLabel}.`,
-      adaptation: `Cada candidato se escribirá en ${summary.executionProfile.destinationLabel} (${summary.executionProfile.destinationPathOrName}).`,
-    },
-    {
-      severity: 'info',
-      title: `Motor espectral y asistencia: ${summary.executionProfile.dspAlgorithmLabel}`,
-      categoryTag: 'motor',
-      severityTag: summary.executionProfile.dspAlgorithm,
-      description: `Motor IA: ${summary.executionProfile.aiEngineLabel} · Complejidad: ${summary.executionProfile.complexityLabel}.`,
-      adaptation: `Duración estimada del lote: ~${summary.estimatedDurationSec} segundos para ${summary.totalFiles} muestra(s).`,
-    },
-  ];
+  const changes: CommonPreflightChangeItem[] = [];
+  if (canContinue) {
+    changes.push(
+      {
+        severity: 'info',
+        title: `Modo y formato de salida: ${summary.executionProfile.workingModeLabel}`,
+        categoryTag: 'formato',
+        severityTag: 'info',
+        description: `Perfil de exportación activo: ${summary.executionProfile.targetFormatLabel}.`,
+        adaptation: `Cada candidato se escribirá en ${summary.executionProfile.destinationLabel} (${summary.executionProfile.destinationPathOrName}).`,
+      },
+      {
+        severity: 'info',
+        title: `Motor espectral y asistencia: ${summary.executionProfile.dspAlgorithmLabel}`,
+        categoryTag: 'motor',
+        severityTag: 'info',
+        description: `Motor IA: ${summary.executionProfile.aiEngineLabel} · Complejidad: ${summary.executionProfile.complexityLabel}.`,
+        adaptation: `Duración estimada del lote: ~${summary.estimatedDurationSec} segundos para ${summary.totalFiles} muestra(s).`,
+      }
+    );
 
-  if (summary.executionProfile.slicerProfileLabel) {
-    changes.push({
-      severity: 'info',
-      title: 'Segmentación automática de transitorios (AutoSlicer)',
-      categoryTag: 'slicer',
-      severityTag: 'activo',
-      description: `Perfil de corte activo: ${summary.executionProfile.slicerProfileLabel}.`,
-      adaptation: 'Cada archivo se troceará en el cruce por cero y se mapeará automáticamente a zonas MIDI.',
-    });
-  }
+    if (summary.executionProfile.slicerProfileLabel) {
+      changes.push({
+        severity: 'info',
+        title: 'Segmentación automática de transitorios (AutoSlicer)',
+        categoryTag: 'slicer',
+        severityTag: 'ajuste',
+        description: `Perfil de corte activo: ${summary.executionProfile.slicerProfileLabel}.`,
+        adaptation: 'Cada archivo se troceará en el cruce por cero y se mapeará automáticamente a zonas MIDI.',
+      });
+    }
 
-  if (skippedCount > 0 && canContinue) {
-    changes.push({
-      severity: 'warn',
-      title: `${skippedCount} candidato(s) desmarcado(s) se omitirán`,
-      categoryTag: 'selección',
-      severityTag: 'omitidos',
-      description: `Has seleccionado ${summary.selectedCount} de los ${summary.totalDiscovered} candidatos descubiertos.`,
-      adaptation: 'Solo se procesarán las filas marcadas en la tabla inferior.',
-    });
+    if (skippedCount > 0) {
+      changes.push({
+        severity: 'warn',
+        title: `${skippedCount} candidato(s) desmarcado(s) se omitirán`,
+        categoryTag: 'selección',
+        severityTag: 'ajuste',
+        description: `Has seleccionado ${summary.selectedCount} de los ${summary.totalDiscovered} candidatos descubiertos.`,
+        adaptation: 'Solo se procesarán las filas marcadas en la tabla inferior.',
+      });
+    }
   }
 
   return {
@@ -303,7 +306,7 @@ export function fromBatchPreflightSummary(
     statusMeta,
     statusSummary,
     changesHeading: `Qué voy a cambiar (${changes.length})`,
-    emptyChangesText: 'Sin cambios pendientes.',
+    emptyChangesText: 'Selecciona al menos un modelo para ver las adaptaciones del lote.',
     changes,
     adjustLabel: 'Ajustar origen',
     continueLabel: `Continuar y procesar (${summary.selectedCount})`,

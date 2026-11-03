@@ -36,15 +36,20 @@ import { MultiAssetTriageModal } from '../ui/MultiAssetTriageModal';
 import type { DiscoveredSamplerItem } from '../formats/MultiAssetDiscovery.ts';
 import { applyPreflightImportAdaptations } from '../core/import/importPreflight.ts';
 import {
+  isNeuronBankOrModelInput,
+  listNeuronBankModels,
+  parseNeuronBankOrModelToPreset,
+} from '../core/import/neuronBankImporter.ts';
+import {
   discoverTriageReport,
   extractTriageDefinitionCandidates,
   indexTriageBuffers,
   isTriageAudioItem,
+  isTriageContainerFileName,
   parseTriageDefinitionItem,
   partitionTriageSelection,
   resolveTriageItemFiles,
   shouldOpenTriageGate,
-  TRIAGE_CONTAINER_EXTENSIONS,
   type TriageExpandedFile,
 } from './triageGate.ts';
 
@@ -1288,8 +1293,7 @@ export class ImportHandlers {
         }
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
-          const lower = entry.name.toLowerCase();
-          if (TRIAGE_CONTAINER_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+          if (isTriageContainerFileName(entry.name)) {
             hasContainer = true;
           } else {
             hasOther = true;
@@ -1331,8 +1335,7 @@ export class ImportHandlers {
       if (rel.includes('__MACOSX/')) continue;
       const base = rel.split('/').pop() ?? f.name;
       if (base.startsWith('.') || base.startsWith('._')) continue;
-      const lower = base.toLowerCase();
-      if (TRIAGE_CONTAINER_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+      if (isTriageContainerFileName(base)) {
         hasContainer = true;
       } else {
         hasOther = true;
@@ -1369,8 +1372,14 @@ export class ImportHandlers {
           continue;
         }
         const buf = await f.arrayBuffer();
-        if (lower.endsWith('.zip')) {
-          const unzipped = parseZipArchive(new Uint8Array(buf));
+        const bytes = new Uint8Array(buf);
+        const isPkZip =
+          bytes.byteLength >= 4 &&
+          bytes[0] === 0x50 &&
+          bytes[1] === 0x4b &&
+          (bytes[2] === 0x03 || bytes[2] === 0x05);
+        if (lower.endsWith('.zip') || lower.endsWith('.nmpack') || (lower.endsWith('.model') && isPkZip)) {
+          const unzipped = parseZipArchive(bytes);
           for (const entry of unzipped) {
             const copy = new Uint8Array(entry.data.byteLength);
             copy.set(entry.data);
@@ -1398,9 +1407,10 @@ export class ImportHandlers {
         return;
       }
 
-      // Classify expanded files into model folders (<NNN>.model), loose model files, SF2/SFZ, and audio files
+      // Classify expanded files into model folders (<NNN>.model), loose model files, neuron bank containers, SF2/SFZ, and audio files
       const modelFolders = new Map<number, { name: string; buffer: ArrayBuffer }[]>();
       const looseModelFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const neuronContainerFiles: { name: string; buffer: ArrayBuffer }[] = [];
       const audioFiles: { name: string; path?: string; buffer: ArrayBuffer }[] = [];
       const sf2Files: { name: string; buffer: ArrayBuffer }[] = [];
       const sfzFiles: { name: string; buffer: ArrayBuffer }[] = [];
@@ -1427,6 +1437,10 @@ export class ImportHandlers {
           lower === 'mname' ||
           lower.endsWith('.nmmodel') ||
           lower.endsWith('.neuronikmodel');
+        const isNeuronContainer =
+          lower.endsWith('.model') ||
+          lower.endsWith('.nmpack') ||
+          (!isModelArtifact && !isSupportedAudioFileName(lower) && isNeuronBankOrModelInput(base, item.buffer));
         const isAudio = isSupportedAudioFileName(lower);
 
         if (isModelArtifact) {
@@ -1439,6 +1453,8 @@ export class ImportHandlers {
           } else {
             looseModelFiles.push(item);
           }
+        } else if (isNeuronContainer) {
+          neuronContainerFiles.push(item);
         } else if (isAudio) {
           audioFiles.push({ name: base, path: normPath, buffer: item.buffer });
         }
@@ -1456,6 +1472,7 @@ export class ImportHandlers {
         sfzFiles.length > 0 ||
         modelFolders.size > 0 ||
         looseModelFiles.length > 0 ||
+        neuronContainerFiles.length > 0 ||
         audioFiles.length > 1;
 
       if (isNewInstrument && this.ctx.session) {
@@ -1677,6 +1694,77 @@ export class ImportHandlers {
           `${sourceLabel}: imported model #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
         );
         this.ctx.refresh();
+        return;
+      }
+
+      // Fase 35.1: Standalone `.model` / `.nmpack` or signature-detected Neuron bank container dropped directly
+      if (neuronContainerFiles.length > 0) {
+        const primaryContainer = neuronContainerFiles[0];
+        const extraEntries = [
+          ...neuronContainerFiles.map((nf) => ({ name: nf.name, data: new Uint8Array(nf.buffer) })),
+          ...audioFiles.map((af) => ({ name: af.path ?? af.name, data: new Uint8Array(af.buffer) })),
+        ];
+        const applyNeuronPreset = async (targetModelId?: string) => {
+          const parsedPreset = await parseNeuronBankOrModelToPreset(
+            primaryContainer.name,
+            primaryContainer.buffer,
+            extraEntries.length > 1 ? extraEntries : undefined,
+            targetModelId
+          );
+          const currentMode = this.ctx.session?.processConfig.workingMode ?? 'classic';
+          const adapted = applyPreflightImportAdaptations(parsedPreset, {
+            autoExtendOuterZones: true,
+            adaptVelocityLayers: true,
+            switchToExtendedMode: currentMode === 'extended',
+            currentWorkingMode: currentMode,
+          });
+          if (!this.ctx.session) {
+            this.ctx.session = await this.ctx.core.newSession(parsedPreset.modelName || 'NeuronModel');
+          }
+          for (const [name, buf] of adapted.audioBuffers.entries()) {
+            this.ctx.core.registerSampleBuffer(name, buf);
+          }
+          const rawParamSet = Number(parsedPreset.suggestedParameterSet);
+          const paramSet = Number.isFinite(rawParamSet) ? Math.max(0, Math.min(9, rawParamSet)) : 0;
+          this.ctx.session.name = parsedPreset.modelName;
+          this.ctx.session.processConfig.modelName = parsedPreset.modelName.slice(0, 11);
+          this.ctx.session.processConfig.expandedName = parsedPreset.presetName;
+          this.ctx.session.processConfig.parameterSet = paramSet;
+          this.ctx.session.processConfig.workingMode = adapted.suggestedWorkingMode;
+          this.ctx.session.zones = adapted.classicZones;
+          this.ctx.session.extendedRegions = adapted.extendedRegions;
+          this.ctx.session.dirty = true;
+          this.ctx.selectedZoneId = adapted.classicZones[0]?.id ?? null;
+          this.ctx.log(
+            `${sourceLabel}: imported ${parsedPreset.formatLabel} "${parsedPreset.presetName}" (${adapted.classicZones.length} zone(s))`
+          );
+          this.ctx.refresh();
+        };
+
+        const modelsInArchive = listNeuronBankModels(primaryContainer.name, primaryContainer.buffer);
+        if (modelsInArchive.length > 1) {
+          const multiModal = new MultiInstrumentModal();
+          multiModal.open({
+            fileName: primaryContainer.name,
+            format: 'zip',
+            items: modelsInArchive.map((m) => ({
+              id: m.id,
+              index: m.index,
+              name: m.name,
+              regionCount: m.regionCount,
+              detail: m.detail,
+            })),
+            onSelect: (chosen) => {
+              void applyNeuronPreset(chosen.id);
+            },
+            onProcessBatch: () => {
+              this.ctx.onOpenBatchProcessor?.();
+            },
+          });
+          return;
+        }
+
+        await applyNeuronPreset();
         return;
       }
 
