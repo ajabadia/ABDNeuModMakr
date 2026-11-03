@@ -1074,7 +1074,14 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - **Opción A) Conectar**: cablearla en la ruta de descubrimiento de Universal Import / ZIP-como-carpeta. Implica revisar su diseño contra el pipeline actual, testearla y mantener una pantalla más. Beneficio: el flujo de packs de samples (que SON carpetas mixtas) funciona como se prometió.
 - **Opción B) Eliminar**: borrar el fichero y retirar la promesa de la Fase 29. Implica que lo mixto sigue con el comportamiento actual (auto-encaminado sin elegir por archivo). Menos código, promesa retirada formalmente.
 - **No hacer nada no es opción**: el código muerto se pudre (los imports derivan y deja de compilar en silencio), el roadmap miente y el asistente (35.5) no puede apoyarse en él.
-- [ ] Decisión del usuario: A o B. (Recomendación: A solo si la importación de packs mixtos es un caso real; si no, B.)
+- [x] Decisión del usuario (2026-11-03): **A) Conectar**, para carpeta y para zip (zip = carpeta). Implementado:
+  - `src/app/triageGate.ts` (nuevo, puro y testeable): VFS sin copia sobre el contenido expandido, `shouldOpenTriageGate` (≥2 entidades y ≥2 formatos), resolución primario+compañeros sin duplicados, partición a batch (packs audio + SF2 autocontenido; resto se deriva a Universal Import con aviso).
+  - Puerta en `importMixedFilesOrZip` (multi-archivo y zip) y en `importFromWebkitFileList` (carpeta): el contenido genuinamente mixto abre `MultiAssetTriageModal`; los flujos de un solo formato conservan su vía rápida (SF2, modelo, audio puro).
+  - `Load Single`: audio entra directo a sesión; SF2 se comporta como si se soltara ese archivo; otros contenedores van a batch/Universal Import (sin promesas falsas).
+  - `Process Selected`: packs audio → `extractFolderFilesToCandidates`, SF2 → `extractSf2PresetsToCandidates`, todo a `batchModal.loadCandidates` (nuevo `onOpenBatchProcessorWithCandidates`); lo no procesable por lote se lista y se deriva.
+  - `MultiAssetTriageModal`: focus-trap + Escape como el resto de modales (era el único sin él).
+  - Tests `tests/phase35_triage_gate.test.ts` (4/4 en verde; fase 29 sigue 33/33; `tsc` sin errores en ficheros propios). No registrado en `run_all.ts` (línea WIP ajena, pendiente).
+  - Limitaciones conocidas: loops `.rx2` y definiciones exóticas (nki, dspreset…) aún sin mapeo a batch; selector de carpeta del File System Access y zip vía Ctrl+I como seguimientos.
 
 ### 35.1 Bancos Hartmann/Neuronik como un formato más
 - Los bancos legacy entran por **Importar**, no por el Bank Browser. El Browser organiza lo propio; no es puerta de entrada.

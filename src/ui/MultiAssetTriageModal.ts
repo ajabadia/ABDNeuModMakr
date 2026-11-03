@@ -9,7 +9,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
-import type { FocusTrap } from './modalFocusTrap.ts';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import type { DiscoveredSamplerItem, MultiAssetDiscoveryReport } from '../formats/MultiAssetDiscovery.ts';
 
 export interface MultiAssetTriageModalOptions {
@@ -42,6 +42,19 @@ export class MultiAssetTriageModal {
     document.body.appendChild(backdrop);
 
     this.render();
+
+    // Fase 35: same focus-trap discipline as the other modals (Tab containment
+    // + Escape to cancel) so the gate never strands keyboard users.
+    if (!this.focusTrap && this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        onEscape: () => {
+          this.options?.onCancel?.();
+          this.close();
+        },
+        initialFocusSelector: '#inp-triage-search',
+      });
+      this.focusTrap.activate();
+    }
   }
 
   public close(): void {

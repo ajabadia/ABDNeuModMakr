@@ -30,6 +30,20 @@ import {
   extractFolderFilesToCandidatesWithAi,
   type FolderFileInput,
 } from '../core/batch/FolderBatchExtractor';
+import { extractSf2PresetsToCandidates } from '../core/batch/Sf2BatchExtractor';
+import type { BatchModelCandidate } from '../core/batch/types';
+import { MultiAssetTriageModal } from '../ui/MultiAssetTriageModal';
+import type { DiscoveredSamplerItem } from '../formats/MultiAssetDiscovery.ts';
+import {
+  discoverTriageReport,
+  indexTriageBuffers,
+  isTriageAudioItem,
+  partitionTriageSelection,
+  resolveTriageItemFiles,
+  shouldOpenTriageGate,
+  TRIAGE_CONTAINER_EXTENSIONS,
+  type TriageExpandedFile,
+} from './triageGate.ts';
 
 export interface ImportContext {
   core: CoreService;
@@ -41,6 +55,7 @@ export interface ImportContext {
   readonly neuronDb: NeuronDbModal;
   onDropCoverImage?: (file: File) => Promise<void> | void;
   onOpenBatchProcessorWithSf2?: (buffer: ArrayBuffer, fileName: string) => void;
+  onOpenBatchProcessorWithCandidates?: (candidates: BatchModelCandidate[], originTitle?: string) => void;
   onOpenBatchProcessor?: () => void;
 }
 
@@ -850,6 +865,13 @@ export class ImportHandlers {
         }
       }
 
+      // Fase 35 — folder triage gate: mixed folders carrying preset containers
+      // are ignored by the single-format folder flows below, so they get the gate.
+      const mixedFolder = await this.readMixedWebkitFilesForTriage(fileList);
+      if (mixedFolder && (await this.maybeOpenTriageGate(mixedFolder, 'Dropped Folder', 'samples', preferredKind))) {
+        return;
+      }
+
       if ((preferredKind === 'model' || audioFileEntries.length === 0) && (modelFolders.size > 0 || looseModelFiles.length > 0)) {
         const loadSlotFiles = async (targetFiles: File[]) => {
           const loaded: { name: string; buffer: ArrayBuffer }[] = [];
@@ -1011,6 +1033,172 @@ export class ImportHandlers {
     }
   }
 
+  // ─────────────────────────────────────────────────────────
+  // Fase 35 — mixed-content triage gate (folder / multi-file / .zip).
+  // Genuinely mixed content opens the MultiAssetTriageModal instead of
+  // letting the single-format ladders below silently drop non-winning kinds.
+  // ─────────────────────────────────────────────────────────
+  private async maybeOpenTriageGate(
+    expanded: TriageExpandedFile[],
+    sourceLabel: string,
+    audioMode: 'samples' | 'by-name',
+    preferredKind: 'audio' | 'model'
+  ): Promise<boolean> {
+    if (expanded.length < 2) return false;
+    const report = await discoverTriageReport(expanded, sourceLabel);
+    if (!report || !shouldOpenTriageGate(report)) return false;
+    const byPath = indexTriageBuffers(expanded);
+    const triage = new MultiAssetTriageModal();
+    triage.open({
+      sourceName: sourceLabel,
+      discoveryReport: report,
+      onImportSingle: (item) => {
+        void this.importTriageSingle(item, byPath, sourceLabel, audioMode, preferredKind);
+      },
+      onProcessBatch: (selected) => {
+        void this.processTriageBatch(selected, byPath, sourceLabel);
+      },
+      onCancel: () => {
+        this.ctx.log(`${sourceLabel}: triage dismissed — no files imported.`);
+      },
+    });
+    this.ctx.log(
+      `${sourceLabel}: mixed content detected (${report.items.length} entities, ${new Set(report.items.map((it) => it.format)).size} formats) — triage gate opened.`
+    );
+    return true;
+  }
+
+  private async importTriageSingle(
+    item: DiscoveredSamplerItem,
+    byPath: Map<string, TriageExpandedFile>,
+    sourceLabel: string,
+    audioMode: 'samples' | 'by-name',
+    preferredKind: 'audio' | 'model'
+  ): Promise<void> {
+    const files = resolveTriageItemFiles(item, byPath);
+    if (files.length === 0) {
+      toast(`Could not locate "${item.name}" data — import it with Universal Import (Ctrl+I).`, 'warning');
+      return;
+    }
+    if (isTriageAudioItem(files)) {
+      await this.importDeducedAudioDirectoryOrPrompt(
+        files.map((f) => ({
+          path: f.name,
+          name: f.name.split('/').pop() ?? f.name,
+          buffer: f.buffer,
+        })),
+        item.name || sourceLabel,
+        audioMode,
+        `${sourceLabel} (triage)`
+      );
+      return;
+    }
+    const primaryBase = (item.primaryFilePath.split('/').pop() ?? '').toLowerCase();
+    if (primaryBase.endsWith('.sf2')) {
+      // Self-contained bank: behave exactly as if the user dropped that file.
+      // The single-SF2 ladder handles it; the gate won't reopen (1 format).
+      const primary = files.find((f) => f.name.toLowerCase().endsWith('.sf2')) ?? files[0];
+      const base = primary.name.split('/').pop() ?? primary.name;
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(new File([primary.buffer], base));
+        await this.importMixedFilesOrZip(dt.files, preferredKind, audioMode, `${sourceLabel} (triage)`);
+      } catch (err) {
+        toast(`Failed to load "${item.name}": ${err instanceof Error ? err.message : String(err)}`, 'error');
+      }
+      return;
+    }
+    toast(
+      `"${item.name}" (${item.formatLabel}) goes through Batch or Universal Import (Ctrl+I) — direct session load here supports audio packs and SF2.`,
+      'warning'
+    );
+  }
+
+  private async processTriageBatch(
+    selected: DiscoveredSamplerItem[],
+    byPath: Map<string, TriageExpandedFile>,
+    sourceLabel: string
+  ): Promise<void> {
+    const part = partitionTriageSelection(selected, byPath);
+    const candidates: BatchModelCandidate[] = [];
+    for (const sf2 of part.sf2Blobs) {
+      try {
+        const base = (sf2.name.split('/').pop() ?? sf2.name).replace(/\.[^.]+$/, '');
+        candidates.push(...extractSf2PresetsToCandidates(sf2.buffer, { soundFontName: base }));
+      } catch (err) {
+        this.ctx.log(
+          `${sourceLabel}: could not read "${sf2.name}" presets (${err instanceof Error ? err.message : String(err)}).`
+        );
+      }
+    }
+    if (part.audioInputs.length > 0) {
+      try {
+        candidates.push(
+          ...extractFolderFilesToCandidates(part.audioInputs, {
+            defaultOriginName: `${sourceLabel} (triage)`,
+          })
+        );
+      } catch (err) {
+        this.ctx.log(
+          `${sourceLabel}: could not group triage audio (${err instanceof Error ? err.message : String(err)}).`
+        );
+      }
+    }
+    if (candidates.length === 0) {
+      toast('Nothing batch-processable in the selection — use Universal Import (Ctrl+I) for these formats.', 'warning');
+      return;
+    }
+    if (part.skipped.length > 0) {
+      const kinds = [...new Set(part.skipped.map((s) => s.formatLabel))].join(', ');
+      toast(
+        `Skipped ${part.skipped.length} (${kinds}): batch takes audio packs and SF2 — the rest go via Universal Import (Ctrl+I).`,
+        'warning'
+      );
+    }
+    if (this.ctx.onOpenBatchProcessorWithCandidates) {
+      this.ctx.onOpenBatchProcessorWithCandidates(candidates, `${sourceLabel} (triage)`);
+    } else {
+      this.ctx.onOpenBatchProcessor?.();
+    }
+  }
+
+  /**
+   * Folder (webkit FileList) variant: preset containers are ignored by the
+   * single-format folder flows, so a mixed folder is read into memory and
+   * offered to the gate. Pure folders return null and keep the fast path.
+   */
+  private async readMixedWebkitFilesForTriage(
+    fileList: FileList
+  ): Promise<TriageExpandedFile[] | null> {
+    const kept: { rel: string; file: File }[] = [];
+    let hasContainer = false;
+    let hasOther = false;
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      const rel = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
+      if (rel.includes('__MACOSX/')) continue;
+      const base = rel.split('/').pop() ?? f.name;
+      if (base.startsWith('.') || base.startsWith('._')) continue;
+      const lower = base.toLowerCase();
+      if (TRIAGE_CONTAINER_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+        hasContainer = true;
+      } else {
+        hasOther = true;
+      }
+      kept.push({ rel, file: f });
+    }
+    if (!hasContainer || !hasOther) return null;
+    const expanded: TriageExpandedFile[] = [];
+    for (const k of kept) {
+      try {
+        expanded.push({ name: k.rel, buffer: await k.file.arrayBuffer() });
+      } catch {
+        // Unreadable entries are left to the legacy flows below.
+      }
+    }
+    return expanded.length >= 2 ? expanded : null;
+  }
+
   async importMixedFilesOrZip(
     fileList: FileList,
     preferredKind: 'audio' | 'model',
@@ -1102,6 +1290,13 @@ export class ImportHandlers {
         } else if (isAudio) {
           audioFiles.push({ name: base, path: normPath, buffer: item.buffer });
         }
+      }
+
+      // Fase 35 — mixed-content triage gate (folder / multi-file / .zip).
+      // Genuinely mixed content opens the gate; single-format flows keep
+      // their fast paths below.
+      if (await this.maybeOpenTriageGate(expanded, sourceLabel, audioMode, preferredKind)) {
+        return;
       }
 
       const isNewInstrument =

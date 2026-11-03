@@ -362,6 +362,10 @@ class App {
       onOpenBatchProcessorWithSf2: (buffer: ArrayBuffer, fileName: string) => {
         self.batchModal.loadSf2Buffer(buffer, fileName);
       },
+      // Fase 35 — triage gate delivers pre-mapped candidates straight to preflight.
+      onOpenBatchProcessorWithCandidates: (candidates, originTitle) => {
+        self.batchModal.loadCandidates(candidates, originTitle);
+      },
       onOpenBatchProcessor: () => {
         self.batchModal.open();
       },
