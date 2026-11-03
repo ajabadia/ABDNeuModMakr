@@ -282,7 +282,7 @@ class App {
           modelName: s.processConfig.modelName || s.name || 'Init Model',
           expandedName: s.processConfig.expandedName || s.processConfig.modelName || s.name || 'Init Model',
           slot: s.processConfig.modelNumber ?? 1,
-          workingMode: s.processConfig.workingMode,
+          workingMode: s.processConfig.workingMode ?? 'classic',
           zoneCount: s.zones.length,
           regionCount: self.core.getExtendedRegions().length,
           hasActiveZoneSample: Boolean(active?.sampleLow || active?.sampleHigh),

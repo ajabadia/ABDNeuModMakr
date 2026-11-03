@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────
 
 import {
+  TIME_CAPSULE_ES_LABEL,
   buildExportDestinationCards,
   resolveExportDestinationSummary,
   triggerExportDestinationAction,
@@ -48,6 +49,9 @@ export class ExportDestinationModal {
     this.backdropEl = document.createElement('div');
     this.backdropEl.className = 'nmm-modal-backdrop';
     this.backdropEl.innerHTML = this.render();
+    this.backdropEl.addEventListener('mousedown', (e) => {
+      if (e.target === this.backdropEl) this.close();
+    });
     document.body.appendChild(this.backdropEl);
 
     this.bindEvents();
@@ -139,7 +143,7 @@ export class ExportDestinationModal {
             <span>${ICONS.layers}</span>
             <div>
               <p><strong>${escHtml(summary.displayName)}</strong> (${escHtml(summary.slotLabel)}) está en modo <strong>${escHtml(summary.modeLabel)}</strong> con <strong>${escHtml(summary.zonesLabel)}</strong>.</p>
-              <p>Para conservar las 5 capas sin pérdida generacional usa siempre la <strong>Cápsula del Tiempo (.zip)</strong> o guárdalo en <strong>AxionikDB</strong>.</p>
+              <p>Para conservar las 5 capas sin pérdida generacional usa siempre la <strong>${escHtml(TIME_CAPSULE_ES_LABEL)}</strong> o guárdalo en <strong>AxionikDB</strong>.</p>
             </div>
           </div>
 
@@ -163,10 +167,6 @@ export class ExportDestinationModal {
   private bindEvents(): void {
     const root = this.backdropEl;
     if (!root) return;
-
-    root.addEventListener('mousedown', (e) => {
-      if (e.target === root) this.close();
-    });
 
     root.querySelector('#btn-export-dest-close')?.addEventListener('click', () => this.close());
     root.querySelector('#btn-export-dest-cancel')?.addEventListener('click', () => this.close());

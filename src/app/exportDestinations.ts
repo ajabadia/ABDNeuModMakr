@@ -41,11 +41,22 @@ export interface ExportSessionContext {
   modelName: string;
   expandedName?: string;
   slot: number;
-  workingMode: WorkingMode;
+  workingMode?: WorkingMode;
   zoneCount: number;
   regionCount: number;
   hasActiveZoneSample: boolean;
 }
+
+/** Static O(1) lookup table mapping secondary quick-action IDs to their target RawSamplerFormat. */
+const QUICK_SAMPLER_FORMAT_BY_ACTION: Readonly<Record<string, RawSamplerFormat>> = {
+  'fmt-sf2': 'sf2',
+  'fmt-sfz': 'sfz',
+  'fmt-dspreset': 'dspreset',
+  'fmt-nki': 'nki',
+  'fmt-mpc': 'mpc_xpm',
+  'fmt-exs24': 'exs24',
+  'wav-chain': 'sample_chain',
+};
 
 export interface ExportDestinationCallbacks {
   onExportTimeCapsule: () => void | Promise<void>;
@@ -67,7 +78,7 @@ export function buildExportDestinationCards(): ExportDestinationCard[] {
       badge: 'Cápsula del Tiempo',
       description:
         'Empaqueta el instrumento completo sin pérdida generacional: fuente original (01), modelo clásico Hartmann (04), Master Wave 96 kHz (03) y modelo extendido v2 (05) con portada WebP.',
-      primaryActionLabel: 'Exportar Cápsula del Tiempo (.zip)',
+      primaryActionLabel: `Exportar ${TIME_CAPSULE_ES_LABEL}`,
       secondaryActions: [
         { id: 'axionikdb', label: 'Guardar en AxionikDB' },
         { id: 'time-capsule-as', label: 'Guardar Cápsula Como…' },
@@ -151,16 +162,14 @@ export async function triggerExportDestinationAction(
   }
 
   if (destinationId === 'other-samplers') {
-    const cards = buildExportDestinationCards();
-    const samplerCard = cards.find((c) => c.id === 'other-samplers');
-    const quick = samplerCard?.secondaryActions.find((a) => a.id === secondaryActionId);
-    callbacks.onExportSampler(quick?.samplerFormat);
+    const format = secondaryActionId ? QUICK_SAMPLER_FORMAT_BY_ACTION[secondaryActionId] : undefined;
+    callbacks.onExportSampler(format);
     return;
   }
 
   if (destinationId === 'raw-audio') {
     if (secondaryActionId === 'wav-chain') {
-      callbacks.onExportSampler('sample_chain');
+      callbacks.onExportSampler(QUICK_SAMPLER_FORMAT_BY_ACTION['wav-chain']);
       return;
     }
     callbacks.onExportZoneAiff();

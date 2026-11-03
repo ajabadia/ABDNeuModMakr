@@ -9120,7 +9120,7 @@ textarea.form-control::placeholder {
 /* ─────────────────────────────────────────────────────────────
    Raw Sampler Export (Fase 16): ajustes + preflight compartido
    (las tarjetas .preflight-* / .issue-* las reutilizan Universal
-   Import y Config Health para que ambos preflights sean idénticos).
+   Import, Config Health y ExportDestinationModal).
    ───────────────────────────────────────────────────────────── */
 
 .raw-export-body {

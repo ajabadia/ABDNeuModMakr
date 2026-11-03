@@ -6,6 +6,7 @@
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
 import { cloudByokClient } from '../core/ai/CloudByokClient';
+import { TIME_CAPSULE_CANONICAL_LABEL } from '../app/exportDestinations';
 import type { Session, HistoryState, TargetFormat, WorkingMode, AiAssistanceConfig } from '../core/types';
 
 export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge';
@@ -121,7 +122,7 @@ export class AppNavbar {
               { id: 1033, label: 'Save Model to AxionikDB...', action: 'saveToAxionikDb' },
               { id: 1034, label: 'Save Model to AxionikDB As (Duplicate)...', action: 'saveToAxionikDbAs' },
               { separator: true },
-              { id: 1035, label: 'Export Time Capsule (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
+              { id: 1035, label: `Export ${TIME_CAPSULE_CANONICAL_LABEL}...`, action: 'exportModel', shortcut: 'Ctrl+T' },
               { id: 1036, label: 'Export Time Capsule As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
             ],
           },

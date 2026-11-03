@@ -21,6 +21,7 @@ import type { SublibraryInfo } from '../core/types';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
 import { escAttr } from './escape';
 import { isSafeCoverDataUrl } from '../core/bankService';
+import { TIME_CAPSULE_CANONICAL_LABEL } from '../app/exportDestinations';
 
 export type BankTab = 'models' | 'presets' | 'library' | 'axionik';
 
@@ -563,7 +564,7 @@ export class BankDrawer {
               badges,
               actions: [
                 { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },
-                { id: 'export', label: 'Time Capsule', kind: 'export', title: 'Export 5-Layer Time Capsule (.zip)', iconHtml: ICONS.folder },
+                { id: 'export', label: 'Time Capsule', kind: 'export', title: `Export 5-Layer ${TIME_CAPSULE_CANONICAL_LABEL}`, iconHtml: ICONS.folder },
               ],
               selected: m.slot === this.selectedSlot,
             });
