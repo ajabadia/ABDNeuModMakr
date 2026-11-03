@@ -198,7 +198,7 @@ export class AiCoverGeneratorModal {
           </button>
         </header>
 
-        <div class="nmm-modal-body ai-cover-modal-body">
+        <div class="nmm-modal-body nmm-modal-body-fill">
           <div class="ai-cover-grid">
             <!-- Left: Artwork Preview & Actions -->
             <div class="ai-cover-preview-col">
@@ -209,7 +209,7 @@ export class AiCoverGeneratorModal {
                   <div class="ai-cover-generating-state">
                     <div class="neural-pulse-spinner">${ICONS.sparkle}</div>
                     <strong class="generating-title">Synthesizing Neural Artwork...</strong>
-                    <span class="generating-sub">${escHtml(this.generationStatusText || 'Rendering acoustic soundwaves...')}</span>
+                    <span class="nmm-hint">${escHtml(this.generationStatusText || 'Rendering acoustic soundwaves...')}</span>
                   </div>
                 `
                     : this.currentArtwork
@@ -253,7 +253,7 @@ export class AiCoverGeneratorModal {
             <div class="ai-cover-controls-col">
               <!-- Context Card -->
               <div class="ai-ctrl-card">
-                <div class="ai-ctrl-header">
+                <div class="nmm-title-row">
                   <strong>${ICONS.cpu} Acoustic Timbre Profile</strong>
                   <span class="text-muted">Target: ${escHtml(expandedName)}</span>
                 </div>
@@ -267,7 +267,7 @@ export class AiCoverGeneratorModal {
 
               <!-- Style Selector -->
               <div class="ai-ctrl-card">
-                <div class="ai-ctrl-header">
+                <div class="nmm-title-row">
                   <strong>${ICONS.palette} Artistic Aesthetic Style</strong>
                   <span class="text-muted">Visual palette and synthesis genre</span>
                 </div>
@@ -285,7 +285,7 @@ export class AiCoverGeneratorModal {
 
               <!-- Prompt Editor -->
               <div class="ai-ctrl-card">
-                <div class="ai-ctrl-header">
+                <div class="nmm-title-row">
                   <label for="txt-ai-prompt"><strong>${ICONS.edit} Acoustic Prompt</strong></label>
                   <div class="ai-prompt-actions cfg-inline-row">
                     <button
@@ -312,7 +312,7 @@ export class AiCoverGeneratorModal {
 
               <!-- Provider Selection -->
               <div class="ai-ctrl-card">
-                <div class="ai-ctrl-header">
+                <div class="nmm-title-row">
                   <strong>${ICONS.sparkle} Generative Engine / Provider</strong>
                   <span class="text-muted">Select offline procedural, local bridge or private Cloud BYOK</span>
                 </div>

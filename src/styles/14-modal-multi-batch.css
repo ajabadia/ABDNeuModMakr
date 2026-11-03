@@ -19,11 +19,6 @@
   font-family: var(--font-mono);
 }
 
-.triage-table td.triage-col-bank,
-.triage-table td.triage-col-regions {
-  white-space: nowrap;
-}
-
 .bank-tag {
   background: var(--color-panel-bg);
   border: 1px solid var(--color-panel-border-dim);

@@ -203,11 +203,6 @@
   background: var(--color-panel-surface-elevated);
 }
 
-.nmm-recorder-take.is-selected {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
-}
-
 .nmm-recorder-take-name {
   font-weight: 700;
   font-family: var(--font-mono);

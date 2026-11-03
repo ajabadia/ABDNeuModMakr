@@ -1007,7 +1007,7 @@ export class AudioChopperModal {
               </div>
 
               <div class="chopper-table-scroll">
-                <table class="canonical-zone-table chopper-slices-table">
+                <table class="canonical-zone-table nmm-data-table">
                   <thead>
                     <tr>
                       <th>#ID</th>
@@ -2466,7 +2466,7 @@ export class AudioChopperModal {
   private bindTableEvents(): void {
     if (!this.backdropEl) return;
 
-    this.backdropEl.querySelectorAll<HTMLTableRowElement>('.chopper-slices-table tbody tr').forEach((tr) => {
+    this.backdropEl.querySelectorAll<HTMLTableRowElement>('.nmm-data-table tbody tr').forEach((tr) => {
       tr.addEventListener('click', () => {
         const sliceId = tr.dataset.sliceId;
         const sl = this.currentResult?.slices.find((s) => s.id === sliceId);

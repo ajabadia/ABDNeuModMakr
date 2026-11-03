@@ -35,11 +35,6 @@
   transition: all var(--transition-fast);
 }
 
-.btn-rail-toggle:hover {
-  background: var(--color-accent-dim);
-  border-color: var(--color-accent);
-}
-
 .btn-rail-cta {
   width: 38px;
   height: 38px;
@@ -125,7 +120,6 @@
 .panel-header-actions,
 .hud-param-set-row,
 .ai-status-row,
-.slicer-sample-meta,
 .drawer-header-actions {
   display: flex;
   align-items: center;
@@ -371,14 +365,6 @@
   opacity: 0.85;
 }
 
-.model-config-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-4);
-  background: var(--color-panel-bg);
-}
-
 .model-identity-dual-grid {
   display: flex;
   flex-direction: column;
@@ -474,12 +460,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.cfg-hint,
-.ai-generator-desc {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
 }
 
 .cfg-explainer {
@@ -666,11 +646,6 @@
   transition: all var(--transition-fast);
 }
 
-.cover-dropzone.is-dragover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
-}
-
 .cover-empty-placeholder {
   display: flex;
   flex-direction: column;
@@ -726,8 +701,11 @@
   gap: var(--space-3);
 }
 
-.ai-generator-info,
-.sample-title-box {
+.opt-body,
+.ai-hw-indicator .hw-text,
+.bridge-detail-item,
+.skin-opt-body,
+.ai-generator-info {
   display: flex;
   flex-direction: column;
   gap: 2px;

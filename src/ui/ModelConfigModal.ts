@@ -211,7 +211,7 @@ export class ModelConfigModal {
           </button>
         </nav>
 
-        <div class="nmm-modal-body model-config-body">
+        <div class="nmm-modal-body nmm-modal-body-fill">
           ${tabBodyHtml}
         </div>
       </div>
@@ -253,7 +253,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.settings} Model Identity &amp; Naming</h4>
-            <span class="cfg-hint">Hardware memory location, classic display name and extended next-gen title</span>
+            <span class="nmm-hint">Hardware memory location, classic display name and extended next-gen title</span>
           </div>
           <div class="model-identity-dual-grid">
             <!-- Row 1: Classic Hardware Name + Slot -->
@@ -343,7 +343,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.piano} Creation &amp; Keyboard Mapping Mode</h4>
-            <span class="cfg-hint">Governs keyboard structure, velocity layers, and physical hardware constraints</span>
+            <span class="nmm-hint">Governs keyboard structure, velocity layers, and physical hardware constraints</span>
           </div>
           <div class="settings-working-mode-grid">
             <label class="settings-mode-opt ${!isExtended ? 'is-selected' : ''}">
@@ -388,7 +388,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.cpu} Target Export Format &amp; Resynthesis Engine</h4>
-            <span class="cfg-hint">Compilation destination files and spectral modeling pipeline</span>
+            <span class="nmm-hint">Compilation destination files and spectral modeling pipeline</span>
           </div>
           <div class="model-cfg-engine-row">
             <div class="form-group">
@@ -424,7 +424,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.wave} Analysis Complexity &amp; Modal Density</h4>
-            <span class="cfg-hint">Controls FFT stick mode resolution: higher levels retain harmonic shimmer at cost of compile time</span>
+            <span class="nmm-hint">Controls FFT stick mode resolution: higher levels retain harmonic shimmer at cost of compile time</span>
           </div>
           <div class="label-with-val">
             <label>COMPLEXITY LEVEL</label>
@@ -447,7 +447,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} Canonical Parameter Set (Physical Modeling Category)</h4>
-            <span class="cfg-hint">Determines the physical modeling exciter/resonator behavior in the Hartmann hardware</span>
+            <span class="nmm-hint">Determines the physical modeling exciter/resonator behavior in the Hartmann hardware</span>
           </div>
           <div class="param-set-buttons-grid" role="radiogroup">
             ${pSets
@@ -496,7 +496,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.piano} Global Instrument Playback &amp; Keytrack</h4>
-            <span class="cfg-hint">Global defaults applied across all model zones and regions</span>
+            <span class="nmm-hint">Global defaults applied across all model zones and regions</span>
           </div>
 
           <div class="form-row-dual">
@@ -552,7 +552,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.wave} Master 24/96 Standard &amp; Dynamic Range</h4>
-            <span class="cfg-hint">Studio-grade master wave resynthesis standards</span>
+            <span class="nmm-hint">Studio-grade master wave resynthesis standards</span>
           </div>
           <p class="cfg-explainer">
             When Master 24/96 processing is applied, original samples are promoted using cubic hermite interpolation and zero-crossing seam alignment. This ensures zero phase distortion when models are triggered in polyphonic environments.
@@ -593,7 +593,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.database} Extended Model Provenance &amp; Attribution</h4>
-            <span class="cfg-hint">Preserved across AxionikDB and modern sampler instruments</span>
+            <span class="nmm-hint">Preserved across AxionikDB and modern sampler instruments</span>
           </div>
 
           <div class="form-row-dual">
@@ -657,7 +657,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} SoundFont &amp; Sampler Metadata Tags (${customAttrs.length})</h4>
-            <span class="cfg-hint">RIFF INFO chunk tags (IENG, ICOP, ICRD, ISFT) and studio recording attributes</span>
+            <span class="nmm-hint">RIFF INFO chunk tags (IENG, ICOP, ICRD, ISFT) and studio recording attributes</span>
           </div>
 
           <!-- Add Tag Bar -->
@@ -742,7 +742,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} 5-Layer Time Capsule &amp; Provenance</h4>
-            <span class="cfg-hint">Non-destructive origin tracking with zero generation loss</span>
+            <span class="nmm-hint">Non-destructive origin tracking with zero generation loss</span>
           </div>
           <p class="cfg-explainer">
             The Time Capsule system stores original raw audio along with resynthesis parameters. At any time, you can trigger a lossless reprocess from the purest acoustic source without quality degradation.
@@ -769,7 +769,7 @@ export class ModelConfigModal {
         <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.palette} Model Cover Artwork (512×512 WebP)</h4>
-            <span class="cfg-hint">Rendered in ABDAxionikVS catalog, SoundFont browser, and modern VST3/AU wrappers</span>
+            <span class="nmm-hint">Rendered in ABDAxionikVS catalog, SoundFont browser, and modern VST3/AU wrappers</span>
           </div>
 
           <div class="cover-artwork-editor-layout">
@@ -815,7 +815,7 @@ export class ModelConfigModal {
               <div class="ai-artwork-generator-banner">
                 <div class="ai-generator-info">
                   <strong class="ai-generator-title">${ICONS.sparkle} AI Cover Artwork Generator</strong>
-                  <span class="ai-generator-desc">Generate unique 512×512 neural cover art tailored to model name and acoustic timbre.</span>
+                  <span class="nmm-hint">Generate unique 512×512 neural cover art tailored to model name and acoustic timbre.</span>
                 </div>
                 <button type="button" class="btn btn-outline btn-ai-generate" id="btn-cfg-ai-cover" title="AI Cover Artwork Generation (Roadmap Phase 20)">
                   ${ICONS.sparkle} Generate with AI <span class="badge-ai-soon">Fase 20</span>

@@ -581,7 +581,7 @@ export class SettingsModal {
             <span class="toggle-slider"></span>
             <span class="toggle-title">Enable AI Assistance</span>
           </label>
-          <span class="ai-master-hint text-muted">
+          <span class="nmm-hint text-muted">
             (When disabled, 100% of processing runs with deterministic algorithmic DSP in WebAudio)
           </span>
         </div>
@@ -885,7 +885,7 @@ export class SettingsModal {
             <div class="byok-provider-grid">
               <label class="byok-provider-opt ${byok.provider === 'claude' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="claude" ${byok.provider === 'claude' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Anthropic Claude</span>
                   <span class="provider-pill-badge">Sonnet &amp; Haiku</span>
                 </div>
@@ -893,7 +893,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'openrouter' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="openrouter" ${byok.provider === 'openrouter' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">OpenRouter</span>
                   <span class="provider-pill-badge">Multi-Model</span>
                 </div>
@@ -901,7 +901,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'openai' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="openai" ${byok.provider === 'openai' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">OpenAI / ChatGPT</span>
                   <span class="provider-pill-badge">GPT-4o &amp; DALL-E</span>
                 </div>
@@ -909,7 +909,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'gemini' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="gemini" ${byok.provider === 'gemini' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Google Gemini</span>
                   <span class="provider-pill-badge">Flash &amp; Imagen 3</span>
                 </div>
@@ -917,7 +917,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'groq' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="groq" ${byok.provider === 'groq' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Groq (LPU Speed)</span>
                   <span class="provider-pill-badge">LPU Real-time</span>
                 </div>
@@ -925,7 +925,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'deepseek' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="deepseek" ${byok.provider === 'deepseek' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">DeepSeek</span>
                   <span class="provider-pill-badge">R1 Reasoning</span>
                 </div>
@@ -933,7 +933,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'mistral' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="mistral" ${byok.provider === 'mistral' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Mistral AI</span>
                   <span class="provider-pill-badge">European AI</span>
                 </div>
@@ -941,7 +941,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'replicate' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="replicate" ${byok.provider === 'replicate' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Replicate</span>
                   <span class="provider-pill-badge">AudioSR GPU</span>
                 </div>
@@ -949,7 +949,7 @@ export class SettingsModal {
               </label>
               <label class="byok-provider-opt ${byok.provider === 'huggingface' ? 'is-selected' : ''}">
                 <input type="radio" name="byok-provider" value="huggingface" ${byok.provider === 'huggingface' ? 'checked' : ''} />
-                <div class="provider-title-row">
+                <div class="nmm-title-row">
                   <span class="provider-title">Hugging Face</span>
                   <span class="provider-pill-badge">Serverless</span>
                 </div>
@@ -1168,7 +1168,7 @@ python bridge/server.py</code></pre>
 
         return `
         <div class="model-row-card ${m.installed ? 'is-installed' : ''}" data-model-id="${escAttr(m.id)}">
-          <div class="model-row-main">
+          <div class="nmm-item-main">
             <div class="model-row-title">
               <strong>${escHtml(m.name)}</strong>
               <span class="model-size-badge">${sizeDisplay}</span>

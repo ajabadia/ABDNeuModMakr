@@ -105,19 +105,6 @@
   min-width: 0;
 }
 
-.sample-slot-card.has-file {
-  border-left: 3px solid var(--color-accent);
-}
-
-.sample-slot-card.is-empty {
-  border-left: 3px solid var(--color-warning);
-}
-
-.sample-slot-card.is-dragover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
-}
-
 .sample-slot-header,
 .sample-slot-body,
 .label-with-val {
@@ -149,8 +136,7 @@
 /* Unified flex row: center + gap (was 3 identical rules) */
 .nav-hud-center,
 .nav-hud-right,
-.ribbon-header-right,
-.control-row {
+.ribbon-header-right {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -363,12 +349,6 @@
   gap: var(--space-1);
 }
 
-.working-mode-buttons-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-
 .btn-target-format.is-disabled-future,
 .btn-working-mode.is-disabled-future {
   opacity: 0.5;
@@ -482,11 +462,6 @@
   font-size: var(--text-xs);
   padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
-}
-
-.param-set-name {
-  font-weight: 700;
-  font-size: var(--text-sm);
 }
 
 .param-set-desc {

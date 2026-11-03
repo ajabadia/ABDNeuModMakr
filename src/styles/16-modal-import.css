@@ -135,8 +135,6 @@
   text-transform: uppercase;
 }
 
-/* Issues section */
-.uimport-issues-section,
 .uimport-checkbox-list {
   display: flex;
   flex-direction: column;
@@ -197,12 +195,6 @@
   flex-direction: column;
   gap: 2px;
   flex: 1;
-}
-
-.issue-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .issue-cat-badge {

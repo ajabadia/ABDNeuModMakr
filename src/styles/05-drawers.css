@@ -112,7 +112,6 @@
   height: 90px;
 }
 
-.control-row input[type="range"],
 .telemetry-log-stream {
   flex: 1;
 }
@@ -440,10 +439,6 @@
   box-sizing: border-box;
 }
 
-.acoustic-stat-chip.is-present {
-  border-left: 3px solid var(--color-accent);
-}
-
 .acoustic-stat-chip.is-empty {
   opacity: 0.68;
 }
@@ -612,22 +607,6 @@
 .param-set-select:focus,
 .bank-filter-input:focus {
   border-color: var(--color-accent);
-}
-
-.model-item-header,
-.preset-item-header {
-  font-size: var(--text-base);
-  font-weight: 700;
-  margin-bottom: var(--space-1);
-}
-
-.model-item-meta,
-.preset-item-meta {
-  font-size: var(--text-sm);
-  color: var(--color-text-dim);
-  display: flex;
-  gap: var(--space-3);
-  margin-bottom: var(--space-2);
 }
 
 /* ── NeuronDB Browser Modal Styles are loaded from @abdsynths/shared/styles (catalog-browser.css) ── */

@@ -143,13 +143,6 @@
   cursor: pointer;
 }
 
-/* Unified accent outline state (was 2 identical rules) */
-.btn-row-edit:hover,
-.btn-row-play:hover,
-.btn-overlay-toggle.is-on {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
 
 .btn-overlay-toggle.is-action-accent {
   background: var(--color-accent-dim);

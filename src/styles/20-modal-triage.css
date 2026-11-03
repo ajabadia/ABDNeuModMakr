@@ -52,13 +52,6 @@
   color: var(--color-text-muted);
 }
 
-.triage-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
 .triage-table th {
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
@@ -96,6 +89,8 @@
   white-space: nowrap;
 }
 
+.triage-table td.triage-col-bank,
+.triage-table td.triage-col-regions,
 .triage-table td.triage-num {
   white-space: nowrap;
 }

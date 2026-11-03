@@ -78,6 +78,9 @@
   outline: none;
 }
 
+.sample-slot-card.is-dragover,
+.cover-dropzone.is-dragover,
+.nmm-recorder-take.is-selected,
 .nmm-dropzone:hover,
 .nmm-batch-dropzone:hover,
 .uimport-dropzone:hover,
@@ -402,7 +405,8 @@
   flex-wrap: wrap;
 }
 
-.issue-title {
+.issue-title,
+.provider-title {
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--color-text-main);
@@ -461,5 +465,40 @@
 
 .issue-adapt span {
   color: var(--color-text-main);
+}
+
+/* ── Generales cross-módulo (auditoría: absorben reglas idénticas de varios módulos) ── */
+.nmm-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.nmm-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nmm-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.nmm-modal-body-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--color-panel-bg);
+}
+
+.nmm-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
 }
 

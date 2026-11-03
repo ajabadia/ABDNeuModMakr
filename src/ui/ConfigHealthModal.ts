@@ -145,7 +145,7 @@ export class ConfigHealthModal {
                   <div class="health-item-status-icon">
                     ${item.isConfigured ? ICONS.check : ICONS.alert}
                   </div>
-                  <div class="health-item-info">
+                  <div class="nmm-item-main">
                     <div class="health-item-head">
                       <strong>${escHtml(item.name)}</strong>
                       <span class="health-pill ${item.isConfigured ? 'pill-ok' : 'pill-err'}">${escHtml(item.statusBadge)}</span>
@@ -181,7 +181,7 @@ export class ConfigHealthModal {
                   <div class="health-item-status-icon">
                     ${item.isConfigured ? ICONS.check : ICONS.sparkle}
                   </div>
-                  <div class="health-item-info">
+                  <div class="nmm-item-main">
                     <div class="health-item-head">
                       <strong>${escHtml(item.name)}</strong>
                       <span class="health-pill ${item.isConfigured ? 'pill-ok' : 'pill-warn'}">${escHtml(item.statusBadge)}</span>

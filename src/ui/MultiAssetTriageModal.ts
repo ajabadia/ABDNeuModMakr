@@ -126,7 +126,7 @@ export class MultiAssetTriageModal {
         </div>
         <div class="triage-table-panel">
           <div class="triage-table-scroll">
-            <table class="triage-table">
+            <table class="triage-table nmm-data-table">
               <thead><tr><th></th><th>Pieza</th><th>Formato</th><th>Muestras</th><th></th></tr></thead>
               <tbody id="triage-items-body">${rowsHtml}</tbody>
             </table>

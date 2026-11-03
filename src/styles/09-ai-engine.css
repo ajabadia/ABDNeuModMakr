@@ -173,14 +173,8 @@
   color: var(--color-text-main);
 }
 
-.ai-master-hint {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
 .ai-presets-group,
-.bridge-card-title,
-.status-header-left {
+.bridge-card-title {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -205,6 +199,9 @@
   transition: all var(--transition-fast);
 }
 
+.btn-row-edit:hover,
+.btn-row-play:hover,
+.btn-overlay-toggle.is-on,
 .btn-preset:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
@@ -344,14 +341,6 @@
 .stage-opt input[type="radio"]:checked::before,
 .byok-provider-opt input[type="radio"]:checked::before {
   transform: scale(1);
-}
-
-.opt-body,
-.ai-hw-indicator .hw-text,
-.bridge-detail-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .opt-body strong,
@@ -594,11 +583,6 @@
   height: 16px;
 }
 
-.ai-tab-title {
-  font-weight: 700;
-  font-size: var(--text-sm);
-}
-
 .ai-tab-tag {
   font-size: 10px;
   font-family: var(--font-mono);
@@ -779,13 +763,6 @@
   display: none;
 }
 
-.provider-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
 .provider-pill-badge {
   font-size: 10px;
   font-weight: 700;
@@ -797,12 +774,6 @@
   color: var(--color-accent);
   border: 1px solid rgba(var(--color-accent-rgb, 0, 195, 255), 0.3);
   white-space: nowrap;
-}
-
-.provider-title {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--color-text-main);
 }
 
 
@@ -991,13 +962,6 @@
 .model-row-card.is-installed {
   border-left: 3px solid var(--color-success);
   border-color: var(--color-panel-border);
-}
-
-.model-row-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .model-row-title {
@@ -1218,12 +1182,6 @@
   gap: var(--space-2);
   font-size: var(--text-md);
   margin: 0 0 var(--space-2);
-}
-
-.bridge-scan-bar {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 
 .bridge-scan-results {

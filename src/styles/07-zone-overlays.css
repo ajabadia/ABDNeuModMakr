@@ -236,10 +236,13 @@
   gap: var(--space-2);
 }
 
+.sample-slot-card.has-file,
+.acoustic-stat-chip.is-present,
 .inheritance-card.is-inherited {
   border-left: 3px solid var(--color-accent);
 }
 
+.sample-slot-card.is-empty,
 .inheritance-card.is-overridden {
   border-left: 3px solid var(--color-warning);
 }

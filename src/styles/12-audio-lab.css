@@ -64,7 +64,6 @@
 }
 
 /* 4. Viewport & Panel Toolbars / Header Rows */
-.nmm-audio-toolbar,
 .loop-viewport-toolbar,
 .chopper-waveform-toolbar,
 .nmm-recorder-inspector-head,
@@ -100,15 +99,12 @@
   margin-right: var(--space-1);
 }
 
-.nmm-audio-toolbar-right,
 .loop-toolbar-right,
 .chopper-toolbar-right,
 .nmm-recorder-device-right,
-.nmm-audio-action-left,
 .loop-action-bar-left,
 .chopper-action-bar-left,
 .nmm-recorder-dsp-left,
-.nmm-audio-action-right,
 .loop-action-bar-right,
 .chopper-action-bar-right,
 .nmm-recorder-dsp-right {
@@ -166,7 +162,6 @@
   align-items: end;
 }
 
-.nmm-audio-action-bar,
 .loop-action-bar,
 .chopper-action-bar,
 .nmm-recorder-dsp-toolbar {
@@ -440,13 +435,6 @@
   padding: var(--space-1);
 }
 
-.chopper-slices-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
 .chopper-slices-table th {
   position: sticky;
   top: 0;
@@ -545,6 +533,7 @@
   transition: all var(--transition-fast);
 }
 
+.btn-rail-toggle:hover,
 .btn-drag-midi:hover {
   background: var(--color-accent-dim);
   border-color: var(--color-accent);
@@ -655,15 +644,6 @@
   margin-top: var(--space-3);
 }
 
-.drawer-waveform-card {
-  background: var(--color-panel-surface-elevated);
-  border: 1px solid var(--color-panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
 
 .drawer-waveform-canvas-container {
   position: relative;
@@ -701,12 +681,6 @@
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   border: 1px solid var(--color-panel-border-dim);
-}
-
-.drawer-waveform-footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
 }
 
 .drawer-waveform-play-btn {

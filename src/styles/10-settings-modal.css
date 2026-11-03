@@ -71,12 +71,6 @@
   margin-top: 3px;
 }
 
-.skin-opt-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .skin-opt-body strong,
 .mode-opt-title strong {
   font-size: 13px;
