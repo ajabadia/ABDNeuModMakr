@@ -194,7 +194,7 @@ export class AiCoverGeneratorModal {
             <span class="panel-badge badge-ai-on">FASE 20 — NEURAL &amp; PROCEDURAL</span>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-ai-cover-close" aria-label="Close" ${this.isGenerating ? 'disabled' : ''}>
-            ${ICONS.close || '✕'}
+            ${ICONS.close}
           </button>
         </header>
 
@@ -207,7 +207,7 @@ export class AiCoverGeneratorModal {
                   this.isGenerating
                     ? `
                   <div class="ai-cover-generating-state">
-                    <div class="neural-pulse-spinner">${ICONS.sparkle || ICONS.ai}</div>
+                    <div class="neural-pulse-spinner">${ICONS.sparkle}</div>
                     <strong class="generating-title">Synthesizing Neural Artwork...</strong>
                     <span class="generating-sub">${escHtml(this.generationStatusText || 'Rendering acoustic soundwaves...')}</span>
                   </div>
@@ -287,7 +287,7 @@ export class AiCoverGeneratorModal {
               <div class="ai-ctrl-card">
                 <div class="ai-ctrl-header">
                   <label for="txt-ai-prompt"><strong>${ICONS.edit} Acoustic Prompt</strong></label>
-                  <div class="ai-prompt-actions" style="display: flex; gap: 6px; align-items: center;">
+                  <div class="ai-prompt-actions cfg-inline-row">
                     <button
                       type="button"
                       class="btn btn-xs btn-outline"
@@ -295,7 +295,7 @@ export class AiCoverGeneratorModal {
                       title="Enrich prompt with sensory timbre descriptors using BYOK LLM (Claude/GPT/OpenRouter)"
                       ${this.isEnhancingPrompt ? 'disabled' : ''}
                     >
-                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle || ICONS.ai} Enhance with LLM`}
+                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle} Enhance with LLM`}
                     </button>
                     <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="Reset prompt to acoustic default">
                       ${ICONS.refresh} Reset
@@ -313,7 +313,7 @@ export class AiCoverGeneratorModal {
               <!-- Provider Selection -->
               <div class="ai-ctrl-card">
                 <div class="ai-ctrl-header">
-                  <strong>${ICONS.sparkle || ICONS.ai} Generative Engine / Provider</strong>
+                  <strong>${ICONS.sparkle} Generative Engine / Provider</strong>
                   <span class="text-muted">Select offline procedural, local bridge or private Cloud BYOK</span>
                 </div>
                 <div class="ai-styles-grid ai-providers-grid">
@@ -360,13 +360,15 @@ export class AiCoverGeneratorModal {
         </div>
 
         <footer class="nmm-modal-footer">
+          <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-ai-cover-cancel" ${this.isGenerating ? 'disabled' : ''}>
             Close
           </button>
           <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating || !providerKeyStatus.isReady ? 'disabled' : ''} title="${!providerKeyStatus.isReady ? 'Please configure provider credentials in Settings before generating' : 'Generate 512×512 WebP Artwork'}">
-            ${this.isGenerating ? ICONS.spinner : ICONS.sparkle || ICONS.ai}
+            ${this.isGenerating ? ICONS.spinner : ICONS.sparkle}
             ${this.isGenerating ? 'Generating Artwork...' : !providerKeyStatus.isReady ? 'Setup Required' : 'Generate Artwork'}
           </button>
+          </div>
         </footer>
       </div>
     `;
