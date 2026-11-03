@@ -110,7 +110,7 @@ export class MultiAssetTriageModal {
           <h2>Contenido mixto: ¿qué hacemos con cada cosa?</h2>
           <span class="badge badge-accent" id="triage-format-badge">${formats.size} ${formats.size === 1 ? 'formato' : 'formatos'}</span>
         </div>
-        <button type="button" class="nmm-modal-close" id="btn-triage-close" aria-label="Cerrar">×</button>
+        <button type="button" class="nmm-modal-close" id="btn-triage-close" aria-label="Cerrar">${ICONS.close}</button>
       </div>
       <div class="nmm-triage-body">
         ${summaryHtml}
@@ -130,7 +130,7 @@ export class MultiAssetTriageModal {
               <thead><tr><th></th><th>Pieza</th><th>Formato</th><th>Muestras</th><th></th></tr></thead>
               <tbody id="triage-items-body">${rowsHtml}</tbody>
             </table>
-            <div id="triage-list-empty" class="triage-empty" style="display:${items.length === 0 ? 'block' : 'none'}">
+            <div id="triage-list-empty" class="triage-empty${items.length === 0 ? '' : ' is-hidden'}">
               <p id="triage-empty-msg">Sin coincidencias para «${escHtml(this.searchTerm)}».</p>
             </div>
           </div>
@@ -258,7 +258,7 @@ export class MultiAssetTriageModal {
         .join('');
     }
     const empty = this.backdropEl.querySelector('#triage-list-empty') as HTMLElement | null;
-    if (empty) empty.style.display = items.length === 0 ? 'block' : 'none';
+    if (empty) empty.classList.toggle('is-hidden', items.length !== 0);
     const msg = this.backdropEl.querySelector('#triage-empty-msg');
     if (msg) msg.textContent = `Sin coincidencias para «${this.searchTerm}».`;
     this.updateProcessButton();
