@@ -122,12 +122,12 @@ export class UniversalImportModal {
       <div class="nmm-modal-window universal-import-modal-window" role="dialog" aria-modal="true" aria-labelledby="universal-import-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon">${ICONS.folder || ICONS.wave}</span>
+            <span class="nmm-modal-header-icon">${ICONS.folder}</span>
             <h2 id="universal-import-title">Universal Smart Import</h2>
             <span class="panel-badge badge-ai-on">FASE 18.8 — MULTI-FORMAT RAW &amp; PREFLIGHT</span>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-uimport-close" aria-label="Close" ${this.isInspecting ? 'disabled' : ''}>
-            ${ICONS.close || '✕'}
+            ${ICONS.close}
           </button>
         </header>
 
@@ -136,7 +136,7 @@ export class UniversalImportModal {
             this.isInspecting
               ? `
             <div class="uimport-inspecting-state">
-              <div class="neural-pulse-spinner">${ICONS.spinner || ICONS.wave}</div>
+              <div class="neural-pulse-spinner">${ICONS.spinner}</div>
               <h3>Analyzing Bank &amp; Running Preflight Inspection...</h3>
               <p>Scanning zone descriptors, velocity ranges, keybed coverage, and embedded audio buffers.</p>
             </div>
@@ -159,6 +159,7 @@ export class UniversalImportModal {
         </div>
 
         <footer class="nmm-modal-footer">
+          <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-uimport-cancel" ${this.isInspecting ? 'disabled' : ''}>
             ${this.preflightReport ? 'Choose Another File' : 'Cancel'}
           </button>
@@ -178,7 +179,7 @@ export class UniversalImportModal {
               this.preflightReport.canImport
                 ? `
               <button type="button" class="btn btn-primary" id="btn-uimport-proceed">
-                ${ICONS.check || '✓'} Proceed &amp; Import Bank
+                ${ICONS.check} Proceed &amp; Import Bank
               </button>
             `
                 : ''
@@ -186,6 +187,7 @@ export class UniversalImportModal {
           `
               : ''
           }
+          </div>
         </footer>
       </div>
     `;
@@ -207,15 +209,15 @@ export class UniversalImportModal {
     return `
       <div class="uimport-dropzone-container">
         <div class="uimport-dropzone" id="uimport-dropzone" tabindex="0">
-          <div class="dropzone-icon">${ICONS.folder || ICONS.wave}</div>
+          <div class="dropzone-icon">${ICONS.folder}</div>
           <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
           <p class="dropzone-sub">
             Supported formats: <strong>.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files">
-              ${ICONS.folder || ''} Browse File...
-              <input type="file" id="uimport-file-input" style="display:none;" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
+              ${ICONS.folder} Browse File...
+              <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
           </div>
         </div>
@@ -274,7 +276,7 @@ export class UniversalImportModal {
             report.issues.length === 0
               ? `
             <div class="issue-item issue-ok">
-              <span class="issue-icon">${ICONS.check || '✓'}</span>
+              <span class="issue-icon">${ICONS.check}</span>
               <div class="issue-body">
                 <strong>100% Session Compatible</strong>
                 <p>All zone definitions, velocity splits, key ranges, and audio samples are valid with zero incompatibilities.</p>
