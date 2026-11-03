@@ -444,6 +444,52 @@ export class AudioChopperModal {
     this.refreshTable();
   }
 
+  private async reconcileSlicesAfterAudioClean(actionLabel: string): Promise<void> {
+    if (!this.hasManualCuts()) {
+      this.recomputeSlices(true);
+      this.render();
+      toast(`${actionLabel} (cortes automáticos recalculados sobre el audio limpio).`, 'success');
+      return;
+    }
+
+    if (this.manualCutsPolicy === 'discard') {
+      this.manualCutFrames.clear();
+      this.manualSilenceRanges = [];
+      this.recomputeSlices(true);
+      this.render();
+      toast(`${actionLabel} (cortes recalculados automáticamente).`, 'success');
+      return;
+    }
+
+    if (this.manualCutsPolicy === 'keep') {
+      this.recomputeSlices(false);
+      this.render();
+      toast(`${actionLabel} (cortes manuales preservados).`, 'success');
+      return;
+    }
+
+    const recalculateAuto = await confirmDialog(
+      `La limpieza o mejora cambió la señal de audio y tienes ${this.manualCutFrames.size} corte(s) manual(es).\n\n¿Recalcular cortes automáticamente sobre el audio limpio (descartando ediciones manuales) o conservar tus marcas manuales?`,
+      {
+        title: 'La limpieza cambió el audio — ¿Recalcular cortes?',
+        confirmLabel: 'Recalcular cortes (Auto)',
+        cancelLabel: 'Conservar cortes manuales',
+      }
+    );
+
+    if (recalculateAuto) {
+      this.manualCutFrames.clear();
+      this.manualSilenceRanges = [];
+      this.recomputeSlices(true);
+      this.render();
+      toast(`${actionLabel} (cortes recalculados sobre el audio limpio).`, 'success');
+    } else {
+      this.recomputeSlices(false);
+      this.render();
+      toast(`${actionLabel} (cortes manuales conservados).`, 'info');
+    }
+  }
+
   private closeConfirmModal(): void {
     if (this.activeConfirmModalEl) {
       this.activeConfirmModalEl.remove();
@@ -2058,8 +2104,8 @@ export class AudioChopperModal {
       this.handleInjectSlicesIntoSession();
     });
 
-    // Fase 30: DSP Denoise button
-    this.backdropEl.querySelector('#btn-chopper-dsp-denoise')?.addEventListener('click', () => {
+    // Fase 30 & 35.6: DSP Denoise button (recomputes auto slices or asks if manual cuts exist)
+    this.backdropEl.querySelector('#btn-chopper-dsp-denoise')?.addEventListener('click', async () => {
       if (this.pcm.length === 0) return;
       try {
         const profile = this.capturedNoiseProfile || {
@@ -2073,15 +2119,13 @@ export class AudioChopperModal {
           removeHum: true,
         });
         this.pcm = cleaned;
-        this.recomputeSlices(false);
-        this.render();
-        toast('Cleaned audio using DSP Spectral Gate.', 'success');
+        await this.reconcileSlicesAfterAudioClean('Cleaned audio using DSP Spectral Gate');
       } catch (err) {
         toast(`DSP Denoise failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }
     });
 
-    // Fase 30 & 35.4: AI Enhance button passing captured noise profile to bridge (with explicit fallback consent)
+    // Fase 30, 35.4 & 35.6: AI Enhance button passing captured noise profile to bridge (with explicit fallback consent & manual-cuts check)
     this.backdropEl.querySelector('#btn-chopper-ai-enhance')?.addEventListener('click', async () => {
       if (this.pcm.length === 0) return;
       if (!bridgeClient.isConnected()) {
@@ -2107,9 +2151,9 @@ export class AudioChopperModal {
           reductionDb: 15,
           removeHum: true,
         });
-        this.recomputeSlices(false);
-        this.render();
-        toast(`Aplicada ${decl.fallbackEngine} (confirmado por el usuario).`, 'success');
+        await this.reconcileSlicesAfterAudioClean(
+          `Aplicada ${decl.fallbackEngine} (confirmado por el usuario)`
+        );
         return;
       }
 
@@ -2127,11 +2171,24 @@ export class AudioChopperModal {
             enhancedBytes.byteOffset + enhancedBytes.byteLength
           ) as ArrayBuffer
         );
+        const oldRate = this.sampleRate;
         this.pcm = decoded.mono || decoded.channels[0];
         this.sampleRate = decoded.sampleRate;
-        this.recomputeSlices(false);
-        this.render();
-        toast('Audio enhanced via Bridge AI with noise profile removed!', 'success');
+        if (oldRate > 0 && this.sampleRate !== oldRate && this.hasManualCuts()) {
+          const ratio = this.sampleRate / oldRate;
+          const rescaled = new Set<number>();
+          for (const mf of this.manualCutFrames) {
+            rescaled.add(Math.round(mf * ratio));
+          }
+          this.manualCutFrames = rescaled;
+          this.manualSilenceRanges = this.manualSilenceRanges.map((r) => ({
+            start: Math.round(r.start * ratio),
+            end: Math.round(r.end * ratio),
+          }));
+        }
+        await this.reconcileSlicesAfterAudioClean(
+          'Audio enhanced via Bridge AI with noise profile removed!'
+        );
       } catch (err) {
         toast(`AI Enhance failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       }

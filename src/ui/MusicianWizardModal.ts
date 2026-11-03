@@ -86,6 +86,17 @@ export interface MusicianWizardModalContext extends ExportDestinationCallbacks {
     pcm?: Float32Array;
     sampleRate?: number;
   };
+  /** Fase 35.6: Resuelve el audio cargado en un slot concreto de zona/región para rescate directo en el Paso 2 */
+  getZoneSlotAudio?: (
+    zoneId?: string,
+    slot?: 'low' | 'high',
+    regionId?: string
+  ) => {
+    hasAudio: boolean;
+    sampleName: string;
+    pcm: Float32Array;
+    sampleRate: number;
+  } | null;
   onAuditionPcm?: (pcm: Float32Array, sampleRate: number) => void;
   onStopAudition?: () => void;
   /** Inyecta las zonas/regiones y configuración preparadas por el asistente en la sesión activa */
@@ -194,6 +205,41 @@ export class MusicianWizardModal {
   public openWithRawAudio(pcm: Float32Array, sampleRate: number, filename: string): void {
     this.open('clean');
     this.loadRawPcmIntoWizard(pcm, sampleRate, filename);
+  }
+
+  /**
+   * Fase 35.6: Abre el asistente directamente en el Paso 2 (`clean`) rescatando la muestra
+   * asignada a un slot de zona (`sampleLow` / `sampleHigh`) o región 2D sin reimportar desde disco.
+   */
+  public openWithZoneSample(
+    zoneId?: string,
+    slot: 'low' | 'high' = 'low',
+    regionId?: string
+  ): boolean {
+    const slotAudio = this.context.getZoneSlotAudio?.(zoneId, slot, regionId);
+    if (slotAudio && slotAudio.hasAudio && slotAudio.pcm.length > 0) {
+      this.openWithRawAudio(slotAudio.pcm, slotAudio.sampleRate, slotAudio.sampleName);
+      toast(
+        `Muestra "${slotAudio.sampleName}" cargada en el Paso 2 (Limpiar y mapear).`,
+        'info'
+      );
+      return true;
+    }
+    const fallback = this.context.getActiveSessionAudio?.();
+    if (fallback && fallback.hasAudio && fallback.pcm && fallback.pcm.length > 0) {
+      this.openWithRawAudio(
+        fallback.pcm,
+        fallback.sampleRate ?? 44100,
+        fallback.sampleName ?? 'Zone_Sample.wav'
+      );
+      toast(
+        `Muestra "${fallback.sampleName ?? 'Zone_Sample.wav'}" cargada en el Paso 2 (Limpiar y mapear).`,
+        'info'
+      );
+      return true;
+    }
+    toast('Asigna antes un archivo de audio al slot para poder limpiarlo y mapearlo.', 'warning');
+    return false;
   }
 
   public close(): void {

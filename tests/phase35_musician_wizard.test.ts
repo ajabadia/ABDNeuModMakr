@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   MUSICIAN_WIZARD_DEFAULTS,
   inspectWizardMaterialFilename,
@@ -21,6 +22,7 @@ import {
   runWizardSliceAndMapStep,
   sanitizeClassicModelName,
 } from '../src/core/wizard/musicianWizard.ts';
+import { computeBatchAutoLoopForZones } from '../src/core/dsp/LoopEditorTools.ts';
 import { analyzeImportPreflight } from '../src/core/import/importPreflight.ts';
 import { fromImportPreflightReport } from '../src/ui/preflightGateView.ts';
 import type { ParsedSamplerPreset } from '../src/core/import/rawSamplerParsers.ts';
@@ -288,4 +290,69 @@ console.log('Running Phase 35.5 Musician Guided Wizard Tests...');
   console.log('  ✓ 7. 100% compatible bank shows clean "Sin adaptaciones necesarias" state in Step 1');
 }
 
-console.log('ALL PHASE 35.5 MUSICIAN WIZARD TESTS PASSED (7/7)!');
+// Test 8 (Phase 35.6): Batch AutoLoop across multiple zones (`computeBatchAutoLoopForZones`)
+{
+  const sr = 44100;
+  const z1Pcm = generateSustainedToneWithSilencePadding(261.63, sr, 0.02, 0.9, 0.02);
+  const z2Pcm = generateSustainedToneWithSilencePadding(329.63, sr, 0.02, 0.9, 0.02);
+  const z3Pcm = generateSustainedToneWithSilencePadding(392.00, sr, 0.02, 0.9, 0.02);
+
+  const batchLoops = computeBatchAutoLoopForZones([
+    { id: '1', sampleName: 'Zone_1_C4.wav', monoPcm: z1Pcm, sampleRate: sr },
+    { id: '2', sampleName: 'Zone_2_E4.wav', monoPcm: z2Pcm, sampleRate: sr },
+    { id: '3:reg_g4', sampleName: 'Zone_3_G4.wav', monoPcm: z3Pcm, sampleRate: sr },
+  ]);
+
+  assert.equal(batchLoops.length, 3, 'Batch AutoLoop must produce results for all 3 valid zones');
+  for (const item of batchLoops) {
+    assert.equal(item.loopMode, 'loop_continuous');
+    assert.ok(item.loopStart > 0, `Expected positive loopStart for ${item.sampleName}`);
+    assert.ok(item.loopEnd > item.loopStart + 1000, `Expected sustained loop span for ${item.sampleName}`);
+    assert.ok(Number.isFinite(item.seamQualityPercent), 'Expected finite seam quality percentage');
+  }
+  console.log('  ✓ 8. (35.6) computeBatchAutoLoopForZones computes zero-crossing loops across all zones');
+}
+
+// Test 9 (Phase 35.6): UI bridges verification (ZoneInspector slot rescue, batch AutoLoop, Master Wave re-exposure, Chopper reconcile)
+{
+  const zoneInspectorSrc = fs.readFileSync(new URL('../src/ui/ZoneInspector.ts', import.meta.url), 'utf8');
+  const wizardModalSrc = fs.readFileSync(new URL('../src/ui/MusicianWizardModal.ts', import.meta.url), 'utf8');
+  const chopperModalSrc = fs.readFileSync(new URL('../src/ui/AudioChopperModal.ts', import.meta.url), 'utf8');
+
+  // 1. Direct button on LOW VEL SAMPLE / REGION SAMPLE card -> openWithZoneSample
+  assert.ok(
+    zoneInspectorSrc.includes('id="btn-sample-card-wizard"'),
+    'ZoneInspector must render #btn-sample-card-wizard on the sample slot card'
+  );
+  assert.ok(
+    wizardModalSrc.includes('openWithZoneSample('),
+    'MusicianWizardModal must expose openWithZoneSample(zoneId, slot, regionId)'
+  );
+
+  // 2. Batch AutoLoop button in ZoneInspector toolbar
+  assert.ok(
+    zoneInspectorSrc.includes('id="btn-autoloop-all-zones"'),
+    'ZoneInspector must render #btn-autoloop-all-zones in the zones toolbar'
+  );
+
+  // 3. Re-exposed Master Wave buttons in ZoneInspector drawer HTML (and NOT duplicated in Wizard)
+  assert.ok(
+    zoneInspectorSrc.includes('id="btn-promote-zone-mw"') &&
+      zoneInspectorSrc.includes('id="btn-promote-zone-mw-reg"') &&
+      zoneInspectorSrc.includes('id="btn-promote-all-mw"'),
+    'ZoneInspector drawer HTML must render #btn-promote-zone-mw, #btn-promote-zone-mw-reg, and #btn-promote-all-mw'
+  );
+  assert.ok(
+    !wizardModalSrc.includes('btn-promote-all-mw'),
+    'Master Wave promotion buttons must live only in ZoneInspector, not duplicated in MusicianWizardModal'
+  );
+
+  // 4. AudioChopperModal slice reconciliation after DSP Denoise / AI Enhance
+  assert.ok(
+    chopperModalSrc.includes('reconcileSlicesAfterAudioClean('),
+    'AudioChopperModal must reconcile slices after cleaning audio via reconcileSlicesAfterAudioClean'
+  );
+  console.log('  ✓ 9. (35.6) UI bridges verified: #btn-sample-card-wizard, #btn-autoloop-all-zones, #btn-promote-*-mw, and reconcileSlicesAfterAudioClean');
+}
+
+console.log('ALL PHASE 35.5 + 35.6 MUSICIAN WIZARD & RESCUE BRIDGES TESTS PASSED (9/9)!');

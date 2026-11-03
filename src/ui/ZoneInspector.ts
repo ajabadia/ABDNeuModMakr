@@ -139,6 +139,14 @@ export interface ZoneInspectorHandlers {
   onOpenModelConfig?: (tab?: 'general' | 'articulation' | 'metadata' | 'artwork') => void;
   onOpenAutoSlicer?: () => void;
   onOpenAudioRecorder?: () => void;
+  /** Fase 35.6: Abre el Asistente Guiado de Músico directamente en el Paso 2 con la muestra del slot */
+  onOpenWizardFromZoneSample?: (opts: {
+    zoneId?: string;
+    slot?: 'low' | 'high';
+    regionId?: string;
+  }) => void;
+  /** Fase 35.6: Ejecuta AutoLoop (zc-snap) en lote sobre todas las zonas/regiones con muestra */
+  onAutoLoopAllZones?: () => void;
 }
 
 
@@ -598,6 +606,9 @@ export class ZoneInspector {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
                     ${ICONS.wave} Loop Editor
                   </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-autoloop-all-zones" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las regiones">
+                    ${ICONS.refresh} AutoLoop en todas las zonas
+                  </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
                     ${ICONS.scissors} AutoSlicer
                   </button>
@@ -698,6 +709,9 @@ export class ZoneInspector {
             <div class="panel-actions">
               <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
                 ${ICONS.wave} Loop Editor
+              </button>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-autoloop-all-zones" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las zonas">
+                ${ICONS.refresh} AutoLoop en todas las zonas
               </button>
               <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
                 ${ICONS.scissors} AutoSlicer
@@ -1062,7 +1076,8 @@ export class ZoneInspector {
                 <div class="sample-slot-card ${activeReg.sampleName ? 'has-file' : 'is-empty'}" id="card-sample-low">
                   <div class="sample-slot-header">
                     <span class="sample-slot-tag" id="tag-vel-low">REGION SAMPLE (KEYS ${midiNoteToString(activeReg.lowKey)}..${midiNoteToString(activeReg.highKey)} • VEL ${activeReg.lowVel}..${activeReg.highVel})</span>
-                    <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <button type="button" class="btn btn-xs btn-primary" id="btn-sample-card-wizard" title="Rescatar muestra multi-nota en el Asistente (Paso 2: Limpiar huella de ruido, cortar por cruce por cero y remapear)">${ICONS.sparkle} Limpiar y mapear</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
@@ -1091,7 +1106,8 @@ export class ZoneInspector {
                 <div class="sample-slot-card ${z.sampleLow ? 'has-file' : 'is-empty'}" id="card-sample-low">
                   <div class="sample-slot-header">
                     <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? split - 1 : 127})</span>
-                    <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <button type="button" class="btn btn-xs btn-primary" id="btn-sample-card-wizard" title="Rescatar muestra multi-nota en el Asistente (Paso 2: Limpiar huella de ruido, cortar por cruce por cero y remapear)">${ICONS.sparkle} Limpiar y mapear</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
@@ -1179,6 +1195,25 @@ export class ZoneInspector {
                 </button>
                 <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-recorder" title="Open Audio Recorder &amp; Noise Print Capture Modal">
                   ${ICONS.mic} Record...
+                </button>
+              </div>
+            </div>
+
+            <!-- 6. Fase 8 / 35.6: Master Wave Promotion (24-bit / 96 kHz) -->
+            <div class="inspector-section section-master-wave">
+              <div class="section-title">MEJORAR A MASTER WAVE (24-BIT / 96 KHZ)</div>
+              <div class="drawer-tools-row" style="gap: 8px; flex-wrap: wrap;">
+                ${
+                  isExtended && activeReg
+                    ? `<button type="button" class="btn btn-sm btn-outline flex-1" id="btn-promote-zone-mw-reg" title="Promover la muestra de esta región a 24-bit / 96 kHz Master Wave con expansión de bucle por cruce por cero">
+                        ${ICONS.cpu} Mejorar esta región (24b/96k)
+                      </button>`
+                    : `<button type="button" class="btn btn-sm btn-outline flex-1" id="btn-promote-zone-mw" title="Promover la muestra de esta zona a 24-bit / 96 kHz Master Wave con expansión de bucle por cruce por cero">
+                        ${ICONS.cpu} Mejorar esta zona (24b/96k)
+                      </button>`
+                }
+                <button type="button" class="btn btn-sm btn-primary flex-1" id="btn-promote-all-mw" title="Promover todas las zonas con muestra a 24-bit / 96 kHz Master Wave (sobre las notas ya partidas y mapeadas)">
+                  ${ICONS.sparkle} Mejorar todas las zonas a Master Wave (24b/96k)
                 </button>
               </div>
             </div>
@@ -1275,6 +1310,10 @@ export class ZoneInspector {
 
     this.container.querySelector('#btn-open-loop-drawer')?.addEventListener('click', () => {
       this.openLoopEditorDrawer();
+    });
+
+    this.container.querySelector('#btn-autoloop-all-zones')?.addEventListener('click', () => {
+      this.handlers.onAutoLoopAllZones?.();
     });
 
     this.container.querySelector('#btn-open-autoslicer')?.addEventListener('click', () => {
@@ -1559,6 +1598,16 @@ export class ZoneInspector {
 
     this.drawerElement.querySelector('#btn-drawer-invoke-recorder')?.addEventListener('click', () => {
       this.handlers.onOpenAudioRecorder?.();
+    });
+
+    this.drawerElement.querySelectorAll('#btn-sample-card-wizard').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.handlers.onOpenWizardFromZoneSample?.({
+          zoneId: z.id,
+          slot: 'low',
+          regionId: isExtended && activeReg ? activeReg.id : undefined,
+        });
+      });
     });
 
     this.drawerElement.querySelectorAll('#btn-sample-card-slicer').forEach((btn) => {

@@ -691,3 +691,58 @@ export function findSmartAutoLoop(
     rationale: `Equal-Power X-Fade: Synthesized ${recommendedMs} ms equal-power circular blend (cos/sin) across seam.`,
   };
 }
+
+/**
+ * Fase 35.6 — Batch AutoLoop (zc-snap) across multiple zones/regions:
+ * Computes optimal rising zero-crossing loop points (`findOptimalZeroCrossingLoop`)
+ * for each item's sustain portion (20%..85% default or existing candidate bounds).
+ */
+export interface BatchAutoLoopItemInput {
+  id: string;
+  sampleName: string;
+  monoPcm: Float32Array;
+  sampleRate: number;
+  existingLoopStart?: number;
+  existingLoopEnd?: number;
+}
+
+export interface BatchAutoLoopItemResult {
+  id: string;
+  sampleName: string;
+  loopStart: number;
+  loopEnd: number;
+  loopMode: 'loop_continuous';
+  zeroCrossingCorrelation: number;
+  seamQualityPercent: number;
+}
+
+export function computeBatchAutoLoopForZones(
+  items: BatchAutoLoopItemInput[]
+): BatchAutoLoopItemResult[] {
+  const results: BatchAutoLoopItemResult[] = [];
+  for (const item of items) {
+    const n = item.monoPcm.length;
+    if (n < 64) continue;
+    const candStart =
+      item.existingLoopStart && item.existingLoopStart > 0 && item.existingLoopStart < n - 64
+        ? item.existingLoopStart
+        : Math.floor(n * 0.2);
+    const candEnd =
+      item.existingLoopEnd && item.existingLoopEnd > candStart + 64 && item.existingLoopEnd <= n
+        ? item.existingLoopEnd
+        : Math.floor(n * 0.85);
+    const opt = findOptimalZeroCrossingLoop([item.monoPcm], item.sampleRate, candStart, candEnd);
+    const seam = computeLoopSeamAnalysis(item.monoPcm, opt.loopStart, opt.loopEnd, 64);
+    results.push({
+      id: item.id,
+      sampleName: item.sampleName,
+      loopStart: opt.loopStart,
+      loopEnd: opt.loopEnd,
+      loopMode: 'loop_continuous',
+      zeroCrossingCorrelation: opt.zeroCrossingCorrelation,
+      seamQualityPercent: seam.seamQualityPercent,
+    });
+  }
+  return results;
+}
+

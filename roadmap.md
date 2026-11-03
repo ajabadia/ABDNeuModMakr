@@ -1106,33 +1106,27 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - [x] Modal nuevo en 4 pasos copiando el patrón `BatchModalStep` (descubrir → revisar → ejecutar → informe): 1 Material (Grabar / Importar) → 2 Limpiar → 3 Cortar y mapear ("¿batería o melodía?" con "detectar solo" por defecto vía clasificador cat-0..9) → 4 Generar y exportar (ProcessPanel simplificado + pantalla de 35.2). Los modales actuales pasan a "taller avanzado" (`src/core/wizard/musicianWizard.ts`, `src/ui/MusicianWizardModal.ts`, accesible desde `ProcessPanel`, `File` / `Model → Asistente Guiado de Músico (4 Pasos)...` y `Ctrl+Shift+W`).
 - [x] Defaults de músico: trim con zero-cross activado (`trimSilence: true`, `snapZeroCrossing: true`), 2 capas en classic (`classicTwoVelocityLayers: true`), consentimiento siempre (`requireAiFallbackConsent: true`), y vía rápida directa al Paso 4 cuando el material del Paso 1 es un banco multipista ya mapeado. Verificado en `tests/phase35_musician_wizard.test.ts` (4/4).
 
-### 35.6 Revisión pendiente: Flujo de rescate cuando se carga un WAV multi-nota en un slot de zona (`ZoneInspector`)
+### 35.6 Puentes de rescate cuando se carga un WAV multi-nota en un slot de zona (`ZoneInspector`) — Implementado
 **Escenario**: El usuario carga un `.wav` directamente en el primer slot de zona (`sampleLow` / `sampleHigh` en `ZoneInspector`) y, al escucharlo, se da cuenta de que no es una nota suelta sino una grabación con **varias notas seguidas**.
 
-**Preguntas clave y diseño técnico del flujo desde ese slot**:
-1. **¿Cómo lo pasamos a limpiar antes del corte o del AutoLoop?**:
-   - **Por qué limpiar ANTES de partir**: La captura de la **Huella de ruido (`Noise Print`)** (`NoiseReductionDsp` + `dcBlock`) funciona mucho mejor sobre la toma continua completa porque aprovecha los silencios naturales entre notas grabadas (`detectSilenceRanges`) para medir el suelo de ruido real de la sala y evita artefactos de ventana FFT en los bordes de cada corte.
-   - **Acción a añadir en UI**: En la tarjeta del slot (`ZoneInspector.ts`) o menú contextual de la zona, añadir un botón directo **"Limpiar / Trocear muestra multi-nota..."** que inyecte el `AudioBuffer` ya cargado en `z.sampleLow` directamente en el **Paso 2 (`Limpiar`) del `MusicianWizardModal`** (`openWithZoneSample(zoneIndex, 'low')`) o en el limpiador de `AudioRecorderModal` / `AudioChopperModal`, sin obligar al usuario a reimportar el archivo desde disco.
-2. **¿Cómo se corta y se remapea desde ese slot?**:
-   - Una vez limpio el audio en el Paso 2, pasa al **Paso 3 (`Cortar y mapear`)** (o al `AudioChopperModal` con ese buffer ya limpio).
-   - Allí `AudioSlicerEngine.detectSlices` detecta cada nota con ajuste al cruce por cero (`zc-snap`), `analyzeSlicePitchAndClassification` detecta la nota fundamental ($F_0 \to \text{rootKey}$) de cada corte, y al confirmar reemplaza la zona única original por las **$N$ zonas cromáticas contiguas (`0..127`)** (o golpes de percusión), dejando 1 nota limpia por zona.
-3. **¿Cómo lo pasamos a `AutoLoop` (`LoopEditorModal`) desde allí?**:
-   - **Nunca antes de partir**: Ejecutar `AutoLoop` sobre el WAV sin partir intentaría buscar un bucle estacionario saltando entre notas de distinto tono.
-   - **Después de partir y remapear**: Con cada nota ya separada en su propia zona (`1..N`), ofrecer:
-     - Un botón de lote en el Paso 3/4 (o en el `ZoneInspector`): **"AutoLoop en todas las zonas (`zc-snap`)"**, que ejecuta `findOptimalZeroCrossingLoop` (`src/core/dsp/loopFinder.ts`) sobre la porción estacionaria de cada zona individual.
-     - Y el botón **`Loop`** de cada zona (`openLoopEditor`) para ajustar a oído en `LoopEditorModal` cualquier nota concreta que lo necesite.
-4. **¿Cómo y cuándo lo mandamos a mejorar a `24-bit / 96 kHz` (`MasterWaveEnhancer` / Reconstructor de agudos BWE): sobre el WAV entero o sobre lo partido y remapeado?**:
-   - **Respuesta arquitectónica: DESPUÉS de partir y remapear (sobre las zonas ya cortadas)**, separando claramente la limpieza del realce:
-     - **Por qué NO promover a Master Wave (`24-bit / 96 kHz`) antes de partir**:
-       1. `promoteZoneToMasterWave` (`src/core/dsp/MasterWaveEnhancer.ts`) no solo sube a `96 kHz / 24-bit`, sino que **sintetiza y expande el bucle de sostenimiento (`loopStart..loopEnd`) de una nota concreta** y guarda el archivo `03_enhanced_audio` por zona en la Cápsula del Tiempo (`NeuronAssetStore`). Sobre un WAV multi-nota sin partir, el bucle maestro no tiene sentido musical.
-       2. Subir de `44.1 kHz` a `96 kHz` antes de cortar multiplica por $\approx 2.17\times$ el tamaño en RAM de todos los silencios muertos entre notas que segundos después el `AudioSlicerEngine` va a descartar, haciendo más lento el detector de transientes y de pitch ($F_0$).
-     - **Excepción opcional (BWE neuronal del Bridge)**: Si se usa el modelo neuronal de reconstrucción de agudos (`AudioSR` en Bridge) sobre una grabación muy apagada y corta, puede aplicarse en el Paso 2 junto a la limpieza, pero la **promoción canónica a `Master Wave 24-bit / 96 kHz` (`onPromoteAllZonesToMasterWave`) debe ejecutarse tras el Paso 3 (sobre cada nota ya partida, remapeada y con sus puntos de `AutoLoop`)**.
+- [x] **1. Botón directo en la tarjeta de muestra (`#btn-sample-card-wizard`, `"Limpiar y mapear"`)**:
+  - Añadido en la cabecera de `#card-sample-low` (`src/ui/ZoneInspector.ts`, tanto en modo Classic como Extended).
+  - Llama a `MusicianWizardModal.openWithZoneSample(zoneId, 'low', regionId)` (`src/ui/MusicianWizardModal.ts`), decodificando el `AudioBuffer` ya cargado en la ranura e inyectándolo directamente en el **Paso 2 (`Limpiar`) del Asistente Guiado** sin obligar a reimportar desde disco.
+- [x] **2. AutoLoop en lote para todas las zonas (`#btn-autoloop-all-zones`, `"AutoLoop en todas las zonas"`)**:
+  - Añadido en la barra de la tabla de zonas de `ZoneInspector.ts` (modos Classic y Extended).
+  - Ejecuta `computeBatchAutoLoopForZones` (`src/core/dsp/LoopEditorTools.ts`), aplicando `findOptimalZeroCrossingLoop` (`zc-snap`) + análisis de costura (`computeLoopSeamAnalysis`) sobre la porción estacionaria de cada zona/región con audio y guardando todos los puntos de bucle en una sola acción.
+- [x] **3. Re-exposición de promoción a Master Wave (`24-bit / 96 kHz`) en el cajón del inspector**:
+  - Re-expuestos en el HTML de `renderDrawer()` (`src/ui/ZoneInspector.ts`) los botones `#btn-promote-zone-mw-reg` (Extended), `#btn-promote-zone-mw` (Classic) y `#btn-promote-all-mw` (`"Todas a 24-bit / 96 kHz"`), reconectando los listeners ya existentes con `MasterWaveEnhancer.ts` (exclusivamente en `ZoneInspector.ts`, sin duplicarlos en el Asistente).
+- [x] **4. Reconciliación automática o con confirmación de cortes en `AudioChopperModal.ts` tras limpiar audio**:
+  - Añadido `reconcileSlicesAfterAudioClean` (`src/ui/AudioChopperModal.ts`): cuando el usuario ejecuta `DSP Denoise` (`#btn-chopper-dsp-denoise`) o `AI Enhance (BWE)` (`#btn-chopper-ai-enhance`) *después* de haber calculado cortes:
+    - Si los cortes eran automáticos (`!hasManualCuts()`), recalcula automáticamente `recomputeSlices(true)` sobre el audio recién limpio.
+    - Si el usuario había editado cortes manualmente (`hasManualCuts()`), reescala los frames si cambió el `sampleRate` (p. ej. BWE a `96 kHz`) y pregunta con `confirmDialog` (*"La limpieza cambió el audio — ¿Recalcular cortes?"*) salvo que `manualCutsPolicy` ya esté fijada.
 
 **Resumen de la tubería ideal de rescate desde el Slot #1**:
 $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ (Noise\ Print + DC)} \xrightarrow{\text{2. Trocear y } F_0} \mathbf{Partir\ y\ Remapear\ (N\ zonas)} \xrightarrow{\text{3. Por cada zona}} \mathbf{AutoLoop + Master\ Wave\ (24\text{-}bit / 96\text{ kHz})}$$
 
 ### Orden de ejecución
-35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5 → 35.6 (revisión flujo rescate desde slot).
+35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5 → 35.6 (implementado).
 
 ---
 
@@ -1188,4 +1182,47 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
      - Aviso `INFO_CLASSIC_NAME_11_CHARS` y etiquetas de contenedor (`Cápsula del Tiempo (.zip)`).
   15. `src/core/wizard/musicianWizard.ts` y `src/ui/MusicianWizardModal.ts` (Fase 35.5):
      - Textos de los 4 pasos del Asistente Guiado (`1. Material`, `2. Limpiar`, `3. Cortar y mapear`, `4. Generar y exportar`), veredictos de clasificación (`Batería / Percusión`, `Melodía / Frase`, `Nota única / Instrumento cromático`) y botones de apertura de talleres avanzados.
+
+---
+
+## Fase 37 — AutoSampler MIDI Integrado (Hardware / VST) con Avance por Silencio y Calibración de Latencia en `ABDShared` [PLANIFICADA]
+
+**Objetivo**: Permitir muestrear automáticamente un sintetizador hardware externo o instrumento MIDI lanzando secuencias de notas y velocidades por WebMIDI, detectando en tiempo real cuándo se extingue la cola de cada nota para avanzar a la siguiente, limpiando la grabación continua antes de trocear y mapeando las zonas al 100 % usando las notas y velocidades MIDI reales enviadas (sin depender de detección ciega de pitch o transitorios).
+
+### 37.0 Spike 0 — Validación WebMIDI (`navigator.requestMIDIAccess`)
+- [ ] **Prueba de humo de WebMIDI antes de construir el secuenciador**:
+  - `navigator.requestMIDIAccess` es nuevo en `src/`. El primer entregable verificable de la Fase 37 es abrir un puerto `MIDIOutput` real o virtual, disparar 3 notas de prueba (`NoteOn` / `NoteOff` con `performance.now()`) y medir el jitter de envío en el navegador/Electron.
+
+### 37.1 Parte en `@abdsynths/shared` (`ABDShared`) — Port Puro desde `ABDAudioLab` + `npm run vendor:sync`
+- [ ] **Condición de pureza (cero acoplo a hardware/reloj de `ABDAudioLab`, edición en repo `ABDShared` + `npm run vendor:sync`)**:
+  - Solo se portan a `@abdsynths/shared/dsp/take/autoSamplerDsp.ts` las primitivas matemáticas puras e independientes de dispositivo (`Float32Array` + `sampleRate`). El scheduling de notas y el reloj WebAudio/WebMIDI viven en `ABDNeuModMakr`.
+  1. **Detector puro de decaimiento a silencio (`Dynamic Early Stopping` + `ADAPTIVE_ENVELOPE`)**:
+     - Basado en la matemática de envolvente de `LabAudioReceiver.cpp:223-249` y `ProfilingSequencer.cpp:668-694` de `ABDAudioLab`: tras enviar `NoteOff` y cumplir un tiempo mínimo de gracia (`gracePeriodMs`, p. ej. 250 ms), evalúa bloque a bloque si el pico/RMS cae por debajo del umbral de silencio (suelo de ruido medido $+ 3\text{ dB}$, o $-60/-80\text{ dBFS}$) durante `sustainedSilenceMs` consecutivos (~50–100 ms) para dar por terminada la cola de release y disparar la siguiente nota MIDI.
+  2. **Medidor puro de latencia (RTL) y correlación cruzada FFT (`measureMidiToAudioLatency` / `findSampleAccurateSyncOffset`)**:
+     - Basado en `LabAudioReceiver.cpp:180-197` y `336-404` de `ABDAudioLab`: calcula el retardo exacto en samples (`latencySamples`) entre el instante de referencia y el onset real en la entrada de audio, más el guardia de clipping sostenido (`SustainedClipping` $> 700$ samples) y recomendación de ganancia (`Auto-Trim` a $-3.0\text{ dBFS}$).
+  3. **Contrato compartido de manifiesto de AutoSampling (`MidiAutoSampleManifest` en `ABDShared/Contracts/recordingSession.ts`)**:
+     - Lista tipada de eventos `{ midiNote, velocity, velocityLayerIndex, lowKey, highKey, lowVel, highVel, noteOnFrame, noteOffFrame, tailEndFrame }` más `latencySamples` y `noiseProfile` adjuntos a la sesión de grabación.
+
+### 37.2 Controlador Puro `src/core/autoSampler/MidiAutoSampleSession.ts` + UI en `AudioRecorderModal.ts`
+- [ ] **Mantener `AudioRecorderModal.ts` delgado**:
+  - La máquina de estados del barrido MIDI (enumeración de puertos WebMIDI, cola de notas/velocidades, reloj `AudioContext.currentTime`, escucha de bloques y construcción del `MidiAutoSampleManifest`) vive en un controlador puro en `src/core/autoSampler/MidiAutoSampleSession.ts` (testeable sin DOM).
+  - `AudioRecorderModal.ts` solo hospeda la pestaña/modo conmutable **`Grabación Libre` vs `AutoSampler MIDI`** (accesible también desde el Paso 1 del `MusicianWizardModal`).
+- [ ] **Parámetros musicales del barrido MIDI**:
+  - Puerto de salida WebMIDI (`MIDI Output`) y canal MIDI (`1..16`).
+  - Rango de notas (`startNote .. endNote`, p. ej. `C1 (24)` a `C6 (84)`) y **paso de semitonos** (`Cada 1 st`, `Cada 3 st (m3)`, `Cada 6 st (tritono)`, `Cada 12 st (octava)`), calculando automáticamente los límites contiguos `lowKey..highKey` de cada zona hasta cubrir `0..127`.
+  - Capas de velocidad (`1 capa`, `2 capas Clásico Neuron [v1=60, v2=120]`, o `N capas` en modo Extended).
+  - Duración de nota pulsada (`gateDurationMs`, p. ej. `1500 ms`) y tiempo máximo de cola (`maxReleaseMs`, con corte anticipado automático por detector de silencio).
+
+### 37.3 Orden Canónico del Pipeline: Calibrar $\to$ Grabar con Silencio Dinámico $\to$ Limpiar Toma Continua $\to$ Cortar con Manifiesto MIDI
+- [ ] **Paso A — Pre-Roll de 1 s + `dcBlock` Previo + Nota Piloto (Antes de la 1ª nota del barrido)**:
+  1. Graba $1.0\text{ s}$ en silencio sin enviar MIDI, **aplica primero `dcBlock`** sobre ese segundo para que un posible offset DC de la interfaz no sesgue la energía espectral de baja frecuencia, y extrae la **Huella de ruido (`computeNoiseProfile`)** real del sintetizador/previo conectado (asumiendo en v1 suelo de ruido estacionario durante la toma).
+  2. Lanza 1 nota piloto corta $\to$ mide la **latencia real MIDI $\to$ Audio (`latencySamples`)** y verifica ausencia de clipping.
+- [ ] **Paso B — Secuencia MIDI con Avance por Silencio**:
+  - Por cada combinación `(nota, velocidad)`, envía `NoteOn`, mantiene durante `gateDurationMs`, envía `NoteOff` y espera a que el detector de silencio de `ABDShared` confirme que la cola cayó al suelo de ruido antes de lanzar la siguiente nota (registrando `noteOnFrame`, `noteOffFrame` y un `tailEndFrame` aproximado al tamaño de bloque, compensados con `latencySamples`).
+- [ ] **Paso C — Limpieza de Ruido ANTES del Corte (sobre la grabación continua)**:
+  - Aplica `dcBlock` + `reduceNoiseWithProfile` (usando la huella del Paso A) **sobre la toma continua entera antes de cortar**. Así las ventanas STFT overlap-add no sufren artefactos de borde en el transitorio de ataque de cada nota.
+- [ ] **Paso D — Corte Determinista Guiado por el Manifiesto MIDI y Refinado Fino de Bordes**:
+  - En lugar de adivinar transitorios o $F_0$ a ciegas con `AutoSlicer`, corta cada ventana `[noteOnFrame .. tailEndFrame]` sobre el audio ya limpio y **refina la granularidad de bloque de `tailEndFrame`** aplicando `snapFrameToNearestZeroCrossing` (`zc-snap`) en ambos extremos y recortando el silencio residual final con `trimSilence`.
+  - Pasa el resultado (con `rootKey`, `lowKey..highKey` y capas `lowVel..highVel` exactos del mensaje MIDI) directamente a las zonas de la sesión, al **Paso 3/4 del `MusicianWizardModal`** o al **`AudioChopperModal`** (con las regiones y notas ya etiquetadas para inspección visual o `AutoLoop`).
+
 

@@ -40,6 +40,8 @@ import { UniversalImportModal } from './ui/UniversalImportModal';
 import { MusicianWizardModal } from './ui/MusicianWizardModal';
 import { ConfigHealthModal } from './ui/ConfigHealthModal';
 import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
+import { computeBatchAutoLoopForZones, type BatchAutoLoopItemInput } from './core/dsp/LoopEditorTools';
+import { decodeWav } from './core/dsp/WavDecoder';
 import { withLoading } from './ui/LoadingModal';
 import { bridgeClient, type AxionikDbModelEntry } from './core/bridge/BridgeClient';
 import { yieldToUI } from './core/asyncUtils.ts';
@@ -352,6 +354,44 @@ class App {
           sampleName: loopData?.sampleName,
           pcm: loopData?.monoPcm,
           sampleRate: loopData?.sampleRate,
+        };
+      },
+      getZoneSlotAudio: (zoneId, slot = 'low', regionId) => {
+        const s = self.session ?? self.core.getSession();
+        if (!s) return null;
+        const targetZone = (zoneId ? s.zones.find((z) => z.id === zoneId) : null) ?? self.getActiveZone();
+        const extRegs = self.core.getExtendedRegions();
+        const targetReg = regionId ? extRegs.find((r) => r.id === regionId) : undefined;
+        const sampleName =
+          targetReg?.sampleName ||
+          (slot === 'high' ? targetZone?.sampleHigh : targetZone?.sampleLow) ||
+          targetZone?.sampleLow ||
+          targetZone?.sampleHigh;
+        if (sampleName) {
+          const buf = self.core.getSampleBuffer(sampleName);
+          if (buf) {
+            try {
+              const dec = decodeWav(buf);
+              if (dec.mono && dec.mono.length > 0) {
+                return {
+                  hasAudio: true,
+                  sampleName,
+                  pcm: dec.mono,
+                  sampleRate: dec.sampleRate,
+                };
+              }
+            } catch {
+              // fall back to getZoneLoopEditorData below
+            }
+          }
+        }
+        const loopData = self.core.getZoneLoopEditorData(targetZone?.id, regionId);
+        if (!loopData || loopData.monoPcm.length === 0) return null;
+        return {
+          hasAudio: true,
+          sampleName: loopData.sampleName,
+          pcm: loopData.monoPcm,
+          sampleRate: loopData.sampleRate,
         };
       },
       onAuditionPcm: (pcm, sr) => self.playAuditionPcm(pcm, sr),
@@ -983,6 +1023,12 @@ class App {
       onOpenAudioRecorder: () => {
         this.audioRecorderModal.open();
       },
+      onOpenWizardFromZoneSample: ({ zoneId, slot, regionId }) => {
+        this.musicianWizardModal.openWithZoneSample(zoneId, slot ?? 'low', regionId);
+      },
+      onAutoLoopAllZones: () => {
+        void this.handleAutoLoopAllZones();
+      },
     });
 
     // 3b. Spectral & A/B/C Resynthesis Monitor + Fase 13 Loop Editor
@@ -1379,6 +1425,60 @@ class App {
       zoneId: activeZone?.id,
       regionId: activeRegId,
     });
+  }
+
+  /**
+   * Fase 35.6 — Runs optimal zero-crossing AutoLoop across all zones/regions in batch.
+   */
+  public async handleAutoLoopAllZones(): Promise<void> {
+    if (!this.session) return;
+    const regions = this.core.getExtendedRegions();
+    if (regions.length === 0) {
+      toast('No hay zonas o regiones para aplicar AutoLoop.', 'warning');
+      return;
+    }
+
+    const inputs: BatchAutoLoopItemInput[] = [];
+    for (const reg of regions) {
+      const loopData = this.core.getZoneLoopEditorData(undefined, reg.id);
+      if (!loopData || loopData.monoPcm.length < 64) continue;
+      inputs.push({
+        id: reg.id,
+        sampleName: loopData.sampleName,
+        monoPcm: loopData.monoPcm,
+        sampleRate: loopData.sampleRate,
+        existingLoopStart: reg.loopEnd > reg.loopStart ? reg.loopStart : undefined,
+        existingLoopEnd: reg.loopEnd > reg.loopStart ? reg.loopEnd : undefined,
+      });
+    }
+
+    const computed = computeBatchAutoLoopForZones(inputs);
+    if (computed.length === 0) {
+      toast('Ninguna zona tenía audio suficiente para calcular puntos de bucle.', 'warning');
+      return;
+    }
+
+    for (const item of computed) {
+      await this.core.updateExtendedRegion(item.id, {
+        loopMode: item.loopMode,
+        loopStart: item.loopStart,
+        loopEnd: item.loopEnd,
+        hasPlaybackOverride: true,
+      });
+    }
+
+    this.session = this.core.getSession()!;
+    const avgQuality = Math.round(
+      computed.reduce((acc, r) => acc + r.seamQualityPercent, 0) / computed.length
+    );
+    this.telemetryDrawer.addLog(
+      `AutoLoop en lote (zc-snap): Aplicados puntos de bucle en ${computed.length} zona(s)/región(es) (calidad media de empalme: ${avgQuality}%).`
+    );
+    toast(
+      `AutoLoop aplicado en ${computed.length} zona(s) (zc-snap • empalme medio ${avgQuality}%).`,
+      'success'
+    );
+    this.refreshUI();
   }
 
   private async handleCoverImageUpload(file: File): Promise<void> {
