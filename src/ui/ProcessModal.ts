@@ -30,18 +30,18 @@ export class ProcessModal {
     this.isVisible = true;
 
     this.modalElement = document.createElement('div');
-    this.modalElement.className = 'modal-backdrop is-visible';
+    this.modalElement.className = 'nmm-modal-backdrop';
     this.modalElement.innerHTML = `
-      <div class="modal-dialog modal-process" role="dialog" aria-modal="true">
-        <div class="modal-header">
-          <div class="modal-title">
+      <div class="nmm-modal-window nmm-modal-m modal-process" role="dialog" aria-modal="true">
+        <div class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.cpu}</span>
             <span>NEURAL SPECTRAL PROCESS</span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-modal-close" title="Close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-modal-close" title="Close">${ICONS.close}</button>
         </div>
 
-        <div class="modal-body">
+        <div class="nmm-modal-body">
           <div class="process-stage-status">
             <span class="stage-pulse">●</span>
             <span class="stage-message" id="modal-stage-msg">Initializing neural analysis pipeline...</span>
@@ -76,13 +76,15 @@ export class ProcessModal {
           </div>
         </div>
 
-        <div class="modal-footer" id="modal-process-footer">
-          <button type="button" class="btn btn-outline btn-sm is-hidden" id="btn-modal-export">
-            ${ICONS.database} Export…
-          </button>
-          <button type="button" class="btn btn-danger btn-sm" id="btn-modal-cancel">
-            ${ICONS.stop} Cancel Process
-          </button>
+        <div class="nmm-modal-footer" id="modal-process-footer">
+          <div class="footer-right">
+            <button type="button" class="btn btn-outline btn-sm is-hidden" id="btn-modal-export">
+              ${ICONS.database} Export…
+            </button>
+            <button type="button" class="btn btn-danger btn-sm" id="btn-modal-cancel">
+              ${ICONS.stop} Cancel Process
+            </button>
+          </div>
         </div>
       </div>
     `;

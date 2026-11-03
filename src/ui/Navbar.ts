@@ -530,7 +530,7 @@ export class AppNavbar {
   public showDocModal(mode: 'manual' | 'specs'): void {
     if (!this.docModalEl) {
       this.docModalEl = document.createElement('div');
-      this.docModalEl.className = 'modal-backdrop is-hidden';
+      this.docModalEl.className = 'nmm-modal-backdrop is-hidden';
       document.body.appendChild(this.docModalEl);
     }
 
@@ -571,19 +571,21 @@ export class AppNavbar {
       `;
 
     this.docModalEl.innerHTML = `
-      <div class="process-modal-card doc-modal-card">
-        <div class="modal-header">
-          <div class="modal-title">
+      <div class="nmm-modal-window nmm-modal-m doc-modal-card">
+        <div class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.cpu}</span>
             <span>${title}</span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-close-doc-modal">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-close-doc-modal">${ICONS.close}</button>
         </div>
-        <div class="modal-body doc-modal-body">
+        <div class="nmm-modal-body doc-modal-body">
           ${bodyHtml}
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary" id="btn-ok-doc-modal">Close</button>
+        <div class="nmm-modal-footer">
+          <div class="footer-right">
+            <button type="button" class="btn btn-primary" id="btn-ok-doc-modal">Close</button>
+          </div>
         </div>
       </div>
     `;

@@ -10,7 +10,7 @@ import { ICONS } from './icons';
 import type { BankSummary } from '../core/types';
 import type { NeuronDbModelEntry } from './NeuronDbModal';
 import { PARAMETER_SETS } from '../core';
-import { confirmDialog, toast } from './notify';
+import { confirmDialog, promptDialog, toast } from './notify';
 import { createBankShell } from '@abdsynths/shared/components/bank/bankShell.js';
 import { bankCardHtml, bindBankCards } from '@abdsynths/shared/components/bank/bankCard.js';
 import { bankChipsHtml, bindBankChips, type BankChipItem } from '@abdsynths/shared/components/bank/bankChips.js';
@@ -392,7 +392,7 @@ export class BankDrawer {
           count,
           catClass: `cat-${i}`,
           title: setName,
-          prefixHtml: `<span class="cat-${i}" style="font-weight: 700;">${i}:</span> `,
+          prefixHtml: `<strong class="cat-${i}">${i}:</strong> `,
         });
       }
       return {
@@ -420,7 +420,7 @@ export class BankDrawer {
           count,
           catClass: `cat-${i}`,
           title: setName,
-          prefixHtml: `<span class="cat-${i}" style="font-weight: 700;">${i}:</span> `,
+          prefixHtml: `<strong class="cat-${i}">${i}:</strong> `,
         });
       }
       if (pending > 0 || entries.length === 0) {
@@ -875,23 +875,23 @@ export class BankDrawer {
       .join('');
 
     const toolbarHtml = `
-      <div class="axionik-sublib-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--color-border); border-radius: 6px; font-size: 12px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="color: var(--color-text-muted); font-weight: 500;">Sub-library:</span>
-          <select id="sel-axionik-sublib" class="form-control" style="padding: 2px 6px; font-size: 12px; height: 26px;">
+      <div class="axionik-sublib-toolbar">
+        <div class="bank-inline-row">
+          <span class="bank-toolbar-label">Sub-library:</span>
+          <select id="sel-axionik-sublib" class="form-control bank-toolbar-select">
             <option value="all" ${this.selectedAxionikSublibrary === 'all' ? 'selected' : ''}>All Sub-libraries (${entries.length})</option>
             ${sublibOptionsHtml}
           </select>
           <button type="button" class="btn btn-xs btn-outline" id="btn-axionik-new-sublib" title="Create new sub-library">
-            ${ICONS.plus || '+'} New
+            ${ICONS.plus} New
           </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-axionik-del-sublib" title="Delete current sub-library (must be empty)" ${canDeleteSub ? '' : 'disabled style="opacity: 0.5;"'}>
-            ${ICONS.trash || '✕'} Delete
+          <button type="button" class="btn btn-xs btn-outline bank-del-btn" id="btn-axionik-del-sublib" title="Delete current sub-library (must be empty)" ${canDeleteSub ? '' : 'disabled'}>
+            ${ICONS.trash} Delete
           </button>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="color: var(--color-text-muted); font-weight: 500;">Sort:</span>
-          <select id="sel-axionik-sort" class="form-control" style="padding: 2px 6px; font-size: 12px; height: 26px;">
+        <div class="bank-inline-row">
+          <span class="bank-toolbar-label">Sort:</span>
+          <select id="sel-axionik-sort" class="form-control bank-toolbar-select">
             <option value="ordinal" ${this.axionikSortMode === 'ordinal' ? 'selected' : ''}>Ordinal # (Manual)</option>
             <option value="name" ${this.axionikSortMode === 'name' ? 'selected' : ''}>Name (A-Z)</option>
             <option value="date" ${this.axionikSortMode === 'date' ? 'selected' : ''}>Recent Date</option>
@@ -984,9 +984,10 @@ export class BankDrawer {
           this.handlers.onDuplicateAxionik?.(item.slug);
         } else if (action === 'move') {
           const currentSub = item.sublibrary || 'Default';
-          const entered = typeof window !== 'undefined'
-            ? window.prompt(`Move "${item.name}" to sub-library (e.g. Default, Pads, Lead):`, currentSub)
-            : null;
+          const entered = await promptDialog(`Move "${item.name}" to sub-library (e.g. Default, Pads, Lead):`, currentSub, {
+            title: 'Move Model',
+            confirmLabel: 'Move',
+          });
           if (!entered || !entered.trim() || entered.trim() === currentSub) return;
           const targetSub = entered.trim();
           try {
@@ -1046,7 +1047,10 @@ export class BankDrawer {
     });
 
     container.querySelector('#btn-axionik-new-sublib')?.addEventListener('click', async () => {
-      const entered = typeof window !== 'undefined' ? window.prompt('Enter new Sub-library name:', '') : null;
+      const entered = await promptDialog('Enter new Sub-library name:', '', {
+        title: 'New Sub-library',
+        confirmLabel: 'Create',
+      });
       if (!entered || !entered.trim()) return;
       const clean = entered.trim();
       try {
