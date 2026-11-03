@@ -27,7 +27,7 @@ import {
 import { webNeuralEngine, type WebGpuDeviceStatus } from '../core/ai/WebNeuralEngine';
 import { cloudByokClient, type CloudAiProvider } from '../core/ai/CloudByokClient';
 import { ICONS } from './icons';
-import { toast } from './notify';
+import { confirmDialog, toast } from './notify';
 import { escHtml, escAttr } from './escape';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap';
 
@@ -112,7 +112,7 @@ export class SettingsModal {
 
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
-      this.backdropEl.className = 'modal-backdrop is-hidden';
+      this.backdropEl.className = 'nmm-modal-backdrop is-hidden';
       document.body.appendChild(this.backdropEl);
     }
 
@@ -210,15 +210,15 @@ export class SettingsModal {
     this.backdropEl.innerHTML = `
       <div class="process-modal-card ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="General Settings and AI Engine Configuration">
         <!-- Header -->
-        <div class="modal-header ai-modal-header">
-          <div class="modal-title">
+        <div class="nmm-modal-header ai-modal-header">
+          <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.settings}</span>
             <span>SETTINGS &amp; AI ENGINE</span>
             <span class="panel-badge ${cfg.enabled ? 'badge-ai-on' : 'badge-muted'}" id="ai-active-badge">
               ${cfg.enabled ? `AI: ${activeAiCount}/5 STAGES` : 'PURE DSP (AI OFF)'}
             </span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-close-settings-modal" title="Close (Esc)">
+          <button type="button" class="nmm-modal-close" id="btn-close-settings-modal" title="Close (Esc)">
             ${ICONS.close}
           </button>
         </div>
@@ -284,13 +284,13 @@ export class SettingsModal {
         </div>
 
         <!-- Footer -->
-        <div class="modal-footer ai-modal-footer">
+        <div class="nmm-modal-footer ai-modal-footer">
           <div class="ai-footer-info">
             <span class="text-muted" id="ai-footer-device-status">
               ${this.webGpuStatus?.statusMessage || 'Processing engine ready and online.'}
             </span>
           </div>
-          <div class="ai-footer-actions">
+          <div class="footer-right ai-footer-actions">
             <button type="button" class="btn btn-secondary" id="btn-cancel-settings-modal">Close</button>
             <button type="button" class="btn btn-primary" id="btn-apply-settings-modal">Apply Settings</button>
           </div>
@@ -406,7 +406,7 @@ export class SettingsModal {
 
             ${
               !isBridgeOnline
-                ? `<p class="bank-bridge-offline-hint text-muted" style="margin-top: 10px;">
+                ? `<p class="bank-bridge-offline-hint text-muted cfg-gap-top">
                     To scan local directories without browser sandbox restrictions, launch the Companion Bridge (<code>bridge/server.py</code>).
                   </p>`
                 : ''
@@ -1652,8 +1652,9 @@ python bridge/server.py</code></pre>
         const modelId = btn.dataset.id;
         if (!modelId) return;
         const m = this.bridgeModels.find((x) => x.id === modelId);
-        const confirmed = window.confirm(
-          `Do you want to uninstall "${m?.name || modelId}" from local disk to free space?`
+        const confirmed = await confirmDialog(
+          `Do you want to uninstall "${m?.name || modelId}" from local disk to free space?`,
+          { title: 'Uninstall Model', confirmLabel: 'Uninstall', danger: true }
         );
         if (!confirmed) return;
 
