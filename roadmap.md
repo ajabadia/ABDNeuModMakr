@@ -1062,6 +1062,46 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
   - **Pila `Undo` no destructiva por toma** e inyección directa tanto a `AudioChopperModal` como a la zona activa de la sesión (`onInjectTakeIntoSession`).
 - [x] **Tests**: `tests/phase34_audio_recorder.test.ts` añadido a `tests/run_all.ts` y `ABDShared/tests/takeDsp.test.js` + `recordingEngine.test.js` ampliados (19/19 en verde).
 
+---
+
+## Fase 35 — Recorrido de Músico: de Audio a Instrumento (Revisión UX y Asistente Guiado) [PLANIFICADA]
+
+**Origen**: revisión de flujos de ingesta/procesado/exportación del 2026-11-03 desde el punto de vista de un músico (no ingeniero). Historia pretendida: "tengo un audio → la app lo entiende → me pide permiso solo para adaptar → lo corto y mapeo → suena en AxionikVS". Infraestructura conseguida ~70 %; narración pendiente. Regla de la fase: **cero DSP nuevo** — solo reordenar UI, fijar defaults y renombrar. Cada paso deja la app mejor aunque el siguiente no llegue nunca.
+
+### 35.0 Paso 0 — Decisión del triaje (previo a todo)
+- **En sencillo**: la Fase 29 prometió que al soltar una carpeta o ZIP con contenido mixto (audios + bancos + slices mezclados) aparece una pantalla intermedia que pregunta "he encontrado esto, ¿qué hago con cada cosa?". Esa pantalla se programó (`src/ui/MultiAssetTriageModal.ts`, 319 líneas) pero **nunca se conectó**: nada la abre (cero referencias en `src`). Hoy el contenido mixto no tiene puerta.
+- **Lo que debía hacer**: listar lo descubierto, dejar incluir/excluir cada archivo y encaminar cada uno a su importador (audio→zonas/chopper, banco→modelos, slices→chopper con cortes precargados).
+- **Opción A) Conectar**: cablearla en la ruta de descubrimiento de Universal Import / ZIP-como-carpeta. Implica revisar su diseño contra el pipeline actual, testearla y mantener una pantalla más. Beneficio: el flujo de packs de samples (que SON carpetas mixtas) funciona como se prometió.
+- **Opción B) Eliminar**: borrar el fichero y retirar la promesa de la Fase 29. Implica que lo mixto sigue con el comportamiento actual (auto-encaminado sin elegir por archivo). Menos código, promesa retirada formalmente.
+- **No hacer nada no es opción**: el código muerto se pudre (los imports derivan y deja de compilar en silencio), el roadmap miente y el asistente (35.5) no puede apoyarse en él.
+- [ ] Decisión del usuario: A o B. (Recomendación: A solo si la importación de packs mixtos es un caso real; si no, B.)
+
+### 35.1 Bancos Hartmann/Neuronik como un formato más
+- Los bancos legacy entran por **Importar**, no por el Bank Browser. El Browser organiza lo propio; no es puerta de entrada.
+- [ ] Añadir el banco a la lista de formatos de Universal Smart Import (detección por firma, hoy ausente del chip de formatos).
+- [ ] Parser de banco como contenedor (igual que SF2: extraer modelos → zonas). Media tubería ya existe: `.neuronikmodel` reconocido en `importHandlers.ts`, límite de 11 caracteres y 2 capas en `menuActions.ts`, 10 Parameter Sets en `WebNeuralEngine`.
+- [ ] Adaptaciones de preflight del banco (nombres a 11, proyección de capas, sugerencia de modo) usando la puerta común de 35.3.
+- [ ] Decidir en la revisión del Bank Browser: solo gestiona, no importa.
+
+### 35.2 Exportar por destino (empezar aquí: lo más barato)
+- [ ] Una pantalla con tarjetas de destino ("Para tocar en AxionikVS → Cápsula del Tiempo", "Para otros samplers → Kontakt/Decent/SFZ…", "Solo audio → WAV/AIFF") que llaman a los exportadores existentes (`onExportModel`, `exportSampler`, `exportZoneAiff`). Ningún exportador se reescribe.
+- [ ] Renombrar "Export ZIP" a su nombre real: la Cápsula del Tiempo debe aparecer con su nombre.
+
+### 35.3 Idioma + puerta de preflight común
+- [ ] Renombrar con el término técnico como subtítulo: "Revisión antes de importar" (Preflight), "Huella de ruido de esta grabación" (Noise Print), "Ajustar cortes al cruce por cero" (zc-snap), "Reconstructor de agudos" (BWE).
+- [ ] Unificar los tres preflights (importación, lote, exportación) en un único componente visual: qué voy a cambiar + [Continuar] [Ajustar]. La lógica ya existe (`importPreflight`, preflight de batch, `rawSamplerPreflight`).
+
+### 35.4 Honestidad IA
+- [ ] Indicador único de estado (local / bridge / nube / sin conexión).
+- [ ] Cada botón IA declara motor y alternativa antes de actuar; sin fallbacks silenciosos.
+
+### 35.5 Asistente guiado (el grande, para el final)
+- [ ] Modal nuevo en 4 pasos copiando el patrón `BatchModalStep` (descubrir → revisar → ejecutar → informe): 1 Material (Grabar / Importar) → 2 Limpiar → 3 Cortar y mapear ("¿batería o melodía?" con "detectar solo" por defecto vía clasificador cat-0..9) → 4 Generar y exportar (ProcessPanel simplificado + pantalla de 35.2). Los modales actuales pasan a "taller avanzado".
+- [ ] Defaults de músico: trim con zero-cross activado, 2 capas en classic, consentimiento siempre.
+
+### Orden de ejecución
+35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5.
+
 
 
 
