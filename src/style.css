@@ -8468,19 +8468,19 @@ textarea.form-control::placeholder {
 
 .badge-health-ok {
   background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  color: var(--color-success);
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .badge-health-warn {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--color-warning);
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .badge-health-error {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-danger);
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
@@ -8489,7 +8489,7 @@ textarea.form-control::placeholder {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--color-panel-surface-elevated, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--color-panel-border, #374151);
+  border: 1px solid var(--color-panel-border);
   border-radius: var(--radius-md, 6px);
   align-items: center;
   flex-wrap: wrap;
@@ -8508,21 +8508,21 @@ textarea.form-control::placeholder {
 }
 
 .health-metric .metric-val.val-ok {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .health-metric .metric-val.val-warn {
-  color: #f59e0b;
+  color: var(--color-warning);
 }
 
 .health-metric .metric-val.val-err {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .health-metric .metric-lbl {
   font-size: 10px;
   text-transform: uppercase;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
 }
 
 .health-metric-desc {
@@ -8533,7 +8533,7 @@ textarea.form-control::placeholder {
 .health-metric-desc p {
   margin: 0;
   font-size: 12px;
-  color: var(--color-text-main, #d1d5db);
+  color: var(--color-text-main);
   line-height: 1.4;
 }
 
@@ -8547,7 +8547,7 @@ textarea.form-control::placeholder {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-main, #ffffff);
+  color: var(--color-text-main);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -8577,7 +8577,7 @@ textarea.form-control::placeholder {
 }
 
 .health-item-card:hover {
-  border-color: var(--color-panel-border, #4b5563);
+  border-color: var(--color-panel-border);
 }
 
 .health-item-card.is-missing-mandatory {
@@ -8599,15 +8599,15 @@ textarea.form-control::placeholder {
 }
 
 .health-item-card.is-ready .health-item-status-icon {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .health-item-card.is-missing-mandatory .health-item-status-icon {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .health-item-card.is-unconfigured-optional .health-item-status-icon {
-  color: #f59e0b;
+  color: var(--color-warning);
 }
 
 .health-item-info {
@@ -8625,7 +8625,7 @@ textarea.form-control::placeholder {
 
 .health-item-head strong {
   font-size: 13px;
-  color: var(--color-text-main, #ffffff);
+  color: var(--color-text-main);
 }
 
 .health-pill {
@@ -8638,34 +8638,34 @@ textarea.form-control::placeholder {
 
 .health-pill.pill-ok {
   background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .health-pill.pill-warn {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--color-warning);
 }
 
 .health-pill.pill-err {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .health-item-desc {
   margin: 0;
   font-size: 11px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
 }
 
 .health-item-impact {
   font-size: 10px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
 }
 
 .health-item-impact em {
   font-style: normal;
   font-weight: 600;
-  color: var(--color-text-main, #d1d5db);
+  color: var(--color-text-main);
 }
 
 .health-boot-chk {
@@ -8673,7 +8673,7 @@ textarea.form-control::placeholder {
   align-items: center;
   gap: var(--space-2);
   font-size: 11px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 
@@ -9014,18 +9014,18 @@ textarea.form-control::placeholder {
 .issue-tag.is-success { color: var(--color-success); border-color: currentColor; }
 
 /* BatchProcessorModal: discovery pane head (replaces inline card overrides). */
-.batch-pane-head { margin-bottom: var(--space-4); padding: var(--space-4); }
+.batch-pane-head { margin-bottom: var(--space-6); padding: var(--space-6) var(--space-8); }
 .batch-pane-title { font-size: var(--text-base); font-weight: 700; }
-.nmm-batch-hint.batch-pane-hint { margin: 0 0 0 var(--space-2); display: inline-block; }
+.nmm-batch-hint.batch-pane-hint { margin: 0 0 0 var(--space-4); display: inline-block; }
 
 /* BatchProcessorModal: slicer profile row + inline field rows. */
 .batch-slicer-row {
-  margin-top: var(--space-4);
-  padding-top: var(--space-2);
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--color-panel-border-dim);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-8);
   align-items: center;
   font-size: var(--text-sm);
 }
@@ -9033,7 +9033,7 @@ textarea.form-control::placeholder {
 .batch-field {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-4);
 }
 
 .batch-field > label {
@@ -9045,13 +9045,33 @@ textarea.form-control::placeholder {
 .batch-check {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-3);
   cursor: pointer;
   font-size: var(--text-sm);
 }
 
 .batch-sublib-input { max-width: 180px; }
 .batch-val-success { color: var(--color-success); }
+
+.cfg-inline-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.cfg-flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.cfg-ordinal-input {
+  width: 58px;
+  text-align: center;
+}
+
+.cfg-gap-top {
+  margin-top: var(--space-5);
+}
 
 /* BatchProcessorModal: offline-bridge notice (was class without rules). */
 .nmm-alert-subtle {

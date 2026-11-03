@@ -91,15 +91,15 @@ export class ConfigHealthModal {
           : 'ALL SYSTEMS OPERATIONAL';
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window config-health-modal-window" role="dialog" aria-modal="true" aria-labelledby="health-modal-title">
+      <div class="nmm-modal-window nmm-modal-l config-health-modal-window" role="dialog" aria-modal="true" aria-labelledby="health-modal-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon">${ICONS.cpu || ICONS.wave}</span>
+            <span class="modal-icon">${ICONS.cpu}</span>
             <h2 id="health-modal-title">System Configuration &amp; Readiness Diagnostic</h2>
             <span class="panel-badge ${statusBadgeClass}">FASE 21 — ${statusTitle}</span>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-health-close" aria-label="Close">
-            ${ICONS.close || '✕'}
+            ${ICONS.close}
           </button>
         </header>
 
@@ -134,7 +134,7 @@ export class ConfigHealthModal {
           <!-- Section 1: Mandatory Components -->
           <div class="health-section">
             <h3 class="health-section-heading">
-              <span class="health-sec-icon">${ICONS.check || '✓'}</span>
+              <span class="health-sec-icon">${ICONS.check}</span>
               Configuración Obligatoria (Core System)
             </h3>
             <div class="health-card-list">
@@ -143,7 +143,7 @@ export class ConfigHealthModal {
                   (item) => `
                 <div class="health-item-card ${item.isConfigured ? 'is-ready' : 'is-missing-mandatory'}">
                   <div class="health-item-status-icon">
-                    ${item.isConfigured ? ICONS.check || '✓' : ICONS.alert || '!'}
+                    ${item.isConfigured ? ICONS.check : ICONS.alert}
                   </div>
                   <div class="health-item-info">
                     <div class="health-item-head">
@@ -170,7 +170,7 @@ export class ConfigHealthModal {
           <!-- Section 2: Optional Components -->
           <div class="health-section">
             <h3 class="health-section-heading">
-              <span class="health-sec-icon">${ICONS.sparkle || ICONS.ai}</span>
+              <span class="health-sec-icon">${ICONS.sparkle}</span>
               Configuración Opcional &amp; Aceleración IA (Recomendado)
             </h3>
             <div class="health-card-list">
@@ -179,7 +179,7 @@ export class ConfigHealthModal {
                   (item) => `
                 <div class="health-item-card ${item.isConfigured ? 'is-ready' : 'is-unconfigured-optional'}">
                   <div class="health-item-status-icon">
-                    ${item.isConfigured ? ICONS.check || '✓' : ICONS.sparkle || ICONS.wave}
+                    ${item.isConfigured ? ICONS.check : ICONS.sparkle}
                   </div>
                   <div class="health-item-info">
                     <div class="health-item-head">
@@ -209,9 +209,9 @@ export class ConfigHealthModal {
             <input type="checkbox" id="chk-health-boot" ${showOnBoot ? 'checked' : ''} />
             <span>Show diagnostic on startup when components are unconfigured</span>
           </label>
-          <div class="footer-actions">
+          <div class="footer-right">
             <button type="button" class="btn btn-outline" id="btn-health-open-settings">
-              ${ICONS.settings || ''} Open Full Preferences
+              ${ICONS.settings} Open Full Preferences
             </button>
             <button type="button" class="btn btn-primary" id="btn-health-continue">
               Continue to MODELmaker

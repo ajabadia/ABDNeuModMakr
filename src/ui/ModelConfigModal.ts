@@ -16,7 +16,7 @@ import type {
 import { ICONS } from './icons';
 import { escHtml, escAttr } from './escape';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap';
-import { toast } from './notify';
+import { promptDialog, toast } from './notify';
 import { STANDARD_SOUNDFONT_TAGS } from '../core/soundfontMetadata';
 
 export type ModelConfigTab = 'general' | 'articulation' | 'metadata' | 'artwork';
@@ -317,22 +317,21 @@ export class ModelConfigModal {
                   <label for="sel-cfg-sublibrary">SUB-LIBRARY (Fase 23)</label>
                   <span class="val-pill" id="val-cfg-sublib-ordinal">#${config.sublibraryOrdinal ?? 1}</span>
                 </div>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                  <select id="sel-cfg-sublibrary" class="form-control" style="flex: 1;" title="Assign model to sub-library in AxionikDB">
+                <div class="cfg-inline-row">
+                  <select id="sel-cfg-sublibrary" class="form-control cfg-flex-1" title="Assign model to sub-library in AxionikDB">
                     ${sublibOptionsHtml}
                   </select>
-                  <button type="button" class="btn btn-outline btn-xs" id="btn-cfg-new-sublibrary" title="Create new sub-library..." style="padding: 4px 8px;">
-                    ${ICONS.folder || '+'}
+                  <button type="button" class="btn btn-outline btn-xs" id="btn-cfg-new-sublibrary" title="Create new sub-library...">
+                    ${ICONS.folder}
                   </button>
                   <input
                     type="number"
                     id="inp-cfg-sublib-ordinal"
-                    class="form-control"
+                    class="form-control cfg-ordinal-input"
                     min="1"
                     max="999"
                     value="${config.sublibraryOrdinal ?? 1}"
                     title="Ordinal position index in sub-library"
-                    style="width: 58px; text-align: center;"
                   />
                 </div>
               </div>
@@ -680,7 +679,7 @@ export class ModelConfigModal {
                 </select>
               </div>
 
-              <div class="form-group tag-key-group" id="group-cfg-custom-key" ${this.selectedTagDropdownKey !== 'custom' ? 'style="display:none"' : ''}>
+              <div class="form-group tag-key-group ${this.selectedTagDropdownKey !== 'custom' ? 'is-hidden' : ''}" id="group-cfg-custom-key">
                 <label for="inp-cfg-custom-tag-key">CUSTOM KEY</label>
                 <input
                   type="text"
@@ -748,7 +747,7 @@ export class ModelConfigModal {
           <p class="cfg-explainer">
             The Time Capsule system stores original raw audio along with resynthesis parameters. At any time, you can trigger a lossless reprocess from the purest acoustic source without quality degradation.
           </p>
-          <div style="margin-top: 10px;">
+          <div class="cfg-gap-top">
             <button type="button" class="btn btn-outline" id="btn-cfg-reprocess-capsule" title="Lossless reprocess from original unaltered acoustic source">
               ${ICONS.cpu} Reprocess From Purest Source (0 Generation Loss)
             </button>
@@ -809,7 +808,7 @@ export class ModelConfigModal {
                 <button type="button" class="btn btn-outline btn-sm" id="btn-cfg-pick-cover">
                   Browse File...
                 </button>
-                <input type="file" id="inp-cfg-cover-file" accept="image/*" style="display:none" />
+                <input type="file" id="inp-cfg-cover-file" class="is-hidden-file" accept="image/*" />
               </div>
 
               <!-- AI Artwork Generator (Roadmap Phase 20) -->
@@ -936,7 +935,11 @@ export class ModelConfigModal {
 
     // New Sub-library creation button (Fase 23)
     this.backdropEl.querySelector('#btn-cfg-new-sublibrary')?.addEventListener('click', async () => {
-      const entered = typeof window !== 'undefined' ? window.prompt('Enter new Sub-library name:', '') : null;
+      const entered = await promptDialog('Enter new Sub-library name:', '', {
+        title: 'New Sub-library',
+        confirmLabel: 'Create',
+        placeholder: 'Sub-library name',
+      });
       if (!entered || !entered.trim()) return;
       const clean = entered.trim();
       try {
@@ -1103,7 +1106,7 @@ export class ModelConfigModal {
     selTag?.addEventListener('change', () => {
       this.selectedTagDropdownKey = selTag.value;
       if (customKeyGroup) {
-        customKeyGroup.style.display = this.selectedTagDropdownKey === 'custom' ? '' : 'none';
+        customKeyGroup.classList.toggle('is-hidden', this.selectedTagDropdownKey !== 'custom');
       }
       if (tagHelper) {
         tagHelper.textContent = this.getActiveTagDescription();
