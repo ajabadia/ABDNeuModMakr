@@ -25,6 +25,11 @@ import {
   type ImportPreflightReport,
 } from '../core/import/importPreflight.ts';
 import { escHtml } from './escape.ts';
+import {
+  MUSICIAN_TERMS,
+  fromImportPreflightReport,
+  renderCommonPreflightGate,
+} from './preflightGateView.ts';
 import { ICONS } from './icons.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { toast } from './notify.ts';
@@ -124,20 +129,20 @@ export class UniversalImportModal {
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.folder}</span>
             <h2 id="universal-import-title">Universal Smart Import</h2>
-            <span class="panel-badge badge-ai-on">FASE 18.8 — MULTI-FORMAT RAW &amp; PREFLIGHT</span>
+            <span class="panel-badge badge-ai-on">${escHtml(MUSICIAN_TERMS.preflightImport)}</span>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-uimport-close" aria-label="Close" ${this.isInspecting ? 'disabled' : ''}>
             ${ICONS.close}
           </button>
         </header>
 
-        <div class="nmm-modal-body universal-import-modal-body">
+        <div class="nmm-modal-body nmm-modal-scroll-body">
           ${
             this.isInspecting
               ? `
             <div class="uimport-inspecting-state">
               <div class="neural-pulse-spinner">${ICONS.spinner}</div>
-              <h3>Analyzing Bank &amp; Running Preflight Inspection...</h3>
+              <h3>${escHtml(MUSICIAN_TERMS.preflightImport)}…</h3>
               <p>Scanning zone descriptors, velocity ranges, keybed coverage, and embedded audio buffers.</p>
             </div>
           `
@@ -161,7 +166,7 @@ export class UniversalImportModal {
         <footer class="nmm-modal-footer">
           <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-uimport-cancel" ${this.isInspecting ? 'disabled' : ''}>
-            ${this.preflightReport ? 'Choose Another File' : 'Cancel'}
+            ${this.preflightReport ? 'Ajustar / Elegir otro archivo' : 'Cancelar'}
           </button>
           ${
             this.preflightReport && (this.preflightReport.canImport || (this.preflightReport.isSliceChain && this.context.onOpenInAudioChopper))
@@ -179,7 +184,7 @@ export class UniversalImportModal {
               this.preflightReport.canImport
                 ? `
               <button type="button" class="btn btn-primary" id="btn-uimport-proceed">
-                ${ICONS.check} Proceed &amp; Import Bank
+                ${ICONS.check} Continuar e importar
               </button>
             `
                 : ''
@@ -236,6 +241,11 @@ export class UniversalImportModal {
     preset: ParsedSamplerPreset,
     currentMode: WorkingMode
   ): string {
+    const gateModel = fromImportPreflightReport(report, preset, currentMode, {
+      autoExtendOuterZones: this.optAutoExtend,
+      adaptVelocityLayers: this.optAdaptVelocity,
+      switchToExtendedMode: this.optSwitchToExtended,
+    });
     return `
       <div class="uimport-preflight-layout">
         <!-- Preset Header Summary Card -->
@@ -269,43 +279,12 @@ export class UniversalImportModal {
           </div>
         </div>
 
-        <!-- Incompatibilities & Diagnostic Warnings -->
-        <div class="uimport-issues-section">
-          <h4 class="section-title">Preflight Incompatibility Inspection</h4>
-          ${
-            report.issues.length === 0
-              ? `
-            <div class="issue-item issue-ok">
-              <span class="issue-icon">${ICONS.check}</span>
-              <div class="issue-body">
-                <strong>100% Session Compatible</strong>
-                <p>All zone definitions, velocity splits, key ranges, and audio samples are valid with zero incompatibilities.</p>
-              </div>
-            </div>
-          `
-              : report.issues
-                  .map(
-                    (issue) => `
-            <div class="issue-item issue-${issue.severity}">
-              <span class="issue-icon">${issue.severity === 'error' ? ICONS.alert : issue.severity === 'warning' ? ICONS.alert : ICONS.wave}</span>
-              <div class="issue-body">
-                <div class="issue-header">
-                  <strong>${escHtml(issue.title)}</strong>
-                  <span class="issue-cat-badge">${escHtml(issue.category.toUpperCase())}</span>
-                </div>
-                <p class="issue-desc">${escHtml(issue.description)}</p>
-                <div class="issue-res"><em>Suggested Resolution:</em> ${escHtml(issue.resolutionText)}</div>
-              </div>
-            </div>
-          `
-                  )
-                  .join('')
-          }
-        </div>
+        <!-- Unified Common Preflight Gate (Fase 35.3) -->
+        ${renderCommonPreflightGate(gateModel)}
 
         <!-- Interactive Adaptation Options -->
         <div class="uimport-options-card">
-          <h4 class="section-title">Import &amp; Incompatibility Adaptations</h4>
+          <h4 class="section-title">Ajustes de adaptación al importar</h4>
           <div class="uimport-checkbox-list">
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-auto-extend" ${this.optAutoExtend ? 'checked' : ''} />
@@ -384,16 +363,19 @@ export class UniversalImportModal {
     const chkExtend = this.backdropEl.querySelector<HTMLInputElement>('#chk-auto-extend');
     chkExtend?.addEventListener('change', () => {
       this.optAutoExtend = chkExtend.checked;
+      this.render();
     });
 
     const chkVel = this.backdropEl.querySelector<HTMLInputElement>('#chk-adapt-vel');
     chkVel?.addEventListener('change', () => {
       this.optAdaptVelocity = chkVel.checked;
+      this.render();
     });
 
     const chkExt = this.backdropEl.querySelector<HTMLInputElement>('#chk-switch-ext');
     chkExt?.addEventListener('change', () => {
       this.optSwitchToExtended = chkExt.checked;
+      this.render();
     });
 
     // Audio chopper action button

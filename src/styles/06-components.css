@@ -1,8 +1,4 @@
 /* ── Canonical Component Utilities & Modal Sizing ── */
-.doc-modal-card {
-  max-width: 620px;
-}
-
 .doc-modal-body {
   line-height: 1.55;
   font-size: var(--text-md);

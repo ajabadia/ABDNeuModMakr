@@ -83,7 +83,9 @@
 }
 
 .cell-overlap-icon svg,
-.cell-layer-icon svg {
+.cell-layer-icon svg,
+.val-pill.is-overlap-badge svg,
+.ribbon-overlap-pill svg {
   width: 12px;
   height: 12px;
 }
@@ -115,10 +117,6 @@
   font-size: var(--text-xs);
 }
 
-.val-pill.is-overlap-badge svg {
-  width: 12px;
-  height: 12px;
-}
 
 .ribbon-overlap-pill {
   display: inline-flex;
@@ -135,10 +133,6 @@
   margin-left: var(--space-2);
 }
 
-.ribbon-overlap-pill svg {
-  width: 12px;
-  height: 12px;
-}
 
 .ribbon-zone-block.is-intersecting {
   border-top: 2px solid var(--color-warning);

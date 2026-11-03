@@ -466,15 +466,12 @@
 }
 
 .kbd-white-key.kbd-audition-root,
-.kbd-black-key.kbd-audition-root {
-  outline: 2px solid var(--color-success, #3fb950);
-  outline-offset: -2px;
-}
-
+.kbd-black-key.kbd-audition-root,
 .ribbon-zone-block.is-auditioning {
   outline: 2px solid var(--color-success, #3fb950);
   outline-offset: -2px;
 }
+
 
 .ribbon-audition-overlay {
   position: absolute;

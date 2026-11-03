@@ -108,7 +108,6 @@
 .panel-header,
 .ribbon-header,
 .drawer-header,
-.modal-header,
 .keyboard-toolbar {
   display: flex;
   justify-content: space-between;

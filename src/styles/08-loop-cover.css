@@ -19,7 +19,8 @@
   border-color: var(--color-accent);
 }
 
-.cover-artwork-group.is-dragover .cover-artwork-card {
+.cover-artwork-group.is-dragover .cover-artwork-card,
+.cover-artwork-card.is-converting {
   border-color: var(--color-accent);
   background: var(--color-accent-dim);
 }
@@ -55,13 +56,6 @@
   opacity: 0;
   transition: opacity var(--transition-fast);
   pointer-events: none;
-}
-
-.cover-artwork-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
 }
 
 .cover-artwork-placeholder {
@@ -236,10 +230,6 @@
   font-family: var(--font-mono);
 }
 
-.cover-artwork-card.is-converting {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
-}
 
 .cover-artwork-spinner {
   width: 22px;

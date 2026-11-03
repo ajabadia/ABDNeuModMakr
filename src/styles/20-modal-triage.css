@@ -27,7 +27,8 @@
   margin: 0;
 }
 
-.triage-summary p + p {
+.triage-summary p + p,
+.triage-item-detail {
   margin-top: var(--space-1);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
@@ -80,13 +81,11 @@
   vertical-align: middle;
 }
 
-.triage-table tbody tr:hover {
-  background: var(--color-accent-dim);
-}
-
+.triage-table tbody tr:hover,
 .triage-table tbody tr.triage-row-selected {
   background: var(--color-accent-dim);
 }
+
 
 .triage-col-check {
   width: 26px;
@@ -113,11 +112,6 @@
   color: var(--color-text-main);
 }
 
-.triage-item-detail {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  margin-top: var(--space-1);
-}
 
 .triage-empty {
   padding: var(--space-4);

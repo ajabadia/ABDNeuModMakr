@@ -43,7 +43,16 @@
   flex-wrap: wrap;
 }
 
-/* Icono canónico de cabecera (espejo de .nmm-modal-header-icon) */
+/* Cuerpo con scroll para modales de diagnostico/importacion (general; la usan Universal Import y Config Health) */
+.nmm-modal-scroll-body {
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Icono canónico de cabecera */
 .modal-icon svg {
   width: 18px;
   height: 18px;
@@ -98,7 +107,8 @@
   font-size: var(--text-sm);
 }
 
-.batch-field {
+.batch-field,
+.bank-inline-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -119,7 +129,8 @@
 }
 
 .batch-sublib-input { max-width: 180px; }
-.batch-val-success { color: var(--color-success); }
+.batch-val-success,
+.preflight-status.is-ok .preflight-status-title{ color: var(--color-success); }
 
 .cfg-inline-row {
   display: flex;
@@ -153,11 +164,6 @@
   font-size: var(--text-lg);
 }
 
-.bank-inline-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
 
 .bank-toolbar-label {
   color: var(--color-text-muted);
@@ -259,7 +265,8 @@
   gap: var(--space-2);
 }
 
-.raw-card-title {
+.raw-card-title,
+.preflight-issues-title {
   font-size: var(--text-label);
   font-weight: 700;
   text-transform: uppercase;
@@ -332,9 +339,6 @@
   color: var(--color-warning);
 }
 
-.preflight-status.is-ok .preflight-status-title {
-  color: var(--color-success);
-}
 
 .preflight-status-icon svg {
   width: 16px;
@@ -366,13 +370,6 @@
   padding-right: var(--space-1);
 }
 
-.preflight-issues-title {
-  font-size: var(--text-label);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
-}
 
 .issue-card {
   background: var(--color-panel-surface);

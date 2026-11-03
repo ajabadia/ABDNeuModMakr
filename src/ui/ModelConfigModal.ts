@@ -250,7 +250,7 @@ export class ModelConfigModal {
     return `
       <div class="model-cfg-grid">
         <!-- 1. Identity & Slot -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.settings} Model Identity &amp; Naming</h4>
             <span class="cfg-hint">Hardware memory location, classic display name and extended next-gen title</span>
@@ -340,7 +340,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 2. Creation & Keyboard Mapping Mode -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.piano} Creation &amp; Keyboard Mapping Mode</h4>
             <span class="cfg-hint">Governs keyboard structure, velocity layers, and physical hardware constraints</span>
@@ -385,7 +385,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 3. Target Format & DSP Engine -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.cpu} Target Export Format &amp; Resynthesis Engine</h4>
             <span class="cfg-hint">Compilation destination files and spectral modeling pipeline</span>
@@ -421,7 +421,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 4. Analysis Complexity (1..10) -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.wave} Analysis Complexity &amp; Modal Density</h4>
             <span class="cfg-hint">Controls FFT stick mode resolution: higher levels retain harmonic shimmer at cost of compile time</span>
@@ -444,7 +444,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 5. Acoustic Parameter Set (0..9) -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} Canonical Parameter Set (Physical Modeling Category)</h4>
             <span class="cfg-hint">Determines the physical modeling exciter/resonator behavior in the Hartmann hardware</span>
@@ -493,7 +493,7 @@ export class ModelConfigModal {
 
     return `
       <div class="model-cfg-grid">
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.piano} Global Instrument Playback &amp; Keytrack</h4>
             <span class="cfg-hint">Global defaults applied across all model zones and regions</span>
@@ -549,7 +549,7 @@ export class ModelConfigModal {
           </div>
         </div>
 
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.wave} Master 24/96 Standard &amp; Dynamic Range</h4>
             <span class="cfg-hint">Studio-grade master wave resynthesis standards</span>
@@ -590,7 +590,7 @@ export class ModelConfigModal {
     return `
       <div class="model-cfg-grid">
         <!-- 1. General Provenance & Attribution -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.database} Extended Model Provenance &amp; Attribution</h4>
             <span class="cfg-hint">Preserved across AxionikDB and modern sampler instruments</span>
@@ -654,7 +654,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 2. SoundFont & Sampler Metadata Tags -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} SoundFont &amp; Sampler Metadata Tags (${customAttrs.length})</h4>
             <span class="cfg-hint">RIFF INFO chunk tags (IENG, ICOP, ICRD, ISFT) and studio recording attributes</span>
@@ -739,7 +739,7 @@ export class ModelConfigModal {
         </div>
 
         <!-- 3. 5-Layer Time Capsule & Provenance -->
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.layers} 5-Layer Time Capsule &amp; Provenance</h4>
             <span class="cfg-hint">Non-destructive origin tracking with zero generation loss</span>
@@ -766,7 +766,7 @@ export class ModelConfigModal {
 
     return `
       <div class="model-cfg-grid">
-        <div class="model-cfg-card">
+        <div class="card">
           <div class="model-cfg-card-header">
             <h4>${ICONS.palette} Model Cover Artwork (512×512 WebP)</h4>
             <span class="cfg-hint">Rendered in ABDAxionikVS catalog, SoundFont browser, and modern VST3/AU wrappers</span>

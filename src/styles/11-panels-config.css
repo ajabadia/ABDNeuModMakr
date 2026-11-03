@@ -89,7 +89,8 @@
   transition: all var(--transition-fast);
 }
 
-.rail-icon-btn svg {
+.rail-icon-btn svg,
+.model-tab-btn .tab-icon svg {
   width: 16px;
   height: 16px;
 }
@@ -121,7 +122,11 @@
 }
 
 /* Informative Summary HUD */
-.panel-header-actions {
+.panel-header-actions,
+.hud-param-set-row,
+.ai-status-row,
+.slicer-sample-meta,
+.drawer-header-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -251,11 +256,6 @@
   gap: 4px;
 }
 
-.hud-param-set-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
 .hud-param-set-title {
   font-size: var(--text-label, 11px);
@@ -309,11 +309,6 @@
   font-size: var(--text-label, 11px);
 }
 
-.ai-status-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
 /* ─────────────────────────────────────────────────────────────
    Model Configuration Modal (Tabs, General, Articulation, Meta, Artwork)
@@ -351,10 +346,6 @@
   transition: all var(--transition-fast);
 }
 
-.model-tab-btn .tab-icon svg {
-  width: 16px;
-  height: 16px;
-}
 
 .model-tab-btn .tab-title {
   display: block;
@@ -467,16 +458,6 @@
   gap: var(--space-4);
 }
 
-.model-cfg-card {
-  background: var(--color-panel-surface);
-  border: 1px solid var(--color-panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
 .model-cfg-card-header {
   display: flex;
   justify-content: space-between;
@@ -495,7 +476,8 @@
   gap: var(--space-2);
 }
 
-.cfg-hint {
+.cfg-hint,
+.ai-generator-desc {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
@@ -744,7 +726,8 @@
   gap: var(--space-3);
 }
 
-.ai-generator-info {
+.ai-generator-info,
+.sample-title-box {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -758,10 +741,6 @@
   gap: var(--space-2);
 }
 
-.ai-generator-desc {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
 
 .btn-ai-generate {
   white-space: nowrap;
@@ -820,11 +799,6 @@
   padding: var(--space-3);
 }
 
-.slicer-sample-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
 .sample-tag-icon {
   color: var(--color-accent);
@@ -832,11 +806,6 @@
   align-items: center;
 }
 
-.sample-title-box {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 
 .sample-name {
   color: var(--color-text-main);
@@ -885,9 +854,4 @@
   color: var(--color-text-muted);
 }
 
-.drawer-header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 

@@ -14,13 +14,6 @@
   flex-direction: column;
 }
 
-.config-health-modal-body {
-  overflow-y: auto;
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
 
 .badge-health-ok {
   background: rgba(16, 185, 129, 0.15);
@@ -63,15 +56,18 @@
   font-family: var(--font-mono, monospace);
 }
 
-.health-metric .metric-val.val-ok {
+.health-metric .metric-val.val-ok,
+.health-item-card.is-ready .health-item-status-icon {
   color: var(--color-success);
 }
 
-.health-metric .metric-val.val-warn {
+.health-metric .metric-val.val-warn,
+.health-item-card.is-unconfigured-optional .health-item-status-icon {
   color: var(--color-warning);
 }
 
-.health-metric .metric-val.val-err {
+.health-metric .metric-val.val-err,
+.health-item-card.is-missing-mandatory .health-item-status-icon {
   color: var(--color-danger);
 }
 
@@ -93,7 +89,8 @@
   line-height: 1.4;
 }
 
-.health-section {
+.health-section,
+.health-card-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -115,11 +112,6 @@
   display: inline-flex;
 }
 
-.health-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
 
 .health-item-card {
   display: flex;
@@ -154,17 +146,8 @@
   justify-content: center;
 }
 
-.health-item-card.is-ready .health-item-status-icon {
-  color: var(--color-success);
-}
 
-.health-item-card.is-missing-mandatory .health-item-status-icon {
-  color: var(--color-danger);
-}
 
-.health-item-card.is-unconfigured-optional .health-item-status-icon {
-  color: var(--color-warning);
-}
 
 .health-item-info {
   flex: 1;

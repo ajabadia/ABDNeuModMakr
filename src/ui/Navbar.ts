@@ -542,7 +542,7 @@ export class AppNavbar {
 
     const bodyHtml = isManual
       ? `
-        <div class="doc-modal-content">
+        <div>
           <h4>1. Canonical Key Zone Table (MIDI 0 C-2 .. 127 G8)</h4>
           <p>Every Neuron model requires continuous coverage of all 128 MIDI keys (<code>0 C-2</code> through <code>127 G8</code>) with no gaps or overlaps. Each row in the canonical Zone Table defines 9 fields: <strong>Zone</strong>, <strong>Low Key</strong>, <strong>Root Key</strong>, <strong>High Key</strong>, <strong>Low Vel</strong>, <strong>High Vel</strong>, <strong>Detune</strong> (<code>-99..+99</code>), <strong>Volume</strong> (<code>-32dB..+12dB</code>), and <strong>Pan</strong> (<code>-50..+50</code>).</p>
           <h4>2. Importing Audio Samples &amp; Banks</h4>
@@ -556,7 +556,7 @@ export class AppNavbar {
         </div>
       `
       : `
-        <div class="doc-modal-content">
+        <div>
           <h4>1. Native Pipeline Reconstructed from NASAnalysis.dll (SHA-256 434e2ac9...)</h4>
           <ul>
             <li><strong>Complexity 1..10 &rarr; Recursion Depth</strong>: <code>[1, 4, 8, 12, 16, 24, 32, 42, 54, 64]</code> modes (<code>stick</code>), with <code>paso = max(4, nextpow2(stick))</code> and <code>nb &isin; {1, 25, 61}</code>.</li>
@@ -572,7 +572,7 @@ export class AppNavbar {
       `;
 
     this.docModalEl.innerHTML = `
-      <div class="nmm-modal-window nmm-modal-m doc-modal-card">
+      <div class="nmm-modal-window nmm-modal-m">
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.cpu}</span>

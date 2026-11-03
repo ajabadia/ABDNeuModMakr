@@ -103,7 +103,7 @@ export class ConfigHealthModal {
           </button>
         </header>
 
-        <div class="nmm-modal-body config-health-modal-body">
+        <div class="nmm-modal-body nmm-modal-scroll-body">
           <!-- Overview Banner -->
           <div class="health-overview-strip">
             <div class="health-metric">

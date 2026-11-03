@@ -16,7 +16,10 @@
   gap: 2px;
 }
 
-.synth-knob-cell .abd-knob__label {
+.synth-knob-cell .abd-knob__label,
+/* Unified collapsed/hidden state (was 2 identical rules) */
+.column-spectral.is-collapsed,
+.validation-inline-bar.is-compact-hidden {
   display: none;
 }
 
@@ -408,11 +411,6 @@
 }
 
 
-/* Unified collapsed/hidden state (was 2 identical rules) */
-.column-spectral.is-collapsed,
-.validation-inline-bar.is-compact-hidden {
-  display: none;
-}
 
 .input-prefix,
 .val-pill {

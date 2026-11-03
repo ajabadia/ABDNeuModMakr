@@ -208,7 +208,7 @@ export class SettingsModal {
     const activeAiCount = this.countActiveAiStages();
 
     this.backdropEl.innerHTML = `
-      <div class="process-modal-card ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="General Settings and AI Engine Configuration">
+      <div class="ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="General Settings and AI Engine Configuration">
         <!-- Header -->
         <div class="nmm-modal-header ai-modal-header">
           <div class="nmm-modal-header-title">
