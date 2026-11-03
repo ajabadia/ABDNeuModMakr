@@ -35,6 +35,7 @@ import { AudioChopperModal } from './ui/AudioChopperModal';
 import { AudioRecorderModal } from './ui/AudioRecorderModal.ts';
 import { LoopEditorModal } from './ui/LoopEditorModal';
 import { RawSamplerExportModal } from './ui/RawSamplerExportModal';
+import { ExportDestinationModal } from './ui/ExportDestinationModal';
 import { UniversalImportModal } from './ui/UniversalImportModal';
 import { ConfigHealthModal } from './ui/ConfigHealthModal';
 import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
@@ -70,6 +71,7 @@ class App {
   private audioRecorderModal!: AudioRecorderModal;
   private loopEditorModal!: LoopEditorModal;
   private rawSamplerExportModal!: RawSamplerExportModal;
+  private exportDestinationModal!: ExportDestinationModal;
   private universalImportModal!: UniversalImportModal;
   private configHealthModal!: ConfigHealthModal;
   private imports: ImportHandlers;
@@ -272,6 +274,27 @@ class App {
       },
     });
 
+    this.exportDestinationModal = new ExportDestinationModal({
+      getSessionContext: () => {
+        const s = self.session ?? self.core.getSession()!;
+        const active = self.getActiveZone();
+        return {
+          modelName: s.processConfig.modelName || s.name || 'Init Model',
+          expandedName: s.processConfig.expandedName || s.processConfig.modelName || s.name || 'Init Model',
+          slot: s.processConfig.modelNumber ?? 1,
+          workingMode: s.processConfig.workingMode,
+          zoneCount: s.zones.length,
+          regionCount: self.core.getExtendedRegions().length,
+          hasActiveZoneSample: Boolean(active?.sampleLow || active?.sampleHigh),
+        };
+      },
+      onExportTimeCapsule: () => self.menus.exportModel(),
+      onExportTimeCapsuleAs: () => self.menus.exportModelAs(),
+      onSaveToAxionikDb: () => self.menus.saveToAxionikDb(),
+      onExportSampler: (fmt) => self.rawSamplerExportModal.open(fmt),
+      onExportZoneAiff: () => self.menus.exportZoneAiff(),
+    });
+
     this.universalImportModal = new UniversalImportModal({
       getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
       onInjectBank: (data) => {
@@ -408,7 +431,8 @@ class App {
       openAudioChopper: () => void self.openAudioChopper(),
       openAudioRecorder: () => self.audioRecorderModal.open(),
       openLoopEditor: () => self.openLoopEditor(),
-      openRawSamplerExport: () => self.rawSamplerExportModal.open(),
+      openRawSamplerExport: (fmt) => self.rawSamplerExportModal.open(fmt),
+      openExportDestinationModal: () => self.exportDestinationModal.open(),
       openUniversalImportModal: () => self.universalImportModal.open(),
       openConfigHealthModal: () => self.configHealthModal.open(),
     });
@@ -943,6 +967,7 @@ class App {
           this.modelConfigModal.updateConfig();
         },
         onStartProcess: () => this.handleStartProcess(),
+        onOpenExportDestination: () => this.exportDestinationModal.open(),
         onOpenModelConfig: (tab) => this.modelConfigModal.open(tab),
         onOpenAiCoverGenerator: () => this.aiCoverModal.open(),
         onOpenAiEngineModal: () => this.settingsModal.open('web', this.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG),
@@ -1074,7 +1099,7 @@ class App {
           slot,
           `NeuronModel_${String(slot).padStart(3, '0')}.zip`
         );
-        this.telemetryDrawer.addLog(`Exported model package #${String(slot).padStart(3, '0')} (.zip)`);
+        this.telemetryDrawer.addLog(`Exported Time Capsule #${String(slot).padStart(3, '0')} (.zip)`);
       },
       onClearModels: async () => {
         await this.core.clearGeneratedModels();
@@ -1166,7 +1191,8 @@ class App {
 
     this.processModal = new ProcessModal(modalsMount, {
       onCancel: () => this.core.cancelProcess(),
-      onClose: () => this.navbar.setProcessing(false)
+      onClose: () => this.navbar.setProcessing(false),
+      onExport: () => this.exportDestinationModal.open(),
     });
 
     this.navbar.mount(

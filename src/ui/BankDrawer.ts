@@ -563,7 +563,7 @@ export class BankDrawer {
               badges,
               actions: [
                 { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },
-                { id: 'export', label: 'Export .zip', kind: 'export', title: 'Export .zip package', iconHtml: ICONS.folder },
+                { id: 'export', label: 'Time Capsule', kind: 'export', title: 'Export 5-Layer Time Capsule (.zip)', iconHtml: ICONS.folder },
               ],
               selected: m.slot === this.selectedSlot,
             });

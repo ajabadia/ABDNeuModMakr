@@ -28,6 +28,7 @@ export interface NavbarHandlers {
   onExportModel: () => void;
   onExportModelAs?: () => void;
   onExportSampler?: () => void;
+  onOpenExportDestination?: () => void;
   onExportZoneAiff: () => void;
   onInstallPwa?: () => void;
   onOpenAiEngineModal?: () => void;
@@ -120,8 +121,8 @@ export class AppNavbar {
               { id: 1033, label: 'Save Model to AxionikDB...', action: 'saveToAxionikDb' },
               { id: 1034, label: 'Save Model to AxionikDB As (Duplicate)...', action: 'saveToAxionikDbAs' },
               { separator: true },
-              { id: 1035, label: 'Save Model Pack (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
-              { id: 1036, label: 'Save Model Pack As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
+              { id: 1035, label: 'Export Time Capsule (.zip)...', action: 'exportModel', shortcut: 'Ctrl+T' },
+              { id: 1036, label: 'Export Time Capsule As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
             ],
           },
           { separator: true },
@@ -142,6 +143,7 @@ export class AppNavbar {
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
           { id: 107,  label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
+          { id: 1085, label: 'Export Instrument (Choose Destination)...', action: 'openExportDestination', shortcut: 'Ctrl+Shift+X' },
           { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
           { id: 1056, label: 'Export Sampler / Multi-Format Bank...', action: 'exportSampler', shortcut: 'Ctrl+Shift+E' },
         ],
@@ -549,7 +551,7 @@ export class AppNavbar {
             <li><strong>Export Active Zone as Legacy AIFF</strong>: Converts any loaded zone to <code>44.1 kHz / 16-bit / Mono Big-Endian FORM/AIFF</code> with <code>INST</code> chunk for legacy hardware tools.</li>
           </ul>
           <h4>3. Keyboard Shortcuts</h4>
-          <p><code>Ctrl+O</code> Open Session &bull; <code>Ctrl+S</code> Save Session &bull; <code>Ctrl+I</code> Universal Smart Import &bull; <code>Ctrl+N</code> Import by Name &bull; <code>Ctrl+Z / Ctrl+Y</code> Undo / Redo &bull; <code>Insert</code> New Zone &bull; <code>Delete</code> Remove Zone &bull; <code>Ctrl+P</code> Process Model &bull; <code>Ctrl+T</code> Export ZIP &bull; <code>Space</code> Play/Stop Audition.</p>
+          <p><code>Ctrl+O</code> Open Session &bull; <code>Ctrl+S</code> Save Session &bull; <code>Ctrl+I</code> Universal Smart Import &bull; <code>Ctrl+N</code> Import by Name &bull; <code>Ctrl+Z / Ctrl+Y</code> Undo / Redo &bull; <code>Insert</code> New Zone &bull; <code>Delete</code> Remove Zone &bull; <code>Ctrl+P</code> Process Model &bull; <code>Ctrl+T</code> Export Time Capsule (.zip) &bull; <code>Ctrl+Shift+X</code> Export by Destination &bull; <code>Space</code> Play/Stop Audition.</p>
         </div>
       `
       : `
@@ -611,6 +613,7 @@ export class AppNavbar {
       case 'exportModelAs': this.handlers.onExportModelAs?.(); break;
       case 'exportZoneAiff': this.handlers.onExportZoneAiff(); break;
       case 'exportSampler': this.handlers.onExportSampler?.(); break;
+      case 'openExportDestination': this.handlers.onOpenExportDestination?.(); break;
       case 'undo': this.handlers.onUndo(); break;
       case 'redo': this.handlers.onRedo(); break;
       case 'addZone': this.handlers.onAddZone(); break;

@@ -9,6 +9,7 @@ import { ICONS } from './icons';
 export interface ProcessModalHandlers {
   onCancel: () => void;
   onClose: () => void;
+  onExport?: () => void;
 }
 
 export class ProcessModal {
@@ -75,7 +76,10 @@ export class ProcessModal {
           </div>
         </div>
 
-        <div class="modal-footer">
+        <div class="modal-footer" id="modal-process-footer">
+          <button type="button" class="btn btn-outline btn-sm is-hidden" id="btn-modal-export">
+            ${ICONS.database} Export…
+          </button>
           <button type="button" class="btn btn-danger btn-sm" id="btn-modal-cancel">
             ${ICONS.stop} Cancel Process
           </button>
@@ -123,6 +127,7 @@ export class ProcessModal {
     const sample = this.modalElement.querySelector('#modal-current-sample') as HTMLElement;
     const log = this.modalElement.querySelector('#modal-console-log') as HTMLElement;
     const cancelBtn = this.modalElement.querySelector('#btn-modal-cancel') as HTMLButtonElement;
+    const exportBtn = this.modalElement.querySelector('#btn-modal-export') as HTMLButtonElement | null;
 
     if (fill) fill.style.width = `${p.percent}%`;
     if (msg) msg.textContent = p.message;
@@ -140,6 +145,14 @@ export class ProcessModal {
     }
 
     if (p.status === 'completed' && cancelBtn) {
+      if (exportBtn && this.handlers.onExport) {
+        exportBtn.classList.remove('is-hidden');
+        exportBtn.onclick = () => {
+          this.handlers.onClose();
+          this.hide();
+          this.handlers.onExport?.();
+        };
+      }
       cancelBtn.className = 'btn btn-primary btn-sm';
       cancelBtn.innerHTML = `${ICONS.check} Done`;
       cancelBtn.onclick = () => {

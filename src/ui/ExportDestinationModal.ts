@@ -1,0 +1,214 @@
+// ─────────────────────────────────────────────────────────
+// ABDNeuModMakr — Export by Destination Modal (Fase 35.2)
+//
+// Musician-centric export selector with 3 destination cards:
+//   1. Para tocar en AxionikVS → Cápsula del Tiempo (.zip 5 capas / AxionikDB)
+//   2. Para otros samplers → Kontakt / Decent / SFZ / SF2 / MPC…
+//   3. Solo audio → WAV / AIFF
+//
+// Uses the canonical DRY modal skeleton (`nmm-modal-backdrop`,
+// `nmm-modal-window nmm-modal-l`, `nmm-modal-header`, `nmm-triage-body`,
+// `nmm-modal-footer`). Zero inline styles, zero literal colors.
+// ─────────────────────────────────────────────────────────
+
+import {
+  buildExportDestinationCards,
+  resolveExportDestinationSummary,
+  triggerExportDestinationAction,
+  type ExportDestinationCallbacks,
+  type ExportDestinationId,
+  type ExportSessionContext,
+} from '../app/exportDestinations.ts';
+import { ICONS } from './icons.ts';
+import { escAttr, escHtml } from './escape.ts';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
+
+export interface ExportDestinationModalContext extends ExportDestinationCallbacks {
+  getSessionContext: () => ExportSessionContext;
+}
+
+export class ExportDestinationModal {
+  private readonly context: ExportDestinationModalContext;
+  private backdropEl: HTMLDivElement | null = null;
+  private focusTrap: FocusTrap | null = null;
+  private selectedId: ExportDestinationId = 'time-capsule';
+
+  constructor(context: ExportDestinationModalContext) {
+    this.context = context;
+  }
+
+  public isOpen(): boolean {
+    return this.backdropEl !== null;
+  }
+
+  public open(initialDestination: ExportDestinationId = 'time-capsule'): void {
+    this.close();
+    this.selectedId = initialDestination;
+
+    this.backdropEl = document.createElement('div');
+    this.backdropEl.className = 'nmm-modal-backdrop';
+    this.backdropEl.innerHTML = this.render();
+    document.body.appendChild(this.backdropEl);
+
+    this.bindEvents();
+
+    if (!this.focusTrap && this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        onEscape: () => this.close(),
+        initialFocusSelector: '#btn-export-dest-run',
+      });
+      this.focusTrap.activate();
+    }
+  }
+
+  public close(): void {
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+      this.focusTrap = null;
+    }
+    if (this.backdropEl) {
+      this.backdropEl.remove();
+      this.backdropEl = null;
+    }
+  }
+
+  private iconForDestination(id: ExportDestinationId): string {
+    if (id === 'time-capsule') return ICONS.cpu;
+    if (id === 'other-samplers') return ICONS.database;
+    return ICONS.wave;
+  }
+
+  private render(): string {
+    const sessionCtx = this.context.getSessionContext();
+    const summary = resolveExportDestinationSummary(sessionCtx);
+    const cards = buildExportDestinationCards();
+    const activeCard = cards.find((c) => c.id === this.selectedId) ?? cards[0];
+
+    const cardsHtml = cards
+      .map((card) => {
+        const isSelected = card.id === this.selectedId;
+        const quickButtonsHtml = card.secondaryActions
+          .map(
+            (act) => `
+              <button
+                type="button"
+                class="btn btn-xs btn-outline"
+                data-dest-quick="${escAttr(card.id)}"
+                data-action-id="${escAttr(act.id)}"
+              >${escHtml(act.label)}</button>`
+          )
+          .join('');
+
+        return `
+          <div class="issue-card ${isSelected ? 'is-info' : ''}" data-dest-card="${escAttr(card.id)}">
+            <div class="issue-head">
+              <span class="issue-title">${this.iconForDestination(card.id)} ${escHtml(card.title)}</span>
+              <span class="issue-tags">
+                <span class="issue-tag ${isSelected ? 'is-info' : ''}">${escHtml(card.badge)}</span>
+                <button
+                  type="button"
+                  class="btn btn-sm ${isSelected ? 'btn-primary' : 'btn-outline'}"
+                  data-dest-primary="${escAttr(card.id)}"
+                >${escHtml(card.primaryActionLabel)}</button>
+              </span>
+            </div>
+            <p class="issue-desc">${escHtml(card.description)}</p>
+            <div class="triage-toolbar-left">
+              <span class="triage-count">${escHtml(card.targetSubtitle)}</span>
+              ${quickButtonsHtml}
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    return `
+      <div class="nmm-modal-window nmm-modal-l" role="dialog" aria-modal="true" aria-label="Exportar instrumento por destino">
+        <div class="nmm-modal-header">
+          <div class="nmm-modal-header-title">
+            <span class="modal-icon">${ICONS.database}</span>
+            <div>
+              <h2>Exportar instrumento: ¿dónde lo vas a tocar?</h2>
+              <p class="nmm-header-sub">Elige el destino para ${escHtml(summary.displayName)} (${escHtml(summary.slotLabel)} · ${escHtml(summary.zonesLabel)})</p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-close-modal" id="btn-export-dest-close" title="Cerrar (Esc)" aria-label="Cerrar">${ICONS.close}</button>
+        </div>
+
+        <div class="nmm-triage-body">
+          <div class="triage-summary">
+            <span>${ICONS.layers}</span>
+            <div>
+              <p><strong>${escHtml(summary.displayName)}</strong> (${escHtml(summary.slotLabel)}) está en modo <strong>${escHtml(summary.modeLabel)}</strong> con <strong>${escHtml(summary.zonesLabel)}</strong>.</p>
+              <p>Para conservar las 5 capas sin pérdida generacional usa siempre la <strong>Cápsula del Tiempo (.zip)</strong> o guárdalo en <strong>AxionikDB</strong>.</p>
+            </div>
+          </div>
+
+          <div class="preflight-issues" id="export-dest-cards-list">
+            ${cardsHtml}
+          </div>
+        </div>
+
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <span class="triage-count">Destino activo: <strong>${escHtml(activeCard.badge)}</strong></span>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-ghost" id="btn-export-dest-cancel">Cerrar</button>
+            <button type="button" class="btn btn-primary" id="btn-export-dest-run">${escHtml(activeCard.primaryActionLabel)}</button>
+          </div>
+        </footer>
+      </div>`;
+  }
+
+  private bindEvents(): void {
+    const root = this.backdropEl;
+    if (!root) return;
+
+    root.addEventListener('mousedown', (e) => {
+      if (e.target === root) this.close();
+    });
+
+    root.querySelector('#btn-export-dest-close')?.addEventListener('click', () => this.close());
+    root.querySelector('#btn-export-dest-cancel')?.addEventListener('click', () => this.close());
+
+    root.querySelector('#btn-export-dest-run')?.addEventListener('click', () => {
+      const targetId = this.selectedId;
+      this.close();
+      void triggerExportDestinationAction(targetId, this.context);
+    });
+
+    root.querySelectorAll<HTMLElement>('[data-dest-card]').forEach((cardEl) => {
+      cardEl.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button')) return;
+        const id = cardEl.getAttribute('data-dest-card') as ExportDestinationId | null;
+        if (id && id !== this.selectedId) {
+          this.selectedId = id;
+          root.innerHTML = this.render();
+          this.bindEvents();
+        }
+      });
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-dest-primary]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-dest-primary') as ExportDestinationId | null;
+        if (!id) return;
+        this.close();
+        void triggerExportDestinationAction(id, this.context);
+      });
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-dest-quick]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const destId = btn.getAttribute('data-dest-quick') as ExportDestinationId | null;
+        const actionId = btn.getAttribute('data-action-id') ?? undefined;
+        if (!destId) return;
+        this.close();
+        void triggerExportDestinationAction(destId, this.context, actionId);
+      });
+    });
+  }
+}

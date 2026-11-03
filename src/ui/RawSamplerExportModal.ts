@@ -57,7 +57,10 @@ export class RawSamplerExportModal {
     this.context = context;
   }
 
-  public open(): void {
+  public open(initialFormat?: RawSamplerFormat): void {
+    if (initialFormat) {
+      this.currentFormat = initialFormat;
+    }
     const session = this.context.core.getSession();
     this.bankName = session?.processConfig.expandedName || session?.processConfig.modelName || 'SamplerBank';
     this.author = session?.processConfig.extendedMetadata?.author || 'ABDNeuModMakr User';

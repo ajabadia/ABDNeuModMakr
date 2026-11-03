@@ -18,6 +18,7 @@ export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
   onOpenModelConfig?: (tab?: ModelConfigTab) => void;
+  onOpenExportDestination?: () => void;
   onOpenAiCoverGenerator?: () => void;
   onOpenAiEngineModal?: () => void;
   onSelectCoverImage?: (file: File) => void;
@@ -322,6 +323,14 @@ export class ProcessPanel {
           <div class="panel-header-actions">
             <button
               type="button"
+              class="btn btn-xs btn-outline btn-open-export-dest"
+              id="btn-header-open-export"
+              title="Export Instrument by Destination (Time Capsule for AxionikVS, Other Samplers, or Raw Audio)"
+            >
+              ${ICONS.database} Export…
+            </button>
+            <button
+              type="button"
               class="btn btn-xs btn-outline btn-open-model-config"
               id="btn-header-open-config"
               title="Open Full Model Configuration Dialog (General, Articulation, Metadata, Artwork)"
@@ -510,6 +519,9 @@ export class ProcessPanel {
     // Configure model header button
     this.container.querySelector('#btn-header-open-config')?.addEventListener('click', () => {
       this.handlers.onOpenModelConfig?.('general');
+    });
+    this.container.querySelector('#btn-header-open-export')?.addEventListener('click', () => {
+      this.handlers.onOpenExportDestination?.();
     });
 
     // HUD Card click / edit links
