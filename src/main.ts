@@ -4,6 +4,9 @@
 // ─────────────────────────────────────────────────────────
 
 import './style.css';
+// Fase 35 — estilos de la puerta de triaje en fichero propio hasta que se
+// congele el WIP de style.css de los laboratorios de audio; entonces se fusiona.
+import './ui/triageGate.css';
 import {
   createCoreService,
   DEFAULT_MASTER_WAVE_CONFIG,
