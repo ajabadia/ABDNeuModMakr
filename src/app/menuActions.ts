@@ -48,6 +48,7 @@ export interface MenuContext {
   setThemeMode?: (mode: 'light' | 'dark') => void;
   toggleThemeMode?: () => void;
   openBatchModal?: () => void;
+  openMusicianWizard?: () => void;
   openModelConfig?: (tab?: import('../ui/ModelConfigModal').ModelConfigTab) => void;
   openAiCoverGenerator?: () => void;
   openAudioChopper?: () => void;
@@ -402,6 +403,7 @@ export class MenuActions {
         if (willOpen) this.ctx.shell.getTelemetry().close();
       },
       onOpenBatchModal: () => this.ctx.openBatchModal?.(),
+      onOpenMusicianWizard: () => this.ctx.openMusicianWizard?.(),
       onOpenModelConfig: () => this.ctx.openModelConfig?.('general'),
       onOpenAiCoverGenerator: () => this.ctx.openAiCoverGenerator?.(),
       onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
@@ -575,6 +577,9 @@ export class MenuActions {
         } else if (key === 'x' && e.shiftKey) {
           e.preventDefault();
           this.ctx.openExportDestinationModal?.();
+        } else if (key === 'w' && e.shiftKey) {
+          e.preventDefault();
+          this.ctx.openMusicianWizard?.();
         } else if (key === ',' || key === ';') {
           e.preventDefault();
           this.ctx.openSettingsModal?.('general');

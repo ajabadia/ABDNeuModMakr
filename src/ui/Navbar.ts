@@ -53,6 +53,7 @@ export interface NavbarHandlers {
   onToggleSpectral: () => void;
   onToggleBank: () => void;
   onOpenBatchModal?: () => void;
+  onOpenMusicianWizard?: () => void;
   onOpenModelConfig?: () => void;
   onOpenAiCoverGenerator?: () => void;
   onOpenAudioChopper?: () => void;
@@ -129,6 +130,7 @@ export class AppNavbar {
             ],
           },
           { separator: true },
+          { id: 1039, label: 'Asistente Guiado de Músico (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
           { id: 104, label: 'Universal Smart Import (Audio, Bank, Slices, Chains)...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
           {
             name: 'Advanced Import',
@@ -171,6 +173,8 @@ export class AppNavbar {
       {
         name: 'Model',
         items: [
+          { id: 3010, label: 'Asistente Guiado de Músico (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
+          { separator: true },
           { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
           { id: 3014, label: 'Generate Cover Artwork with AI (Fase 20)...', action: 'openAiCoverGenerator' },
           { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
@@ -611,6 +615,7 @@ export class AppNavbar {
       case 'autoRepairCoverage': this.handlers.onAutoRepairCoverage(); break;
       case 'startProcess': this.handlers.onStartProcess(); break;
       case 'openBatchModal': this.handlers.onOpenBatchModal?.(); break;
+      case 'openMusicianWizard': this.handlers.onOpenMusicianWizard?.(); break;
       case 'validateCoverage': this.handlers.onValidateCoverage(); break;
       case 'setTargetFormat':
         if (value === 'dual' || value === 'legacy-neuron' || value === 'modern-neural') {

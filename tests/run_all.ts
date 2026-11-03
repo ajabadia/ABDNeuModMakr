@@ -52,6 +52,7 @@ const TEST_FILES = [
   'phase35_preflight_gate.test.ts',
   'phase35_ai_honesty.test.ts',
   'phase35_neuron_bank_import.test.ts',
+  'phase35_musician_wizard.test.ts',
 ];
 
 interface TestResult {

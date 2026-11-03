@@ -21,6 +21,7 @@ const STICK_MODES_BY_COMPLEXITY = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64];
 export interface ProcessPanelHandlers {
   onConfigChange: (config: ProcessConfig) => void;
   onStartProcess: () => void;
+  onOpenMusicianWizard?: () => void;
   onOpenModelConfig?: (tab?: ModelConfigTab) => void;
   onOpenExportDestination?: () => void;
   onOpenAiCoverGenerator?: () => void;
@@ -334,6 +335,14 @@ export class ProcessPanel {
           <div class="panel-header-actions">
             <button
               type="button"
+              class="btn btn-xs btn-primary"
+              id="btn-header-open-wizard"
+              title="Abrir Asistente Guiado en 4 pasos (1 Material → 2 Limpiar → 3 Cortar y mapear → 4 Generar y exportar)"
+            >
+              ${ICONS.sparkle} Asistente (4 Pasos)
+            </button>
+            <button
+              type="button"
               class="btn btn-xs btn-outline btn-open-export-dest"
               id="btn-header-open-export"
               title="Export Instrument by Destination (Time Capsule for AxionikVS, Other Samplers, or Raw Audio)"
@@ -528,6 +537,9 @@ export class ProcessPanel {
     });
 
     // Configure model header button
+    this.container.querySelector('#btn-header-open-wizard')?.addEventListener('click', () => {
+      this.handlers.onOpenMusicianWizard?.();
+    });
     this.container.querySelector('#btn-header-open-config')?.addEventListener('click', () => {
       this.handlers.onOpenModelConfig?.('general');
     });

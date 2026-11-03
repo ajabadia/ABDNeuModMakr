@@ -1064,7 +1064,7 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 
 ---
 
-## Fase 35 — Recorrido de Músico: de Audio a Instrumento (Revisión UX y Asistente Guiado) [PLANIFICADA]
+## Fase 35 — Recorrido de Músico: de Audio a Instrumento (Revisión UX y Asistente Guiado) [COMPLETADA]
 
 **Origen**: revisión de flujos de ingesta/procesado/exportación del 2026-11-03 desde el punto de vista de un músico (no ingeniero). Historia pretendida: "tengo un audio → la app lo entiende → me pide permiso solo para adaptar → lo corto y mapeo → suena en AxionikVS". Infraestructura conseguida ~70 %; narración pendiente. Regla de la fase: **cero DSP nuevo** — solo reordenar UI, fijar defaults y renombrar. Cada paso deja la app mejor aunque el siguiente no llegue nunca.
 
@@ -1102,12 +1102,37 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - [x] Indicador único de estado (`local / bridge / nube / sin conexión`) unificado en `resolveAiSystemStatus` (`src/core/ai/aiHonesty.ts`) y conectado en `Navbar.ts` (`#hud-ai-pill` / `#hud-ai-text` pasando `localProvider: webNeuralEngine.getDeviceStatus().activeProvider`) y `ProcessPanel.ts` (`#hud-card-ai` y rail colapsado).
 - [x] Cada botón IA declara motor principal y alternativa determinista antes de actuar (`resolveAiActionDeclaration`), y pide confirmación explícita (`confirmDialog`) cuando el motor primario no está disponible — cero fallbacks silenciosos en `AudioRecorderModal.ts` (`BWE`), `AudioChopperModal.ts` (`BWE`, `Whisper-tiny`, `HTDemucs` con alternativa `separateStemsDspFallback`) y `AiCoverGeneratorModal.ts` (`Generate Artwork` y `Enhance Prompt`).
 
-### 35.5 Asistente guiado (el grande, para el final)
-- [ ] Modal nuevo en 4 pasos copiando el patrón `BatchModalStep` (descubrir → revisar → ejecutar → informe): 1 Material (Grabar / Importar) → 2 Limpiar → 3 Cortar y mapear ("¿batería o melodía?" con "detectar solo" por defecto vía clasificador cat-0..9) → 4 Generar y exportar (ProcessPanel simplificado + pantalla de 35.2). Los modales actuales pasan a "taller avanzado".
-- [ ] Defaults de músico: trim con zero-cross activado, 2 capas en classic, consentimiento siempre.
+### 35.5 Asistente guiado (el grande, para el final) — Implementado
+- [x] Modal nuevo en 4 pasos copiando el patrón `BatchModalStep` (descubrir → revisar → ejecutar → informe): 1 Material (Grabar / Importar) → 2 Limpiar → 3 Cortar y mapear ("¿batería o melodía?" con "detectar solo" por defecto vía clasificador cat-0..9) → 4 Generar y exportar (ProcessPanel simplificado + pantalla de 35.2). Los modales actuales pasan a "taller avanzado" (`src/core/wizard/musicianWizard.ts`, `src/ui/MusicianWizardModal.ts`, accesible desde `ProcessPanel`, `File` / `Model → Asistente Guiado de Músico (4 Pasos)...` y `Ctrl+Shift+W`).
+- [x] Defaults de músico: trim con zero-cross activado (`trimSilence: true`, `snapZeroCrossing: true`), 2 capas en classic (`classicTwoVelocityLayers: true`), consentimiento siempre (`requireAiFallbackConsent: true`), y vía rápida directa al Paso 4 cuando el material del Paso 1 es un banco multipista ya mapeado. Verificado en `tests/phase35_musician_wizard.test.ts` (4/4).
+
+### 35.6 Revisión pendiente: Flujo de rescate cuando se carga un WAV multi-nota en un slot de zona (`ZoneInspector`)
+**Escenario**: El usuario carga un `.wav` directamente en el primer slot de zona (`sampleLow` / `sampleHigh` en `ZoneInspector`) y, al escucharlo, se da cuenta de que no es una nota suelta sino una grabación con **varias notas seguidas**.
+
+**Preguntas clave y diseño técnico del flujo desde ese slot**:
+1. **¿Cómo lo pasamos a limpiar antes del corte o del AutoLoop?**:
+   - **Por qué limpiar ANTES de partir**: La captura de la **Huella de ruido (`Noise Print`)** (`NoiseReductionDsp` + `dcBlock`) funciona mucho mejor sobre la toma continua completa porque aprovecha los silencios naturales entre notas grabadas (`detectSilenceRanges`) para medir el suelo de ruido real de la sala y evita artefactos de ventana FFT en los bordes de cada corte.
+   - **Acción a añadir en UI**: En la tarjeta del slot (`ZoneInspector.ts`) o menú contextual de la zona, añadir un botón directo **"Limpiar / Trocear muestra multi-nota..."** que inyecte el `AudioBuffer` ya cargado en `z.sampleLow` directamente en el **Paso 2 (`Limpiar`) del `MusicianWizardModal`** (`openWithZoneSample(zoneIndex, 'low')`) o en el limpiador de `AudioRecorderModal` / `AudioChopperModal`, sin obligar al usuario a reimportar el archivo desde disco.
+2. **¿Cómo se corta y se remapea desde ese slot?**:
+   - Una vez limpio el audio en el Paso 2, pasa al **Paso 3 (`Cortar y mapear`)** (o al `AudioChopperModal` con ese buffer ya limpio).
+   - Allí `AudioSlicerEngine.detectSlices` detecta cada nota con ajuste al cruce por cero (`zc-snap`), `analyzeSlicePitchAndClassification` detecta la nota fundamental ($F_0 \to \text{rootKey}$) de cada corte, y al confirmar reemplaza la zona única original por las **$N$ zonas cromáticas contiguas (`0..127`)** (o golpes de percusión), dejando 1 nota limpia por zona.
+3. **¿Cómo lo pasamos a `AutoLoop` (`LoopEditorModal`) desde allí?**:
+   - **Nunca antes de partir**: Ejecutar `AutoLoop` sobre el WAV sin partir intentaría buscar un bucle estacionario saltando entre notas de distinto tono.
+   - **Después de partir y remapear**: Con cada nota ya separada en su propia zona (`1..N`), ofrecer:
+     - Un botón de lote en el Paso 3/4 (o en el `ZoneInspector`): **"AutoLoop en todas las zonas (`zc-snap`)"**, que ejecuta `findOptimalZeroCrossingLoop` (`src/core/dsp/loopFinder.ts`) sobre la porción estacionaria de cada zona individual.
+     - Y el botón **`Loop`** de cada zona (`openLoopEditor`) para ajustar a oído en `LoopEditorModal` cualquier nota concreta que lo necesite.
+4. **¿Cómo y cuándo lo mandamos a mejorar a `24-bit / 96 kHz` (`MasterWaveEnhancer` / Reconstructor de agudos BWE): sobre el WAV entero o sobre lo partido y remapeado?**:
+   - **Respuesta arquitectónica: DESPUÉS de partir y remapear (sobre las zonas ya cortadas)**, separando claramente la limpieza del realce:
+     - **Por qué NO promover a Master Wave (`24-bit / 96 kHz`) antes de partir**:
+       1. `promoteZoneToMasterWave` (`src/core/dsp/MasterWaveEnhancer.ts`) no solo sube a `96 kHz / 24-bit`, sino que **sintetiza y expande el bucle de sostenimiento (`loopStart..loopEnd`) de una nota concreta** y guarda el archivo `03_enhanced_audio` por zona en la Cápsula del Tiempo (`NeuronAssetStore`). Sobre un WAV multi-nota sin partir, el bucle maestro no tiene sentido musical.
+       2. Subir de `44.1 kHz` a `96 kHz` antes de cortar multiplica por $\approx 2.17\times$ el tamaño en RAM de todos los silencios muertos entre notas que segundos después el `AudioSlicerEngine` va a descartar, haciendo más lento el detector de transientes y de pitch ($F_0$).
+     - **Excepción opcional (BWE neuronal del Bridge)**: Si se usa el modelo neuronal de reconstrucción de agudos (`AudioSR` en Bridge) sobre una grabación muy apagada y corta, puede aplicarse en el Paso 2 junto a la limpieza, pero la **promoción canónica a `Master Wave 24-bit / 96 kHz` (`onPromoteAllZonesToMasterWave`) debe ejecutarse tras el Paso 3 (sobre cada nota ya partida, remapeada y con sus puntos de `AutoLoop`)**.
+
+**Resumen de la tubería ideal de rescate desde el Slot #1**:
+$$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ (Noise\ Print + DC)} \xrightarrow{\text{2. Trocear y } F_0} \mathbf{Partir\ y\ Remapear\ (N\ zonas)} \xrightarrow{\text{3. Por cada zona}} \mathbf{AutoLoop + Master\ Wave\ (24\text{-}bit / 96\text{ kHz})}$$
 
 ### Orden de ejecución
-35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5.
+35.0 → 35.2 → 35.3 → 35.4 → 35.1 (puede ir en paralelo a 35.2–35.4) → 35.5 → 35.6 (revisión flujo rescate desde slot).
 
 ---
 
@@ -1161,4 +1186,6 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
      - Textos de estado unificado (`IA: LOCAL / BRIDGE / NUBE / SIN CONEXIÓN`) y diálogos de consentimiento explícito de alternativa (`resolveAiActionDeclaration`).
   14. `src/core/import/importPreflight.ts` y `src/core/import/neuronBankImporter.ts` (Fase 35.1):
      - Aviso `INFO_CLASSIC_NAME_11_CHARS` y etiquetas de contenedor (`Cápsula del Tiempo (.zip)`).
+  15. `src/core/wizard/musicianWizard.ts` y `src/ui/MusicianWizardModal.ts` (Fase 35.5):
+     - Textos de los 4 pasos del Asistente Guiado (`1. Material`, `2. Limpiar`, `3. Cortar y mapear`, `4. Generar y exportar`), veredictos de clasificación (`Batería / Percusión`, `Melodía / Frase`, `Nota única / Instrumento cromático`) y botones de apertura de talleres avanzados.
 

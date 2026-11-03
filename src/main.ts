@@ -37,6 +37,7 @@ import { LoopEditorModal } from './ui/LoopEditorModal';
 import { RawSamplerExportModal } from './ui/RawSamplerExportModal';
 import { ExportDestinationModal } from './ui/ExportDestinationModal';
 import { UniversalImportModal } from './ui/UniversalImportModal';
+import { MusicianWizardModal } from './ui/MusicianWizardModal';
 import { ConfigHealthModal } from './ui/ConfigHealthModal';
 import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
 import { withLoading } from './ui/LoadingModal';
@@ -73,6 +74,7 @@ class App {
   private rawSamplerExportModal!: RawSamplerExportModal;
   private exportDestinationModal!: ExportDestinationModal;
   private universalImportModal!: UniversalImportModal;
+  private musicianWizardModal!: MusicianWizardModal;
   private configHealthModal!: ConfigHealthModal;
   private imports: ImportHandlers;
   private menus: MenuActions;
@@ -334,6 +336,67 @@ class App {
       },
     });
 
+    this.musicianWizardModal = new MusicianWizardModal({
+      getCurrentProcessConfig: () =>
+        self.session?.processConfig ?? self.core.getSession()!.processConfig,
+      getCurrentWorkingMode: () => self.session?.processConfig.workingMode ?? 'classic',
+      getParameterSets: () => self.core.getParameterSets(),
+      getActiveSessionAudio: () => {
+        const s = self.session ?? self.core.getSession();
+        if (!s) return { hasAudio: false, zoneCount: 0 };
+        const active = self.getActiveZone();
+        const loopData = active ? self.core.getZoneLoopEditorData(active.id) : null;
+        return {
+          hasAudio: Boolean(loopData && loopData.monoPcm.length > 0),
+          zoneCount: s.zones.length,
+          sampleName: loopData?.sampleName,
+          pcm: loopData?.monoPcm,
+          sampleRate: loopData?.sampleRate,
+        };
+      },
+      onAuditionPcm: (pcm, sr) => self.playAuditionPcm(pcm, sr),
+      onStopAudition: () => self.stopAuditionPcm(),
+      onCommitWizardInstrument: (payload) => {
+        if (!self.session) return;
+        for (const [name, buf] of payload.audioBuffers.entries()) {
+          self.core.registerSampleBuffer(name, buf);
+        }
+        self.session.name = payload.modelName;
+        self.session.processConfig.modelName = payload.modelName;
+        self.session.processConfig.expandedName = payload.expandedName;
+        self.session.processConfig.parameterSet = payload.parameterSet;
+        self.session.processConfig.workingMode = payload.workingMode;
+        self.session.zones = payload.classicZones;
+        self.session.extendedRegions = payload.extendedRegions;
+        self.session.dirty = true;
+        self.selectedZoneId = payload.classicZones[0]?.id ?? null;
+        self.telemetryDrawer.addLog(
+          `Asistente Guiado: Preparado "${payload.expandedName}" (${payload.classicZones.length} zonas, modo ${payload.workingMode}, Set #${payload.parameterSet}).`
+        );
+        self.refreshUI();
+      },
+      onStartProcessModel: () => {
+        void self.handleStartProcess();
+      },
+      onExportTimeCapsule: () => self.menus.exportModel(),
+      onExportTimeCapsuleAs: () => self.menus.exportModelAs(),
+      onSaveToAxionikDb: () => self.menus.saveToAxionikDb(),
+      onExportSampler: (fmt) => self.rawSamplerExportModal.open(fmt),
+      onExportZoneAiff: () => self.menus.exportZoneAiff(),
+      onOpenAdvancedRecorder: () => self.audioRecorderModal.open(),
+      onOpenAdvancedUniversalImport: () => self.universalImportModal.open(),
+      onOpenAdvancedChopper: (wav, name) => {
+        if (wav && name) {
+          self.audioChopperModal.openWithAudioBuffer(wav, name);
+        } else {
+          void self.openAudioChopper();
+        }
+      },
+      onOpenAdvancedLoopEditor: () => self.openLoopEditor(),
+      onOpenAdvancedModelConfig: () => self.modelConfigModal.open('general'),
+      onOpenBatchProcessor: () => self.batchModal.open(),
+    });
+
     this.settingsModal = new SettingsModal({
       onUpdateAiConfig: (config) => {
         if (!self.session) return;
@@ -426,6 +489,7 @@ class App {
       setThemeMode: (mode: 'light' | 'dark') => self.setThemeMode(mode),
       toggleThemeMode: () => self.toggleThemeMode(),
       openBatchModal: () => self.batchModal.open(),
+      openMusicianWizard: () => self.musicianWizardModal.open(),
       openModelConfig: (tab) => self.modelConfigModal.open(tab),
       openAiCoverGenerator: () => self.aiCoverModal.open(),
       openAudioChopper: () => void self.openAudioChopper(),
@@ -967,6 +1031,7 @@ class App {
           this.modelConfigModal.updateConfig();
         },
         onStartProcess: () => this.handleStartProcess(),
+        onOpenMusicianWizard: () => this.musicianWizardModal.open(),
         onOpenExportDestination: () => this.exportDestinationModal.open(),
         onOpenModelConfig: (tab) => this.modelConfigModal.open(tab),
         onOpenAiCoverGenerator: () => this.aiCoverModal.open(),
