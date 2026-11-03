@@ -21,6 +21,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { toast } from './notify.ts';
 import { downloadBlob } from './download.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
@@ -979,7 +980,7 @@ export class AudioRecorderModal {
           <div class="nmm-recorder-params-grid">
             <div class="form-group">
               <div class="label-with-val">
-                <label>CAPTURED NOISE PRINT PROFILE</label>
+                <label>${escHtml(MUSICIAN_TERMS.noisePrint)}</label>
                 <span class="val-pill">${np ? 'ACTIVE' : 'NONE'}</span>
               </div>
               <div class="nmm-recorder-noise-readout-box" id="rec-noise-readout" title="${escHtml(npSummary)}">
@@ -1006,8 +1007,8 @@ export class AudioRecorderModal {
 
           <div class="nmm-recorder-dsp-toolbar">
             <div class="nmm-recorder-dsp-left">
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-capture-noise" title="Capture Noise Print from dragged region or auto-detected silence">
-                ${ICONS.search} Capture Noise Print
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-capture-noise" title="${escHtml(MUSICIAN_TERMS.noisePrint)}">
+                ${ICONS.search} ${escHtml(MUSICIAN_TERMS.noisePrint)}
               </button>
               <button type="button" class="btn btn-sm btn-outline" id="btn-rec-trim-silence" title="Trim leading and trailing silence">
                 ${ICONS.scissors} Trim Silence
@@ -1018,8 +1019,8 @@ export class AudioRecorderModal {
               <button type="button" class="btn btn-sm btn-outline" id="btn-rec-normalize" title="Apply DC Block and Peak Normalize to -1.0 dBFS">
                 ${ICONS.zap} Norm -1 dB + DC
               </button>
-              <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" title="Enhance audio via AI (96 kHz BWE) while suppressing the captured Noise Print">
-                ${ICONS.sparkle} AI Enhance (Clean Noise)
+              <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" title="${escHtml(MUSICIAN_TERMS.bwe)} + limpieza con ${escHtml(MUSICIAN_TERMS.noisePrint)}">
+                ${ICONS.sparkle} ${escHtml(MUSICIAN_TERMS.bwe)}
               </button>
             </div>
 

@@ -11,6 +11,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
 import { downloadBlob } from './download.ts';
@@ -876,7 +877,7 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m100" title="Nudge boundary -100 samples">&lt;&lt; -100</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m10" title="Nudge boundary -10 samples">&lt; -10</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m1" title="Nudge boundary -1 sample">-1</button>
-                  <button type="button" class="btn btn-xs btn-accent" id="btn-nudge-snap0x" title="Snap boundary to nearest zero-crossing">Snap 0-X</button>
+                  <button type="button" class="btn btn-xs btn-accent" id="btn-nudge-snap0x" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">Snap 0-X</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p1" title="Nudge boundary +1 sample">+1</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p10" title="Nudge boundary +10 samples">+10 &gt;</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p100" title="Nudge boundary +100 samples">+100 &gt;&gt;</button>
@@ -969,8 +970,8 @@ export class AudioChopperModal {
               <!-- Unified Action Bar (Matches .loop-action-bar & .nmm-recorder-dsp-toolbar) -->
               <div class="chopper-action-bar">
                 <div class="chopper-action-bar-left">
-                  <button type="button" class="btn btn-sm ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="Magnetize slice boundaries to the nearest zero-crossing">
-                    0-X Snap: ${this.options.snapZeroCrossing ? 'ON' : 'OFF'}
+                  <button type="button" class="btn btn-sm ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
+                    ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.options.snapZeroCrossing ? 'ON' : 'OFF'}
                   </button>
                   <button type="button" class="btn btn-sm ${this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-overlap" title="Allow overlapping key & velocity zones">
                     Overlaps: ${this.options.allowOverlap ? 'ALLOW' : 'DISJOINT'}
@@ -2345,7 +2346,7 @@ export class AudioChopperModal {
                 },
               },
               {
-                label: `Capture Noise Print from Slice #${hitSlice.index} (Fase 30)`,
+                label: `${MUSICIAN_TERMS.noisePrint} — Slice #${hitSlice.index}`,
                 icon: ICONS.wave,
                 onClick: () => {
                   this.capturedNoiseProfile = captureNoisePrintFromRegion(this.pcm, this.sampleRate, {

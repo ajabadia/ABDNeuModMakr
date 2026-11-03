@@ -24,6 +24,10 @@ import type {
   RawSamplerPreflightReport,
 } from '../core/export/rawSamplerTypes.ts';
 import { SAMPLER_FORMAT_METADATA } from '../core/export/rawSamplerPreflight.ts';
+import {
+  fromRawSamplerPreflightReport,
+  renderCommonPreflightGate,
+} from './preflightGateView.ts';
 import { ICONS } from './icons.ts';
 import { toast } from './notify.ts';
 import { downloadBlob } from './download.ts';
@@ -99,11 +103,6 @@ export class RawSamplerExportModal {
     this.currentReport = this.context.core.analyzeRawSamplerPreflight(opts);
   }
 
-  private severityOf(report: RawSamplerPreflightReport): 'error' | 'warn' | 'ok' {
-    if (!report.canExport) return 'error';
-    return report.summary.warningCount > 0 ? 'warn' : 'ok';
-  }
-
   private render(): void {
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
@@ -117,7 +116,12 @@ export class RawSamplerExportModal {
 
     const report = this.currentReport!;
     const meta = SAMPLER_FORMAT_METADATA[this.currentFormat];
-    const sev = this.severityOf(report);
+    const gateModel = fromRawSamplerPreflightReport(report, meta, {
+      resolution: this.resolution,
+      sampleRate: this.sampleRate,
+      normalization: this.normalization,
+      layout: this.layout,
+    });
 
     const formats: Array<{ id: RawSamplerFormat; label: string; badge: string }> = [
       { id: 'sf2', label: 'SoundFont 2 (.sf2)', badge: 'RIFF sfbk' },
@@ -136,21 +140,6 @@ export class RawSamplerExportModal {
       { id: 'vstpreset', label: 'HALion (.vstpreset)', badge: 'Steinberg' },
       { id: 'sample_chain', label: 'Linear Sample Chain (.wav)', badge: 'Cue Markers' },
     ];
-
-    const statusTitle =
-      sev === 'error'
-        ? 'INCOMPATIBILIDADES BLOQUEANTES DETECTADAS'
-        : sev === 'warn'
-          ? `ADAPTACIONES TÉCNICAS REQUERIDAS (${report.summary.warningCount})`
-          : 'TODAS LAS ESPECIFICACIONES TÉCNICAS SON COMPATIBLES';
-
-    const statusIcon = sev === 'ok' ? ICONS.check : ICONS.alert;
-    const statusText =
-      sev === 'error'
-        ? 'No se puede exportar el banco en el estado actual. Revise las incidencias críticas listadas a continuación.'
-        : sev === 'warn'
-          ? 'Se han detectado parámetros que superan los límites del formato de destino. Puede cancelar para ajustar manualmente en la sesión o continuar con las adaptaciones automáticas calculadas.'
-          : 'Todas las regiones, bit depths, frecuencias de muestreo, bucles y curvas de envolvente son 100% compatibles con el formato seleccionado.';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-modal-xl" role="dialog" aria-modal="true" aria-label="Exportar banco a formato sampler">
@@ -244,38 +233,7 @@ export class RawSamplerExportModal {
               </div>
             </div>
 
-            <div class="preflight-status is-${sev}">
-              <div class="preflight-status-head">
-                <span class="preflight-status-title"><span class="preflight-status-icon">${statusIcon}</span>${statusTitle}</span>
-                <span class="preflight-status-meta">${report.totalRegions} Regiones | ${report.totalSamples} Muestras</span>
-              </div>
-              <p>${statusText}</p>
-            </div>
-
-            <div class="preflight-issues">
-              <span class="preflight-issues-title">Detalle de Inspección Preflight (${report.issues.length} Items Analizados)</span>
-              ${report.issues.length === 0
-                ? `<div class="triage-empty">No hay advertencias ni incompatibilidades técnicas reportadas para esta configuración.</div>`
-                : report.issues
-                    .map((iss) => {
-                      const sevClass =
-                        iss.severity === 'incompatibility' ? 'is-error' : iss.severity === 'warning' ? 'is-warn' : 'is-info';
-                      return `
-                  <div class="issue-card ${sevClass}">
-                    <div class="issue-head">
-                      <span class="issue-title">${iss.title}</span>
-                      <span class="issue-tags">
-                        <span class="issue-tag">${iss.category}</span>
-                        <span class="issue-tag ${sevClass}">${iss.severity}</span>
-                      </span>
-                    </div>
-                    <p class="issue-desc">${iss.description}</p>
-                    <div class="issue-adapt"><strong>Adaptación:</strong><span>${iss.adaptation}</span></div>
-                  </div>
-                `;
-                    })
-                    .join('')}
-            </div>
+            ${renderCommonPreflightGate(gateModel)}
           </div>
         </div>
 
@@ -284,9 +242,9 @@ export class RawSamplerExportModal {
             <span class="triage-count">Modo: <strong>${this.context.core.getSession()?.processConfig.workingMode || 'classic'}</strong> | Salida: <strong>${meta.extension}</strong></span>
           </div>
           <div class="footer-right">
-            <button type="button" id="btn-cancel-sampler-export" class="btn btn-ghost">Cancelar / Volver</button>
-            <button type="button" id="btn-run-sampler-export" class="btn btn-primary" ${!report.canExport || this.isExporting ? 'disabled' : ''}>
-              ${this.isExporting ? 'Exportando y Empaquetando…' : `Aceptar y Exportar ${meta.title}`}
+            <button type="button" id="btn-cancel-sampler-export" class="btn btn-ghost">${gateModel.adjustLabel}</button>
+            <button type="button" id="btn-run-sampler-export" class="btn btn-primary" ${!gateModel.canContinue || this.isExporting ? 'disabled' : ''}>
+              ${this.isExporting ? 'Exportando y Empaquetando…' : gateModel.continueLabel}
             </button>
           </div>
         </footer>

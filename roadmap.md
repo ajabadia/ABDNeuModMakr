@@ -1094,9 +1094,9 @@ Modelos: RecordingSession/TransportBinding en ABDShared (Contracts), como CC/NRP
 - [x] Una pantalla con tarjetas de destino ("Para tocar en AxionikVS → Cápsula del Tiempo", "Para otros samplers → Kontakt/Decent/SFZ…", "Solo audio → WAV/AIFF") que llaman a los exportadores existentes (`onExportModel`, `exportSampler`, `exportZoneAiff`). Ningún exportador se reescribe. (`src/app/exportDestinations.ts`, `src/ui/ExportDestinationModal.ts` con esqueleto canónico DRY `nmm-modal-window nmm-modal-l` y accesos desde `File → Export Instrument (Choose Destination)...` `Ctrl+Shift+X`, `ProcessPanel` y `ProcessModal` al terminar el procesado).
 - [x] Renombrar "Export ZIP" a su nombre real: la Cápsula del Tiempo debe aparecer con su nombre (`Export Time Capsule (.zip)...` en menú `File`, botón `Time Capsule` en tarjetas de `BankDrawer`, prompts y logs de `menuActions.ts`).
 
-### 35.3 Idioma + puerta de preflight común
-- [ ] Renombrar con el término técnico como subtítulo: "Revisión antes de importar" (Preflight), "Huella de ruido de esta grabación" (Noise Print), "Ajustar cortes al cruce por cero" (zc-snap), "Reconstructor de agudos" (BWE).
-- [ ] Unificar los tres preflights (importación, lote, exportación) en un único componente visual: qué voy a cambiar + [Continuar] [Ajustar]. La lógica ya existe (`importPreflight`, preflight de batch, `rawSamplerPreflight`).
+### 35.3 Idioma + puerta de preflight común — Implementado
+- [x] Renombrar con el término técnico como subtítulo: "Revisión antes de importar" (Preflight), "Huella de ruido de esta grabación" (Noise Print), "Ajustar cortes al cruce por cero" (zc-snap), "Reconstructor de agudos" (BWE) (`MUSICIAN_TERMS` en `src/ui/preflightGateView.ts`, conectado en `UniversalImportModal`, `RawSamplerExportModal`, `BatchProcessorModal`, `AudioRecorderModal`, `AudioChopperModal`, `LoopEditorModal`, `SettingsModal`).
+- [x] Unificar los tres preflights (importación, lote, exportación) en un único componente visual: qué voy a cambiar + [Continuar] [Ajustar]. La lógica ya existe (`importPreflight`, preflight de batch, `rawSamplerPreflight`) (`fromImportPreflightReport`, `fromBatchPreflightSummary`, `fromRawSamplerPreflightReport` + `renderCommonPreflightGate` en `src/ui/preflightGateView.ts`, verificado en `tests/phase35_preflight_gate.test.ts`).
 
 ### 35.4 Honestidad IA
 - [ ] Indicador único de estado (local / bridge / nube / sin conexión).

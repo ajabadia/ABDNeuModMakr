@@ -14,6 +14,11 @@ import {
 } from '../core/batch/FolderBatchExtractor.ts';
 import { BatchQueue } from '../core/batch/BatchQueue.ts';
 import { buildBatchPreflightSummary } from '../core/batch/preflight.ts';
+import {
+  MUSICIAN_TERMS,
+  fromBatchPreflightSummary,
+  renderCommonPreflightGate,
+} from './preflightGateView.ts';
 import type {
   BatchConfig,
   BatchModelCandidate,
@@ -155,7 +160,7 @@ export class BatchProcessorModal {
 
         <nav class="nmm-batch-steps-nav" aria-label="Batch progress stages">
           <div class="nmm-batch-step-indicator ${this.currentStep === 'discover' ? 'is-active' : ''}">1. Discovery</div>
-          <div class="nmm-batch-step-indicator ${this.currentStep === 'preflight' ? 'is-active' : ''}">2. Preflight Summary</div>
+          <div class="nmm-batch-step-indicator ${this.currentStep === 'preflight' ? 'is-active' : ''}">2. ${escHtml(MUSICIAN_TERMS.preflightBatch)}</div>
           <div class="nmm-batch-step-indicator ${this.currentStep === 'running' ? 'is-active' : ''}">3. Execution</div>
           <div class="nmm-batch-step-indicator ${this.currentStep === 'done' ? 'is-active' : ''}">4. Report</div>
         </nav>
@@ -297,6 +302,7 @@ export class BatchProcessorModal {
       aiEngineLabel: this.context.getAiEngineStatusLabel(),
       selectedIds: this.selectedCandidateIds,
     });
+    const gateModel = fromBatchPreflightSummary(summary);
 
     const isAllSelected = this.selectedCandidateIds.size === this.candidates.length;
 
@@ -323,6 +329,9 @@ export class BatchProcessorModal {
 
     return `
       <div class="nmm-batch-preflight-pane">
+        <!-- Unified Common Preflight Gate (Fase 35.3) -->
+        ${renderCommonPreflightGate(gateModel)}
+
         <!-- Execution Profile -->
         <div class="nmm-batch-card nmm-preflight-profile">
           <h3>Execution Profile (Inherited from Active Session)</h3>
@@ -404,9 +413,9 @@ export class BatchProcessorModal {
             <span class="triage-count">${summary.selectedCount} of ${summary.totalDiscovered} selected</span>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-outline" id="btn-preflight-back">Back</button>
-            <button type="button" class="btn btn-primary" id="btn-preflight-start" ${summary.selectedCount === 0 ? 'disabled' : ''}>
-              Start Batch Processing (${summary.selectedCount} Models)
+            <button type="button" class="btn btn-outline" id="btn-preflight-back">${gateModel.adjustLabel}</button>
+            <button type="button" class="btn btn-primary" id="btn-preflight-start" ${!gateModel.canContinue ? 'disabled' : ''}>
+              ${gateModel.continueLabel}
             </button>
           </div>
         </footer>

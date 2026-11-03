@@ -140,14 +140,14 @@ export class MenuActions {
 
     if (issues.length > 0) {
       const msg =
-        `Hardware Compatibility Notice for Classic (.model) Export:\n\n` +
+        `Revisión antes de exportar (Preflight) — Qué voy a cambiar:\n\n` +
         issues.map((it, i) => `${i + 1}. ${it}`).join('\n\n') +
-        `\n\nThe compiler will automatically adjust parameters to closest hardware limits.\n\nDo you want to proceed with export, or cancel to adjust your model first?`;
+        `\n\nEl compilador aplicará estos ajustes automáticamente a los límites del hardware.\n\n¿Deseas continuar con la exportación o volver para ajustar el modelo?`;
       const ok = await confirmDialog(
-        `Export Compatibility Notice\n\n` + msg,
+        msg,
         {
-          confirmLabel: 'Proceed with Clamping',
-          cancelLabel: 'Cancel & Adjust',
+          confirmLabel: 'Continuar',
+          cancelLabel: 'Ajustar',
         }
       );
       return ok;

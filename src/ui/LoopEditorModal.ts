@@ -9,6 +9,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
@@ -347,8 +348,8 @@ export class LoopEditorModal {
               <!-- Action Bar -->
               <div class="loop-action-bar">
                 <div class="loop-action-bar-left">
-                  <button type="button" class="btn btn-sm ${this.snapZeroCrossing ? 'btn-accent' : 'btn-outline'}" id="btn-loop-toggle-snap" title="Snap dragged markers to rising zero-crossings">
-                    0-X Snap: ${this.snapZeroCrossing ? 'ON' : 'OFF'}
+                  <button type="button" class="btn btn-sm ${this.snapZeroCrossing ? 'btn-accent' : 'btn-outline'}" id="btn-loop-toggle-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
+                    ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.snapZeroCrossing ? 'ON' : 'OFF'}
                   </button>
 
                   <div class="loop-algo-group">
