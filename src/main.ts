@@ -894,6 +894,9 @@ class App {
       onOpenAutoSlicer: () => {
         void this.openAudioChopper();
       },
+      onOpenAudioRecorder: () => {
+        this.audioRecorderModal.open();
+      },
     });
 
     // 3b. Spectral & A/B/C Resynthesis Monitor + Fase 13 Loop Editor

@@ -138,6 +138,7 @@ export interface ZoneInspectorHandlers {
   onUpdateExtendedMetadata?: (metadata: ExtendedModelMetadata) => void;
   onOpenModelConfig?: (tab?: 'general' | 'articulation' | 'metadata' | 'artwork') => void;
   onOpenAutoSlicer?: () => void;
+  onOpenAudioRecorder?: () => void;
 }
 
 
@@ -598,7 +599,10 @@ export class ZoneInspector {
                     ${ICONS.wave} Loop Editor
                   </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
-                    ${ICONS.scissors || '✂'} AutoSlicer
+                    ${ICONS.scissors} AutoSlicer
+                  </button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-recorder" title="Audio Recorder &amp; Noise Print Capture (Mic / Line-In / System Loopback)">
+                    ${ICONS.mic} Record
                   </button>
                   <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B/C Resynthesis Inspector (Shortcut: Ctrl+E)">
                     ${ICONS.wave} Spectral / A-B
@@ -696,7 +700,10 @@ export class ZoneInspector {
                 ${ICONS.wave} Loop Editor
               </button>
               <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
-                ${ICONS.scissors || '✂'} AutoSlicer
+                ${ICONS.scissors} AutoSlicer
+              </button>
+              <button type="button" class="btn btn-xs btn-outline" id="btn-open-recorder" title="Audio Recorder &amp; Noise Print Capture (Mic / Line-In / System Loopback)">
+                ${ICONS.mic} Record
               </button>
               <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
                 ${ICONS.wave} Spectral / A-B
@@ -1058,6 +1065,7 @@ export class ZoneInspector {
                     <div style="display: inline-flex; align-items: center; gap: 6px;">
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
+                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
                       ${activeReg.sampleName ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Region Sample">${ICONS.play} Audition</button>` : ''}
                     </div>
                   </div>
@@ -1086,6 +1094,7 @@ export class ZoneInspector {
                     <div style="display: inline-flex; align-items: center; gap: 6px;">
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
                       <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
+                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
                       ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Low Vel Audio">${ICONS.play} Audition</button>` : ''}
                     </div>
                   </div>
@@ -1167,6 +1176,9 @@ export class ZoneInspector {
                 </button>
                 <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-slicer" title="Open Audio Chopper &amp; Multi-Layer Auto-Slicer Modal">
                   ${ICONS.scissors} AutoSlicer...
+                </button>
+                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-recorder" title="Open Audio Recorder &amp; Noise Print Capture Modal">
+                  ${ICONS.mic} Record...
                 </button>
               </div>
             </div>
@@ -1267,6 +1279,10 @@ export class ZoneInspector {
 
     this.container.querySelector('#btn-open-autoslicer')?.addEventListener('click', () => {
       this.handlers.onOpenAutoSlicer?.();
+    });
+
+    this.container.querySelector('#btn-open-recorder')?.addEventListener('click', () => {
+      this.handlers.onOpenAudioRecorder?.();
     });
 
     this.container.querySelector('#btn-open-zone-drawer')?.addEventListener('click', () => {
@@ -1541,6 +1557,10 @@ export class ZoneInspector {
       this.handlers.onOpenAutoSlicer?.();
     });
 
+    this.drawerElement.querySelector('#btn-drawer-invoke-recorder')?.addEventListener('click', () => {
+      this.handlers.onOpenAudioRecorder?.();
+    });
+
     this.drawerElement.querySelectorAll('#btn-sample-card-slicer').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.handlers.onOpenAutoSlicer?.();
@@ -1550,6 +1570,12 @@ export class ZoneInspector {
     this.drawerElement.querySelectorAll('#btn-sample-card-loop').forEach((btn) => {
       btn.addEventListener('click', () => {
         this.handlers.onOpenLoopEditor?.();
+      });
+    });
+
+    this.drawerElement.querySelectorAll('#btn-sample-card-recorder').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.handlers.onOpenAudioRecorder?.();
       });
     });
 

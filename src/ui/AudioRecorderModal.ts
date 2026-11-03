@@ -782,47 +782,72 @@ export class AudioRecorderModal {
       <div class="nmm-modal-window nmm-recorder-window" role="dialog" aria-modal="true" aria-labelledby="recorder-title" tabindex="-1">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
+            <span class="nmm-modal-header-icon">${ICONS.mic}</span>
             <span class="nmm-recorder-rec-dot" id="rec-state-dot" aria-hidden="true"></span>
-            <h2 id="recorder-title">Audio Recorder &amp; Noise/DSP Lab</h2>
+            <h2 id="recorder-title">Studio Audio Recorder &amp; Noise/DSP Lab</h2>
             <span class="panel-badge badge-muted" id="rec-state-badge">IDLE</span>
           </div>
           <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-recorder-close">${ICONS.close}</button>
         </header>
 
         <div class="nmm-modal-body nmm-recorder-body">
-          <div class="nmm-recorder-devicebar">
-            <label class="nmm-recorder-device-label" for="rec-device">INPUT</label>
-            <select id="rec-device" class="nmm-recorder-device-select" aria-label="Input device"></select>
-            <button type="button" class="btn btn-xs btn-outline" id="btn-rec-refresh-devices" title="Refresh input devices">${ICONS.refresh} Rescan</button>
-            <button type="button" class="btn btn-xs btn-outline" id="btn-rec-enable-mic">${ICONS.mic} Enable mic</button>
-          </div>
-
-          <div class="nmm-recorder-lcdrow">
-            <div class="nmm-recorder-lcd" aria-live="polite">
-              <span id="rec-lcd-time">00:00.0</span>
+          <!-- 1. Studio Input, LCD, Meters & Transport Deck Card -->
+          <div class="nmm-recorder-deck-card">
+            <div class="nmm-recorder-devicebar">
+              <div class="nmm-recorder-device-left">
+                <label class="nmm-recorder-device-label" for="rec-device">INPUT SOURCE:</label>
+                <select id="rec-device" class="form-control form-control-sm nmm-recorder-device-select" aria-label="Input device"></select>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-refresh-devices" title="Refresh input devices">${ICONS.refresh} Rescan</button>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-enable-mic">${ICONS.mic} Enable Mic</button>
+              </div>
+              <div class="nmm-recorder-device-right">
+                <span class="val-pill font-mono" id="rec-peak-pill">−∞ dBFS</span>
+                <span class="val-pill font-mono" id="rec-class-pill">no take yet</span>
+              </div>
             </div>
-            <span class="val-pill" id="rec-peak-pill">−∞ dBFS</span>
-            <span class="val-pill" id="rec-class-pill">no take yet</span>
+
+            <div class="nmm-recorder-console-grid">
+              <div class="nmm-recorder-lcdrow">
+                <div class="nmm-recorder-lcd" aria-live="polite">
+                  <span id="rec-lcd-time">00:00.0</span>
+                </div>
+              </div>
+
+              <div class="nmm-recorder-meters" aria-hidden="true">
+                <div class="nmm-recorder-meter"><span>L</span><div class="nmm-recorder-meter-track"><div class="nmm-recorder-meter-fill" id="rec-meter-l"></div></div></div>
+                <div class="nmm-recorder-meter"><span>R</span><div class="nmm-recorder-meter-track"><div class="nmm-recorder-meter-fill" id="rec-meter-r"></div></div></div>
+              </div>
+
+              <div class="nmm-recorder-transport" id="rec-transport"></div>
+            </div>
           </div>
 
-          <div class="nmm-recorder-meters" aria-hidden="true">
-            <div class="nmm-recorder-meter"><span>L</span><div class="nmm-recorder-meter-track"><div class="nmm-recorder-meter-fill" id="rec-meter-l"></div></div></div>
-            <div class="nmm-recorder-meter"><span>R</span><div class="nmm-recorder-meter-track"><div class="nmm-recorder-meter-fill" id="rec-meter-r"></div></div></div>
-          </div>
-
-          <div class="nmm-recorder-transport" id="rec-transport"></div>
-
+          <!-- 2 & 3. Waveform Viewport Panel + Noise Gate & DSP/AI Restoration Card -->
           <div class="nmm-recorder-inspector" id="rec-take-inspector"></div>
 
-          <div class="nmm-recorder-takes-head">
-            <span>SESSION TAKES</span>
-            <span class="val-pill" id="rec-takes-count">0</span>
+          <!-- 4. Session Takes Table / List Panel -->
+          <div class="nmm-recorder-takes-panel">
+            <div class="nmm-recorder-takes-head">
+              <div class="nmm-recorder-takes-head-left">
+                <span>SESSION TAKES</span>
+                <span class="val-pill font-mono" id="rec-takes-count">0</span>
+              </div>
+              <span class="nmm-recorder-takes-hint">Select a take to inspect waveform, capture Noise Print, or send to Chopper / Active Zone</span>
+            </div>
+            <div class="nmm-recorder-takes" id="rec-takes"></div>
           </div>
-          <div class="nmm-recorder-takes" id="rec-takes"></div>
         </div>
+
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-recorder-footer-close">Close</button>
+          </div>
+          <div class="footer-right" id="rec-footer-actions"></div>
+        </footer>
       </div>`;
 
     this.backdropEl.querySelector('#btn-recorder-close')?.addEventListener('click', () => void this.close());
+    this.backdropEl.querySelector('#btn-recorder-footer-close')?.addEventListener('click', () => void this.close());
     this.backdropEl
       .querySelector('#btn-rec-refresh-devices')
       ?.addEventListener('click', () => void this.refreshDevices());
@@ -842,21 +867,72 @@ export class AudioRecorderModal {
     const box = this.backdropEl?.querySelector('#rec-transport');
     if (!box) return;
     box.innerHTML = `
-      <button type="button" class="btn btn-danger-solid" id="btn-rec-record" title="Record / pause / resume">${ICONS.record} REC</button>
-      <button type="button" class="btn btn-outline" id="btn-rec-stop" title="Stop and keep take">${ICONS.stop} Stop</button>
-      <button type="button" class="btn btn-xs btn-outline" id="btn-rec-cancel" title="Discard current take">${ICONS.trash} Discard</button>`;
+      <button type="button" class="btn btn-sm btn-danger-solid" id="btn-rec-record" title="Record / pause / resume">${ICONS.record} REC</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-stop" title="Stop and keep take">${ICONS.stop} Stop</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-cancel" title="Discard current take">${ICONS.trash} Discard</button>`;
     box.querySelector('#btn-rec-record')?.addEventListener('click', () => void this.toggleRecord());
     box.querySelector('#btn-rec-stop')?.addEventListener('click', () => this.stopAndKeep());
     box.querySelector('#btn-rec-cancel')?.addEventListener('click', () => this.cancelAndDiscard());
     this.syncTransportState();
   }
 
+  private renderFooterActions(): void {
+    const footerRight = this.backdropEl?.querySelector<HTMLElement>('#rec-footer-actions');
+    if (!footerRight) return;
+    const st = this.getSelectedTake();
+    if (!st) {
+      footerRight.innerHTML = '';
+      return;
+    }
+    footerRight.innerHTML = `
+      <button type="button" class="btn btn-outline" id="btn-rec-footer-download" title="Download selected take as 16-bit WAV">
+        ${ICONS.download} Download WAV
+      </button>
+      <button type="button" class="btn btn-accent" id="btn-rec-footer-chopper" title="Open selected take in Audio Chopper & Auto-Slicer">
+        ${ICONS.scissors} Send to Audio Chopper
+      </button>
+      ${
+        this.context.onInjectTakeIntoSession
+          ? `<button type="button" class="btn btn-primary" id="btn-rec-footer-inject" title="Inject selected take into Active Zone">
+              ${ICONS.check} Inject into Active Zone
+            </button>`
+          : ''
+      }
+    `;
+    footerRight
+      .querySelector('#btn-rec-footer-download')
+      ?.addEventListener('click', () => this.downloadTake(st.id));
+    footerRight
+      .querySelector('#btn-rec-footer-chopper')
+      ?.addEventListener('click', () => this.sendTakeToChopper(st.id));
+    footerRight
+      .querySelector('#btn-rec-footer-inject')
+      ?.addEventListener('click', () => this.injectTakeIntoSession(st.id));
+  }
+
   private renderTakeInspector(): void {
     const container = this.backdropEl?.querySelector<HTMLElement>('#rec-take-inspector');
+    this.renderFooterActions();
     if (!container) return;
     const st = this.getSelectedTake();
     if (!st) {
-      container.innerHTML = '';
+      container.innerHTML = `
+        <div class="nmm-recorder-viewport-panel">
+          <div class="nmm-recorder-inspector-head">
+            <span class="nmm-recorder-inspector-title">${ICONS.wave} WAVEFORM &amp; NOISE PRINT INSPECTOR</span>
+            <span class="val-pill font-mono">Waiting for Recorded Take</span>
+          </div>
+          <div class="nmm-recorder-wave-empty">
+            <span>Enable microphone above and press <strong>REC</strong> to record a take.</span>
+            <span>Once recorded, drag on the waveform to select a <strong>Noise Print</strong> region, trim silence, or run DSP / AI Enhancement.</span>
+          </div>
+          <div class="loop-canvas-legend">
+            <span>Drag on waveform = Select <strong>Noise Print</strong> region (Violet)</span>
+            <span>• Shaded amber = Auto-detected silence</span>
+            <span>• Click silent region = Quick-select room tone</span>
+          </div>
+        </div>
+      `;
       return;
     }
 
@@ -875,58 +951,87 @@ export class AudioRecorderModal {
       : 'Drag on waveform to select a Noise Print zone (shaded = auto-detected silence)';
 
     const npSummary = np
-      ? `Noise Floor: ${np.levelDbfs.toFixed(1)} dBFS · 50Hz: ${np.hum50HzDb.toFixed(1)} dB · 60Hz: ${np.hum60HzDb.toFixed(1)} dB ${st.noiseRegionLabel ? `[${st.noiseRegionLabel}]` : ''}`
+      ? `Floor: ${np.levelDbfs.toFixed(1)} dBFS · 50Hz: ${np.hum50HzDb.toFixed(1)} dB · 60Hz: ${np.hum60HzDb.toFixed(1)} dB ${st.noiseRegionLabel ? `[${st.noiseRegionLabel}]` : ''}`
       : 'No Noise Print captured yet';
 
     container.innerHTML = `
       <div class="nmm-recorder-inspector-card">
-        <div class="nmm-recorder-inspector-head">
-          <span class="nmm-recorder-inspector-title">${ICONS.wave} ${escHtml(st.name)} (${(st.take.sampleRate / 1000).toFixed(1)} kHz · ${st.take.durationSec.toFixed(2)}s · ${silences.length} silent zone${silences.length === 1 ? '' : 's'})</span>
-          <span class="val-pill" id="rec-sel-readout">${escHtml(selText)}</span>
-        </div>
+        <!-- Card 2: Waveform & Noise Print Viewport Panel (Matches .loop-viewport-panel & .chopper-waveform-panel) -->
+        <div class="nmm-recorder-viewport-panel">
+          <div class="nmm-recorder-inspector-head">
+            <span class="nmm-recorder-inspector-title">${ICONS.wave} ${escHtml(st.name)} • ${(st.take.sampleRate / 1000).toFixed(1)} kHz • ${st.take.durationSec.toFixed(2)}s • ${silences.length} silent zone${silences.length === 1 ? '' : 's'}</span>
+            <span class="val-pill font-mono" id="rec-sel-readout">${escHtml(selText)}</span>
+          </div>
 
-        <div class="nmm-recorder-wave-wrap">
-          <canvas id="rec-wave-canvas" class="nmm-recorder-wave-canvas" width="680" height="96"></canvas>
-        </div>
+          <div class="nmm-recorder-wave-wrap">
+            <canvas id="rec-wave-canvas" class="nmm-recorder-wave-canvas" width="960" height="160"></canvas>
+          </div>
 
-        <div class="nmm-recorder-noise-bar">
-          <span class="val-pill font-mono" id="rec-noise-readout">${escHtml(npSummary)}</span>
-          <div class="nmm-recorder-noise-controls">
-            <label class="nmm-recorder-inline-param" title="Silence gate threshold in dBFS">
-              <span>Gate</span>
-              <input type="number" id="inp-rec-silence-db" value="${this.silenceThresholdDb}" min="-90" max="-12" step="2" />
-              <span>dB</span>
-            </label>
-            <label class="nmm-recorder-inline-param" title="Spectral noise reduction amount in dB">
-              <span>Denoise</span>
-              <input type="number" id="inp-rec-denoise-db" value="${this.denoiseReductionDb}" min="3" max="36" step="1" />
-              <span>dB</span>
-            </label>
+          <div class="loop-canvas-legend">
+            <span>Drag on waveform = Select <strong>Noise Print</strong> region (Violet)</span>
+            <span>• Shaded amber = Auto-detected silence (${silences.length})</span>
+            <span>• Click silent region = Quick-select room tone</span>
           </div>
         </div>
 
-        <div class="nmm-recorder-dsp-toolbar">
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-play-sel" title="Audition selected region (or full take)">
-            ${ICONS.play} ${hasSelection ? 'Play Selection' : 'Play Take'}
-          </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-capture-noise" title="Capture Noise Print from dragged region or auto-detected silence">
-            ${ICONS.search} Capture Noise Print
-          </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-trim-silence" title="Trim leading and trailing silence">
-            ${ICONS.scissors} Trim Silence
-          </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-dsp-denoise" title="Subtract captured Noise Print and notch 50/60 Hz hum">
-            ${ICONS.sliders} DSP Denoise
-          </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-normalize" title="Apply DC Block and Peak Normalize to -1.0 dBFS">
-            ${ICONS.zap} Norm -1 dB + DC
-          </button>
-          <button type="button" class="btn btn-xs btn-ai-accent" id="btn-rec-ai-enhance" title="Enhance audio via AI (96 kHz BWE) while suppressing the captured Noise Print">
-            ${ICONS.sparkle} AI Enhance (Clean Noise)
-          </button>
-          <button type="button" class="btn btn-xs btn-outline" id="btn-rec-undo-take" ${st.history.length === 0 ? 'disabled' : ''} title="Undo last edit on this take">
-            ${ICONS.undo} Undo (${st.history.length})
-          </button>
+        <!-- Card 3: Noise Gate, Spectral Denoise & AI Restoration Card (Matches .loop-controls-card & .chopper-params-card) -->
+        <div class="nmm-recorder-controls-card">
+          <div class="nmm-recorder-params-grid">
+            <div class="form-group">
+              <div class="label-with-val">
+                <label>CAPTURED NOISE PRINT PROFILE</label>
+                <span class="val-pill">${np ? 'ACTIVE' : 'NONE'}</span>
+              </div>
+              <div class="nmm-recorder-noise-readout-box" id="rec-noise-readout" title="${escHtml(npSummary)}">
+                ${escHtml(npSummary)}
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="label-with-val">
+                <label for="inp-rec-silence-db">SILENCE GATE THRESHOLD</label>
+                <span class="val-pill font-mono" id="lbl-rec-silence-db">${this.silenceThresholdDb} dB</span>
+              </div>
+              <input type="number" id="inp-rec-silence-db" class="form-control font-mono" value="${this.silenceThresholdDb}" min="-90" max="-12" step="2" />
+            </div>
+
+            <div class="form-group">
+              <div class="label-with-val">
+                <label for="inp-rec-denoise-db">SPECTRAL DENOISE REDUCTION</label>
+                <span class="val-pill font-mono" id="lbl-rec-denoise-db">${this.denoiseReductionDb} dB</span>
+              </div>
+              <input type="number" id="inp-rec-denoise-db" class="form-control font-mono" value="${this.denoiseReductionDb}" min="3" max="36" step="1" />
+            </div>
+          </div>
+
+          <div class="nmm-recorder-dsp-toolbar">
+            <div class="nmm-recorder-dsp-left">
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-capture-noise" title="Capture Noise Print from dragged region or auto-detected silence">
+                ${ICONS.search} Capture Noise Print
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-trim-silence" title="Trim leading and trailing silence">
+                ${ICONS.scissors} Trim Silence
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-dsp-denoise" title="Subtract captured Noise Print and notch 50/60 Hz hum">
+                ${ICONS.sliders} DSP Denoise
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-normalize" title="Apply DC Block and Peak Normalize to -1.0 dBFS">
+                ${ICONS.zap} Norm -1 dB + DC
+              </button>
+              <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" title="Enhance audio via AI (96 kHz BWE) while suppressing the captured Noise Print">
+                ${ICONS.sparkle} AI Enhance (Clean Noise)
+              </button>
+            </div>
+
+            <div class="nmm-recorder-dsp-right">
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-undo-take" ${st.history.length === 0 ? 'disabled' : ''} title="Undo last edit on this take">
+                ${ICONS.undo} Undo (${st.history.length})
+              </button>
+              <button type="button" class="btn btn-sm btn-accent" id="btn-rec-play-sel" title="Audition selected region (or full take)">
+                ${ICONS.play} ${hasSelection ? 'Play Selection' : 'Play Take'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -946,6 +1051,8 @@ export class AudioRecorderModal {
       const val = parseFloat((e.target as HTMLInputElement).value);
       if (Number.isFinite(val)) {
         this.denoiseReductionDb = Math.max(3, Math.min(36, val));
+        const lbl = container.querySelector('#lbl-rec-denoise-db');
+        if (lbl) lbl.textContent = `${this.denoiseReductionDb} dB`;
       }
     });
 
@@ -986,11 +1093,11 @@ export class AudioRecorderModal {
     const h = canvas.height;
     const midY = h / 2;
     const styles = getComputedStyle(document.documentElement);
-    const bgColor = styles.getPropertyValue('--color-lcd-bg').trim() || '#0a0e14';
-    const waveColor = styles.getPropertyValue('--color-accent').trim() || '#38a5ff';
-    const warnColor = styles.getPropertyValue('--color-warning').trim() || '#f59e0b';
-    const aiColor = styles.getPropertyValue('--color-ai').trim() || '#a855f7';
-    const borderColor = styles.getPropertyValue('--color-panel-border-dim').trim() || '#334155';
+    const bgColor = styles.getPropertyValue('--color-lcd-bg').trim() || 'transparent';
+    const waveColor = styles.getPropertyValue('--color-accent').trim() || 'currentColor';
+    const warnColor = styles.getPropertyValue('--color-warning').trim() || 'currentColor';
+    const aiColor = styles.getPropertyValue('--color-ai').trim() || waveColor;
+    const borderColor = styles.getPropertyValue('--color-panel-border-dim').trim() || 'currentColor';
 
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, w, h);

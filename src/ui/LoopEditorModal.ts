@@ -292,7 +292,7 @@ export class LoopEditorModal {
               </div>
 
               <div class="loop-canvas-wrapper" id="loop-canvas-wrapper">
-                <canvas id="loop-editor-canvas" height="200"></canvas>
+                <canvas id="loop-editor-canvas" height="160"></canvas>
               </div>
 
               <div class="loop-canvas-legend">
@@ -769,11 +769,14 @@ export class LoopEditorModal {
     const seamX0 = waveW + 1;
     const seamW = Math.max(80, width - seamX0);
 
-    const accentColor = resolveThemeToken('--color-accent', '#00c3ff');
-    const warningColor = resolveThemeToken('--color-warning', '#ffaa00');
-    const dimGridColor = resolveThemeToken('--color-panel-border', 'rgba(0, 195, 255, 0.2)');
-    const borderColor = resolveThemeToken('--color-panel-border-strong', 'rgba(0, 195, 255, 0.45)');
-    const textColor = resolveThemeToken('--color-text-muted', '#7e9bb5');
+    const accentColor = resolveThemeToken('--color-accent', 'currentColor');
+    const warningColor = resolveThemeToken('--color-warning', 'currentColor');
+    const successColor = resolveThemeToken('--color-success', accentColor);
+    const dangerColor = resolveThemeToken('--color-danger', warningColor);
+    const dimGridColor = resolveThemeToken('--color-panel-border-dim', 'currentColor');
+    const borderColor = resolveThemeToken('--color-panel-border', 'currentColor');
+    const textColor = resolveThemeToken('--color-text-muted', 'currentColor');
+    const elevatedBg = resolveThemeToken('--color-panel-surface-elevated', 'transparent');
 
     const { viewStart, viewEnd } = this.getViewWindow();
     const viewSpan = Math.max(1, viewEnd - viewStart);
@@ -823,27 +826,27 @@ export class LoopEditorModal {
       ctx.fillRect(x, topY, Math.max(1, waveW / colCount), Math.max(1, botY - topY));
     }
 
-    // Marker L-START (Green)
-    ctx.strokeStyle = '#10b981';
+    // Marker L-START (Success token)
+    ctx.strokeStyle = successColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(loopStartX, 0);
     ctx.lineTo(loopStartX, height);
     ctx.stroke();
 
-    ctx.fillStyle = '#10b981';
+    ctx.fillStyle = successColor;
     ctx.font = 'bold 10px monospace';
     ctx.fillText('L-START', Math.min(waveW - 48, loopStartX + 4), 14);
 
-    // Marker L-END (Cyan)
-    ctx.strokeStyle = '#06b6d4';
+    // Marker L-END (Accent token)
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(loopEndX, 0);
     ctx.lineTo(loopEndX, height);
     ctx.stroke();
 
-    ctx.fillStyle = '#06b6d4';
+    ctx.fillStyle = accentColor;
     ctx.font = 'bold 10px monospace';
     ctx.fillText('L-END', Math.max(4, loopEndX - 40), 14);
 
@@ -863,7 +866,7 @@ export class LoopEditorModal {
     const seamCenterY = centerY;
     const seamAmp = height * 0.35;
 
-    ctx.fillStyle = resolveThemeToken('--color-panel-surface-elevated', '#0d1520');
+    ctx.fillStyle = elevatedBg;
     ctx.fillRect(seamX0, 0, seamW, height);
 
     ctx.strokeStyle = dimGridColor;
@@ -883,7 +886,7 @@ export class LoopEditorModal {
     ctx.setLineDash([]);
 
     // Curve A: Pre-End approaching seam from left
-    ctx.strokeStyle = '#06b6d4';
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 0; i < w; i++) {
@@ -895,7 +898,7 @@ export class LoopEditorModal {
     ctx.stroke();
 
     // Curve B: Post-Start continuing from seam to right
-    ctx.strokeStyle = '#10b981';
+    ctx.strokeStyle = successColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 0; i < w; i++) {
@@ -911,7 +914,7 @@ export class LoopEditorModal {
     ctx.font = '10px monospace';
     ctx.fillText('SEAM MAGNIFIER', seamX0 + 8, 14);
 
-    ctx.fillStyle = seam.seamQualityPercent >= 85 ? '#10b981' : seam.seamQualityPercent >= 60 ? warningColor : '#ef4444';
+    ctx.fillStyle = seam.seamQualityPercent >= 85 ? successColor : seam.seamQualityPercent >= 60 ? warningColor : dangerColor;
     ctx.font = 'bold 11px monospace';
     ctx.fillText(`${seam.seamQualityPercent.toFixed(0)}% MATCH`, width - 75, 14);
 

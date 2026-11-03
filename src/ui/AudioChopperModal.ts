@@ -457,37 +457,41 @@ export class AudioChopperModal {
     const modal = document.createElement('div');
     modal.className = 'nmm-modal-backdrop nmm-confirm-backdrop';
     modal.innerHTML = `
-      <div class="nmm-modal-window nmm-confirm-window" style="max-width: 520px; z-index: 100010;">
+      <div class="nmm-modal-window nmm-confirm-window">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon" style="color: #f59e0b;">${ICONS.scissors}</span>
+            <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
             <h2>Manual Slice Edits Detected</h2>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-confirm-close">${ICONS.close || '✕'}</button>
         </header>
-        <div class="nmm-modal-body" style="padding: 16px 20px; font-size: 13px; line-height: 1.5;">
-          <p style="margin-bottom: 12px; color: var(--color-text-main);">
+        <div class="nmm-modal-body nmm-audio-modal-body">
+          <p>
             ${descriptionHtml}
           </p>
-          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
-            <span style="color: #fbbf24; font-weight: 600;">Manual Customizations:</span>
-            <ul style="margin: 6px 0 0 18px; padding: 0; color: var(--color-text-muted);">
+          <div class="nmm-audio-controls-card">
+            <span class="badge-manual-cuts">Manual Customizations:</span>
+            <ul>
               <li><strong>${this.manualCutFrames.size}</strong> manual slice cut marker(s)</li>
               ${this.manualSilenceRanges.length > 0 ? `<li><strong>${this.manualSilenceRanges.length}</strong> manual silence interval(s)</li>` : ''}
             </ul>
           </div>
-          <p style="font-size: 12px; color: var(--color-text-dim); margin-bottom: 14px;">
+          <p class="nmm-audio-table-hint">
             How would you like to handle your manual cuts?
           </p>
-          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--color-text-muted);">
+          <label class="nmm-audio-table-hint">
             <input type="checkbox" id="chk-remember-policy" />
             Remember choice for subsequent changes in this session
           </label>
         </div>
-        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
-          <button type="button" class="btn btn-outline" id="btn-cuts-cancel">Cancel</button>
-          <button type="button" class="btn btn-danger" id="btn-cuts-discard" style="background: #ef4444; color: #fff; border: none;">Discard Cuts (Auto)</button>
-          <button type="button" class="btn btn-primary" id="btn-cuts-keep">Keep Manual Cuts</button>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-cuts-cancel">Cancel</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-danger-solid" id="btn-cuts-discard">Discard Cuts (Auto)</button>
+            <button type="button" class="btn btn-primary" id="btn-cuts-keep">Keep Manual Cuts</button>
+          </div>
         </footer>
       </div>
     `;
@@ -605,59 +609,60 @@ export class AudioChopperModal {
     modal.className = 'nmm-modal-backdrop nmm-confirm-backdrop';
     modal.id = 'rx2-pairing-modal';
     modal.innerHTML = `
-      <div class="nmm-modal-window nmm-confirm-window" style="max-width: 560px; z-index: 100010;">
+      <div class="nmm-modal-window nmm-confirm-window">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon" style="color: var(--color-primary, #3b82f6);">${ICONS.wave}</span>
+            <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>REX2 Audio Pairing Assistant</h2>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close">${ICONS.close || '✕'}</button>
         </header>
 
-        <div class="nmm-modal-body" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; line-height: 1.5;">
-          <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--color-primary, #3b82f6); padding: 10px 14px; border-radius: 4px;">
-            <strong style="color: var(--color-text-main);">Proprietary DWOP Audio Compression Detected</strong>
-            <p style="margin: 4px 0 0 0; color: var(--color-text-muted);">
+        <div class="nmm-modal-body nmm-audio-modal-body">
+          <div class="nmm-audio-controls-card">
+            <strong>Proprietary DWOP Audio Compression Detected</strong>
+            <p class="nmm-audio-table-hint">
               File <code>${escHtml(rx2Filename)}</code> contains <strong>${sliceFrames.length} slice markers</strong>, but its audio uses Reason Studios' DWOP compression format which cannot be decompressed in standard browsers without the Companion Bridge.
             </p>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 10px;">
-            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
-              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 1: Pair with Equivalent WAV / AIFF (Recommended)</strong>
-              <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-text-muted);">
-                Select the uncompressed audio file exported alongside this loop. All ${sliceFrames.length} slice boundaries will be mapped precisely onto it.
-              </p>
-              <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" style="display: none;" />
-              <button type="button" class="btn btn-primary" id="btn-rx2-browse-wav" style="width: 100%;">
-                ${ICONS.folder || ICONS.wave} Select Companion Audio File...
-              </button>
-            </div>
+          <div class="nmm-audio-controls-card">
+            <strong>Option 1: Pair with Equivalent WAV / AIFF (Recommended)</strong>
+            <p class="nmm-audio-table-hint">
+              Select the uncompressed audio file exported alongside this loop. All ${sliceFrames.length} slice boundaries will be mapped precisely onto it.
+            </p>
+            <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" style="display: none;" />
+            <button type="button" class="btn btn-primary" id="btn-rx2-browse-wav">
+              ${ICONS.folder || ICONS.wave} Select Companion Audio File...
+            </button>
+          </div>
 
-            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
-              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 2: Native Companion Bridge Decompression</strong>
-              <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--color-text-muted);">
-                Start the local Python Companion Bridge (<code>python bridge/server.py</code> on port 7860). When active, REX2 files decompress automatically in the background.
-              </p>
-              <button type="button" class="btn btn-outline" id="btn-rx2-retry-bridge" style="width: 100%;">
-                ${ICONS.refresh || '⟳'} Check Bridge Connection &amp; Retry
-              </button>
-            </div>
+          <div class="nmm-audio-controls-card">
+            <strong>Option 2: Native Companion Bridge Decompression</strong>
+            <p class="nmm-audio-table-hint">
+              Start the local Python Companion Bridge (<code>python bridge/server.py</code> on port 7860). When active, REX2 files decompress automatically in the background.
+            </p>
+            <button type="button" class="btn btn-outline" id="btn-rx2-retry-bridge">
+              ${ICONS.refresh || '⟳'} Check Bridge Connection &amp; Retry
+            </button>
+          </div>
 
-            <div style="padding: 12px; border: 1px solid var(--color-border, #334155); border-radius: 6px; background: var(--color-surface-elevated, #1e293b);">
-              <strong style="color: var(--color-text-main); display: block; margin-bottom: 4px;">Option 3: Inspect Slices with Synthetic Impulse Preview</strong>
-              <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--color-text-muted);">
-                Generate synthetic transient impulses at slice boundaries to inspect, edit, or export slice points without audio.
-              </p>
-              <button type="button" class="btn btn-secondary" id="btn-rx2-use-synthetic" style="width: 100%;">
-                Open Slices in Synthetic Mode
-              </button>
-            </div>
+          <div class="nmm-audio-controls-card">
+            <strong>Option 3: Inspect Slices with Synthetic Impulse Preview</strong>
+            <p class="nmm-audio-table-hint">
+              Generate synthetic transient impulses at slice boundaries to inspect, edit, or export slice points without audio.
+            </p>
+            <button type="button" class="btn btn-outline" id="btn-rx2-use-synthetic">
+              Open Slices in Synthetic Mode
+            </button>
           </div>
         </div>
 
-        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
-          <button type="button" class="btn btn-outline" id="btn-rx2-pairing-cancel">Cancel</button>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-rx2-pairing-cancel">Cancel</button>
+          </div>
+          <div class="footer-right"></div>
         </footer>
       </div>
     `;
@@ -834,18 +839,6 @@ export class AudioChopperModal {
                     <span>${(this.pcm.length / this.sampleRate).toFixed(2)}s (${this.pcm.length.toLocaleString()} frames)</span>
                     <span class="val-pill">${validCount} Active Slices</span>
                   </div>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-whisper-align" title="Align vocal phrases and syllables with OpenAI Whisper-tiny">
-                    ${ICONS.sparkle || ICONS.ai} AI Vocal Align
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
-                    ${ICONS.wave} Separate Stems
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
-                    ${ICONS.terminal || ''} DSP Denoise
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-ai-enhance" title="Enhance audio via Bridge AI, taking captured noise profile into account to remove it">
-                    ${ICONS.cpu || ''} AI Enhance
-                  </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-import-cues" title="Import ReCycle (.rx2, .rex, .rcy), SFZ, or CUE text slice marker file">
                     ${ICONS.database} Import ReCycle / Cues...
                   </button>
@@ -855,8 +848,8 @@ export class AudioChopperModal {
                 </div>
               </div>
 
-              <div class="chopper-canvas-wrap" id="chopper-canvas-wrap" style="position: relative;">
-                <canvas id="chopper-waveform-canvas" height="150"></canvas>
+              <div class="chopper-canvas-wrap" id="chopper-canvas-wrap">
+                <canvas id="chopper-waveform-canvas" height="160"></canvas>
               </div>
               <div class="chopper-canvas-hint">
                 <span>Left-drag markers to move</span> • <span>Right-click line/slice for Actions</span> • <span>Double-click or Right-click to Add Cut</span>
@@ -867,7 +860,7 @@ export class AudioChopperModal {
             <div class="chopper-magnifier-panel">
               <div class="chopper-magnifier-toolbar">
                 <div class="chopper-magnifier-title-box">
-                  <span style="color: var(--color-accent);">${ICONS.wave}</span>
+                  <span>${ICONS.wave}</span>
                   <span>CUT POINT MAGNIFIER (±256 smp):</span>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous cut boundary">&lt; Prev Cut</button>
                   <strong>Boundary #${activeBoundaryIdx}</strong>
@@ -879,7 +872,7 @@ export class AudioChopperModal {
                 </div>
 
                 <div class="chopper-magnifier-nudge-group">
-                  <span style="font-size: 11px; color: var(--color-text-dim); margin-right: 4px;">NUDGE:</span>
+                  <span class="toolbar-label">NUDGE:</span>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m100" title="Nudge boundary -100 samples">&lt;&lt; -100</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m10" title="Nudge boundary -10 samples">&lt; -10</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m1" title="Nudge boundary -1 sample">-1</button>
@@ -893,26 +886,26 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-mag-toggle-silence" title="Toggle silence for current slice">
                     ${ICONS.eyeOff || 'Mute'} Silence
                   </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-del-boundary" title="Delete this cut boundary" style="color: #ef4444;">
+                  <button type="button" class="btn btn-xs btn-outline btn-danger-hover" id="btn-mag-del-boundary" title="Delete this cut boundary">
                     ${ICONS.trash} Del Cut
                   </button>
                 </div>
               </div>
 
-              <div class="chopper-magnifier-canvas-wrap" id="chopper-mag-canvas-wrap" style="position: relative; cursor: ew-resize;">
+              <div class="chopper-magnifier-canvas-wrap" id="chopper-mag-canvas-wrap">
                 <canvas id="chopper-magnifier-canvas" height="84"></canvas>
               </div>
             </div>
 
-            <!-- Real-Time Parameters Card -->
+            <!-- Real-Time Parameters & DSP/AI Action Card (Matches AutoLoop & Audio Recorder) -->
             <div class="chopper-params-card">
               <div class="chopper-params-row">
                 <!-- Slicing Mode -->
-                <div class="chopper-param-group" style="min-width: 290px;">
+                <div class="chopper-param-group">
                   <div class="chopper-param-header">
                     <span>SLICING MODE</span>
                   </div>
-                  <div class="btn-group" style="display: flex; gap: 4px;">
+                  <div class="btn-group">
                     <button type="button" class="btn btn-xs ${this.options.mode === 'drums' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-drums" title="Classify into General MIDI Drum Map notes">
                       ${ICONS.drum} Drums (GM)
                     </button>
@@ -957,28 +950,45 @@ export class AudioChopperModal {
                 </div>
 
                 <!-- Min Slice Ms Input -->
-                <div class="chopper-param-group" style="width: 100px;">
+                <div class="chopper-param-group">
                   <div class="chopper-param-header">
-                    <span>MIN SLICE</span>
+                    <span>MIN SLICE (MS)</span>
                   </div>
                   <input type="number" id="inp-minslice" class="form-control font-mono" min="20" max="1000" step="10" value="${this.options.minSliceMs ?? (this.options.mode === 'vocals' ? 250 : 45)}" title="Minimum slice duration in milliseconds" />
                 </div>
 
                 <!-- Pre-Roll Safety Margin -->
-                <div class="chopper-param-group" style="width: 90px;">
+                <div class="chopper-param-group">
                   <div class="chopper-param-header">
-                    <span>PRE-ROLL</span>
+                    <span>PRE-ROLL (MS)</span>
                   </div>
                   <input type="number" id="inp-preroll" class="form-control font-mono" min="0" max="25" value="${this.options.preRollMs}" title="Pre-roll safety margin in milliseconds" />
                 </div>
+              </div>
 
-                <!-- Snap & Overlap Toggles -->
-                <div class="chopper-toggles-col">
-                  <button type="button" class="btn btn-xs ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="Magnetize slice boundaries to the nearest zero-crossing">
+              <!-- Unified Action Bar (Matches .loop-action-bar & .nmm-recorder-dsp-toolbar) -->
+              <div class="chopper-action-bar">
+                <div class="chopper-action-bar-left">
+                  <button type="button" class="btn btn-sm ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="Magnetize slice boundaries to the nearest zero-crossing">
                     0-X Snap: ${this.options.snapZeroCrossing ? 'ON' : 'OFF'}
                   </button>
-                  <button type="button" class="btn btn-xs ${this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-overlap" title="Allow overlapping key & velocity zones">
+                  <button type="button" class="btn btn-sm ${this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-overlap" title="Allow overlapping key & velocity zones">
                     Overlaps: ${this.options.allowOverlap ? 'ALLOW' : 'DISJOINT'}
+                  </button>
+                </div>
+
+                <div class="chopper-action-bar-right">
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
+                    ${ICONS.sliders || ''} DSP Denoise
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
+                    ${ICONS.wave} Separate Stems
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-whisper-align" title="Align vocal phrases and syllables with OpenAI Whisper-tiny">
+                    ${ICONS.sparkle || ICONS.ai} AI Vocal Align
+                  </button>
+                  <button type="button" class="btn btn-sm btn-ai-accent" id="btn-chopper-ai-enhance" title="Enhance audio via Bridge AI, taking captured noise profile into account to remove it">
+                    ${ICONS.sparkle || ICONS.cpu} AI Enhance
                   </button>
                 </div>
               </div>
@@ -990,7 +1000,7 @@ export class AudioChopperModal {
                 <span class="chopper-table-title">
                   Detected Slices (${validCount} valid / ${totalCount} total)
                 </span>
-                <span style="font-size: 11px; color: var(--color-text-dim);">
+                <span class="nmm-recorder-takes-hint">
                   Target: <strong>${isWorkingExtended ? 'Extended 2D Regions' : 'Classic 128-Zone Hartmann'}</strong>
                 </span>
               </div>
@@ -999,15 +1009,15 @@ export class AudioChopperModal {
                 <table class="canonical-zone-table chopper-slices-table">
                   <thead>
                     <tr>
-                      <th style="width: 45px;">#ID</th>
-                      <th style="width: 110px;">Time Range</th>
-                      <th style="width: 80px;">Duration</th>
-                      <th style="width: 160px;">Classification</th>
-                      <th style="width: 90px;">Root Key</th>
-                      <th style="width: 110px;">Key Range</th>
-                      <th style="width: 90px;">Velocity</th>
-                      <th style="width: 80px;">Peak / RMS</th>
-                      <th style="width: 110px; text-align: center;">Actions</th>
+                      <th>#ID</th>
+                      <th>Time Range</th>
+                      <th>Duration</th>
+                      <th>Classification</th>
+                      <th>Root Key</th>
+                      <th>Key Range</th>
+                      <th>Velocity</th>
+                      <th>Peak / RMS</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody id="chopper-tbody">
@@ -1021,13 +1031,14 @@ export class AudioChopperModal {
         </div>
 
         <!-- Footer Actions Bar -->
-        <footer class="nmm-modal-footer chopper-footer-actions">
-          <button type="button" class="btn btn-outline" id="btn-chopper-discard">Discard &amp; Close</button>
-
-          ${
-            hasAudio
-              ? `
-            <div style="display: flex; gap: 8px; align-items: center;">
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-chopper-discard">Discard &amp; Close</button>
+          </div>
+          <div class="footer-right">
+            ${
+              hasAudio
+                ? `
               <!-- Draggable MIDI Pattern Button -->
               <button type="button" class="btn btn-accent btn-drag-midi" id="btn-drag-midi" draggable="true" title="Drag MIDI Pattern directly to DAW track or click to download .mid file">
                 ${ICONS.piano} Drag MIDI to DAW (.mid)
@@ -1037,10 +1048,10 @@ export class AudioChopperModal {
               <button type="button" class="btn btn-primary" id="btn-chopper-inject" ${validCount === 0 ? 'disabled' : ''}>
                 ${ICONS.scissors} Inject as Zones into Session (${validCount} Zones)
               </button>
-            </div>
-          `
-              : ''
-          }
+            `
+                : ''
+            }
+          </div>
         </footer>
       </div>
     `;
@@ -1054,7 +1065,7 @@ export class AudioChopperModal {
 
   private renderTableRows(slices: DetectedSlice[]): string {
     if (slices.length === 0) {
-      return `<tr><td colspan="9" style="text-align: center; padding: 20px; color: var(--color-text-dim);">No slices detected. Adjust sensitivity slider above.</td></tr>`;
+      return `<tr><td colspan="9" class="nmm-recorder-takes-empty">No slices detected. Adjust sensitivity slider above.</td></tr>`;
     }
     return slices
       .map((sl) => {
@@ -1068,13 +1079,13 @@ export class AudioChopperModal {
             <td>${sl.startSec.toFixed(2)}s..${sl.endSec.toFixed(2)}s</td>
             <td>${(sl.durationSec * 1000).toFixed(0)} ms</td>
             <td>
-              ${isSilence ? `<span class="val-pill" style="opacity: 0.6;">Silence</span>` : `<span style="font-weight: 600; color: var(--color-accent);">${escHtml(sl.label)}</span>`}
+              ${isSilence ? `<span class="val-pill">Silence</span>` : `<span class="chopper-param-val">${escHtml(sl.label)}</span>`}
             </td>
             <td>${isSilence ? '—' : `${sl.rootKey} (${midiToNoteName(sl.rootKey)})`}</td>
             <td>${isSilence ? '—' : `${sl.lowKey}..${sl.highKey}`}</td>
             <td>${isSilence ? '—' : `${sl.lowVel}..${sl.highVel}`}</td>
             <td>${sl.peakDb}dB / ${sl.rmsDb}dB</td>
-            <td style="text-align: center; white-space: nowrap;">
+            <td>
               <button type="button" class="btn btn-xs btn-ghost btn-play-slice" data-slice-id="${sl.id}" title="Audition slice one-shot">
                 ${isPlaying ? ICONS.stop : ICONS.play}
               </button>
@@ -1112,32 +1123,39 @@ export class AudioChopperModal {
     centerLine: string;
     text: string;
   } {
-    const style = typeof window !== 'undefined' ? window.getComputedStyle(document.body) : null;
-    const accent = style?.getPropertyValue('--color-accent').trim() || '#38bdf8';
-    const isDark =
-      !document.body.classList.contains('theme-light') &&
-      !document.documentElement.classList.contains('theme-light');
+    const style = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement) : null;
+    const token = (name: string, fallback = 'currentColor') =>
+      style?.getPropertyValue(name).trim() || fallback;
+
+    const accent = token('--color-accent');
+    const warn = token('--color-warning');
+    const success = token('--color-success', accent);
+    const bg = token('--color-lcd-bg', token('--color-panel-bg', 'transparent'));
+    const textMain = token('--color-text-main');
+    const textDim = token('--color-text-dim');
+    const borderDim = token('--color-panel-border-dim');
+    const surfaceElev = token('--color-panel-surface-elevated', bg);
 
     return {
-      bg: isDark ? '#060a12' : '#f1f5f9',
+      bg,
       waveform: accent,
-      waveformGradientEnd: isDark ? '#0284c7' : '#0369a1',
-      sliceSel: isDark ? 'rgba(56, 189, 248, 0.28)' : 'rgba(14, 165, 233, 0.25)',
-      sliceEven: isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(14, 165, 233, 0.08)',
-      sliceOdd: isDark ? 'rgba(168, 85, 247, 0.08)' : 'rgba(139, 92, 246, 0.08)',
-      silence: isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(203, 213, 225, 0.65)',
-      silenceStripe: isDark ? 'rgba(255, 255, 255, 0.09)' : 'rgba(0, 0, 0, 0.12)',
-      silenceWaveform: isDark ? 'rgba(100, 116, 139, 0.35)' : 'rgba(148, 163, 184, 0.45)',
-      silenceBadgeBg: isDark ? 'rgba(30, 41, 59, 0.9)' : 'rgba(241, 245, 249, 0.9)',
-      silenceBadgeText: isDark ? '#94a3b8' : '#64748b',
+      waveformGradientEnd: token('--color-accent-strong', accent),
+      sliceSel: token('--color-accent-dim', surfaceElev),
+      sliceEven: surfaceElev,
+      sliceOdd: bg,
+      silence: surfaceElev,
+      silenceStripe: borderDim,
+      silenceWaveform: textDim,
+      silenceBadgeBg: surfaceElev,
+      silenceBadgeText: textDim,
       marker: accent,
-      markerHover: '#38bdf8',
-      markerManual: '#f59e0b',
-      markerManualHover: '#fbbf24',
-      markerActive: '#10b981',
-      markerActiveManual: '#fbbf24',
-      centerLine: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
-      text: isDark ? '#f8fafc' : '#0f172a',
+      markerHover: accent,
+      markerManual: warn,
+      markerManualHover: warn,
+      markerActive: success,
+      markerActiveManual: warn,
+      centerLine: borderDim,
+      text: textMain,
     };
   }
 
@@ -1150,7 +1168,7 @@ export class AudioChopperModal {
 
     const wrap = this.backdropEl.querySelector('#chopper-canvas-wrap') as HTMLElement | null;
     const width = Math.max(300, Math.floor(wrap?.clientWidth || 880));
-    const height = 150;
+    const height = 160;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 
     if (this.canvas.width !== Math.floor(width * dpr) || this.canvas.height !== Math.floor(height * dpr)) {
@@ -1206,7 +1224,7 @@ export class AudioChopperModal {
           ctx.fillStyle = colors.marker;
           ctx.fillRect(x1, 2, badgeW, 14);
 
-          ctx.fillStyle = '#060a12';
+          ctx.fillStyle = colors.bg;
           ctx.fillText(labelText, x1 + 5, 13);
         } else if (w >= 44) {
           ctx.fillStyle = colors.text;
@@ -1452,10 +1470,10 @@ export class AudioChopperModal {
       ctx.fillRect(x - 1, y - 1, 2, 2);
     }
 
-    // Center Cut Line: amber (#f59e0b) if manual, emerald (#10b981) if auto
+    // Center Cut Line: warning token if manual, success token if auto
     const centerX = width * 0.5;
     const isDragging = this.isDraggingMagnifier;
-    const cutColor = isDragging ? '#f59e0b' : isCutManual ? '#fbbf24' : '#10b981';
+    const cutColor = isDragging ? colors.markerManual : isCutManual ? colors.markerManualHover : colors.markerActive;
     ctx.strokeStyle = cutColor;
     ctx.lineWidth = isDragging ? 3 : 2;
     ctx.setLineDash(isDragging ? [] : isCutManual ? [6, 2] : [4, 2]);
@@ -1508,11 +1526,11 @@ export class AudioChopperModal {
 
     // Visual drag & mode hint
     ctx.font = '10px monospace';
-    ctx.fillStyle = isDragging ? '#f59e0b' : isCutManual ? '#fbbf24' : 'rgba(16, 185, 129, 0.8)';
+    ctx.fillStyle = isDragging ? colors.markerManual : isCutManual ? colors.markerManualHover : colors.markerActive;
     const hintText = isDragging
       ? 'DRAGGING CUT POINT (MICRO-ADJUST)'
       : isCutManual
-      ? 'MANUAL CUT POINT (AMBER) • DRAG OR NUDGE TO REFINE'
+      ? 'MANUAL CUT POINT • DRAG OR NUDGE TO REFINE'
       : 'CLICK & DRAG TO MICRO-ADJUST CUT (±256 smp)';
     ctx.fillText(hintText, 10, 14);
 
@@ -1606,11 +1624,11 @@ export class AudioChopperModal {
     const titleBox = this.backdropEl.querySelector('.chopper-magnifier-title-box');
     if (titleBox) {
       titleBox.innerHTML = `
-        <span style="color: var(--color-accent);">${ICONS.wave}</span>
+        <span>${ICONS.wave}</span>
         <span>CUT POINT MAGNIFIER (±256 smp):</span>
         <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous slice boundary">&lt; Prev Cut</button>
         <strong>Boundary #${this.activeBoundaryIndex}</strong>
-        ${isCutManual ? '<span class="val-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);">MANUAL CUT</span>' : ''}
+        ${isCutManual ? '<span class="badge-manual-cuts">MANUAL CUT</span>' : ''}
         <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next slice boundary">Next Cut &gt;</button>
         <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
         <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
@@ -2647,51 +2665,54 @@ export class AudioChopperModal {
     const modal = document.createElement('div');
     modal.className = 'nmm-modal-backdrop nmm-stem-split-backdrop';
     modal.innerHTML = `
-      <div class="nmm-modal-window" style="max-width: 580px; z-index: 100020;">
+      <div class="nmm-modal-window nmm-confirm-window">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon" style="color: var(--color-accent);">${ICONS.wave}</span>
+            <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>Demucs AI Stem Separation</h2>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-stem-close">${ICONS.close || '✕'}</button>
         </header>
-        <div class="nmm-modal-body" style="padding: 16px 20px; font-size: 13px; line-height: 1.5;">
-          <p style="margin-bottom: 12px; color: var(--color-text-main);">
+        <div class="nmm-modal-body nmm-audio-modal-body">
+          <p>
             Isolate vocal lines or instrument stems using Demucs neural stem separation (or high-fidelity Mid/Side DSP fallback) before slicing.
           </p>
-          <div style="background: var(--color-surface-dim, rgba(255,255,255,0.03)); border: 1px solid var(--color-border); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;">
-            <div style="font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">Stems to Separate:</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <div class="nmm-audio-controls-card">
+            <div class="nmm-audio-table-title">Stems to Separate:</div>
+            <div class="nmm-audio-params-grid">
+              <label>
                 <input type="checkbox" id="chk-stem-vocals" checked />
                 <span>Vocals (Acapella)</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <label>
                 <input type="checkbox" id="chk-stem-drums" checked />
                 <span>Drums (Percussion)</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <label>
                 <input type="checkbox" id="chk-stem-bass" checked />
                 <span>Bass (Low-End)</span>
               </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+              <label>
                 <input type="checkbox" id="chk-stem-instrumental" checked />
                 <span>Instrumental (Other)</span>
               </label>
             </div>
           </div>
-          <div id="stem-results-container" style="display: none; margin-bottom: 16px;">
-            <div style="font-weight: 600; margin-bottom: 8px; color: var(--color-text-main);">Separated Audio Stems:</div>
-            <div id="stem-buttons-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+          <div id="stem-results-container" class="nmm-audio-table-panel" style="display: none;">
+            <div class="nmm-audio-table-title">Separated Audio Stems:</div>
+            <div id="stem-buttons-list" class="nmm-recorder-takes"></div>
           </div>
-          <div id="stem-processing-indicator" style="display: none; align-items: center; gap: 10px; color: var(--color-accent); font-weight: 500; margin-bottom: 16px;">
-            <span class="nmm-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+          <div id="stem-processing-indicator" class="nmm-audio-table-hint" style="display: none;">
             <span>Running Demucs stem separation via Companion Bridge...</span>
           </div>
         </div>
-        <footer class="nmm-modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px;">
-          <button type="button" class="btn btn-outline" id="btn-stem-cancel">Close</button>
-          <button type="button" class="btn btn-primary" id="btn-stem-run">${ICONS.sparkle || ICONS.ai} Run Separation</button>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-stem-cancel">Close</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-primary" id="btn-stem-run">${ICONS.sparkle || ICONS.ai} Run Separation</button>
+          </div>
         </footer>
       </div>
     `;
@@ -2737,27 +2758,19 @@ export class AudioChopperModal {
 
           const stemEntries = Object.entries(res.stems);
           if (stemEntries.length === 0) {
-            listEl.innerHTML = '<div style="color: var(--color-text-dim);">No stems were returned.</div>';
+            listEl.innerHTML = '<div class="nmm-recorder-takes-empty">No stems were returned.</div>';
           }
 
           for (const [name, buf] of stemEntries) {
             const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.alignItems = 'center';
-            row.style.justifyContent = 'space-between';
-            row.style.padding = '8px 12px';
-            row.style.background = 'rgba(255,255,255,0.02)';
-            row.style.border = '1px solid var(--color-border)';
-            row.style.borderRadius = '4px';
+            row.className = 'nmm-recorder-take';
 
             const label = document.createElement('span');
-            label.style.fontWeight = '500';
-            label.style.textTransform = 'capitalize';
+            label.className = 'nmm-recorder-take-name';
             label.textContent = `${name} (${(buf.byteLength / 1024).toFixed(1)} KB)`;
 
             const actionsDiv = document.createElement('div');
-            actionsDiv.style.display = 'flex';
-            actionsDiv.style.gap = '6px';
+            actionsDiv.className = 'nmm-recorder-take-actions';
 
             const loadBtn = document.createElement('button');
             loadBtn.type = 'button';
