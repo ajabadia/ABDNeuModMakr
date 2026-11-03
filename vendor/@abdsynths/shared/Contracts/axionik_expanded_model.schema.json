@@ -23,7 +23,7 @@
         "slug": { "type": "string", "minLength": 1 },
         "expandedName": { "type": "string", "minLength": 1 },
         "modelName": { "type": "string", "maxLength": 11 },
-        "engineMin": { "enum": ["classic", "expanded-v1"] },
+        "engineMin": { "enum": ["classic", "classic-enhanced", "expanded-v1"] },
         "requiredCaps": {
           "type": "array",
           "items": {
@@ -63,7 +63,18 @@
               "offsets": { "type": "array", "items": { "type": "number" } },
               "f0Hz": { "type": "number", "minimum": 0 },
               "formantShiftSt": { "type": "number" },
-              "weight": { "type": "number" }
+              "weight": { "type": "number" },
+              "timeSec": { "type": "number", "minimum": 0 },
+              "phases": { "type": "array", "items": { "type": "number" } },
+              "bandwidths": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+              "residualBandsDb": { "type": "array", "items": { "type": "number" } },
+              "formantEnvelopeDb": { "type": "array", "items": { "type": "number" } },
+              "spatialQuad": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": { "type": "number" }
+              }
             }
           }
         },
@@ -85,17 +96,39 @@
                     "offsets": { "type": "array", "items": { "type": "number" } },
                     "f0Hz": { "type": "number", "minimum": 0 },
                     "formantShiftSt": { "type": "number" },
-                    "weight": { "type": "number" }
+                    "weight": { "type": "number" },
+                    "timeSec": { "type": "number", "minimum": 0 },
+                    "phases": { "type": "array", "items": { "type": "number" } },
+                    "bandwidths": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+                    "residualBandsDb": { "type": "array", "items": { "type": "number" } },
+                    "formantEnvelopeDb": { "type": "array", "items": { "type": "number" } },
+                    "spatialQuad": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": { "type": "number" }
+                    }
                   }
                 }
               },
-              "frameWeights": { "type": "array", "items": { "type": "number" } }
+              "frameWeights": { "type": "array", "items": { "type": "number" } },
+              "spatialQuad": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": { "type": "number" }
+              }
             }
           }
         },
         "pitchTrackHz": { "type": "array", "items": { "type": "number" } },
-        "formantProfileSt": { "type": "array", "items": { "type": "number" } }
+        "formantProfileSt": { "type": "array", "items": { "type": "number" } },
+        "barkBandCount": { "type": "integer", "minimum": 1 }
       }
+    },
+    "spectralBySample": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/properties/spectral" }
     },
     "morphSpace": {
       "type": "object",
@@ -154,7 +187,26 @@
               "crossfadeMs": { "type": "number", "minimum": 0 }
             }
           },
-          "channels": { "enum": [1, 2, 4] }
+          "channels": { "enum": [1, 2, 4] },
+          "trigger": { "enum": ["attack", "release", "first", "legato"] },
+          "keyFadeIn": { "type": "integer", "minimum": 0 },
+          "keyFadeOut": { "type": "integer", "minimum": 0 },
+          "velFadeIn": { "type": "integer", "minimum": 0 },
+          "velFadeOut": { "type": "integer", "minimum": 0 },
+          "fadeCurve": { "enum": ["linear", "equal-power", "spectral-morph"] },
+          "roundRobinGroup": { "type": "string" },
+          "roundRobinIndex": { "type": "integer", "minimum": 0 },
+          "hybridTransient": {
+            "type": "object",
+            "required": ["durationMs", "crossfadeMs"],
+            "properties": {
+              "durationMs": { "type": "number", "minimum": 0 },
+              "crossfadeMs": { "type": "number", "minimum": 0 },
+              "gainDb": { "type": "number" },
+              "onsetFrame": { "type": "integer", "minimum": 0 },
+              "spliceFrameIndex": { "type": "integer", "minimum": 0 }
+            }
+          }
         }
       }
     },
@@ -208,7 +260,21 @@
           "id": { "type": "string" },
           "version": { "const": 2 },
           "model": { "type": "string" },
-          "params": { "type": "object" }
+          "params": { "type": "object" },
+          "shapers": {
+            "type": "object",
+            "properties": {
+              "inharmonicityB": { "type": "number", "minimum": 0 },
+              "parity": { "type": "number", "minimum": -1, "maximum": 1 },
+              "entropyRoughness": { "type": "number", "minimum": 0, "maximum": 1 },
+              "spectralShiftHz": { "type": "number" },
+              "hfRollOffDbPerOct": { "type": "number" },
+              "formantShiftSt": { "type": "number" },
+              "formantPreserve": { "type": "number", "minimum": 0, "maximum": 1 },
+              "residualMix": { "type": "number", "minimum": 0, "maximum": 1 },
+              "spatialSpread": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
         }
       }
     },
@@ -230,10 +296,21 @@
         "type": "object",
         "required": ["capability"],
         "properties": {
-          "capability": { "enum": ["audiosr", "htdemucs", "bigvgan", "outpaint-loop"] },
+          "capability": {
+            "enum": [
+              "audiosr",
+              "htdemucs",
+              "bigvgan",
+              "outpaint-loop",
+              "denoise-ai",
+              "ddsp-harmonic-residual",
+              "vae-latent-encode"
+            ]
+          },
           "model": { "type": "string" },
           "appliedAt": { "type": "string" },
-          "targetLayer": { "type": "string" }
+          "targetLayer": { "type": "string" },
+          "noiseFloorDbfs": { "type": "number" }
         }
       }
     },

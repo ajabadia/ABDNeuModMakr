@@ -40,7 +40,14 @@ export const DEFAULT_MASTER_WAVE_CONFIG: MasterWaveConfig = {
  * Fase 8.4 — Pluggable AI Audio Enhancement Provider interface
  * (supports AudioSR, HTDemucs, BigVGAN, and Latent Audio Outpainting).
  */
-export type AiModelCapability = 'audiosr' | 'htdemucs' | 'bigvgan' | 'outpaint-loop';
+export type AiModelCapability =
+  | 'audiosr'
+  | 'htdemucs'
+  | 'bigvgan'
+  | 'outpaint-loop'
+  | 'denoise-ai'
+  | 'ddsp-harmonic-residual'
+  | 'vae-latent-encode';
 
 export interface AiEnhancementRequest {
   channels: Float32Array[];
@@ -51,6 +58,13 @@ export interface AiEnhancementRequest {
   loopEnd?: number;
   targetLoopDurationSec?: number;
   endpoint?: string;
+  /** Fase 30/34: Optional captured Noise Profile so AI super-resolution / outpainting suppresses noise rather than amplifying it into HD partials. */
+  noiseProfile?: {
+    levelDbfs: number;
+    hum50HzDb?: number;
+    hum60HzDb?: number;
+    spectrumBands?: number[];
+  };
 }
 
 export interface AiEnhancementResponse {
@@ -109,14 +123,18 @@ export class HttpAiBridgeProvider implements AudioEnhancementProvider {
         loopStart: request.loopStart,
         loopEnd: request.loopEnd,
       });
+      const headers: Record<string, string> = {
+        'Content-Type': 'audio/wav',
+        'X-Target-Sample-Rate': String(request.targetSampleRate),
+        'X-Target-Loop-Sec': String(request.targetLoopDurationSec ?? 0),
+        'X-Capabilities': request.capabilities.join(','),
+      };
+      if (request.noiseProfile) {
+        headers['X-Noise-Profile'] = JSON.stringify(request.noiseProfile);
+      }
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'audio/wav',
-          'X-Target-Sample-Rate': String(request.targetSampleRate),
-          'X-Target-Loop-Sec': String(request.targetLoopDurationSec ?? 0),
-          'X-Capabilities': request.capabilities.join(','),
-        },
+        headers,
         body: wav24,
         signal: controller.signal,
       });

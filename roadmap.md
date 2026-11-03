@@ -283,7 +283,7 @@
 - [x] Separacion de formantes y pitch para Formant Shifting en tiempo real (`pitchTrackHz` + `formantProfileSt` persistidos en v2).
 - [x] Campos de morphing 2D/3D y espacio latente (`morphSpace` + `latentRef` en contrato v2).
 - [x] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente (salida dual según hardware: discreta Quad/`5.1` si el host abre bus multicanal, o Pseudo-Surround estéreo en hosts `2.0` y WASM).
-- [ ] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo (`hybrid-transient` declarado en `requiredCaps`; pendiente parametrización de ventana de empalme por región y DSP en Fase B).
+- [x] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo (`hybrid-transient` en `requiredCaps` + bloque `hybridTransient: { durationMs, crossfadeMs, gainDb, onsetFrame, spliceFrameIndex }` por región + fases `phases[]` e instante `timeSec` en la trama de enganche; reproducción DSP en Fase B de AxionikVS).
 
 ### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [EN CURSO / LADO MAKR COMPLETADO]
 
@@ -320,7 +320,7 @@
 
 #### 11.5.6 Handoff a la Fase B de `ABDAxionikVS` (pendiente, bloqueado por Gate A→B)
 - [x] **Contrato y flujo de datos listos del lado Makr**: documento v2 escrito y preflighteado antes de que exista el DSP que lo reproduce; el preflight acepta el JSON tal cual sale de la cápsula (sin re-serializar) y bloquea ante caps ausentes o `engineMin` superior.
-- [ ] **Perfil de capacidades del motor Axionik**: declarar `{ generation, caps[], maxPartials?, maxFrames? }` con lo que el motor realmente cubre. Sesión Gate 2026-11-02 (patrón `ABDJUNiO601`: un solo código, variantes por CMake): el perfil de caps describe la variante extendida, que es quien consume el v2. Salida dual según hardware: discreta Quad/`5.1` si el host abre el bus, Pseudo-Surround estéreo en caso contrario.
+- [x] **Perfil de capacidades del motor Axionik**: perfiles canónicos de las 3 variantes CMake exportados en `ABDShared` (`AXIONIK_CLASSIC_ENGINE_PROFILE`, `AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE`, `AXIONIK_EXPANDED_V1_ENGINE_PROFILE`, patrón `ABDJUNiO601`). Salida dual según hardware: discreta Quad/`5.1` si el host abre el bus (`spatialOutputMode: 'discrete-quad'`), o Pseudo-Surround estéreo (`spatialOutputMode: 'pseudo-surround-stereo'`, con adaptación explícita `spatial-downmix`).
 - [ ] **Consumo en Fase B**: fuente primaria `05_extended_model/axionik-expanded.json`; `model.nmmodel` queda como respaldo espectral v1. Ambas rutas sin mezclarse con `04_classic_enhanced/`.
 - [ ] **Preflight en el arranque del motor**: cargar el documento, ejecutar `preflightExpandedModelForAxionik` y aplicar las `adaptations` (bypass de filtros/FX desconocidos, truncado HD declarado) o bloquear con aviso visible, nunca cargar parcialmente en silencio.
 - [ ] **DoD de la fase**: caso de prueba con motor sin caps (carga bloqueada con aviso) y con motor completo (carga con adaptaciones aplicadas).
@@ -337,6 +337,11 @@
   - **Al Sinte (Dispatcher de Voces + Cadena de Audio independiente, como en `ABDJUNiO601`)** pertenecen los filtros y efectos (`filters[]`, `fxChain[]`, situados en la cadena de audio independiente del Resynator) y los parámetros expresivos de ejecución (`trigger: attack/release/first/legato`, `roundRobin`, curvas de crossfade `keyFade/velFade`, `pitchKeytrack`, envolventes DAHDSR y LFOs).
 - **Salida Espacial Dual según Hardware (`Surround Discreto` + `Pseudo-Surround Estéreo`)**:
   - Ambas rutas conviven en tiempo de ejecución: si el host abre bus multicanal (`4.0` Quad / `5.1`), el motor saca los canales discretos; en hosts `2.0` y en navegador (WASM) aplica la reducción **Pseudo-Surround estéreo**. El documento v2 conserva siempre la información espacial completa.
+- **Mejoras de Vanguardia Integradas en Contrato v2, DSP Determinista e IA (`11.11`–`11.13` en verde)**:
+  - **Multimuestra real (`spectralBySample`)**: diccionario de espectros HD indexado por `sampleRef` para que cada muestra/región tenga sus propios parciales, formantes y residuo sin pasar por un único espectro raíz.
+  - **Parciales con ancho de banda Loris (`bandwidths[]`), Residuo DDSP (`residualBandsDb[]`) y Envolvente Formántica 24-Bark (`formantEnvelopeDb[]`)**: calculados tanto de forma determinista (`expandedModelWriter.ts`) como mediante IA/WebGPU (`webNeuralEngine.estimateResonatorMatter`).
+  - **Moldeadores de Materia Sónica tipados (`shapers: AxionikResonatorShapers`)**: `inharmonicityB`, `parity`, `entropyRoughness`, `spectralShiftHz`, `hfRollOffDbPerOct`, `formantShiftSt`, `formantPreserve`, `residualMix` y `spatialSpread`.
+  - **IA condicionada por Huella de Ruido (`X-Noise-Profile`)**: propagada también en `MasterWaveEnhancer.ts` (`HttpAiBridgeProvider`) y registrada en `aiChain` (`denoise-ai`, `ddsp-harmonic-residual`, `vae-latent-encode`) para que el upsampling IA no amplifique ruido de fondo hacia los parciales altos (`65..256`).
 
 ---
 

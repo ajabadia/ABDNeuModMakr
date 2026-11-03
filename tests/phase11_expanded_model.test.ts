@@ -7,9 +7,15 @@
 // `@abdsynths/shared/contracts/axionikExpandedModel.ts`.
 // ─────────────────────────────────────────────────────────
 
-import { isAxionikExpandedModel } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+import {
+  AXIONIK_CLASSIC_ENGINE_PROFILE,
+  AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE,
+  AXIONIK_EXPANDED_V1_ENGINE_PROFILE,
+  isAxionikExpandedModel,
+} from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 import {
   buildAxionikExpandedModel,
+  deriveResonatorShapersFromDescriptors,
   EXPANDED_MODEL_V2_CAPSULE_PATH,
   preflightExpandedModelForAxionik,
   serializeExpandedModel,
@@ -17,6 +23,7 @@ import {
   type ExpandedModelWriterInput,
   type ExpandedSpectralSource,
 } from '../src/core/expandedModelWriter.ts';
+import { webNeuralEngine } from '../src/core/ai/WebNeuralEngine.ts';
 import {
   buildTimeCapsuleEntries,
   extractTimeCapsuleFromFiles,
@@ -525,6 +532,178 @@ async function runPhase11Tests(): Promise<void> {
     );
     assert(text.includes('"schemaVersion": "2.0.0"'), '11.10 must pin 2.0.0');
     console.log('  [OK] 11.10 serialize/parse round-trip is stable');
+  }
+
+  // 11.11 Multimuestra real (`spectralBySample`), extensiones Loris/DDSP/24-Bark y `hybridTransient`.
+  {
+    const specC3 = makeSpectral(128, 6);
+    const specC5 = makeSpectral(256, 8);
+    const doc = buildAxionikExpandedModel(
+      makeBaseInput({
+        spectral: specC3,
+        spectralBySample: {
+          'piano_C3.wav': specC3,
+          'samples/piano_C5.wav': specC5,
+        },
+        regions: [
+          makeRegion({
+            id: 'r-c3',
+            sampleName: 'piano_C3.wav',
+            lowKey: 36,
+            highKey: 59,
+            rootKey: 48,
+            trigger: 'attack',
+            keyFadeOut: 4,
+            fadeCurve: 'spectral-morph',
+            roundRobinGroup: 'rr-piano',
+            roundRobinIndex: 1,
+          }),
+          makeRegion({
+            id: 'r-c5',
+            sampleName: 'samples/piano_C5.wav',
+            lowKey: 60,
+            highKey: 96,
+            rootKey: 72,
+            trigger: 'release',
+            keyFadeIn: 4,
+            fadeCurve: 'equal-power',
+          }),
+        ],
+        hasHybridTransient: true,
+        populateAdvancedSpectralExtensions: true,
+      })
+    );
+    assert(isAxionikExpandedModel(doc), '11.11 multi-sample doc must pass v2 guard');
+    assert(
+      doc.spectralBySample !== undefined &&
+        doc.spectralBySample['piano_C3.wav']?.partialCount === 128 &&
+        doc.spectralBySample['piano_C5.wav']?.partialCount === 256,
+      '11.11 spectralBySample must index each sample by basename with its own partialCount'
+    );
+    const f0 = doc.spectral.frames[0];
+    assert(
+      Array.isArray(f0.bandwidths) && f0.bandwidths.length === 128,
+      '11.11 Loris per-partial bandwidths must match partialCount'
+    );
+    assert(
+      Array.isArray(f0.formantEnvelopeDb) &&
+        f0.formantEnvelopeDb.length === 24 &&
+        Array.isArray(f0.residualBandsDb) &&
+        f0.residualBandsDb.length === 24,
+      '11.11 24-Bark formant envelope and DDSP residual must be populated'
+    );
+    assert(
+      Array.isArray(f0.phases) &&
+        f0.phases.length === 128 &&
+        typeof f0.timeSec === 'number',
+      '11.11 splice frame phases and timestamp must be populated'
+    );
+    assert(
+      doc.regions[0].hybridTransient !== undefined &&
+        doc.regions[0].hybridTransient.durationMs > 0 &&
+        doc.regions[0].hybridTransient.crossfadeMs > 0,
+      '11.11 regions must carry hybridTransient splice window'
+    );
+    assert(
+      doc.regions[0].fadeCurve === 'spectral-morph' &&
+        doc.regions[0].roundRobinGroup === 'rr-piano' &&
+        doc.regions[1].trigger === 'release',
+      '11.11 expressive Synth dispatcher parameters must be preserved'
+    );
+    console.log(
+      '  [OK] 11.11 multi-sample spectralBySample, Loris/DDSP/24-Bark extensions, and hybridTransient verified'
+    );
+  }
+
+  // 11.12 Moldeadores de materia sónica (`shapers`) deterministas + IA (`WebNeuralEngine`).
+  {
+    const shapers = deriveResonatorShapersFromDescriptors({
+      detectedF0Hz: 220,
+      detectedMidiNote: 57,
+      detectedCentOffset: 0,
+      harmonicity: 0.9,
+      isPercussiveOrNoise: false,
+      attackTimeMs: 18,
+      logAttackTime: -1.74,
+      spectralCentroidHz: 2400,
+      spectralFlatness: 0.08,
+      inharmonicityStiffness: 0.00045,
+      sustainEnergyRatio: 0.65,
+      transientDensity: 1.5,
+    });
+    assert(
+      shapers.inharmonicityB === 0.00045 &&
+        typeof shapers.entropyRoughness === 'number' &&
+        typeof shapers.hfRollOffDbPerOct === 'number',
+      '11.12 deterministic shapers must map inharmonicityB, entropyRoughness, and hfRollOffDbPerOct'
+    );
+
+    const sr = 48000;
+    const synthPcm = new Float32Array(4096);
+    for (let i = 0; i < synthPcm.length; i++) {
+      const t = i / sr;
+      synthPcm[i] =
+        0.6 * Math.sin(2 * Math.PI * 220 * t) +
+        0.25 * Math.sin(2 * Math.PI * 440 * t) +
+        0.1 * Math.sin(2 * Math.PI * 660 * t);
+    }
+    const neuralMatter = await webNeuralEngine.estimateResonatorMatter(
+      synthPcm,
+      sr,
+      220
+    );
+    assert(
+      neuralMatter.formantEnvelopeDb.length === 24 &&
+        neuralMatter.residualBandsDb.length === 24 &&
+        typeof neuralMatter.shapers.parity === 'number',
+      '11.12 WebNeuralEngine.estimateResonatorMatter must return 24-Bark formants, DDSP residual, and shapers'
+    );
+    console.log(
+      '  [OK] 11.12 deterministic and WebNeuralEngine Resonator v2 shapers & DDSP envelopes verified'
+    );
+  }
+
+  // 11.13 Tres variantes CMake (`ABDJUNiO601` pattern) y adaptación espacial dual (`Pseudo-Surround` vs `Quad`).
+  {
+    assert(
+      AXIONIK_CLASSIC_ENGINE_PROFILE.generation === 'classic' &&
+        AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE.generation ===
+          'classic-enhanced' &&
+        AXIONIK_EXPANDED_V1_ENGINE_PROFILE.generation === 'expanded-v1',
+      '11.13 canonical 3-variant CMake profiles must be exported from ABDShared'
+    );
+    const quadDoc = buildAxionikExpandedModel(
+      makeBaseInput({
+        regions: [makeRegion({ numChannels: 4 })],
+      })
+    );
+    const stereoHostReport = preflightExpandedModelForAxionik(
+      quadDoc,
+      AXIONIK_EXPANDED_V1_ENGINE_PROFILE
+    );
+    assert(
+      stereoHostReport.ok &&
+        stereoHostReport.adaptations.some((a) =>
+          a.includes(
+            'spatial-downmix: render 4.0 Scape/Sphere via stereo Pseudo-Surround'
+          )
+        ),
+      '11.13 Quad 4.0 model on stereo/WASM host must succeed with explicit Pseudo-Surround adaptation'
+    );
+    const discreteQuadReport = preflightExpandedModelForAxionik(quadDoc, {
+      ...AXIONIK_EXPANDED_V1_ENGINE_PROFILE,
+      spatialOutputMode: 'discrete-quad',
+    });
+    assert(
+      discreteQuadReport.ok &&
+        !discreteQuadReport.adaptations.some((a) =>
+          a.includes('spatial-downmix')
+        ),
+      '11.13 Quad 4.0 model on discrete-quad bus renders natively without downmix adaptation'
+    );
+    console.log(
+      '  [OK] 11.13 3-variant CMake profiles and dual Surround/Pseudo-Surround preflight verified'
+    );
   }
 
   console.log('=== ALL PHASE 11 EXPANDED MODEL TESTS PASSED ===');

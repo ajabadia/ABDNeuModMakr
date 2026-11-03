@@ -26,14 +26,18 @@ import {
   type AxionikExpandedModel,
   type AxionikFilterBlock,
   type AxionikFxBlock,
+  type AxionikHybridTransient,
   type AxionikMorphSpace,
   type AxionikRegion,
+  type AxionikResonatorShapers,
   type AxionikResynatorV2,
+  type AxionikSpatialOutputMode,
   type AxionikSpectralFrame,
   type AxionikSpectralLayer,
   type AxionikSpectralModel,
 } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 import type {
+  AcousticDescriptors,
   DahdsrEnvelope,
   DspQualityScore,
   ExtendedRegion,
@@ -68,6 +72,14 @@ export interface ExpandedSpectralSource {
   layerNameAt(layer: number): string;
   layerWeightAt(layer: number): number;
   frameWeightAt(layer: number, frame: number): number;
+  /** Optional state-of-the-art extensions (Loris bandwidths, DDSP residual, Bark formants, phases, quad radiation). */
+  timeSecAt?(frame: number): number;
+  phasesOf?(frame: number): Float32Array;
+  bandwidthsOf?(frame: number): Float32Array;
+  residualBandsOf?(frame: number): Float32Array;
+  formantEnvelopeOf?(frame: number): Float32Array;
+  spatialQuadOf?(frame: number): [number, number, number, number];
+  layerSpatialQuadAt?(layer: number): [number, number, number, number];
 }
 
 export interface ExpandedModelWriterInput {
@@ -76,10 +88,17 @@ export interface ExpandedModelWriterInput {
   expandedName?: string;
   processConfig: ProcessConfig;
   spectral: ExpandedSpectralSource;
+  /**
+   * Optional per-sample HD spectral sources keyed by `sampleRef` (basename) or full `sampleName`.
+   * Eliminates the single-spectrum funnel so multi-sample instruments carry per-zone HD spectra.
+   */
+  spectralBySample?: Record<string, ExpandedSpectralSource>;
   regions: ExtendedRegion[];
   articulation?: SynthArticulationConfig;
   detectedInstrumentCategory?: string;
   qualityScore?: DspQualityScore;
+  /** Optional acoustic descriptors used to derive physical/spectral Resonator shapers & transient splice. */
+  acousticDescriptors?: AcousticDescriptors;
   /** Reference to the descriptor blob used for classification. */
   descriptorsRef?: string;
   /** Detached pitch trajectory, one entry per spectral frame. */
@@ -88,14 +107,20 @@ export interface ExpandedModelWriterInput {
   formantProfileSt?: number[];
   morphSpace?: AxionikMorphSpace;
   latentRef?: { dims: number; codec: string; dataRef: string };
-  /** Expanded v2 filter blocks appended after the mapped classic filter. */
+  /** Expanded v2 filter blocks appended after the mapped classic filter (Synth independent audio chain). */
   expandedFilters?: AxionikFilterBlock[];
-  /** Expanded v2 master-effect chain. */
+  /** Expanded v2 master-effect chain (Synth independent audio chain). */
   expandedFx?: AxionikFxBlock[];
   resynators?: AxionikResynatorV2[];
   aiSteps?: AxionikAiStep[];
   /** True when a real PCM micro-transient attack rides the model. */
   hasHybridTransient?: boolean;
+  /** Optional explicit hybrid transient splice config (applied to regions when `hasHybridTransient` is true). */
+  defaultHybridTransient?: AxionikHybridTransient;
+  /** Optional per-sample hybrid transient splice config keyed by `sampleRef`. */
+  hybridTransientBySample?: Record<string, AxionikHybridTransient>;
+  /** When true, deterministically populates Loris bandwidths, 24-Bark formant envelopes, DDSP residuals, and splice phases. */
+  populateAdvancedSpectralExtensions?: boolean;
   engineMin?: AxionikEngineGeneration;
   requiredCapsOverride?: AxionikEngineCap[];
   classicMapScriptRef?: string;
@@ -112,11 +137,118 @@ function roundTo(v: number, decimals: number): number {
   return Math.round(v * m) / m;
 }
 
+/** 24 critical Bark band upper frequencies in Hz for formant & DDSP residual envelopes. */
+const BARK_BAND_EDGES_HZ = [
+  100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720,
+  2000, 2320, 2700, 3150, 3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500,
+] as const;
+
+/**
+ * Derives physical and spectral Resonator v2 shapers (`ABDNeural` sonic matter model)
+ * from deterministic `AcousticDescriptors`.
+ */
+export function deriveResonatorShapersFromDescriptors(
+  desc: Partial<AcousticDescriptors> & {
+    inharmonicityStiffness?: number;
+    attackTimeMs?: number;
+  }
+): AxionikResonatorShapers {
+  const inharmonicityB = roundTo(
+    clamp(desc.inharmonicityB ?? desc.inharmonicityStiffness ?? 0, 0, 0.05),
+    6
+  );
+  const entropyRoughness = roundTo(
+    clamp(
+      (1 - clamp(desc.harmonicity ?? 0.8, 0, 1)) * 0.6 +
+        clamp(desc.spectralFlatness ?? 0.1, 0, 1) * 0.4,
+      0,
+      1
+    ),
+    4
+  );
+  const centroidHz = desc.spectralCentroidHz ?? 1800;
+  const hfRollOffDbPerOct = roundTo(
+    clamp(-6.0 + ((centroidHz - 2000) / 4000) * 3.0, -18, 0),
+    2
+  );
+  return {
+    inharmonicityB,
+    parity: 0,
+    entropyRoughness,
+    spectralShiftHz: 0,
+    hfRollOffDbPerOct,
+    formantShiftSt: 0,
+    formantPreserve: desc.isPercussiveOrNoise ? 0.25 : 0.85,
+    residualMix: roundTo(clamp(1 - (desc.harmonicity ?? 0.85), 0.05, 0.85), 3),
+    spatialSpread: 0.5,
+  };
+}
+
+function computeDeterministicBarkEnvelopes(
+  amps: number[],
+  offsets: number[],
+  baseF0Hz: number,
+  bandwidths: number[]
+): { formantEnvelopeDb: number[]; residualBandsDb: number[] } {
+  const f0 = baseF0Hz > 20 ? baseF0Hz : 220;
+  const formantEnvelopeDb = new Array<number>(BARK_BAND_EDGES_HZ.length).fill(-96);
+  const residualBandsDb = new Array<number>(BARK_BAND_EDGES_HZ.length).fill(-96);
+  const harmonicEnergy = new Float64Array(BARK_BAND_EDGES_HZ.length);
+  const residualEnergy = new Float64Array(BARK_BAND_EDGES_HZ.length);
+  const counts = new Int32Array(BARK_BAND_EDGES_HZ.length);
+
+  for (let i = 0; i < amps.length; i++) {
+    const a = Math.max(0, amps[i] ?? 0);
+    const bw = clamp(bandwidths[i] ?? 0, 0, 1);
+    const freqHz = Math.max(20, (i + 1) * f0 + (offsets[i] ?? 0));
+    let bandIdx = BARK_BAND_EDGES_HZ.length - 1;
+    for (let b = 0; b < BARK_BAND_EDGES_HZ.length; b++) {
+      if (freqHz <= BARK_BAND_EDGES_HZ[b]) {
+        bandIdx = b;
+        break;
+      }
+    }
+    const e = a * a;
+    harmonicEnergy[bandIdx] += e * (1 - 0.5 * bw);
+    residualEnergy[bandIdx] += e * Math.max(0.02, bw);
+    counts[bandIdx]++;
+  }
+
+  // Smooth across adjacent Bark bands so formant peaks (F1/F2/F3) form a continuous curve
+  for (let b = 0; b < BARK_BAND_EDGES_HZ.length; b++) {
+    const prevH = b > 0 ? harmonicEnergy[b - 1] : harmonicEnergy[b];
+    const nextH =
+      b + 1 < BARK_BAND_EDGES_HZ.length ? harmonicEnergy[b + 1] : harmonicEnergy[b];
+    const smoothH = 0.25 * prevH + 0.5 * harmonicEnergy[b] + 0.25 * nextH;
+    const smoothR =
+      0.25 * (b > 0 ? residualEnergy[b - 1] : residualEnergy[b]) +
+      0.5 * residualEnergy[b] +
+      0.25 *
+        (b + 1 < BARK_BAND_EDGES_HZ.length
+          ? residualEnergy[b + 1]
+          : residualEnergy[b]);
+    formantEnvelopeDb[b] =
+      smoothH > 1e-10 ? roundTo(clamp(10 * Math.log10(smoothH), -96, 6), 2) : -96;
+    residualBandsDb[b] =
+      smoothR > 1e-10 ? roundTo(clamp(10 * Math.log10(smoothR), -96, 6), 2) : -96;
+  }
+  return { formantEnvelopeDb, residualBandsDb };
+}
+
 function frameToExpanded(
   amplitudes: Float32Array,
   frequencyOffsets: Float32Array,
   frameSpan: number,
-  f0Hz: number
+  f0Hz: number,
+  ext?: {
+    timeSec?: number;
+    phases?: Float32Array;
+    bandwidths?: Float32Array;
+    residualBandsDb?: Float32Array;
+    formantEnvelopeDb?: Float32Array;
+    spatialQuad?: [number, number, number, number];
+    autoDeriveExtensions?: boolean;
+  }
 ): AxionikSpectralFrame {
   const partialCount = amplitudes.length;
   const amps: number[] = new Array<number>(partialCount);
@@ -131,13 +263,70 @@ function frameToExpanded(
   }
   const frame: AxionikSpectralFrame = { amps, offsets };
   if (f0Hz > 0) frame.f0Hz = roundTo(f0Hz, 3);
+  if (ext) {
+    if (typeof ext.timeSec === 'number' && ext.timeSec >= 0) {
+      frame.timeSec = roundTo(ext.timeSec, 4);
+    }
+    if (ext.phases && ext.phases.length === partialCount) {
+      frame.phases = Array.from(ext.phases, (p) => roundTo(p, 4));
+    }
+    if (ext.bandwidths && ext.bandwidths.length === partialCount) {
+      frame.bandwidths = Array.from(ext.bandwidths, (b) =>
+        roundTo(clamp(b, 0, 1), 4)
+      );
+    } else if (ext.autoDeriveExtensions) {
+      // Derive Loris-style per-partial bandwidth from frequency offset deviation + upper-harmonic air
+      const gap = Math.max(1, frameSpan > 0 ? frameSpan : 50);
+      frame.bandwidths = offsets.map((off, idx) => {
+        const detuneRatio = Math.min(1, Math.abs(off) / (0.5 * gap));
+        const highAir = (idx / Math.max(1, partialCount - 1)) * 0.25;
+        return roundTo(clamp(detuneRatio * 0.65 + highAir, 0, 1), 4);
+      });
+    }
+    if (ext.residualBandsDb && ext.residualBandsDb.length > 0) {
+      frame.residualBandsDb = Array.from(ext.residualBandsDb, (v) =>
+        roundTo(v, 2)
+      );
+    }
+    if (ext.formantEnvelopeDb && ext.formantEnvelopeDb.length > 0) {
+      frame.formantEnvelopeDb = Array.from(ext.formantEnvelopeDb, (v) =>
+        roundTo(v, 2)
+      );
+    }
+    if (
+      ext.autoDeriveExtensions &&
+      (!frame.formantEnvelopeDb || !frame.residualBandsDb)
+    ) {
+      const derived = computeDeterministicBarkEnvelopes(
+        amps,
+        offsets,
+        f0Hz > 0 ? f0Hz : frameSpan,
+        frame.bandwidths ?? new Array<number>(partialCount).fill(0.05)
+      );
+      if (!frame.formantEnvelopeDb) {
+        frame.formantEnvelopeDb = derived.formantEnvelopeDb;
+      }
+      if (!frame.residualBandsDb) {
+        frame.residualBandsDb = derived.residualBandsDb;
+      }
+    }
+    if (ext.spatialQuad && ext.spatialQuad.length === 4) {
+      frame.spatialQuad = [
+        roundTo(ext.spatialQuad[0], 3),
+        roundTo(ext.spatialQuad[1], 3),
+        roundTo(ext.spatialQuad[2], 3),
+        roundTo(ext.spatialQuad[3], 3),
+      ];
+    }
+  }
   return frame;
 }
 
 function buildSpectralModel(
   spectral: ExpandedSpectralSource,
   pitchTrackHz?: number[],
-  formantProfileSt?: number[]
+  formantProfileSt?: number[],
+  populateAdvanced = false
 ): AxionikSpectralModel {
   const frameCount = Math.max(1, Math.floor(spectral.frameCount));
   const rootAmps = spectral.ampsOf(0);
@@ -147,12 +336,37 @@ function buildSpectralModel(
   }
   const frames: AxionikSpectralFrame[] = [];
   for (let f = 0; f < frameCount; f++) {
+    const hasCustomExt =
+      populateAdvanced ||
+      spectral.timeSecAt !== undefined ||
+      spectral.phasesOf !== undefined ||
+      spectral.bandwidthsOf !== undefined ||
+      spectral.residualBandsOf !== undefined ||
+      spectral.formantEnvelopeOf !== undefined ||
+      spectral.spatialQuadOf !== undefined;
     frames.push(
       frameToExpanded(
         spectral.ampsOf(f),
         spectral.offsetsOf(f),
         spectral.frameSpanHz,
-        f === 0 ? 0 : spectral.f0At(f)
+        f === 0 ? 0 : spectral.f0At(f),
+        hasCustomExt
+          ? {
+              timeSec:
+                spectral.timeSecAt?.(f) ??
+                (populateAdvanced ? roundTo(f * 0.04, 4) : undefined),
+              phases:
+                spectral.phasesOf?.(f) ??
+                (populateAdvanced && f <= 1
+                  ? new Float32Array(partialCount)
+                  : undefined),
+              bandwidths: spectral.bandwidthsOf?.(f),
+              residualBandsDb: spectral.residualBandsOf?.(f),
+              formantEnvelopeDb: spectral.formantEnvelopeOf?.(f),
+              spatialQuad: spectral.spatialQuadOf?.(f),
+              autoDeriveExtensions: populateAdvanced,
+            }
+          : undefined
       )
     );
   }
@@ -161,6 +375,14 @@ function buildSpectralModel(
     frameCount,
     frames,
   };
+  if (
+    populateAdvanced ||
+    frames.some(
+      (fr) => fr.formantEnvelopeDb !== undefined || fr.residualBandsDb !== undefined
+    )
+  ) {
+    model.barkBandCount = BARK_BAND_EDGES_HZ.length;
+  }
   if (spectral.frameSpanHz > 0) {
     model.frameSpanHz = roundTo(spectral.frameSpanHz, 3);
   }
@@ -182,12 +404,26 @@ function buildSpectralModel(
         );
         frameWeights.push(roundTo(spectral.frameWeightAt(l, f), 5));
       }
-      layers.push({
+      const layerObj: AxionikSpectralLayer = {
         name: spectral.layerNameAt(l),
         weight: roundTo(spectral.layerWeightAt(l), 4),
         frames: layerFrames,
         frameWeights,
-      });
+      };
+      const layerQuad = spectral.layerSpatialQuadAt?.(l);
+      if (layerQuad && layerQuad.length === 4) {
+        layerObj.spatialQuad = [
+          roundTo(layerQuad[0], 3),
+          roundTo(layerQuad[1], 3),
+          roundTo(layerQuad[2], 3),
+          roundTo(layerQuad[3], 3),
+        ];
+      } else if (populateAdvanced) {
+        // Default Scape (front-weighted on layer 0) vs Sphere (surround-weighted on upper layers)
+        layerObj.spatialQuad =
+          l === 0 ? [0.85, 0.85, 0.25, 0.25] : [0.4, 0.4, 0.9, 0.9];
+      }
+      layers.push(layerObj);
     }
     model.layers = layers;
   }
@@ -211,7 +447,10 @@ function mapDahdsr(env: DahdsrEnvelope): AxionikDahdsr {
   };
 }
 
-function mapRegion(region: ExtendedRegion): AxionikRegion {
+function mapRegion(
+  region: ExtendedRegion,
+  hybridTransient?: AxionikHybridTransient
+): AxionikRegion {
   const out: AxionikRegion = {
     id: region.id,
     sampleRef: basename(region.sampleName) || region.sampleName,
@@ -232,8 +471,58 @@ function mapRegion(region: ExtendedRegion): AxionikRegion {
       crossfadeMs: roundTo(region.loopCrossfadeMs, 2),
     },
   };
+  if (region.trigger && region.trigger !== 'attack') {
+    out.trigger = region.trigger;
+  }
+  if (typeof region.keyFadeIn === 'number' && region.keyFadeIn > 0) {
+    out.keyFadeIn = region.keyFadeIn;
+  }
+  if (typeof region.keyFadeOut === 'number' && region.keyFadeOut > 0) {
+    out.keyFadeOut = region.keyFadeOut;
+  }
+  if (typeof region.velFadeIn === 'number' && region.velFadeIn > 0) {
+    out.velFadeIn = region.velFadeIn;
+  }
+  if (typeof region.velFadeOut === 'number' && region.velFadeOut > 0) {
+    out.velFadeOut = region.velFadeOut;
+  }
+  if (region.fadeCurve && region.fadeCurve !== 'linear') {
+    out.fadeCurve = region.fadeCurve;
+  }
+  const rrRegion = region as ExtendedRegion & {
+    roundRobinGroup?: string;
+    roundRobinIndex?: number;
+  };
+  if (rrRegion.roundRobinGroup) {
+    out.roundRobinGroup = rrRegion.roundRobinGroup;
+  }
+  if (typeof rrRegion.roundRobinIndex === 'number') {
+    out.roundRobinIndex = rrRegion.roundRobinIndex;
+  } else if (typeof region.seqPosition === 'number' && region.seqPosition > 0) {
+    out.roundRobinIndex = region.seqPosition;
+  }
   if (region.numChannels === 1 || region.numChannels === 2 || region.numChannels === 4) {
     out.channels = region.numChannels;
+  }
+  if (hybridTransient) {
+    out.hybridTransient = {
+      durationMs: roundTo(Math.max(0, hybridTransient.durationMs), 2),
+      crossfadeMs: roundTo(Math.max(0, hybridTransient.crossfadeMs), 2),
+      ...(typeof hybridTransient.gainDb === 'number'
+        ? { gainDb: roundTo(hybridTransient.gainDb, 2) }
+        : {}),
+      ...(typeof hybridTransient.onsetFrame === 'number'
+        ? { onsetFrame: Math.max(0, Math.floor(hybridTransient.onsetFrame)) }
+        : {}),
+      ...(typeof hybridTransient.spliceFrameIndex === 'number'
+        ? {
+            spliceFrameIndex: Math.max(
+              0,
+              Math.floor(hybridTransient.spliceFrameIndex)
+            ),
+          }
+        : {}),
+    };
   }
   if (region.hasArticulationOverride && region.ampEnvOverride) {
     const o = region.ampEnvOverride;
@@ -344,12 +633,53 @@ export function buildAxionikExpandedModel(
   input: ExpandedModelWriterInput
 ): AxionikExpandedModel {
   const fullName = (input.expandedName ?? input.modelName).trim() || 'UNTITLED';
+  const populateAdvanced = input.populateAdvancedSpectralExtensions === true;
   const spectral = buildSpectralModel(
     input.spectral,
     input.pitchTrackHz,
-    input.formantProfileSt
+    input.formantProfileSt,
+    populateAdvanced
   );
-  const regions = input.regions.map(mapRegion);
+
+  // Build per-sample HD spectral dictionary when multiple samples are provided
+  let spectralBySample: Record<string, AxionikSpectralModel> | undefined;
+  if (input.spectralBySample && Object.keys(input.spectralBySample).length > 0) {
+    spectralBySample = {};
+    for (const [sampleKey, src] of Object.entries(input.spectralBySample)) {
+      const ref = basename(sampleKey) || sampleKey;
+      spectralBySample[ref] = buildSpectralModel(
+        src,
+        undefined,
+        undefined,
+        populateAdvanced
+      );
+    }
+  }
+
+  // Derive default hybrid transient splice window when `hasHybridTransient` is true
+  const derivedDefaultTransient: AxionikHybridTransient | undefined =
+    input.defaultHybridTransient ??
+    (input.hasHybridTransient
+      ? {
+          durationMs: roundTo(
+            clamp(input.acousticDescriptors?.attackMs ?? 24, 8, 80),
+            2
+          ),
+          crossfadeMs: 6,
+          gainDb: 0,
+          onsetFrame: 0,
+          spliceFrameIndex: Math.min(1, Math.max(0, spectral.frameCount - 1)),
+        }
+      : undefined);
+
+  const regions = input.regions.map((r) => {
+    const ref = basename(r.sampleName) || r.sampleName;
+    const regionTransient =
+      input.hybridTransientBySample?.[ref] ??
+      input.hybridTransientBySample?.[r.sampleName] ??
+      derivedDefaultTransient;
+    return mapRegion(r, regionTransient);
+  });
   const expandedFilters = input.expandedFilters ?? [];
   const expandedFx = input.expandedFx ?? [];
   const aiSteps: AxionikAiStep[] = (input.aiSteps ?? []).map((s) => ({ ...s }));
@@ -360,21 +690,60 @@ export function buildAxionikExpandedModel(
   const hasNonLegacyFilter = expandedFilters.some(
     (f) => f.type !== 'legacy-neuron'
   );
+  const maxPartialCountAcrossSamples = spectralBySample
+    ? Object.values(spectralBySample).reduce(
+        (m, s) => Math.max(m, s.partialCount),
+        spectral.partialCount
+      )
+    : spectral.partialCount;
+  const hasAnyHybridTransient =
+    input.hasHybridTransient === true ||
+    regions.some((r) => r.hybridTransient !== undefined);
+  const hasAnyFormantSplit =
+    (spectral.pitchTrackHz?.length ?? 0) > 0 ||
+    (spectral.formantProfileSt?.length ?? 0) > 0 ||
+    spectral.frames.some((fr) => (fr.formantEnvelopeDb?.length ?? 0) > 0);
+
   const requiredCaps =
     input.requiredCapsOverride ??
     deriveRequiredCaps({
-      partialCount: spectral.partialCount,
-      hasPitchFormantSplit:
-        (spectral.pitchTrackHz?.length ?? 0) > 0 ||
-        (spectral.formantProfileSt?.length ?? 0) > 0,
+      partialCount: maxPartialCountAcrossSamples,
+      hasPitchFormantSplit: hasAnyFormantSplit,
       morphDims: input.morphSpace?.dims ?? 0,
       hasLatentRef: input.latentRef !== undefined || input.morphSpace?.latentRef !== undefined,
       maxChannels,
-      hasHybridTransient: input.hasHybridTransient === true,
+      hasHybridTransient: hasAnyHybridTransient,
       hasNonLegacyFilter,
       hasFx: expandedFx.length > 0,
       hasAi: aiSteps.length > 0,
     });
+
+  // Build Resynator v2 definitions, auto-attaching ABDNeural shapers if acousticDescriptors are provided
+  const derivedShapers = input.acousticDescriptors
+    ? deriveResonatorShapersFromDescriptors(input.acousticDescriptors)
+    : undefined;
+  const resynators: AxionikResynatorV2[] =
+    input.resynators && input.resynators.length > 0
+      ? input.resynators.map((r) => ({
+          ...r,
+          params: { ...r.params },
+          ...(r.shapers
+            ? { shapers: { ...r.shapers } }
+            : derivedShapers
+              ? { shapers: { ...derivedShapers } }
+              : {}),
+        }))
+      : derivedShapers
+        ? [
+            {
+              id: 'R1',
+              version: 2,
+              model: 'resonator-hd',
+              params: {},
+              shapers: derivedShapers,
+            },
+          ]
+        : [];
 
   const dspAlgorithm = input.processConfig.dspAlgorithm ?? 'legacy';
   const doc: AxionikExpandedModel = {
@@ -387,16 +756,17 @@ export function buildAxionikExpandedModel(
       requiredCaps,
     },
     spectral,
+    ...(spectralBySample ? { spectralBySample } : {}),
     regions,
     articulation: mapArticulation(
       input.articulation,
       expandedFilters,
       expandedFx
     ),
-    resynators: (input.resynators ?? []).map((r) => ({ ...r })),
+    resynators,
     analysis: {
       algorithm:
-        spectral.partialCount > 64
+        maxPartialCountAcrossSamples > 64
           ? 'hd'
           : dspAlgorithm === 'enhanced'
             ? 'enhanced'
@@ -456,6 +826,12 @@ export interface AxionikEngineProfile {
   maxPartials?: number;
   /** Maximum spectral frames the engine renders. */
   maxFrames?: number;
+  /**
+   * Runtime spatial output mode (Gate 2026-11-02):
+   * - `discrete-quad`: host opened a multichannel 4.0/5.1 bus
+   * - `pseudo-surround-stereo`: stereo 2.0 host or browser WASM
+   */
+  spatialOutputMode?: AxionikSpatialOutputMode;
 }
 
 export interface ExpandedAxionikPreflightReport {
@@ -472,7 +848,8 @@ export interface ExpandedAxionikPreflightReport {
 
 const ENGINE_GENERATION_RANK: Record<string, number> = {
   classic: 0,
-  'expanded-v1': 1,
+  'classic-enhanced': 1,
+  'expanded-v1': 2,
 };
 
 /**
@@ -618,6 +995,18 @@ export function preflightExpandedModelForAxionik(
     );
     adaptations.push(
       `truncate spectrum to ${engine.maxFrames} frames (lossy: keep earliest frames)`
+    );
+  }
+  const docMaxChannels = model.regions.reduce(
+    (m, r) => Math.max(m, r.channels ?? 1),
+    1
+  );
+  if (
+    docMaxChannels > 2 &&
+    engine.spatialOutputMode === 'pseudo-surround-stereo'
+  ) {
+    adaptations.push(
+      `spatial-downmix: render ${docMaxChannels}.0 Scape/Sphere via stereo Pseudo-Surround downmixer`
     );
   }
 

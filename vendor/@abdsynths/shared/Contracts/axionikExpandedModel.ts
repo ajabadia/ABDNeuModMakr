@@ -28,11 +28,21 @@
 
 export const AXIONIK_EXPANDED_MODEL_CONTRACT_VERSION = '2.0.0';
 
-/** Engine generations able to load an expanded model. */
-export type AxionikEngineGeneration = 'classic' | 'expanded-v1';
+/**
+ * Engine generations able to load an expanded model.
+ * Follows the `ABDJUNiO601` single-codebase CMake variant pattern:
+ * - `classic`: 100% frozen Hartmann 2002 engine
+ * - `classic-enhanced`: classic engine with improved independent filter/FX chain
+ * - `expanded-v1`: full next-gen Resynator v2 + HD spectral + hybrid transient engine
+ */
+export type AxionikEngineGeneration =
+  | 'classic'
+  | 'classic-enhanced'
+  | 'expanded-v1';
 
 export const AXIONIK_ENGINE_GENERATIONS: readonly AxionikEngineGeneration[] = [
   'classic',
+  'classic-enhanced',
   'expanded-v1',
 ];
 
@@ -107,7 +117,7 @@ export interface AxionikIdentity {
   classicSlot?: number;
 }
 
-/** One spectral frame: per-partial amplitudes + frequency offsets. */
+/** One spectral frame: per-partial amplitudes + frequency offsets + state-of-the-art extensions. */
 export interface AxionikSpectralFrame {
   /** Linear amplitudes, length === `partialCount`. */
   amps: number[];
@@ -119,6 +129,31 @@ export interface AxionikSpectralFrame {
   formantShiftSt?: number;
   /** Crossfade/morph weight of this frame. */
   weight?: number;
+  /** Frame timestamp in seconds from note onset (for phase-coherent hybrid transient splicing). */
+  timeSec?: number;
+  /**
+   * Instantaneous partial phases in radians (-pi..+pi), length === `partialCount`.
+   * Used at the hybrid transient splice frame so sinusoidal oscillators lock in-phase with PCM.
+   */
+  phases?: number[];
+  /**
+   * Loris-style Bandwidth-Enhanced partial noisiness (0..1 per partial, length === `partialCount`).
+   * 0 = pure sinusoid, 1 = narrowband noise modulated around the partial's trajectory.
+   */
+  bandwidths?: number[];
+  /**
+   * DDSP-style unpitched stochastic residual envelope in dBFS across Bark/ERB bands (e.g. 24 bands).
+   */
+  residualBandsDb?: number[];
+  /**
+   * True smoothed spectral/formant envelope in dBFS across Bark/ERB bands (F1/F2/F3 resonance curve)
+   * for pitch-independent formant preservation and shifting.
+   */
+  formantEnvelopeDb?: number[];
+  /**
+   * Native 4-channel Scape/Sphere radiation vector [FL, FR, RL, RR] (0..1 each) for this frame.
+   */
+  spatialQuad?: [number, number, number, number];
 }
 
 /** A named layer of frames (e.g. attack body / sustain / release). */
@@ -127,6 +162,8 @@ export interface AxionikSpectralLayer {
   weight: number;
   frames: AxionikSpectralFrame[];
   frameWeights?: number[];
+  /** Native 4-channel Scape/Sphere radiation vector [FL, FR, RL, RR] for this layer. */
+  spatialQuad?: [number, number, number, number];
 }
 
 /**
@@ -151,20 +188,50 @@ export interface AxionikSpectralModel {
   pitchTrackHz?: number[];
   /** Detached global formant profile in semitones, one entry per frame. */
   formantProfileSt?: number[];
+  /** Number of Bark/ERB bands used in `residualBandsDb` and `formantEnvelopeDb` (default 24). */
+  barkBandCount?: number;
 }
 
 /** 2D/3D morphing field with an optional neural latent reference. */
+export interface AxionikMorphPoint {
+  u?: number;
+  v?: number;
+  w?: number;
+  x?: number;
+  y?: number;
+  z?: number;
+  frameIndex?: number;
+}
+
 export interface AxionikMorphSpace {
   /** Morph field dimensionality. */
   dims: 2 | 3;
   /** Control points mapping morph coordinates to spectral frames. */
-  points: Array<{ u: number; v: number; w?: number; frameIndex: number }>;
+  points: AxionikMorphPoint[];
   /**
    * Opaque reference to a neural latent embedding (e.g. VAE space) stored
    * next to the model. `codec` names the encoding, `dataRef` locates the
    * blob relative to the model folder; engines without `latent-ref` ignore it.
    */
   latentRef?: { dims: number; codec: string; dataRef: string };
+}
+
+/**
+ * Phase-aligned PCM micro-transient splice configuration for a region (Fase 11.4.5).
+ * Raw PCM (`01_raw_source` / `03_enhanced_audio`) enters the expanded engine ONLY
+ * as a short attack transient fused in-phase with the Resynator body (no pure rompler).
+ */
+export interface AxionikHybridTransient {
+  /** Duration of the PCM micro-transient attack in milliseconds (typically 10..60 ms). */
+  durationMs: number;
+  /** Phase-aligned equal-power crossfade window in milliseconds between PCM and Resynator body. */
+  crossfadeMs: number;
+  /** Relative gain trim in dB applied to the PCM transient attack. */
+  gainDb?: number;
+  /** Sample frame where the attack onset begins. */
+  onsetFrame?: number;
+  /** Index of the spectral frame in `AxionikSpectralModel.frames` where oscillator phases lock. */
+  spliceFrameIndex?: number;
 }
 
 /**
@@ -175,7 +242,7 @@ export interface AxionikMorphSpace {
  */
 export interface AxionikRegion {
   id: string;
-  /** Sample blob name inside the model package. */
+  /** Sample blob name inside the model package (also indexes `spectralBySample`). */
   sampleRef: string;
   lowKey: number;
   highKey: number;
@@ -186,6 +253,16 @@ export interface AxionikRegion {
   volumeDb?: number;
   pan?: number;
   pitchKeytrack?: number;
+  /** Voice dispatcher trigger mode (Synth parameter layer). */
+  trigger?: 'attack' | 'release' | 'first' | 'legato';
+  /** Key/Velocity crossfade ranges and curve (Synth ExtendedRegionDispatcher layer). */
+  keyFadeIn?: number;
+  keyFadeOut?: number;
+  velFadeIn?: number;
+  velFadeOut?: number;
+  fadeCurve?: 'linear' | 'equal-power' | 'spectral-morph';
+  roundRobinGroup?: string;
+  roundRobinIndex?: number;
   loop?: {
     mode: string;
     startFrame: number;
@@ -194,6 +271,8 @@ export interface AxionikRegion {
   };
   /** 1 = mono, 2 = stereo, 4 = quad (real surround models). */
   channels?: number;
+  /** Phase-aligned hybrid PCM micro-transient splice parameters for the Resynator. */
+  hybridTransient?: AxionikHybridTransient;
   ampEnv?: Partial<AxionikDahdsr>;
   filter?: Partial<AxionikFilterBlock>;
 }
@@ -255,8 +334,38 @@ export interface AxionikArticulation {
 }
 
 /**
+ * Explicit Sonic Matter Shapers for the proprietary Resynator v2
+ * (aligned with `ABDNeural::DSP::CoreModules::Resonator` and Gate Decision 2).
+ */
+export interface AxionikResonatorShapers {
+  /**
+   * Inharmonicity stiffness coefficient B (>= 0):
+   * f_n = f_0 * (n + delta_n) * sqrt(1 + B * n^2).
+   * Models stiff strings (piano), bars, mallets, and metallic bells.
+   */
+  inharmonicityB?: number;
+  /** Even/Odd harmonic balance (-1 = odd/hollow clarinet, 0 = neutral, +1 = even/warm). */
+  parity?: number;
+  /** Micro-detuning / phase & amplitude turbulence (0..1). */
+  entropyRoughness?: number;
+  /** Linear frequency shift in Hz applied across partials. */
+  spectralShiftHz?: number;
+  /** High-frequency spectral tilt / roll-off in dB per octave. */
+  hfRollOffDbPerOct?: number;
+  /** Real-time formant shift in semitones (-24..+24). */
+  formantShiftSt?: number;
+  /** Formant preservation amount during pitch transposition (0 = classic shift, 1 = locked formants). */
+  formantPreserve?: number;
+  /** Balance between harmonic partials (0) and DDSP stochastic residual noise (1). */
+  residualMix?: number;
+  /** Spatial spread across the 4-channel Scape/Sphere field (0..1). */
+  spatialSpread?: number;
+}
+
+/**
  * One Resynator v2 voice. Namespaced so older engines ignore unknown
- * `model` values; `xparams` carries v2.x additions without re-versioning.
+ * `model` values; `shapers` provides typed sonic matter controls while
+ * `params` / `xparams` carry generic or v2.x additions without re-versioning.
  */
 export interface AxionikResynatorV2 {
   id: string;
@@ -264,6 +373,8 @@ export interface AxionikResynatorV2 {
   /** Resonator model, e.g. 'resonator-hd'. Unknown models are skipped. */
   model: string;
   params: Record<string, number>;
+  /** Typed physical/spectral matter shapers for the 100% proprietary Resynator v2. */
+  shapers?: AxionikResonatorShapers;
   xparams?: Record<string, number | string>;
 }
 
@@ -280,26 +391,37 @@ export interface AxionikAnalysisLineage {
   descriptorsRef?: string;
 }
 
-/** AI enhancement capabilities (ABDNeuModMakr provider interface). */
+/** AI enhancement capabilities (ABDNeuModMakr provider interface + Phase 30/34 AI Denoise + DDSP/VAE). */
 export type AxionikAiCapability =
   | 'audiosr'
   | 'htdemucs'
   | 'bigvgan'
-  | 'outpaint-loop';
+  | 'outpaint-loop'
+  | 'denoise-ai'
+  | 'ddsp-harmonic-residual'
+  | 'vae-latent-encode';
 
 export const AXIONIK_AI_CAPABILITIES: readonly AxionikAiCapability[] = [
   'audiosr',
   'htdemucs',
   'bigvgan',
   'outpaint-loop',
+  'denoise-ai',
+  'ddsp-harmonic-residual',
+  'vae-latent-encode',
 ];
 
 /** One applied AI enhancement step (provenance, not audio). */
 export interface AxionikAiStep {
-  capability: AxionikAiCapability;
+  capability?: AxionikAiCapability;
+  stage?: string;
+  provider?: string;
   model?: string;
   appliedAt?: string;
   targetLayer?: string;
+  params?: Record<string, unknown>;
+  /** Optional captured noise floor Dbfs when `denoise-ai` or noise-aware enhancement was used. */
+  noiseFloorDbfs?: number;
 }
 
 /** Pointer to the frozen classic layer (dual-motor fallback). */
@@ -309,11 +431,23 @@ export interface AxionikClassicFallback {
   scapeSphereRefs?: string[];
 }
 
-/** Root: the Axionik Expanded Model document (serialised as JSON). */
+/**
+ * Root: the Axionik Expanded Model document (serialised as JSON).
+ * Architectural boundary (Fase 11.5.7):
+ * - Resynator Sonic Matter: `spectral`, `spectralBySample`, `morphSpace`, `resynators`, and region `hybridTransient`.
+ * - Synth Voice Dispatcher & Independent Audio Chain (`ABDJUNiO601` pattern): `articulation` (`filters[]`, `fxChain[]`, envelopes) and region crossfade/trigger rules.
+ */
 export interface AxionikExpandedModel {
   schemaVersion: string;
   identity: AxionikIdentity;
+  /** Primary / root HD spectral model. */
   spectral: AxionikSpectralModel;
+  /**
+   * Per-sample HD spectral models indexed by `region.sampleRef` (Fase 11.5.7).
+   * Eliminates the single-spectrum funnel so multi-sample instruments carry
+   * distinct HD partials, formants, and DDSP residuals per sample/zone.
+   */
+  spectralBySample?: Record<string, AxionikSpectralModel>;
   morphSpace?: AxionikMorphSpace;
   regions: AxionikRegion[];
   articulation: AxionikArticulation;
@@ -356,3 +490,53 @@ export function isAxionikExpandedModel(v: unknown): v is AxionikExpandedModel {
   }
   return true;
 }
+
+/**
+ * Spatial output routing mode of the host / engine at runtime (Gate 2026-11-02):
+ * - `discrete-quad`: host opened a discrete 4.0 / 5.1 multichannel bus
+ * - `pseudo-surround-stereo`: stereo 2.0 host or browser WASM (decorrelated mono-compatible downmix)
+ */
+export type AxionikSpatialOutputMode =
+  | 'discrete-quad'
+  | 'pseudo-surround-stereo';
+
+/**
+ * Canonical capability profile for each of the 3 CMake build variants
+ * (`ABDJUNiO601` pattern: 0 = classic, 1 = classic-enhanced, 2 = expanded-v1).
+ */
+export interface AxionikEngineVariantProfile {
+  variantIndex: 0 | 1 | 2;
+  generation: AxionikEngineGeneration;
+  caps: readonly AxionikEngineCap[];
+  maxPartials: number;
+  maxFrames: number;
+  spatialOutputMode?: AxionikSpatialOutputMode;
+}
+
+export const AXIONIK_CLASSIC_ENGINE_PROFILE: AxionikEngineVariantProfile = {
+  variantIndex: 0,
+  generation: 'classic',
+  caps: [],
+  maxPartials: 64,
+  maxFrames: 16,
+  spatialOutputMode: 'pseudo-surround-stereo',
+};
+
+export const AXIONIK_CLASSIC_ENHANCED_ENGINE_PROFILE: AxionikEngineVariantProfile = {
+  variantIndex: 1,
+  generation: 'classic-enhanced',
+  caps: ['filter-v2', 'fx-v2'],
+  maxPartials: 64,
+  maxFrames: 16,
+  spatialOutputMode: 'pseudo-surround-stereo',
+};
+
+export const AXIONIK_EXPANDED_V1_ENGINE_PROFILE: AxionikEngineVariantProfile = {
+  variantIndex: 2,
+  generation: 'expanded-v1',
+  caps: AXIONIK_ENGINE_CAPS,
+  maxPartials: 1024,
+  maxFrames: 256,
+  spatialOutputMode: 'pseudo-surround-stereo',
+};
+
