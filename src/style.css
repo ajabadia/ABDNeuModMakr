@@ -5730,6 +5730,10 @@ textarea.form-control::placeholder {
   z-index: 1100;
 }
 
+.nmm-modal-backdrop.is-hidden {
+  display: none;
+}
+
 .nmm-modal-window,
 .nmm-batch-window {
   background: var(--color-panel-bg);

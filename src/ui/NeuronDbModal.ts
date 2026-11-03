@@ -67,20 +67,20 @@ export class NeuronDbModal {
 
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
-      this.backdropEl.className = 'modal-backdrop is-hidden';
+      this.backdropEl.className = 'nmm-modal-backdrop is-hidden';
       document.body.appendChild(this.backdropEl);
     }
 
     this.backdropEl.innerHTML = `
-      <div class="catalog-browser-card neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
+      <div class="nmm-modal-window nmm-modal-xl neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
         <!-- Header -->
-        <div class="modal-header ndb-modal-header">
-          <div class="modal-title ndb-header-title">
+        <div class="nmm-modal-header ndb-modal-header">
+          <div class="nmm-modal-header-title ndb-header-title">
             <span class="modal-icon">${ICONS.database}</span>
-            <span class="ndb-title-text">NEURONDB MODEL BROWSER</span>
+            <h2 class="ndb-title-text">NEURONDB MODEL BROWSER</h2>
             <span class="panel-badge ndb-badge" id="ndb-count-badge">${this.entries.length} MODELS</span>
           </div>
-          <button type="button" class="btn modal-close-btn btn-close-modal ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
         </div>
 
         <!-- Integrated Search Row (ABDMS2000 style) -->
@@ -139,13 +139,13 @@ export class NeuronDbModal {
         </div>
 
         <!-- High-Contrast Informative Selection Footer (ABDMS2000 style) -->
-        <div class="modal-footer ndb-footer">
+        <div class="nmm-modal-footer ndb-footer">
           <div class="ndb-footer-selection" id="ndb-footer-sel">
             <span class="ndb-footer-slot" id="ndb-foot-slot">#000</span>
             <span class="ndb-footer-name" id="ndb-foot-name">—</span>
             <span class="ndb-footer-details" id="ndb-foot-details"></span>
           </div>
-          <div class="neurondb-footer-actions">
+          <div class="footer-right neurondb-footer-actions">
             <button type="button" class="btn" id="btn-cancel-ndb-modal">Cancel</button>
             <button type="button" class="btn btn-primary ndb-select-btn" id="btn-load-ndb-modal">
               <span class="btn-icon">${ICONS.folder}</span>
