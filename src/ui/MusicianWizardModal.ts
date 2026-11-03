@@ -73,6 +73,7 @@ import { ICONS } from './icons.ts';
 import { escAttr, escHtml } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { confirmDialog, toast } from './notify.ts';
+import { midiToNoteName } from './ZoneRibbon.ts';
 
 export interface MusicianWizardModalContext extends ExportDestinationCallbacks {
   getCurrentProcessConfig: () => ProcessConfig;
@@ -144,6 +145,7 @@ export class MusicianWizardModal {
   private roleChoice: WizardSliceRoleChoice = MUSICIAN_WIZARD_DEFAULTS.defaultRoleChoice;
   private sensitivity = 70;
   private optClassicTwoLayers = MUSICIAN_WIZARD_DEFAULTS.classicTwoVelocityLayers;
+  private singleRootKeyOverride: number | null = null;
   private sliceMapResult: WizardSliceAndMapResult | null = null;
 
   // Step 4: Generate & Export state
@@ -181,6 +183,7 @@ export class MusicianWizardModal {
     this.optNormalizePeak = MUSICIAN_WIZARD_DEFAULTS.normalizePeak;
     this.optClassicTwoLayers = MUSICIAN_WIZARD_DEFAULTS.classicTwoVelocityLayers;
     this.roleChoice = MUSICIAN_WIZARD_DEFAULTS.defaultRoleChoice;
+    this.singleRootKeyOverride = null;
 
     this.render();
   }
@@ -216,6 +219,7 @@ export class MusicianWizardModal {
     this.rawSampleRate = sampleRate;
     this.parsedPreset = null;
     this.preflightReport = null;
+    this.singleRootKeyOverride = null;
     this.modelName = sanitizeClassicModelName(filename);
     this.expandedName = filename.replace(/\.[^/.]+$/, '').trim() || 'Mi Instrumento';
 
@@ -243,6 +247,7 @@ export class MusicianWizardModal {
         snapZeroCrossing: this.optSnapZeroCrossing,
         classicTwoVelocityLayers: this.optClassicTwoLayers,
         autoExtendKeybed: true,
+        singleRootKeyOverride: this.singleRootKeyOverride,
         sourceName: this.sourceName,
       }
     );
@@ -485,23 +490,44 @@ export class MusicianWizardModal {
           <div class="nmm-batch-card">
             <h3>${escHtml(MUSICIAN_TERMS.preflightImport)} — ${escHtml(this.parsedPreset.presetName)}</h3>
             <p class="nmm-batch-hint">
-              Este archivo ya es un instrumento mapeado (${this.parsedPreset.regions.length} regiones). No necesita re-cortarse en los pasos 2 y 3: revisa los ajustes de músico y pasa directamente al Paso 4.
+              Este archivo ya es un instrumento mapeado (${this.parsedPreset.regions.length} regiones). No necesita re-cortarse en los pasos 2 y 3: revisa el estado de compatibilidad y pasa directamente al Paso 4.
             </p>
             ${renderCommonPreflightGate(bankGateModel)}
+            ${
+              this.preflightReport.keyRange.uncoveredLowNotes > 0 ||
+              this.preflightReport.keyRange.uncoveredHighNotes > 0 ||
+              this.preflightReport.maxVelocityLayers > 2
+                ? `
             <div class="batch-slicer-row">
+              ${
+                this.preflightReport.keyRange.uncoveredLowNotes > 0 ||
+                this.preflightReport.keyRange.uncoveredHighNotes > 0
+                  ? `
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-extend" ${this.optBankAutoExtend ? 'checked' : ''} />
                 <span>Extender zonas extremas para cubrir todo el teclado MIDI (0..127)</span>
               </label>
+              `
+                  : ''
+              }
+              ${
+                this.preflightReport.maxVelocityLayers > 2
+                  ? `
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-vel" ${this.optBankAdaptVelocity ? 'checked' : ''} />
                 <span>Adaptar capas de velocidad a 2 capas en modo Classic</span>
               </label>
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-extmode" ${this.optBankSwitchExtended ? 'checked' : ''} />
-                <span>Cambiar a modo Extended (conservar N capas de velocidad)</span>
+                <span>Cambiar a modo Extended (conservar ${this.preflightReport.maxVelocityLayers} capas de velocidad)</span>
               </label>
+              `
+                  : ''
+              }
             </div>
+            `
+                : ''
+            }
           </div>
         `
             : ''
@@ -737,6 +763,44 @@ export class MusicianWizardModal {
                 </span>
               </div>
               <p>${escHtml(res.roleExplanationEs)}</p>
+              <p class="nmm-batch-hint" id="wiz-auto-decision-reason">${escHtml(res.autoDecisionReasonEs)}</p>
+            </div>
+          `
+              : ''
+          }
+
+          ${
+            res && res.resolvedRole === 'single'
+              ? `
+            <div class="batch-slicer-row" id="wiz-single-root-correction-bar">
+              <div class="batch-field">
+                <label for="inp-wiz-single-root">
+                  Nota raíz (${midiToNoteName(res.effectiveRootKey)} · F0 auto: ${res.detectedF0Hz.toFixed(1)} Hz):
+                </label>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-12" title="Bajar 1 octava (-12 semitonos)">-12 Oct</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-1" title="Bajar 1 semitono">-1 Semi</button>
+                <input
+                  type="number"
+                  id="inp-wiz-single-root"
+                  class="form-control"
+                  min="0"
+                  max="127"
+                  value="${res.effectiveRootKey}"
+                  aria-label="Nota raíz MIDI (0..127)"
+                />
+                <span class="val-pill">${midiToNoteName(res.effectiveRootKey)} (MIDI ${res.effectiveRootKey})</span>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="1" title="Subir 1 semitono">+1 Semi</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="12" title="Subir 1 octava (+12 semitonos)">+12 Oct</button>
+                ${
+                  this.singleRootKeyOverride !== null && this.singleRootKeyOverride !== res.detectedRootKey
+                    ? `
+                  <button type="button" class="btn btn-xs btn-ghost" id="btn-wiz-root-reset-auto" title="Restaurar nota raíz estimada por F0 (${midiToNoteName(res.detectedRootKey)})">
+                    Auto F0 (${midiToNoteName(res.detectedRootKey)})
+                  </button>
+                `
+                    : ''
+                }
+              </div>
             </div>
           `
               : ''
@@ -1183,8 +1247,8 @@ export class MusicianWizardModal {
     this.sourceName = preset.presetName;
     this.parsedPreset = preset;
     this.preflightReport = analyzeImportPreflight(preset, this.workingMode);
-    this.optBankAutoExtend = true;
-    this.optBankAdaptVelocity = true;
+    this.optBankAutoExtend = this.preflightReport.defaultActions.autoExtendOuterZones;
+    this.optBankAdaptVelocity = this.preflightReport.defaultActions.adaptVelocityLayers;
     this.optBankSwitchExtended = this.preflightReport.defaultActions.switchToExtendedMode;
     this.modelName = sanitizeClassicModelName(preset.modelName || preset.presetName);
     this.expandedName = preset.presetName || preset.modelName || 'Mi Instrumento';
@@ -1465,6 +1529,32 @@ export class MusicianWizardModal {
 
     root.querySelector<HTMLInputElement>('#chk-wiz-step3-2layers')?.addEventListener('change', (e) => {
       this.optClassicTwoLayers = (e.currentTarget as HTMLInputElement).checked;
+      this.recomputeCleanAndSlice();
+      this.render();
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('[data-wiz-root-delta]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const delta = parseInt(btn.dataset.wizRootDelta || '0', 10);
+        if (!delta || !this.sliceMapResult) return;
+        const currentRoot = this.sliceMapResult.effectiveRootKey;
+        this.singleRootKeyOverride = Math.max(0, Math.min(127, currentRoot + delta));
+        this.recomputeCleanAndSlice();
+        this.render();
+      });
+    });
+
+    root.querySelector<HTMLInputElement>('#inp-wiz-single-root')?.addEventListener('change', (e) => {
+      const parsed = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+      if (Number.isFinite(parsed)) {
+        this.singleRootKeyOverride = Math.max(0, Math.min(127, Math.round(parsed)));
+        this.recomputeCleanAndSlice();
+        this.render();
+      }
+    });
+
+    root.querySelector('#btn-wiz-root-reset-auto')?.addEventListener('click', () => {
+      this.singleRootKeyOverride = null;
       this.recomputeCleanAndSlice();
       this.render();
     });

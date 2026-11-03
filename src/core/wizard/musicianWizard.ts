@@ -333,8 +333,20 @@ export interface WizardSliceAndMapOptions {
   classicVelSplit?: number;
   /** Extender zonas extremas para cubrir 0..127 (por defecto true) */
   autoExtendKeybed?: boolean;
+  /** Corrección manual de nota raíz (MIDI 0..127) cuando el material es una nota única ('single') */
+  singleRootKeyOverride?: number | null;
   /** Nombre base de la muestra */
   sourceName?: string;
+}
+
+export interface WizardAutoDecisionMetrics {
+  transientDensityHz: number;
+  sustainRatioPct: number;
+  activeEventCount: number;
+  distinctPitchCount: number;
+  crestFactorDb: number;
+  detectedF0Hz: number;
+  detectedMidiNote: number;
 }
 
 export interface WizardSliceAndMapResult {
@@ -342,11 +354,17 @@ export interface WizardSliceAndMapResult {
   resolvedRole: WizardResolvedRole;
   roleLabelEs: string;
   roleExplanationEs: string;
+  /** Explicación transparente de por qué el detector eligió este modo (densidad de transitorios, eventos, sostén, F0) */
+  autoDecisionReasonEs: string;
+  autoDecisionMetrics: WizardAutoDecisionMetrics;
   detectedCategory: string;
   suggestedParameterSet: number;
   classificationConfidence: number;
   classificationRationale: string;
+  /** Nota raíz MIDI estimada automáticamente por F0 (sin override) */
   detectedRootKey: number;
+  /** Nota raíz MIDI efectiva aplicada en el mapeo (respeta singleRootKeyOverride si se definió) */
+  effectiveRootKey: number;
   detectedF0Hz: number;
   sliceCount: number;
   classicZones: Zone[];
@@ -358,13 +376,54 @@ export interface WizardSliceAndMapResult {
 const sharedSpectralAnalyzer = new SpectralAnalyzer();
 
 /**
+ * Filtra falsos cortes provocados por colas de reverberación o ruido de sala:
+ * descarta rebanadas secundarias cuya energía cae > 10 dB respecto al pico principal
+ * y mantienen el mismo tono (±1 semitono), evitando trocear un pad o nota con reverb.
+ */
+function filterRealMusicalEvents(slices: DetectedSlice[]): {
+  meaningfulEvents: DetectedSlice[];
+  distinctPitchCount: number;
+} {
+  if (slices.length <= 1) {
+    return { meaningfulEvents: slices, distinctPitchCount: slices.length };
+  }
+  const maxPeakDb = Math.max(...slices.map((s) => s.peakDb));
+  const maxRmsDb = Math.max(...slices.map((s) => s.rmsDb));
+  const meaningfulEvents: DetectedSlice[] = [];
+  const pitchBuckets = new Set<number>();
+
+  for (let i = 0; i < slices.length; i++) {
+    const sl = slices[i];
+    const prev = meaningfulEvents[meaningfulEvents.length - 1];
+    // Un corte secundario que cae > 7 dB en RMS o > 8 dB en pico respecto al cuerpo principal,
+    // o que mantiene el mismo tono (±1 semitono), es cola de reverb/sala y no una nota nueva.
+    const isQuietTailOfPrevious =
+      prev !== undefined &&
+      (sl.rmsDb < maxRmsDb - 7 ||
+        sl.peakDb < maxPeakDb - 8 ||
+        Math.abs((sl.rootKey ?? 60) - (prev.rootKey ?? 60)) <= 1);
+
+    if (!isQuietTailOfPrevious) {
+      meaningfulEvents.push(sl);
+      // Agrupar por semitono para distinguir melodías reales de repeticiones/colas en la misma nota
+      pitchBuckets.add(Math.round((sl.rootKey ?? 60) / 2));
+    }
+  }
+
+  return {
+    meaningfulEvents: meaningfulEvents.length > 0 ? meaningfulEvents : [slices[0]],
+    distinctPitchCount: Math.max(1, pitchBuckets.size),
+  };
+}
+
+/**
  * Paso 3 — Cortar y mapear:
  * - Si `roleChoice === 'auto'` ("Detectar solo"):
  *   combina `extractTakeFeatures` + `classifyTake` con `extractAcousticDescriptors` + `classifyAcousticSample` (cat 0..9)
- *   y el conteo de transitorios reales para decidir entre:
+ *   y el filtrado de eventos reales (resistente a colas de reverb y ruido de sala) para decidir entre:
  *     1. `'drums'` (Batería / Percusión -> mapa GM Drum / kits percusivos, Parameter Set 8)
  *     2. `'melody'` (Frase melódica de varias notas -> corte cromático con zc-snap y cobertura 0..127)
- *     3. `'single'` (Nota única / Instrumento sostenido -> 1 zona limpia extendida 0..127 con nota raíz F0 detectada)
+ *     3. `'single'` (Nota única / Instrumento sostenido -> 1 zona limpia extendida 0..127 con nota raíz F0 detectada o corregida)
  * - Aplica los defaults de músico:
  *   - `snapZeroCrossing: true`
  *   - `classicTwoVelocityLayers: true` (en Classic genera las 2 capas `1..63` y `64..127` suaves/fuertes listas para NASAnalysis)
@@ -403,26 +462,55 @@ export function runWizardSliceAndMapStep(
     snapZeroCrossing,
   });
   const activeProbeSlices = probeChromatic.slices.filter((s) => !s.isSilence);
+  const { meaningfulEvents, distinctPitchCount } = filterRealMusicalEvents(activeProbeSlices);
 
-  // 2. Resolve Role ('drums' | 'melody' | 'single')
+  const rawPeakDb = linearToDbfs(peakAmplitude(pcm));
+  const rawRmsDb = rmsDbfs(pcm);
+  const crestDb = Number.isFinite(rawPeakDb) && Number.isFinite(rawRmsDb) ? Number((rawPeakDb - rawRmsDb).toFixed(1)) : 0;
+
+  const autoDecisionMetrics: WizardAutoDecisionMetrics = {
+    transientDensityHz: Number(descriptors.transientDensityHz.toFixed(2)),
+    sustainRatioPct: Math.round(descriptors.sustainRatio * 100),
+    activeEventCount: meaningfulEvents.length,
+    distinctPitchCount,
+    crestFactorDb: crestDb,
+    detectedF0Hz: Number(descriptors.detectedF0Hz.toFixed(1)),
+    detectedMidiNote: descriptors.detectedMidiNote,
+  };
+
+  // 2. Resolve Role ('drums' | 'melody' | 'single') with reverb/room-noise resilience
   let resolvedRole: WizardResolvedRole;
+  const isPercussiveCat =
+    acousticClass.recommendedParameterSet === 8 ||
+    acousticClass.detectedCategory === 'Drums & Perc' ||
+    takeClass.kind === 'drums' ||
+    descriptors.isPercussiveOrNoise ||
+    (crestDb >= 14.5 && descriptors.sustainRatio < 0.32 && meaningfulEvents.length >= 2);
+
   if (roleChoice !== 'auto') {
     resolvedRole = roleChoice;
   } else {
-    const isPercussiveCat =
-      acousticClass.recommendedParameterSet === 8 ||
-      acousticClass.detectedCategory === 'Drums & Perc' ||
-      takeClass.kind === 'drums' ||
-      descriptors.isPercussiveOrNoise;
+    const isSingleSustainedOrReverbTail =
+      meaningfulEvents.length <= 1 ||
+      (descriptors.sustainRatio >= 0.45 && descriptors.transientDensityHz < 1.8) ||
+      (distinctPitchCount <= 1 && descriptors.sustainRatio >= 0.34 && descriptors.transientDensityHz < 2.4 && !isPercussiveCat);
 
-    if (isPercussiveCat && activeProbeSlices.length >= 2) {
+    if (isPercussiveCat && meaningfulEvents.length >= 2) {
       resolvedRole = 'drums';
-    } else if (activeProbeSlices.length <= 1 || (descriptors.sustainRatio >= 0.48 && descriptors.transientDensityHz < 1.8)) {
+    } else if (isSingleSustainedOrReverbTail) {
       resolvedRole = 'single';
     } else {
       resolvedRole = 'melody';
     }
   }
+
+  const autoRootKey = Math.max(0, Math.min(127, descriptors.detectedMidiNote || 60));
+  const hasRootOverride =
+    typeof options.singleRootKeyOverride === 'number' &&
+    Number.isFinite(options.singleRootKeyOverride);
+  const effectiveSingleRootKey = hasRootOverride
+    ? Math.max(0, Math.min(127, Math.round(options.singleRootKeyOverride!)))
+    : autoRootKey;
 
   const audioBuffers = new Map<string, ArrayBuffer>();
   const classicZones: Zone[] = [];
@@ -430,10 +518,11 @@ export function runWizardSliceAndMapStep(
   let finalSlices: DetectedSlice[] = [];
 
   if (resolvedRole === 'single') {
-    // 1 single sustained instrument zone across 0..127 with detected rootKey
-    const rootKey = Math.max(0, Math.min(127, descriptors.detectedMidiNote || 60));
+    // 1 single sustained instrument zone across 0..127 with detected or overridden rootKey
+    const rootKey = effectiveSingleRootKey;
     const lowKey = autoExtendKeybed ? 0 : rootKey;
     const highKey = autoExtendKeybed ? 127 : rootKey;
+    const fineDetune = hasRootOverride ? 0 : (descriptors.detectedCentOffset || 0);
 
     let slicePcm = pcm;
     if (snapZeroCrossing && pcm.length > 64) {
@@ -469,7 +558,7 @@ export function runWizardSliceAndMapStep(
       sampleLow: classicTwoVelocityLayers ? lowSampleName : highSampleName,
       sampleHigh: classicTwoVelocityLayers ? highSampleName : null,
       velSplit,
-      detune: descriptors.detectedCentOffset || 0,
+      detune: fineDetune,
       volume: 0,
       pan: 0,
     });
@@ -484,7 +573,7 @@ export function runWizardSliceAndMapStep(
           highKey,
           lowVel: 1,
           highVel: velSplit - 1,
-          detune: descriptors.detectedCentOffset || 0,
+          detune: fineDetune,
           volume: 0,
           pan: 0,
           pitchKeytrack: 100,
@@ -509,7 +598,7 @@ export function runWizardSliceAndMapStep(
           highKey,
           lowVel: velSplit,
           highVel: 127,
-          detune: descriptors.detectedCentOffset || 0,
+          detune: fineDetune,
           volume: 0,
           pan: 0,
           pitchKeytrack: 100,
@@ -536,7 +625,7 @@ export function runWizardSliceAndMapStep(
         highKey,
         lowVel: 1,
         highVel: 127,
-        detune: descriptors.detectedCentOffset || 0,
+        detune: fineDetune,
         volume: 0,
         pan: 0,
         pitchKeytrack: 100,
@@ -573,7 +662,7 @@ export function runWizardSliceAndMapStep(
         highKey,
         lowVel: 1,
         highVel: 127,
-        label: `Nota raíz ${rootKey} (${midiToNoteName(rootKey)}) · ${descriptors.detectedF0Hz.toFixed(1)} Hz`,
+        label: `Nota raíz ${rootKey} (${midiToNoteName(rootKey)})${hasRootOverride ? ' [Ajustada]' : ''} · ${descriptors.detectedF0Hz.toFixed(1)} Hz`,
         category: 'chromatic',
         pcm: slicePcm,
       },
@@ -664,6 +753,15 @@ export function runWizardSliceAndMapStep(
   const detectedCategory =
     resolvedRole === 'drums' ? 'Drums & Perc' : acousticClass.detectedCategory;
 
+  const autoDecisionReasonEs =
+    roleChoice !== 'auto'
+      ? `Selección manual del músico (${resolvedRole}). Diagnóstico medido: ${autoDecisionMetrics.activeEventCount} evento(s), densidad ${autoDecisionMetrics.transientDensityHz} ataques/s, sostén ${autoDecisionMetrics.sustainRatioPct} %, F0 ${autoDecisionMetrics.detectedF0Hz} Hz (${midiToNoteName(autoDecisionMetrics.detectedMidiNote)}).`
+      : resolvedRole === 'drums'
+        ? `Por qué elegí esto: ${autoDecisionMetrics.activeEventCount} ataques percusivos (${autoDecisionMetrics.transientDensityHz} ataques/s, cresta ${autoDecisionMetrics.crestFactorDb} dB) y sostén corto (${autoDecisionMetrics.sustainRatioPct} %).`
+        : resolvedRole === 'single'
+          ? `Por qué elegí esto: ${autoDecisionMetrics.activeEventCount === 1 ? '1 evento musical principal' : `cola de la misma nota (${autoDecisionMetrics.distinctPitchCount} altura tonal)`}, sostén del ${autoDecisionMetrics.sustainRatioPct} %, densidad baja (${autoDecisionMetrics.transientDensityHz} ataques/s) y F0 en ${autoDecisionMetrics.detectedF0Hz} Hz (${midiToNoteName(autoDecisionMetrics.detectedMidiNote)}).`
+          : `Por qué elegí esto: ${autoDecisionMetrics.activeEventCount} notas/eventos detectados (${autoDecisionMetrics.distinctPitchCount} alturas distintas, ${autoDecisionMetrics.transientDensityHz} ataques/s) con F0 inicial en ${autoDecisionMetrics.detectedF0Hz} Hz (${midiToNoteName(autoDecisionMetrics.detectedMidiNote)}).`;
+
   const roleLabels: Record<WizardResolvedRole, { label: string; explanation: string }> = {
     drums: {
       label: 'Batería / Percusión (Kit por golpes)',
@@ -675,7 +773,7 @@ export function runWizardSliceAndMapStep(
     },
     single: {
       label: 'Nota única / Instrumento cromático',
-      explanation: `Nota raíz detectada en ${midiToNoteName(descriptors.detectedMidiNote)} (${descriptors.detectedF0Hz.toFixed(1)} Hz) y extendida en todo el teclado 0..127 con 2 capas de velocidad (${detectedCategory}, Set #${suggestedParameterSet}).`,
+      explanation: `Nota raíz ${hasRootOverride ? `ajustada a ${midiToNoteName(effectiveSingleRootKey)} (MIDI ${effectiveSingleRootKey}, auto F0: ${descriptors.detectedF0Hz.toFixed(1)} Hz)` : `detectada en ${midiToNoteName(effectiveSingleRootKey)} (${descriptors.detectedF0Hz.toFixed(1)} Hz)`} y extendida en todo el teclado 0..127 con 2 capas de velocidad (${detectedCategory}, Set #${suggestedParameterSet}).`,
     },
   };
 
@@ -684,11 +782,14 @@ export function runWizardSliceAndMapStep(
     resolvedRole,
     roleLabelEs: roleLabels[resolvedRole].label,
     roleExplanationEs: roleLabels[resolvedRole].explanation,
+    autoDecisionReasonEs,
+    autoDecisionMetrics,
     detectedCategory,
     suggestedParameterSet,
     classificationConfidence: acousticClass.confidence,
     classificationRationale: acousticClass.rationale,
-    detectedRootKey: descriptors.detectedMidiNote,
+    detectedRootKey: autoRootKey,
+    effectiveRootKey: resolvedRole === 'single' ? effectiveSingleRootKey : autoRootKey,
     detectedF0Hz: descriptors.detectedF0Hz,
     sliceCount: finalSlices.length,
     classicZones,

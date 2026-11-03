@@ -21,6 +21,9 @@ import {
   runWizardSliceAndMapStep,
   sanitizeClassicModelName,
 } from '../src/core/wizard/musicianWizard.ts';
+import { analyzeImportPreflight } from '../src/core/import/importPreflight.ts';
+import { fromImportPreflightReport } from '../src/ui/preflightGateView.ts';
+import type { ParsedSamplerPreset } from '../src/core/import/rawSamplerParsers.ts';
 
 function generateSustainedToneWithSilencePadding(
   freqHz: number,
@@ -180,4 +183,109 @@ console.log('Running Phase 35.5 Musician Guided Wizard Tests...');
   console.log('  ✓ 4. runWizardSliceAndMapStep auto-detects single vs drums, builds 2 Classic layers, and covers 0..127');
 }
 
-console.log('ALL PHASE 35.5 MUSICIAN WIZARD TESTS PASSED (4/4)!');
+// Test 5: Simulated recording with room noise + reverb tail on a single pad note + "Por qué elegí esto"
+{
+  const sr = 44100;
+  const total = Math.round(1.6 * sr);
+  const reverberantPad = new Float32Array(total);
+  let seed = 9876543;
+  const nextRand = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return (seed / 4294967296) * 2 - 1;
+  };
+
+  for (let i = 0; i < total; i++) {
+    const t = i / sr;
+    // Note body (0..0.55s) + long decaying reverb tail (0.55..1.6s) + room floor (-44 dB) + small tail ripple at 0.95s
+    const bodyEnv = t < 0.55 ? Math.min(1, t / 0.03) * 0.75 : 0.75 * Math.exp(-(t - 0.55) / 0.32);
+    const tailRipple = t > 0.9 && t < 1.05 ? 0.14 * Math.exp(-(t - 0.9) / 0.06) : 0;
+    const tone =
+      Math.sin(2 * Math.PI * 261.63 * t) +
+      0.35 * Math.sin(2 * Math.PI * 523.25 * t);
+    const roomNoise = nextRand() * 0.006;
+    reverberantPad[i] = (bodyEnv + tailRipple) * tone * 0.55 + roomNoise;
+  }
+
+  const clean = runWizardCleanStep(reverberantPad, sr);
+  const res = runWizardSliceAndMapStep(clean.cleanedPcm, sr, {
+    roleChoice: 'auto',
+    sourceName: 'ReverbPad_C4.wav',
+  });
+
+  assert.equal(
+    res.resolvedRole,
+    'single',
+    'Single note with reverb tail and room noise must NOT flip to melody'
+  );
+  assert.ok(
+    res.autoDecisionReasonEs.startsWith('Por qué elegí esto:'),
+    `Expected transparent "Por qué elegí esto:" explanation, got: ${res.autoDecisionReasonEs}`
+  );
+  assert.ok(Number.isFinite(res.autoDecisionMetrics.transientDensityHz));
+  assert.ok(Number.isFinite(res.autoDecisionMetrics.sustainRatioPct));
+  assert.ok(Number.isFinite(res.autoDecisionMetrics.detectedF0Hz));
+  console.log('  ✓ 5. Reverberant single note with room noise stays "single" and exposes "Por qué elegí esto" metrics');
+}
+
+// Test 6: Manual Root Key (F0) correction in 'single' mode before extending 0..127
+{
+  const sr = 44100;
+  const cleanTone = runWizardCleanStep(generateSustainedToneWithSilencePadding(261.63, sr, 0.05, 0.6, 0.05), sr);
+  // Suppose the estimator detected ~60 (C4), but the musician knows it's an octave higher (72 = C5)
+  const overridden = runWizardSliceAndMapStep(cleanTone.cleanedPcm, sr, {
+    roleChoice: 'single',
+    singleRootKeyOverride: 72,
+    sourceName: 'FluteAiry.wav',
+  });
+
+  assert.equal(overridden.effectiveRootKey, 72, 'effectiveRootKey must reflect the musician override (72)');
+  assert.equal(overridden.classicZones[0].rootKey, 72, 'Classic zone rootKey must use overridden rootKey (72)');
+  assert.equal(overridden.classicZones[0].lowKey, 0);
+  assert.equal(overridden.classicZones[0].highKey, 127);
+  assert.equal(overridden.extendedRegions[0].rootKey, 72, 'Extended region rootKey must use overridden rootKey (72)');
+  assert.ok(overridden.slices[0].label.includes('72'), 'Slice label must display corrected root note 72');
+  console.log('  ✓ 6. singleRootKeyOverride corrects F0 octave/semitone errors and propagates to 0..127 zones');
+}
+
+// Test 7: Bank fast-track preflight when bank is already 100% compatible (0..127, <= 2 layers)
+{
+  const perfectPreset: ParsedSamplerPreset = {
+    format: 'sfz',
+    formatLabel: 'SFZ v2',
+    presetName: 'ReadySynth',
+    modelName: 'ReadySynth',
+    detectedCategory: 'Synth',
+    suggestedParameterSet: 0,
+    regions: [
+      {
+        sampleName: 'full_c4.wav',
+        lowKey: 0,
+        highKey: 127,
+        rootKey: 60,
+        lowVel: 1,
+        highVel: 127,
+        detuneCents: 0,
+        volumeDb: 0,
+        pan: 0,
+        loopMode: 'no_loop',
+        loopStart: 0,
+        loopEnd: 0,
+      },
+    ],
+    audioBuffers: new Map([['full_c4.wav', new ArrayBuffer(128)]]),
+  };
+
+  const report = analyzeImportPreflight(perfectPreset, 'classic');
+  const gate = fromImportPreflightReport(report, perfectPreset, 'classic', {
+    autoExtendOuterZones: report.defaultActions.autoExtendOuterZones,
+    adaptVelocityLayers: report.defaultActions.adaptVelocityLayers,
+    switchToExtendedMode: report.defaultActions.switchToExtendedMode,
+  });
+
+  assert.equal(gate.statusSeverity, 'ok');
+  assert.equal(gate.changes.length, 0, 'A 100% compatible bank should have 0 forced changes');
+  assert.equal(gate.changesHeading, 'Sin adaptaciones necesarias');
+  console.log('  ✓ 7. 100% compatible bank shows clean "Sin adaptaciones necesarias" state in Step 1');
+}
+
+console.log('ALL PHASE 35.5 MUSICIAN WIZARD TESTS PASSED (7/7)!');

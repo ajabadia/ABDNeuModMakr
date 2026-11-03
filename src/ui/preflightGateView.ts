@@ -147,7 +147,10 @@ export function fromImportPreflightReport(
     statusTitle,
     statusMeta,
     statusSummary,
-    changesHeading: `Qué voy a cambiar (${changes.length})`,
+    changesHeading:
+      changes.length === 0
+        ? 'Sin adaptaciones necesarias'
+        : `Qué voy a cambiar (${changes.length})`,
     emptyChangesText:
       'No hay que tocar nada: todas las zonas, capas de velocidad y muestras entran tal cual en la sesión.',
     changes,
