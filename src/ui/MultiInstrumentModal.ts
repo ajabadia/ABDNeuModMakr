@@ -147,7 +147,7 @@ export class MultiInstrumentModal {
               ${
                 this.options.onDeduceWithAi
                   ? `<button type="button" class="btn btn-sm btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="Reagrupar por instrumento con IA (BYOK LLM)">
-                      ${ICONS.sparkle || ICONS.cpu} ${this.isAiGrouping ? 'Agrupando…' : 'Agrupar por nombre (IA)'}
+                      ${ICONS.sparkle} ${this.isAiGrouping ? 'Agrupando…' : 'Agrupar por nombre (IA)'}
                     </button>`
                   : ''
               }

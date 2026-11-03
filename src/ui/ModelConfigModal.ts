@@ -175,7 +175,7 @@ export class ModelConfigModal {
             </span>
           </div>
           <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-model-config-close">
-            ${ICONS.close || '✕'}
+            ${ICONS.close}
           </button>
         </header>
 
@@ -726,7 +726,7 @@ export class ModelConfigModal {
                       <span class="tag-item-val">${escHtml(item.value)}</span>
                     </div>
                     <button type="button" class="btn-remove-tag" data-remove-tag-idx="${idx}" title="Remove tag ${escAttr(item.tag)}">
-                      ${ICONS.trash || '✕'}
+                      ${ICONS.trash}
                     </button>
                   </div>
                 `
@@ -814,11 +814,11 @@ export class ModelConfigModal {
               <!-- AI Artwork Generator (Roadmap Phase 20) -->
               <div class="ai-artwork-generator-banner">
                 <div class="ai-generator-info">
-                  <strong class="ai-generator-title">${ICONS.sparkle || ICONS.ai} AI Cover Artwork Generator</strong>
+                  <strong class="ai-generator-title">${ICONS.sparkle} AI Cover Artwork Generator</strong>
                   <span class="ai-generator-desc">Generate unique 512×512 neural cover art tailored to model name and acoustic timbre.</span>
                 </div>
                 <button type="button" class="btn btn-outline btn-ai-generate" id="btn-cfg-ai-cover" title="AI Cover Artwork Generation (Roadmap Phase 20)">
-                  ${ICONS.sparkle || ICONS.ai} Generate with AI <span class="badge-ai-soon">Fase 20</span>
+                  ${ICONS.sparkle} Generate with AI <span class="badge-ai-soon">Fase 20</span>
                 </button>
               </div>
             </div>

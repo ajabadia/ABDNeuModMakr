@@ -241,7 +241,7 @@ export class BatchProcessorModal {
           </p>
 
           <div class="nmm-batch-dropzone" id="batch-dropzone">
-            <div class="nmm-batch-dropzone-icon">${ICONS.upload || ''}</div>
+            <div class="nmm-batch-dropzone-icon">${ICONS.upload}</div>
             <div class="nmm-batch-dropzone-text">
               ${isSlicer ? 'Drag & drop <strong>audio loops (.wav, .aif, .rx2, .rex)</strong> or loop folders here' : 'Drag & drop <strong>.sf2</strong>, <strong>.zip</strong>, or audio folders here'}
             </div>
@@ -258,7 +258,7 @@ export class BatchProcessorModal {
               `
                   : `
               <label class="btn btn-primary">
-                ${ICONS.scissors || ''} Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex)
+                ${ICONS.scissors} Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex)
                 <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex" multiple class="is-hidden-file" />
               </label>
               `
