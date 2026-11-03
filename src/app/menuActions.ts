@@ -12,7 +12,7 @@ import type { SpectralView } from '../ui/SpectralView';
 import type { TelemetryDrawer } from '../ui/TelemetryDrawer';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { ImportHandlers } from './importHandlers';
-import { confirmDialog, toast } from '../ui/notify';
+import { confirmDialog, promptDialog, toast } from '../ui/notify';
 import { pwaManager } from './pwa';
 import { sanitizeFileName } from '../core/pathUtils.ts';
 import { downloadBytes } from '../ui/download.ts';
@@ -53,7 +53,8 @@ export interface MenuContext {
   openAudioChopper?: () => void;
   openAudioRecorder?: () => void;
   openLoopEditor?: () => void;
-  openRawSamplerExport?: () => void;
+  openRawSamplerExport?: (initialFormat?: import('../core/export/rawSamplerTypes').RawSamplerFormat) => void;
+  openExportDestinationModal?: () => void;
   openUniversalImportModal?: () => void;
   openConfigHealthModal?: () => void;
 }
@@ -79,7 +80,10 @@ export class MenuActions {
   async saveSessionAs(): Promise<void> {
     if (!this.ctx.session) return;
     const currentName = this.ctx.session.name || 'NewModel';
-    const entered = typeof window !== 'undefined' ? window.prompt('Enter session name:', currentName) : null;
+    const entered = await promptDialog('Enter session name:', currentName, {
+      title: 'Save Session As',
+      confirmLabel: 'Save',
+    });
     if (entered === null) return;
     const newName = entered.trim() || currentName;
     this.ctx.session.name = newName;
@@ -166,7 +170,7 @@ export class MenuActions {
       `NeuronModel_${String(slot).padStart(3, '0')}_${safeName}.zip`
     );
     this.ctx.shell.getTelemetry().addLog(
-      `Exported model package #${String(slot).padStart(3, '0')} (${this.ctx.session.processConfig.modelName}) as .zip`
+      `Exported Time Capsule #${String(slot).padStart(3, '0')} (${this.ctx.session.processConfig.modelName}) as .zip`
     );
   }
 
@@ -180,14 +184,36 @@ export class MenuActions {
     const slot = this.ctx.session.processConfig.modelNumber;
     const currentSafeName = this.ctx.session.processConfig.modelName.replace(/[^A-Za-z0-9_-]/g, '_');
     const defaultPackName = `NeuronModel_${String(slot).padStart(3, '0')}_${currentSafeName}`;
-    const entered = typeof window !== 'undefined' ? window.prompt('Enter model pack filename (without .zip):', defaultPackName) : null;
+    const entered = await promptDialog('Enter Time Capsule filename (without .zip):', defaultPackName, {
+      title: 'Export Time Capsule',
+      confirmLabel: 'Export',
+    });
     if (entered === null) return;
     const customName = entered.trim().replace(/\.zip$/i, '') || defaultPackName;
     const safeCustom = customName.replace(/[^A-Za-z0-9_-]/g, '_');
     await this.ctx.core.exportModel(slot, `${safeCustom}.zip`);
     this.ctx.shell.getTelemetry().addLog(
-      `Exported model pack #${String(slot).padStart(3, '0')} as ${safeCustom}.zip`
+      `Exported Time Capsule #${String(slot).padStart(3, '0')} as ${safeCustom}.zip`
     );
+  }
+
+  exportZoneAiff(): void {
+    const active = this.ctx.getActiveZone();
+    if (!active) {
+      toast('No active zone selected to export.', 'warning');
+      return;
+    }
+    try {
+      const { filename, bytes } = this.ctx.core.exportZoneAsAiff(active.id);
+      this.ctx.shell.getTelemetry().addLog(
+        `Exported canonical 44.1 kHz 16-bit Mono AIFF: ${filename} (${bytes.byteLength} bytes)`
+      );
+      toast(`Exported sample: ${filename}`, 'success');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.ctx.shell.getTelemetry().addLog(`AIFF export error: ${msg}`);
+      toast(`AIFF export error: ${msg}`, 'error');
+    }
   }
 
   async saveToAxionikDb(): Promise<void> {
@@ -210,7 +236,10 @@ export class MenuActions {
   async saveToAxionikDbAs(): Promise<void> {
     if (!this.ctx.session) return;
     const currentName = this.ctx.session.name || 'New Model';
-    const entered = typeof window !== 'undefined' ? window.prompt('Model name in AxionikDB:', currentName) : null;
+    const entered = await promptDialog('Model name in AxionikDB:', currentName, {
+      title: 'Save to AxionikDB As',
+      confirmLabel: 'Save',
+    });
     if (entered === null) return;
     const newName = entered.trim() || currentName;
     try {
@@ -262,6 +291,7 @@ export class MenuActions {
       onImportModelFolder: () => this.ctx.imports.triggerModelFolderImport(),
       onConfigureNeuronDbFolder: () => this.ctx.imports.triggerConfigureNeuronDbFolder(),
       onImportModel: () => this.ctx.imports.triggerModelImport(),
+      onOpenExportDestination: () => this.ctx.openExportDestinationModal?.(),
       onExportModel: () => void this.exportModel(),
       onExportModelAs: () => void this.exportModelAs(),
       onExportSampler: () => this.ctx.openRawSamplerExport?.(),
@@ -283,24 +313,7 @@ export class MenuActions {
           );
         }
       },
-      onExportZoneAiff: () => {
-        const active = this.ctx.getActiveZone();
-        if (!active) {
-          toast('No active zone selected to export.', 'warning');
-          return;
-        }
-        try {
-          const { filename, bytes } = this.ctx.core.exportZoneAsAiff(active.id);
-          this.ctx.shell.getTelemetry().addLog(
-            `Exported canonical 44.1 kHz 16-bit Mono AIFF: ${filename} (${bytes.byteLength} bytes)`
-          );
-          toast(`Exported sample: ${filename}`, 'success');
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          this.ctx.shell.getTelemetry().addLog(`AIFF export error: ${msg}`);
-          toast(`AIFF export error: ${msg}`, 'error');
-        }
-      },
+      onExportZoneAiff: () => this.exportZoneAiff(),
       onUndo: () => this.performUndo(),
       onRedo: () => this.performRedo(),
       onAddZone: async () => {
@@ -559,6 +572,9 @@ export class MenuActions {
           } else {
             void this.exportModel();
           }
+        } else if (key === 'x' && e.shiftKey) {
+          e.preventDefault();
+          this.ctx.openExportDestinationModal?.();
         } else if (key === ',' || key === ';') {
           e.preventDefault();
           this.ctx.openSettingsModal?.('general');

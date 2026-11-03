@@ -238,7 +238,7 @@ export class LoopEditorModal {
             </span>
           </div>
           <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-loop-modal-close">
-            ${ICONS.close || '✕'}
+            ${ICONS.close}
           </button>
         </header>
 
