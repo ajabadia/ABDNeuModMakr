@@ -496,9 +496,11 @@
 
 ---
 
-## Fase 19 — Modo Rompler Puro en ABDAxionikVS (Reproducción de Audio Crudo / Raw Multisample) [PLANIFICADA]
+## Fase 19 — Modo Rompler Puro en ABDAxionikVS (Reproducción de Audio Crudo / Raw Multisample) [DESCARTADA 2026-11-03]
 
 **Objetivo**: Permitir que el sintetizador software `ABDAxionikVS` opere como un rompler tradicional de alta definición, cargando y reproduciendo directamente la materia prima sin procesar de la capa `01_raw_source` (o `03_enhanced_audio` en 24-bit/96kHz).
+
+**Descarte 2026-11-03**: no se hace en `ABDAxionikVS`. Contradice el 11.5.1 (el raw solo entra al expanded como transitorio híbrido fundido con cuerpo de resonador; no hay modo rompler puro). Se conserva el contenido como registro de lo evaluado; si algún día hiciera falta reproducción directa de multisamples, se replantearía como herramienta o variante separada, no como modo del sinte.
 
 ### 19.1 Características y Aprovechamiento del Sistema
 - **Reproducción Directa PCM de Alta Fidelidad**: Carga de multisamples con mapeos de zonas key/vel intactos, prescindiendo opcionalmente de los transformadores Scape/Sphere.
