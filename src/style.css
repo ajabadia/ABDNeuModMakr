@@ -5732,13 +5732,13 @@ textarea.form-control::placeholder {
 
 .nmm-modal-window,
 .nmm-batch-window {
-  background: var(--color-panel-bg, #0b1523);
-  border: 1px solid var(--color-panel-border-strong, #38bdf8);
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-strong);
   border-radius: var(--radius-lg, 8px);
   box-shadow: var(--shadow-elevation-3, 0 20px 40px rgba(0, 0, 0, 0.7));
-  max-width: 960px;
-  width: 92%;
-  max-height: 88vh;
+  max-width: 1100px;
+  width: 95%;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5751,8 +5751,8 @@ textarea.form-control::placeholder {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) var(--space-4);
-  background: var(--color-panel-surface-elevated, #101f35);
-  border-bottom: 1px solid var(--color-panel-border, #1e3a5f);
+  background: var(--color-panel-surface-elevated);
+  border-bottom: 1px solid var(--color-panel-border);
 }
 
 .nmm-modal-header-title {
@@ -5764,21 +5764,21 @@ textarea.form-control::placeholder {
 .nmm-modal-header-title h2 {
   font-size: var(--text-base, 14px);
   font-weight: 700;
-  color: var(--color-accent, #00d2ff);
+  color: var(--color-accent);
   margin: 0;
 }
 
 .nmm-modal-header-icon svg {
   width: 18px;
   height: 18px;
-  color: var(--color-accent, #00d2ff);
+  color: var(--color-accent);
   vertical-align: middle;
 }
 
 .nmm-modal-close {
   background: transparent;
   border: none;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: var(--radius-sm, 4px);
@@ -5788,7 +5788,7 @@ textarea.form-control::placeholder {
 }
 
 .nmm-modal-close:hover {
-  color: var(--color-text-main, #f8fafc);
+  color: var(--color-text-main);
   background: var(--color-panel-surface, rgba(255, 255, 255, 0.08));
 }
 
@@ -5853,24 +5853,6 @@ textarea.form-control::placeholder {
   color: var(--color-text-muted);
   margin: 0 0 var(--space-3) 0;
   line-height: 1.4;
-}
-
-.nmm-batch-dropzone {
-  border: 2px dashed var(--color-panel-border-strong);
-  border-radius: var(--radius-md);
-  padding: var(--space-5) var(--space-3);
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  background: var(--color-panel-surface-elevated);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.nmm-batch-dropzone:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-dim);
 }
 
 .nmm-batch-dropzone-icon svg {
@@ -5984,13 +5966,6 @@ textarea.form-control::placeholder {
   border: 1px solid var(--color-panel-border-dim);
 }
 
-.nmm-batch-footer-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-}
-
 .nmm-batch-progress-header {
   display: flex;
   justify-content: space-between;
@@ -6044,8 +6019,8 @@ textarea.form-control::placeholder {
   border: 1px solid var(--color-panel-border);
 }
 
-.stat-box.success .stat-num { color: var(--color-success, #22c55e); }
-.stat-box.danger .stat-num { color: var(--color-danger, #ef4444); }
+.stat-box.success .stat-num { color: var(--color-success); }
+.stat-box.danger .stat-num { color: var(--color-danger); }
 .stat-box.neutral .stat-num { color: var(--color-text-muted); }
 .stat-num { font-size: 24px; font-weight: 700; }
 .stat-lbl { font-size: var(--text-label, 11px); text-transform: uppercase; color: var(--color-text-muted); }
@@ -9033,6 +9008,57 @@ textarea.form-control::placeholder {
 .uimport-dropzone.is-drag-over {
   border-color: var(--color-accent);
   background: var(--color-accent-dim);
+}
+
+/* Shared issue kit: success variant (slicer tag, passed checks). */
+.issue-tag.is-success { color: var(--color-success); border-color: currentColor; }
+
+/* BatchProcessorModal: discovery pane head (replaces inline card overrides). */
+.batch-pane-head { margin-bottom: var(--space-4); padding: var(--space-4); }
+.batch-pane-title { font-size: var(--text-base); font-weight: 700; }
+.nmm-batch-hint.batch-pane-hint { margin: 0 0 0 var(--space-2); display: inline-block; }
+
+/* BatchProcessorModal: slicer profile row + inline field rows. */
+.batch-slicer-row {
+  margin-top: var(--space-4);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-panel-border-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.batch-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.batch-field > label {
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.batch-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.batch-sublib-input { max-width: 180px; }
+.batch-val-success { color: var(--color-success); }
+
+/* BatchProcessorModal: offline-bridge notice (was class without rules). */
+.nmm-alert-subtle {
+  font-size: var(--text-sm);
+  color: var(--color-warning);
+  padding: var(--space-2) 0 0;
+  line-height: 1.4;
 }
 
 /* ─────────────────────────────────────────────────────────────

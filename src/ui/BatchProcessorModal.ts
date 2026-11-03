@@ -5,7 +5,7 @@
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
-import { toast } from './notify.ts';
+import { confirmDialog, toast } from './notify.ts';
 import { extractSf2PresetsToCandidates } from '../core/batch/Sf2BatchExtractor.ts';
 import {
   extractFolderFilesToCandidates,
@@ -90,10 +90,18 @@ export class BatchProcessorModal {
 
   public close(): void {
     if (this.queue.getProgressState().status === 'running') {
-      if (!confirm('A batch process is currently running. Do you want to cancel it and exit?')) {
-        return;
-      }
-      this.queue.cancel();
+      void confirmDialog('A batch process is currently running. Do you want to cancel it and exit?', {
+        title: 'Cancel batch?',
+        confirmLabel: 'Cancel batch',
+        cancelLabel: 'Keep running',
+        danger: true,
+      }).then((ok) => {
+        if (ok) {
+          this.queue.cancel();
+          this.cleanup();
+        }
+      });
+      return;
     }
     this.cleanup();
   }
@@ -122,9 +130,6 @@ export class BatchProcessorModal {
       this.backdropEl.addEventListener('click', (e) => {
         if (e.target === this.backdropEl) this.close();
       });
-      window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && this.backdropEl) this.close();
-      });
     }
 
     let bodyHtml = '';
@@ -139,13 +144,13 @@ export class BatchProcessorModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-batch-window" role="dialog" aria-modal="true" aria-labelledby="batch-modal-title">
+      <div class="nmm-modal-window nmm-modal-xl nmm-batch-window" role="dialog" aria-modal="true" aria-labelledby="batch-modal-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon">${ICONS.layers || ''}</span>
+            <span class="modal-icon">${ICONS.layers}</span>
             <h2 id="batch-modal-title">Batch Processor (Phase 12)</h2>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-batch-close">${ICONS.close || 'X'}</button>
+          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-batch-close">${ICONS.close}</button>
         </header>
 
         <nav class="nmm-batch-steps-nav" aria-label="Batch progress stages">
@@ -182,20 +187,20 @@ export class BatchProcessorModal {
     return `
       <div class="nmm-batch-discover-pane">
         <!-- Ingestion Mode Selector -->
-        <div class="nmm-batch-card" style="margin-bottom: 12px; padding: 12px 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <div>
-              <strong style="font-size: 0.95rem;">Ingestion Strategy:</strong>
-              <span class="nmm-batch-hint" style="margin: 0; display: inline-block; margin-left: 8px;">
+        <div class="nmm-batch-card batch-pane-head">
+          <div class="triage-toolbar">
+            <div class="triage-toolbar-left">
+              <strong class="batch-pane-title">Ingestion Strategy:</strong>
+              <span class="nmm-batch-hint batch-pane-hint">
                 ${isSlicer ? 'Treat each audio loop as an individual kit/model, auto-detect slices and bundle groove MIDI.' : 'Group multiple sample files into multi-zone instrument models.'}
               </span>
             </div>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="nmm-btn ${!isSlicer ? 'nmm-btn-primary' : 'nmm-btn-secondary'}" id="btn-batch-mode-multisample">
+            <div class="footer-right">
+              <button type="button" class="btn ${!isSlicer ? 'btn-primary' : 'btn-outline'}" id="btn-batch-mode-multisample">
                 Multisample Instruments
               </button>
-              <button type="button" class="nmm-btn ${isSlicer ? 'nmm-btn-primary' : 'nmm-btn-secondary'}" id="btn-batch-mode-slicer">
-                ${ICONS.scissors || ''} Batch AutoSlicer (Loops & Beats)
+              <button type="button" class="btn ${isSlicer ? 'btn-primary' : 'btn-outline'}" id="btn-batch-mode-slicer">
+                ${ICONS.scissors} Batch AutoSlicer (Loops & Beats)
               </button>
             </div>
           </div>
@@ -203,10 +208,10 @@ export class BatchProcessorModal {
           ${
             isSlicer
               ? `
-          <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 16px; align-items: center; font-size: 0.85rem;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label for="sel-batch-slicer-profile" style="color: var(--color-text-dim);">Slicing Profile:</label>
-              <select id="sel-batch-slicer-profile" class="nmm-select" style="padding: 3px 8px; font-size: 0.85rem;">
+          <div class="batch-slicer-row">
+            <div class="batch-field">
+              <label for="sel-batch-slicer-profile">Slicing Profile:</label>
+              <select id="sel-batch-slicer-profile" class="form-control">
                 <option value="drums" ${this.activeConfig.slicerProfile === 'drums' ? 'selected' : ''}>Drums (General MIDI C1..B2 Map)</option>
                 <option value="chromatic" ${this.activeConfig.slicerProfile === 'chromatic' ? 'selected' : ''}>Chromatic (F0 Pitch + Equidistant 0..127)</option>
                 <option value="vocals" ${this.activeConfig.slicerProfile === 'vocals' ? 'selected' : ''}>Vocals & Phrases (Silence Valleys)</option>
@@ -214,12 +219,12 @@ export class BatchProcessorModal {
               </select>
             </div>
 
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <label class="batch-check">
               <input type="checkbox" id="chk-batch-export-midi" ${this.activeConfig.exportMidiPattern !== false ? 'checked' : ''} />
               <span>Generate & Bundle Groove MIDI Pattern (.mid)</span>
             </label>
 
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <label class="batch-check">
               <input type="checkbox" id="chk-batch-vram-safety" ${this.activeConfig.stagePipelineVramSafety !== false ? 'checked' : ''} />
               <span title="Flushes CUDA memory between model jobs to prevent GPU OOM on 6/8 GB cards">VRAM Stage Safety Flush</span>
             </label>
@@ -246,22 +251,22 @@ export class BatchProcessorModal {
               ${
                 !isSlicer
                   ? `
-              <label class="nmm-btn nmm-btn-secondary">
+              <label class="btn btn-outline">
                 Select SoundFont (.sf2)
-                <input type="file" id="input-batch-sf2" accept=".sf2" style="display: none;" />
+                <input type="file" id="input-batch-sf2" accept=".sf2" class="is-hidden-file" />
               </label>
               `
                   : `
-              <label class="nmm-btn nmm-btn-primary">
+              <label class="btn btn-primary">
                 ${ICONS.scissors || ''} Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex)
-                <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex" multiple style="display: none;" />
+                <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex" multiple class="is-hidden-file" />
               </label>
               `
               }
 
-              <label class="nmm-btn nmm-btn-secondary">
+              <label class="btn btn-outline">
                 Select ${isSlicer ? 'Loops Folder' : 'Audio Folder'}
-                <input type="file" id="input-batch-folder" webkitdirectory directory multiple style="display: none;" />
+                <input type="file" id="input-batch-folder" webkitdirectory directory multiple class="is-hidden-file" />
               </label>
             </div>
           </div>
@@ -273,8 +278,8 @@ export class BatchProcessorModal {
             Scan high-capacity local disk folders without loading gigabytes of raw audio into browser memory.
           </p>
           <div class="nmm-batch-scan-row">
-            <input type="text" id="input-batch-scan-path" class="nmm-input" value="${escAttr(defaultScanPath)}" placeholder="C:\\path\\to\\soundfonts" />
-            <button type="button" class="nmm-btn nmm-btn-primary" id="btn-batch-scan-disk" ${!isBridgeOnline ? 'disabled' : ''}>
+            <input type="text" id="input-batch-scan-path" class="form-control" value="${escAttr(defaultScanPath)}" placeholder="C:\\path\\to\\soundfonts" />
+            <button type="button" class="btn btn-primary" id="btn-batch-scan-disk" ${!isBridgeOnline ? 'disabled' : ''}>
               ${this.isScanningLocal ? 'Scanning...' : 'Scan Folder'}
             </button>
           </div>
@@ -305,7 +310,7 @@ export class BatchProcessorModal {
           <td class="col-name">
             <strong>${escHtml(m.name)}</strong>
             <span class="nmm-badge-slug">${escHtml(m.slug)}</span>
-            ${m.isSlicer ? `<span class="nmm-badge-slug" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);">Slicer (${m.slicerProfile || 'drums'})</span>` : ''}
+            ${m.isSlicer ? `<span class="issue-tag is-success">Slicer (${m.slicerProfile || 'drums'})</span>` : ''}
           </td>
           <td class="col-origin">${escHtml(m.sourceOrigin)}</td>
           <td class="col-zones">${m.zoneCount} ${m.isSlicer ? 'slice(s) · MIDI' : 'zone(s)'} · ${m.fileCount} file(s)</td>
@@ -344,8 +349,8 @@ export class BatchProcessorModal {
             </div>
             <div class="profile-item">
               <span class="profile-label">Destination Sub-library:</span>
-              <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
-                <input type="text" id="inp-batch-target-sublib" class="nmm-input" style="padding: 2px 6px; font-size: 0.85rem; max-width: 180px;" value="${escAttr(this.activeConfig.destinationSublibrary || 'Default')}" placeholder="Default" />
+              <div class="batch-field">
+                <input type="text" id="inp-batch-target-sublib" class="form-control batch-sublib-input" value="${escAttr(this.activeConfig.destinationSublibrary || 'Default')}" placeholder="Default" />
               </div>
             </div>
             <div class="profile-item">
@@ -357,7 +362,7 @@ export class BatchProcessorModal {
                 ? `
             <div class="profile-item">
               <span class="profile-label">AutoSlicer Pipeline:</span>
-              <strong class="profile-val" style="color: #34d399;">${escHtml(summary.executionProfile.slicerProfileLabel)}</strong>
+              <strong class="profile-val batch-val-success">${escHtml(summary.executionProfile.slicerProfileLabel)}</strong>
             </div>
             `
                 : ''
@@ -370,7 +375,7 @@ export class BatchProcessorModal {
           <div class="nmm-preflight-table-header">
             <h3>Discovered Models & Files (${summary.selectedCount} of ${summary.totalDiscovered} selected)</h3>
             <div class="nmm-preflight-table-actions">
-              <button type="button" class="nmm-btn nmm-btn-subtle" id="btn-toggle-all-candidates">
+              <button type="button" class="btn btn-ghost" id="btn-toggle-all-candidates">
                 ${isAllSelected ? 'Deselect All' : 'Select All'}
               </button>
             </div>
@@ -394,13 +399,17 @@ export class BatchProcessorModal {
           </div>
         </div>
 
-        <!-- Action Footer -->
-        <div class="nmm-batch-footer-row">
-          <button type="button" class="nmm-btn nmm-btn-subtle" id="btn-preflight-back">Back</button>
-          <button type="button" class="nmm-btn nmm-btn-primary" id="btn-preflight-start" ${summary.selectedCount === 0 ? 'disabled' : ''}>
-            Start Batch Processing (${summary.selectedCount} Models)
-          </button>
-        </div>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <span class="triage-count">${summary.selectedCount} of ${summary.totalDiscovered} selected</span>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-outline" id="btn-preflight-back">Back</button>
+            <button type="button" class="btn btn-primary" id="btn-preflight-start" ${summary.selectedCount === 0 ? 'disabled' : ''}>
+              Start Batch Processing (${summary.selectedCount} Models)
+            </button>
+          </div>
+        </footer>
       </div>
     `;
   }
@@ -472,12 +481,17 @@ export class BatchProcessorModal {
           </div>
         </div>
 
-        <div class="nmm-batch-footer-row">
-          <button type="button" class="nmm-btn nmm-btn-danger" id="btn-batch-cancel">Cancel Batch</button>
-          <button type="button" class="nmm-btn nmm-btn-secondary" id="btn-batch-pause">
-            ${isPaused ? 'Resume' : 'Pause'}
-          </button>
-        </div>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <span class="triage-count">${s.completedJobs + s.failedJobs} of ${s.totalJobs} · ETA ${(s.estimatedRemainingMs / 1000).toFixed(0)}s</span>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-outline" id="btn-batch-pause">
+              ${isPaused ? 'Resume' : 'Pause'}
+            </button>
+            <button type="button" class="btn btn-danger-solid" id="btn-batch-cancel">Cancel Batch</button>
+          </div>
+        </footer>
       </div>
     `;
   }
@@ -513,11 +527,16 @@ export class BatchProcessorModal {
           </div>
         </div>
 
-        <div class="nmm-batch-footer-row">
-          ${hasZip ? `<button type="button" class="nmm-btn nmm-btn-primary" id="btn-download-master-zip">Download Master ZIP (${zipSizeMb} MB)</button>` : ''}
-          <button type="button" class="nmm-btn nmm-btn-secondary" id="btn-batch-export-json">Export Log (JSON)</button>
-          <button type="button" class="nmm-btn nmm-btn-subtle" id="btn-batch-finish-close">Close</button>
-        </div>
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <span class="triage-count">${sum.succeeded} ok · ${sum.failed} failed · ${sum.skipped} skipped</span>
+          </div>
+          <div class="footer-right">
+            ${hasZip ? `<button type="button" class="btn btn-primary" id="btn-download-master-zip">Download Master ZIP (${zipSizeMb} MB)</button>` : ''}
+            <button type="button" class="btn btn-outline" id="btn-batch-export-json">Export Log (JSON)</button>
+            <button type="button" class="btn btn-ghost" id="btn-batch-finish-close">Close</button>
+          </div>
+        </footer>
       </div>
     `;
   }
@@ -653,9 +672,14 @@ export class BatchProcessorModal {
     });
 
     this.backdropEl.querySelector('#btn-batch-cancel')?.addEventListener('click', () => {
-      if (confirm('Are you sure you want to cancel the batch?')) {
-        this.queue.cancel();
-      }
+      void confirmDialog('Are you sure you want to cancel the batch?', {
+        title: 'Cancel batch?',
+        confirmLabel: 'Cancel batch',
+        cancelLabel: 'Keep running',
+        danger: true,
+      }).then((ok) => {
+        if (ok) this.queue.cancel();
+      });
     });
 
     // Step 4: Done actions
