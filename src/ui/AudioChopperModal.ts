@@ -463,7 +463,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
             <h2>Manual Slice Edits Detected</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-confirm-close">${ICONS.close || '✕'}</button>
+          <button type="button" class="nmm-modal-close" id="btn-confirm-close">${ICONS.close}</button>
         </header>
         <div class="nmm-modal-body nmm-audio-modal-body">
           <p>
@@ -615,7 +615,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>REX2 Audio Pairing Assistant</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close">${ICONS.close || '✕'}</button>
+          <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close">${ICONS.close}</button>
         </header>
 
         <div class="nmm-modal-body nmm-audio-modal-body">
@@ -633,7 +633,7 @@ export class AudioChopperModal {
             </p>
             <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" class="is-hidden-file" />
             <button type="button" class="btn btn-primary" id="btn-rx2-browse-wav">
-              ${ICONS.folder || ICONS.wave} Select Companion Audio File...
+              ${ICONS.folder} Select Companion Audio File...
             </button>
           </div>
 
@@ -643,7 +643,7 @@ export class AudioChopperModal {
               Start the local Python Companion Bridge (<code>python bridge/server.py</code> on port 7860). When active, REX2 files decompress automatically in the background.
             </p>
             <button type="button" class="btn btn-outline" id="btn-rx2-retry-bridge">
-              ${ICONS.refresh || '⟳'} Check Bridge Connection &amp; Retry
+              ${ICONS.refresh} Check Bridge Connection &amp; Retry
             </button>
           </div>
 
@@ -791,7 +791,7 @@ export class AudioChopperModal {
               ${hasAudio ? escHtml(this.sourceFilename) : 'No Sample Loaded'}
             </span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-chopper-close">${ICONS.close || '✕'}</button>
+          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-chopper-close">${ICONS.close}</button>
         </header>
 
         <div class="nmm-modal-body nmm-chopper-body">
@@ -979,16 +979,16 @@ export class AudioChopperModal {
 
                 <div class="chopper-action-bar-right">
                   <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
-                    ${ICONS.sliders || ''} DSP Denoise
+                    ${ICONS.sliders} DSP Denoise
                   </button>
                   <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-demucs-split" title="Separate vocal from backing track using Demucs before slicing">
                     ${ICONS.wave} Separate Stems
                   </button>
                   <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-whisper-align" title="Align vocal phrases and syllables with OpenAI Whisper-tiny">
-                    ${ICONS.sparkle || ICONS.ai} AI Vocal Align
+                    ${ICONS.sparkle} AI Vocal Align
                   </button>
                   <button type="button" class="btn btn-sm btn-ai-accent" id="btn-chopper-ai-enhance" title="Enhance audio via Bridge AI, taking captured noise profile into account to remove it">
-                    ${ICONS.sparkle || ICONS.cpu} AI Enhance
+                    ${ICONS.sparkle} AI Enhance
                   </button>
                 </div>
               </div>
@@ -2346,7 +2346,7 @@ export class AudioChopperModal {
               },
               {
                 label: `Capture Noise Print from Slice #${hitSlice.index} (Fase 30)`,
-                icon: ICONS.wave || ICONS.mic,
+                icon: ICONS.wave,
                 onClick: () => {
                   this.capturedNoiseProfile = captureNoisePrintFromRegion(this.pcm, this.sampleRate, {
                     startFrame: hitSlice.startFrame,
@@ -2671,7 +2671,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>Demucs AI Stem Separation</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-stem-close">${ICONS.close || '✕'}</button>
+          <button type="button" class="nmm-modal-close" id="btn-stem-close">${ICONS.close}</button>
         </header>
         <div class="nmm-modal-body nmm-audio-modal-body">
           <p>
@@ -2711,7 +2711,7 @@ export class AudioChopperModal {
             <button type="button" class="btn btn-ghost" id="btn-stem-cancel">Close</button>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-primary" id="btn-stem-run">${ICONS.sparkle || ICONS.ai} Run Separation</button>
+            <button type="button" class="btn btn-primary" id="btn-stem-run">${ICONS.sparkle} Run Separation</button>
           </div>
         </footer>
       </div>
