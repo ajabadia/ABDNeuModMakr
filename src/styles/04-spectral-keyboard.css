@@ -1,0 +1,311 @@
+/* ── Spectral & A/B Resynthesis Monitor (`SpectralView.ts`) ── */
+.spectral-view-panel {
+  flex: 1;
+  padding: var(--space-3) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 175px;
+}
+
+.spectral-view-panel.is-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+}
+
+.spectral-header,
+.spectral-ab-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.spectral-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.spectral-sample-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text-main);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-spec-tab,
+.btn-keyb-mode,
+.bank-tab {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Unified active-pill accent (was 4 identical rules: hud-icon, ribbon-wave, target/working-mode, spec/keyb/bank tabs) */
+.btn-hud-icon:hover:not(:disabled),
+.btn-hud-icon.is-active,
+.btn-ribbon-wave.is-active,
+.btn-target-format.is-active,
+.btn-working-mode.is-active,
+.btn-spec-tab.is-active,
+.btn-keyb-mode.is-active,
+.bank-tab.is-active {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.spectral-canvas-wrap {
+  flex: 1;
+  min-height: 105px;
+  position: relative;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-panel-surface);
+}
+
+.spectral-canvas-wrap canvas,
+.shared-plotter-mount {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.spectral-overlay-bar {
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: var(--space-1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  font-size: var(--text-sm);
+}
+
+.layer-legend,
+.spectral-hover-readout {
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.layer-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  pointer-events: auto;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.layer-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-sm);
+}
+
+.zone-key-resizer:hover,
+.layer-swatch-1 { background: var(--color-accent); }
+.layer-swatch-2 { background: var(--color-warning); }
+.layer-swatch-3 { background: var(--color-cable-midi-in); }
+
+.btn-overlay-toggle {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+/* Unified accent outline state (was 2 identical rules) */
+.btn-row-edit:hover,
+.btn-row-play:hover,
+.btn-overlay-toggle.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.btn-overlay-toggle.is-action-accent {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.btn-overlay-toggle.is-action-accent:hover {
+  background: var(--color-accent);
+  color: var(--color-button-text);
+}
+
+.ab-keyb-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.keyb-mode-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
+}
+
+.ab-level-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 140px;
+}
+
+.meter-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-dim);
+}
+
+.meter-track {
+  flex: 1;
+  height: 7px;
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-success) 0%, var(--color-warning) 75%, var(--color-danger) 100%);
+  transition: width 0.06s linear;
+}
+
+.meter-val {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ── Keyboard Strip (Powered by @abdsynths/midi-keyb) ── */
+.keyboard-section {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 0 var(--space-4) var(--space-3) var(--space-4);
+}
+
+.keyboard-strip-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+
+.keyboard-hud,
+.octave-indicator {
+  font-size: var(--text-md);
+  color: var(--color-text-muted);
+}
+
+.octave-indicator {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin: 0 var(--space-2);
+}
+
+.piano-keys-bed#piano-keyboard {
+  display: flex;
+  height: 98px;
+  min-height: 98px;
+  position: relative;
+  border: 1px solid var(--kbd-border);
+  background: var(--kbd-bg);
+  border-radius: var(--radius-md);
+  overflow: visible;
+  transition: height 0.3s ease, min-height 0.3s ease;
+}
+
+.piano-keys-bed#piano-keyboard.kbd-collapsed {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+
+.keyboard-strip-container.is-strip-collapsed {
+  opacity: 0.85;
+}
+
+.kbd-key-ref-label {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--overlay-key-label-dark);
+  pointer-events: none;
+  z-index: 15;
+  user-select: none;
+}
+
+.kbd-black-key .kbd-key-ref-label {
+  bottom: 2px;
+  color: var(--overlay-key-label-light);
+}
+
+.kbd-key-root-badge {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--color-bg-base);
+  background: var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 3px;
+  pointer-events: none;
+  z-index: 20;
+  user-select: none;
+  box-shadow: 0 0 6px var(--color-accent);
+  white-space: nowrap;
+}
+
+.kbd-black-key .kbd-key-root-badge {
+  bottom: 12px;
+}
+
+

@@ -1,0 +1,56 @@
+/* ─────────────────────────────────────────────────────────
+   Multi-Instrument Selector & Batch Modal
+   ───────────────────────────────────────────────────────── */
+.nmm-multi-inst-window {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevation-2);
+  overflow: hidden;
+  color: var(--color-text-main);
+}
+
+.triage-table td.triage-col-idx {
+  width: 44px;
+  text-align: center;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+}
+
+.triage-table td.triage-col-bank,
+.triage-table td.triage-col-regions {
+  white-space: nowrap;
+}
+
+.bank-tag {
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--color-accent);
+}
+
+.reg-tag {
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+}
+
+.triage-table tbody tr.triage-row {
+  cursor: pointer;
+}
+
+.btn-batch-call {
+  border-color: var(--color-ai);
+  color: var(--color-ai);
+}
+
+.btn-batch-call:hover {
+  background: rgba(var(--color-ai-rgb), 0.15);
+}
+
+
+

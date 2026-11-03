@@ -1,0 +1,468 @@
+/* ─────────────────────────────────────────────────────────────
+   Canonical Modal Skeleton (DRY) — tallas, pie, icono y dropzone
+   Las modales de laboratorio + triaje + multi-instrumento usan
+   este marcado; aquí están sus reglas. Cero colores literales.
+   ───────────────────────────────────────────────────────────── */
+
+/* Tallas canónicas de ventana (geometría; el resto lo pone cada modal) */
+.nmm-modal-xl {
+  max-width: 1100px;
+  width: 95%;
+  max-height: 92vh;
+}
+
+.nmm-modal-l {
+  max-width: 820px;
+  width: 94%;
+  max-height: 88vh;
+}
+
+.nmm-modal-m {
+  max-width: 540px;
+  width: 92%;
+  max-height: 85vh;
+}
+
+/* Pie canónico: estado/retorno a la izquierda, acciones a la derecha */
+.nmm-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-surface);
+}
+
+.footer-left,
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Icono canónico de cabecera (espejo de .nmm-modal-header-icon) */
+.modal-icon svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-accent);
+  vertical-align: middle;
+}
+
+/* Dropzone canónica (Batch + Universal Import unificadas) */
+.nmm-dropzone,
+.nmm-batch-dropzone,
+.uimport-dropzone {
+  border: 2px dashed var(--color-panel-border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-panel-surface-elevated);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  cursor: pointer;
+  outline: none;
+}
+
+.nmm-dropzone:hover,
+.nmm-batch-dropzone:hover,
+.uimport-dropzone:hover,
+.nmm-dropzone.is-drag-over,
+.uimport-dropzone.is-drag-over {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+/* Shared issue kit: success variant (slicer tag, passed checks). */
+.issue-tag.is-success { color: var(--color-success); border-color: currentColor; }
+
+/* BatchProcessorModal: discovery pane head (replaces inline card overrides). */
+.batch-pane-head { margin-bottom: var(--space-6); padding: var(--space-6) var(--space-8); }
+.batch-pane-title { font-size: var(--text-base); font-weight: 700; }
+.nmm-batch-hint.batch-pane-hint { margin: 0 0 0 var(--space-4); display: inline-block; }
+
+/* BatchProcessorModal: slicer profile row + inline field rows. */
+.batch-slicer-row {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-panel-border-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+.batch-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.batch-field > label {
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.batch-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.batch-sublib-input { max-width: 180px; }
+.batch-val-success { color: var(--color-success); }
+
+.cfg-inline-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.cfg-flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.cfg-ordinal-input {
+  width: 58px;
+  text-align: center;
+}
+
+.cfg-gap-top {
+  margin-top: var(--space-5);
+}
+
+.axionik-sublib-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-6);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-chassis);
+  font-size: var(--text-lg);
+}
+
+.bank-inline-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.bank-toolbar-label {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.bank-toolbar-select {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.bank-del-btn:disabled {
+  opacity: 0.5;
+}
+
+/* BatchProcessorModal: offline-bridge notice (was class without rules). */
+.nmm-alert-subtle {
+  font-size: var(--text-sm);
+  color: var(--color-warning);
+  padding: var(--space-2) 0 0;
+  line-height: 1.4;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Raw Sampler Export (Fase 16): ajustes + preflight compartido
+   (las tarjetas .preflight-* / .issue-* las reutilizan Universal
+   Import, Config Health y ExportDestinationModal).
+   ───────────────────────────────────────────────────────────── */
+
+.raw-export-body {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-panel-bg);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.raw-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-right: 1px solid var(--color-panel-border-dim);
+  padding-right: var(--space-4);
+  min-width: 0;
+}
+
+.raw-settings .form-control {
+  width: 100%;
+}
+
+.raw-format-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.raw-format-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-bg);
+  color: var(--color-text-main);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-sm);
+}
+
+.raw-format-btn.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+  font-weight: 700;
+}
+
+.raw-format-badge {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.raw-format-btn.is-active .raw-format-badge {
+  color: var(--color-accent);
+}
+
+.raw-card {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.raw-card-title {
+  font-size: var(--text-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.raw-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.raw-preflight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Estado del preflight: superficie + borde y título por severidad */
+.preflight-status {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-left: 3px solid var(--color-panel-border);
+  background: var(--color-panel-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.preflight-status.is-error {
+  border-color: var(--color-danger);
+  border-left-color: var(--color-danger);
+}
+
+.preflight-status.is-warn {
+  border-color: var(--color-warning);
+  border-left-color: var(--color-warning);
+}
+
+.preflight-status.is-ok {
+  border-color: var(--color-success);
+  border-left-color: var(--color-success);
+}
+
+.preflight-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.preflight-status-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.preflight-status.is-error .preflight-status-title {
+  color: var(--color-danger);
+}
+
+.preflight-status.is-warn .preflight-status-title {
+  color: var(--color-warning);
+}
+
+.preflight-status.is-ok .preflight-status-title {
+  color: var(--color-success);
+}
+
+.preflight-status-icon svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+.preflight-status-meta {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.preflight-status p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-main);
+  line-height: 1.4;
+}
+
+/* Lista de incidencias del preflight */
+.preflight-issues {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding-right: var(--space-1);
+}
+
+.preflight-issues-title {
+  font-size: var(--text-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.issue-card {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-left: 3px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.issue-card.is-error {
+  border-left-color: var(--color-danger);
+}
+
+.issue-card.is-warn {
+  border-left-color: var(--color-warning);
+}
+
+.issue-card.is-info {
+  border-left-color: var(--color-accent);
+}
+
+.issue-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.issue-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.issue-tags {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.issue-tag {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-bg);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.issue-tag.is-error {
+  color: var(--color-danger);
+  border-color: currentColor;
+}
+
+.issue-tag.is-warn {
+  color: var(--color-warning);
+  border-color: currentColor;
+}
+
+.issue-tag.is-info {
+  color: var(--color-accent);
+  border-color: currentColor;
+}
+
+.issue-desc {
+  font-size: var(--text-sm);
+  margin: 0;
+  color: var(--color-text-main);
+  line-height: 1.35;
+}
+
+.issue-adapt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--color-panel-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+}
+
+.issue-adapt span {
+  color: var(--color-text-main);
+}
+

@@ -1,0 +1,71 @@
+/* ─────────────────────────────────────────────────────────────
+   Extended Model Metadata & Tags UX (Compact Summary & Drawer)
+   ───────────────────────────────────────────────────────────── */
+.meta-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-label, 11px);
+  color: var(--color-text-main);
+  line-height: 1.3;
+}
+
+.meta-tag-chip strong {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.meta-tag-chip.is-link {
+  color: var(--color-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.meta-tag-chip.is-link:hover {
+  background: var(--color-accent-dim, rgba(0, 210, 255, 0.1));
+  border-color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.meta-tag-chip.is-link svg {
+  width: 11px;
+  height: 11px;
+}
+
+.meta-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(var(--color-ai-rgb), 0.12);
+  border: 1px solid rgba(var(--color-ai-rgb), 0.35);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.meta-tag-pill .tag-name {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.meta-tag-pill .tag-val {
+  color: var(--color-text-main);
+}
+
+.meta-desc-preview {
+  font-style: italic;
+  padding: 2px 4px;
+}
+
+.btn-open-model-meta-drawer {
+  font-family: var(--font-mono);
+  font-size: var(--text-label, 11px);
+}
+

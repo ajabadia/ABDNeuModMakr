@@ -1,0 +1,276 @@
+/* ── App Shell & Workspace Layout ───────────────────────── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  background-color: var(--abd-bg-tint, var(--color-bg-base));
+  background-image: var(--bg-tint-overlay), var(--bg-image-theme);
+  background-blend-mode: normal, soft-light;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  position: relative;
+  overflow: hidden;
+}
+
+.workspace-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-5);
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: clamp(410px, 31vw, 455px) 1fr;
+  gap: var(--space-4);
+  min-height: 0;
+  transition: grid-template-columns 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-columns.is-sidebar-collapsed {
+  grid-template-columns: 56px 1fr !important;
+  gap: var(--space-3);
+}
+
+.column-left-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.column-inspector {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.column-spectral {
+  flex: 1;
+  min-height: 185px;
+  display: flex;
+  flex-direction: column;
+}
+
+
+.column-process {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Unified Panel Containers (Consolidated) ───────────── */
+.zone-ribbon-card,
+.zone-inspector-panel,
+.process-panel-card,
+.spectral-view-panel,
+.keyboard-section {
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-chassis);
+  box-shadow: var(--shadow-elevation-1);
+  box-sizing: border-box;
+}
+
+.zone-ribbon-card,
+.keyboard-section {
+  padding: var(--space-3) var(--space-5);
+  flex-shrink: 0;
+}
+
+.zone-inspector-panel,
+.process-panel-card {
+  padding: var(--space-4) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.process-panel-card {
+  padding: var(--space-3) var(--space-4);
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Unified header row (was 2 identical rules) */
+.panel-header,
+.ribbon-header,
+.drawer-header,
+.modal-header,
+.keyboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--color-panel-border-dim);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.panel-badge,
+.ribbon-badge,
+.model-slot-tag,
+.preset-slot-tag {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-panel-border);
+  color: var(--color-accent);
+  font-weight: 700;
+  font-size: var(--text-md);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ribbon-badge {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+  border-color: var(--color-accent);
+}
+
+.panel-caption,
+.ribbon-caption {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.5px;
+}
+
+/* Shared flex-line core: centered/wrapped control rows, CTA, status badges, item headers (was 2 identical rules) */
+.panel-actions,
+.sample-actions,
+.spectral-mode-tabs,
+.ab-buttons-group,
+.btn-cta-process,
+.audit-status-badge,
+.model-item-header,
+.preset-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── Navbar HUD Slots ──────────────────────────────────── */
+.neuron-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: var(--space-3);
+  color: var(--color-accent);
+}
+
+
+/* Shared pill/inline-status core */
+.hud-pill,
+.spectral-meta-pill,
+.spectral-grid-pill,
+.validation-inline-bar {
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  color: var(--color-text-muted);
+}
+.hud-pill,
+.spectral-meta-pill,
+.spectral-grid-pill {
+  display: inline-flex;
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: var(--color-text-muted);
+}
+
+.hud-label {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.hud-value {
+  color: var(--color-text-main);
+  font-weight: 700;
+}
+
+.hud-coverage-pill {
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.hud-coverage-pill.is-valid,
+.spectral-grid-pill.band-green {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.hud-coverage-pill.is-neutral {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-panel-surface);
+}
+
+.hud-coverage-pill.is-error {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-panel-surface-elevated);
+}
+
+.spectral-grid-pill.band-amber {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.spectral-grid-pill.band-orange {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.btn-hud-action {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-5);
+  font-weight: 700;
+  font-size: var(--text-base);
+  letter-spacing: 0.6px;
+}
+
+.btn-hud-action:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-bg-base);
+}
+
+.btn-hud-icon {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  color: var(--color-text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  padding: 0;
+}
+
+

@@ -1,0 +1,229 @@
+/* ─────────────────────────────────────────────────────────
+   Audio Recorder Modal Specifics (Fase 34 / 30)
+   Base window, body, cards, toolbars, canvas wrap, action bars
+   and scroll containers are inherited from the Unified Audio Lab
+   Modal Suite (ver styles/12-audio-lab.css) — zero duplicated rules or hardcoded colors.
+   ───────────────────────────────────────────────────────── */
+.nmm-recorder-rec-dot {
+  width: var(--space-3);
+  height: var(--space-3);
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  flex: none;
+}
+
+.nmm-recorder-rec-dot.is-rec {
+  background: var(--color-led-active);
+  box-shadow: var(--color-led-glow);
+  animation: nmm-recorder-blink 1s steps(2, start) infinite;
+}
+
+.nmm-recorder-rec-dot.is-paused {
+  background: var(--color-warning);
+}
+
+@keyframes nmm-recorder-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.nmm-recorder-device-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 240px;
+}
+
+.nmm-recorder-device-select {
+  flex: 1;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+.nmm-recorder-console-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-panel-border-dim);
+}
+
+@media (max-width: 780px) {
+  .nmm-recorder-console-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nmm-recorder-lcdrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-lcd {
+  min-width: 128px;
+  background: var(--color-lcd-bg);
+  border: 1px solid var(--color-lcd-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  text-align: center;
+}
+
+.nmm-recorder-lcd span {
+  font-family: var(--font-lcd);
+  font-size: var(--text-2xl);
+  color: var(--color-lcd-text);
+  letter-spacing: 0.04em;
+}
+
+.nmm-recorder-meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 180px;
+}
+
+.nmm-recorder-meter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.nmm-recorder-meter-track {
+  flex: 1;
+  height: var(--space-2);
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.nmm-recorder-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--color-vu-gradient);
+  transition: width var(--transition-fast);
+}
+
+.nmm-recorder-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.nmm-recorder-inspector,
+.nmm-recorder-inspector-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.nmm-recorder-inspector-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  color: var(--color-text-main);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+}
+
+.nmm-recorder-wave-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 160px;
+  background: var(--color-panel-bg);
+  border: 1px dashed var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+  padding: var(--space-3);
+}
+
+.nmm-recorder-noise-readout-box {
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-ai-accent {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-ai);
+  color: var(--color-ai-bright);
+}
+
+.btn-ai-accent:hover:not(:disabled) {
+  background: var(--color-ai);
+  color: var(--color-bg-base);
+}
+
+.nmm-recorder-takes-head-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.nmm-recorder-takes-empty {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-4);
+  text-align: center;
+}
+
+.nmm-recorder-take {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nmm-recorder-take:hover:not(.is-selected) {
+  background: var(--color-panel-surface-elevated);
+}
+
+.nmm-recorder-take.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+.nmm-recorder-take-name {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text-main);
+  font-size: var(--text-sm);
+  flex: none;
+}
+
+.nmm-recorder-take-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-1);
+  flex: none;
+}
+

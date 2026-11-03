@@ -1,0 +1,259 @@
+/* ─────────────────────────────────────────────────────────
+   Fase 21 — Configuration Health & Onboarding Modal
+   ───────────────────────────────────────────────────────── */
+
+.config-health-modal-backdrop {
+  z-index: 1060;
+}
+
+.config-health-modal-window {
+  width: 95vw;
+  max-width: 800px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-health-modal-body {
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.badge-health-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-success);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-health-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-health-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.health-overview-strip {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-panel-surface-elevated, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md, 6px);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.health-metric {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+}
+
+.health-metric .metric-val {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+}
+
+.health-metric .metric-val.val-ok {
+  color: var(--color-success);
+}
+
+.health-metric .metric-val.val-warn {
+  color: var(--color-warning);
+}
+
+.health-metric .metric-val.val-err {
+  color: var(--color-danger);
+}
+
+.health-metric .metric-lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.health-metric-desc {
+  flex: 1;
+  min-width: 220px;
+}
+
+.health-metric-desc p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-main);
+  line-height: 1.4;
+}
+
+.health-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.health-section-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.health-sec-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+}
+
+.health-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.health-item-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-panel-bg, rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--color-panel-border-dim, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-sm, 4px);
+  transition: border-color 0.15s ease;
+}
+
+.health-item-card:hover {
+  border-color: var(--color-panel-border);
+}
+
+.health-item-card.is-missing-mandatory {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.health-item-card.is-unconfigured-optional {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.health-item-status-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.health-item-card.is-ready .health-item-status-icon {
+  color: var(--color-success);
+}
+
+.health-item-card.is-missing-mandatory .health-item-status-icon {
+  color: var(--color-danger);
+}
+
+.health-item-card.is-unconfigured-optional .health-item-status-icon {
+  color: var(--color-warning);
+}
+
+.health-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.health-item-head strong {
+  font-size: 13px;
+  color: var(--color-text-main);
+}
+
+.health-pill {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.health-pill.pill-ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-success);
+}
+
+.health-pill.pill-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--color-warning);
+}
+
+.health-pill.pill-err {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+}
+
+.health-item-desc {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.health-item-impact {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.health-item-impact em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--color-text-main);
+}
+
+.health-boot-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.nav-health-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.nav-health-dot.dot-err {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.nav-health-dot.dot-warn {
+  background: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
+}
+
+.nav-health-dot.is-hidden {
+  display: none;
+}
+
+

@@ -1,0 +1,131 @@
+/* ── Canonical Component Utilities & Modal Sizing ── */
+.doc-modal-card {
+  max-width: 620px;
+}
+
+.doc-modal-body {
+  line-height: 1.55;
+  font-size: var(--text-md);
+}
+
+.sample-vel-split-control {
+  margin-top: var(--space-2);
+}
+
+.sample-vel-split-control.is-disabled {
+  opacity: 0.75;
+}
+
+.sample-vel-split-label {
+  font-size: var(--text-xs);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.sample-vel-split-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-top: var(--space-1);
+}
+
+.telemetry-spacer {
+  margin-top: var(--space-3);
+}
+
+/* ── Keyboard Strip: Hide SUST, HOLD, RETRIG buttons, preserving only Collapse ── */
+.keyboard-strip-container .kbd-sustain-btn,
+.keyboard-strip-container .kbd-hold-btn,
+.keyboard-strip-container .kbd-retrig-btn,
+.keyboard-strip-container .kbd-sostenuto-btn,
+.keyboard-strip-container .kbd-soft-btn {
+  display: none !important;
+}
+
+@media (max-width: 1180px) {
+  .workspace-columns,
+  .samples-slots-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Bank catalog selection (drawer + modal cards) ── */
+.ndb-card {
+  cursor: pointer;
+}
+.ndb-card.wt-selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent), var(--shadow-elevation-2);
+  background: var(--color-accent-dim);
+}
+
+/* ── Toast notifications (non-blocking alert replacement) ── */
+#toast-stack {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 9999;
+  max-width: min(420px, 90dvw);
+}
+.toast {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-accent);
+  color: var(--color-text-main);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  box-shadow: var(--shadow-elevation-3);
+  cursor: pointer;
+}
+.toast-success { border-color: var(--color-success); }
+.toast-warning { border-color: var(--color-warning); }
+.toast-error { border-color: var(--color-danger); }
+
+/* ── Confirm dialog (non-blocking confirm replacement) ── */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-scrim-78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.confirm-box {
+  max-width: min(480px, 92dvw);
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-strong);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-elevation-3);
+  display: flex;
+  flex-direction: column;
+}
+.confirm-msg,
+.prompt-body {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  color: var(--color-text-main);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  white-space: pre-line;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.prompt-msg {
+  margin: 0;
+  white-space: pre-line;
+}
+.prompt-input {
+  width: 100%;
+}
+.confirm-box .nmm-modal-footer {
+  border-top: 1px solid var(--color-panel-border-dim);
+}
+
