@@ -3069,20 +3069,33 @@ input[type="range"] {
   background: var(--color-panel-bg);
   border: 1px solid var(--color-panel-border-strong);
   border-radius: var(--radius-lg);
-  padding: var(--space-4) var(--space-5);
+  padding: 0;
+  overflow: hidden;
   box-shadow: var(--shadow-elevation-3);
+  display: flex;
+  flex-direction: column;
 }
-.confirm-msg {
-  margin: 0 0 var(--space-4);
+.confirm-msg,
+.prompt-body {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
   color: var(--color-text-main);
   font-size: var(--text-base);
   line-height: 1.5;
   white-space: pre-line;
-}
-.confirm-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.prompt-msg {
+  margin: 0;
+  white-space: pre-line;
+}
+.prompt-input {
+  width: 100%;
+}
+.confirm-box .nmm-modal-footer {
+  border-top: 1px solid var(--color-panel-border-dim);
 }
 
 /* ── Taller Deployed Spectral View (Compact 2-Row Zone Table Above) ── */
@@ -9020,6 +9033,291 @@ textarea.form-control::placeholder {
 .uimport-dropzone.is-drag-over {
   border-color: var(--color-accent);
   background: var(--color-accent-dim);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Raw Sampler Export (Fase 16): ajustes + preflight compartido
+   (las tarjetas .preflight-* / .issue-* las reutilizan Universal
+   Import y Config Health para que ambos preflights sean idénticos).
+   ───────────────────────────────────────────────────────────── */
+
+.raw-export-body {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-panel-bg);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.raw-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-right: 1px solid var(--color-panel-border-dim);
+  padding-right: var(--space-4);
+  min-width: 0;
+}
+
+.raw-settings .form-control {
+  width: 100%;
+}
+
+.raw-format-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.raw-format-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-bg);
+  color: var(--color-text-main);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-sm);
+}
+
+.raw-format-btn.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-dim);
+  font-weight: 700;
+}
+
+.raw-format-badge {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.raw-format-btn.is-active .raw-format-badge {
+  color: var(--color-accent);
+}
+
+.raw-card {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.raw-card-title {
+  font-size: var(--text-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.raw-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.raw-preflight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Estado del preflight: superficie + borde y título por severidad */
+.preflight-status {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-left: 3px solid var(--color-panel-border);
+  background: var(--color-panel-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.preflight-status.is-error {
+  border-color: var(--color-danger);
+  border-left-color: var(--color-danger);
+}
+
+.preflight-status.is-warn {
+  border-color: var(--color-warning);
+  border-left-color: var(--color-warning);
+}
+
+.preflight-status.is-ok {
+  border-color: var(--color-success);
+  border-left-color: var(--color-success);
+}
+
+.preflight-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.preflight-status-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.preflight-status.is-error .preflight-status-title {
+  color: var(--color-danger);
+}
+
+.preflight-status.is-warn .preflight-status-title {
+  color: var(--color-warning);
+}
+
+.preflight-status.is-ok .preflight-status-title {
+  color: var(--color-success);
+}
+
+.preflight-status-icon svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+.preflight-status-meta {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.preflight-status p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-main);
+  line-height: 1.4;
+}
+
+/* Lista de incidencias del preflight */
+.preflight-issues {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding-right: var(--space-1);
+}
+
+.preflight-issues-title {
+  font-size: var(--text-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.issue-card {
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border-dim);
+  border-left: 3px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.issue-card.is-error {
+  border-left-color: var(--color-danger);
+}
+
+.issue-card.is-warn {
+  border-left-color: var(--color-warning);
+}
+
+.issue-card.is-info {
+  border-left-color: var(--color-accent);
+}
+
+.issue-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.issue-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.issue-tags {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.issue-tag {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-bg);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.issue-tag.is-error {
+  color: var(--color-danger);
+  border-color: currentColor;
+}
+
+.issue-tag.is-warn {
+  color: var(--color-warning);
+  border-color: currentColor;
+}
+
+.issue-tag.is-info {
+  color: var(--color-accent);
+  border-color: currentColor;
+}
+
+.issue-desc {
+  font-size: var(--text-sm);
+  margin: 0;
+  color: var(--color-text-main);
+  line-height: 1.35;
+}
+
+.issue-adapt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--color-panel-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+}
+
+.issue-adapt span {
+  color: var(--color-text-main);
 }
 
 /* ─────────────────────────────────────────────────────────────
