@@ -46,6 +46,7 @@ const TEST_FILES = [
   'phase22_advanced_sampler.test.ts',
   'phase29_virtual_fs_triage.test.ts',
   'phase30_noise_print.test.ts',
+  'phase34_audio_recorder.test.ts',
 ];
 
 interface TestResult {

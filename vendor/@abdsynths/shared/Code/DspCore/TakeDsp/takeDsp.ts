@@ -317,3 +317,128 @@ export function classifyTake(f: TakeFeatures): TakeClassification {
     confidence: clamp01(0.5 + (drumsScore - chromaticScore)),
   };
 }
+
+/**
+ * Extracts acoustic features (`harmonicity01`, `transientDensity01`,
+ * `f0Confidence01`, `spectralFlatness01`) directly from a mono buffer
+ * so `RecordingEngine` or host UIs can automatically classify takes
+ * without requiring pre-supplied external descriptors.
+ */
+export function extractTakeFeatures(mono: Float32Array, sampleRate: number): TakeFeatures {
+  const sr = Math.max(1, sampleRate);
+  if (mono.length < 64 || peakAmplitude(mono) < 1e-4) {
+    return {
+      harmonicity01: 0,
+      transientDensity01: 0,
+      f0Confidence01: 0,
+      spectralFlatness01: 0.5,
+    };
+  }
+
+  // 1. Autocorrelation over a representative loud window (up to 2048 samples) for harmonicity & f0 confidence
+  const winLen = Math.min(mono.length, 2048);
+  let bestWinStart = 0;
+  let bestWinEnergy = -1;
+  const stepSearch = Math.max(1, Math.floor((mono.length - winLen) / 8));
+  for (let start = 0; start + winLen <= mono.length; start += stepSearch) {
+    let e = 0;
+    for (let i = 0; i < winLen; i++) e += mono[start + i] * mono[start + i];
+    if (e > bestWinEnergy) {
+      bestWinEnergy = e;
+      bestWinStart = start;
+    }
+    if (stepSearch === 1 && start > 0) break;
+  }
+
+  let r0 = 0;
+  for (let i = 0; i < winLen; i++) {
+    const v = mono[bestWinStart + i];
+    r0 += v * v;
+  }
+
+  let maxNormCorr = 0;
+  if (r0 > 1e-9) {
+    const minLag = Math.max(2, Math.floor(sr / 1500)); // ~1500 Hz max f0
+    const maxLag = Math.min(Math.floor(winLen / 2), Math.floor(sr / 45)); // ~45 Hz min f0
+    let passedFirstDip = false;
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let sum = 0;
+      let eLag = 0;
+      const count = winLen - lag;
+      for (let i = 0; i < count; i++) {
+        const a = mono[bestWinStart + i];
+        const b = mono[bestWinStart + i + lag];
+        sum += a * b;
+        eLag += b * b;
+      }
+      const denom = Math.sqrt((r0 * count) / winLen * Math.max(1e-12, eLag));
+      const corr = denom > 0 ? sum / denom : 0;
+      if (corr < 0.3) passedFirstDip = true;
+      if (passedFirstDip && corr > maxNormCorr) {
+        maxNormCorr = corr;
+      }
+    }
+  }
+  const harmonicity01 = clamp01(maxNormCorr);
+  const f0Confidence01 = clamp01(maxNormCorr > 0.4 ? (maxNormCorr - 0.2) / 0.75 : maxNormCorr * 0.5);
+
+  // 2. Transient / onset density via 10ms short-term energy jumps + crest factor
+  const envWin = Math.max(16, Math.round(sr * 0.01));
+  const numFrames = Math.max(1, Math.floor(mono.length / envWin));
+  let onsetCount = 0;
+  let prevRms = 0;
+  let sumRms = 0;
+  let maxRms = 0;
+  for (let f = 0; f < numFrames; f++) {
+    let s = 0;
+    const base = f * envWin;
+    for (let i = 0; i < envWin; i++) {
+      const v = mono[base + i];
+      s += v * v;
+    }
+    const rms = Math.sqrt(s / envWin);
+    sumRms += rms;
+    if (rms > maxRms) maxRms = rms;
+    if (rms > 0.01 && rms > prevRms * 2.2) {
+      onsetCount++;
+    }
+    prevRms = rms * 0.6 + prevRms * 0.4;
+  }
+  const meanRms = sumRms / numFrames;
+  const crestRatio = meanRms > 1e-6 ? maxRms / meanRms : 1;
+  const durationSec = Math.max(0.1, mono.length / sr);
+  const onsetsPerSec = onsetCount / durationSec;
+  const transientDensity01 = clamp01(
+    0.55 * clamp01(onsetsPerSec / 6) + 0.45 * clamp01((crestRatio - 1.5) / 4.5)
+  );
+
+  // 3. Spectral flatness via zero-crossing rate + band geometric/arithmetic mean
+  let zcrCount = 0;
+  for (let i = 1; i < mono.length; i++) {
+    if ((mono[i - 1] >= 0 && mono[i] < 0) || (mono[i - 1] < 0 && mono[i] >= 0)) {
+      zcrCount++;
+    }
+  }
+  const zcrNorm = zcrCount / mono.length;
+  const profile = computeNoiseProfile(
+    mono.subarray(bestWinStart, bestWinStart + winLen),
+    sr,
+    12
+  );
+  const bands = profile.spectrumBands.filter((b) => b > 1e-9);
+  let bandFlatness = 0;
+  if (bands.length > 0) {
+    const logMean = bands.reduce((acc, b) => acc + Math.log(b), 0) / bands.length;
+    const geomMean = Math.exp(logMean);
+    const arithMean = bands.reduce((acc, b) => acc + b, 0) / bands.length;
+    bandFlatness = arithMean > 0 ? clamp01(geomMean / arithMean) : 0;
+  }
+  const spectralFlatness01 = clamp01(0.65 * bandFlatness + 0.35 * clamp01(zcrNorm * 6));
+
+  return {
+    harmonicity01,
+    transientDensity01,
+    f0Confidence01,
+    spectralFlatness01,
+  };
+}

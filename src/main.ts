@@ -196,6 +196,13 @@ class App {
       onSendToChopper: (wavBytes, filename) => {
         self.audioChopperModal.openWithAudioBuffer(wavBytes, filename);
       },
+      onInjectTakeIntoSession: (wavBytes, filename) => {
+        const activeZone = self.getActiveZone();
+        if (!activeZone || !self.session) return;
+        const file = new File([wavBytes], filename, { type: 'audio/wav' });
+        void self.imports.loadSampleFileIntoZone(activeZone.id, 'low', file);
+        toast(`Injected "${filename}" into active zone [${activeZone.id}].`, 'success');
+      },
     });
 
     this.loopEditorModal = new LoopEditorModal({

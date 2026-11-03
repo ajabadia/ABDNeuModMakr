@@ -282,12 +282,12 @@
 - [x] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas) especificado y serializado en `axionik-expanded.json` (`partialCount` / `frameCount` parametrizados).
 - [x] Separacion de formantes y pitch para Formant Shifting en tiempo real (`pitchTrackHz` + `formantProfileSt` persistidos en v2).
 - [x] Campos de morphing 2D/3D y espacio latente (`morphSpace` + `latentRef` en contrato v2).
-- [x] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente (con salida Pseudo-Surround estéreo unificada por decisión Gate 2026-11-02).
+- [x] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente (salida dual según hardware: discreta Quad/`5.1` si el host abre bus multicanal, o Pseudo-Surround estéreo en hosts `2.0` y WASM).
 - [ ] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo (`hybrid-transient` declarado en `requiredCaps`; pendiente parametrización de ventana de empalme por región y DSP en Fase B).
 
 ### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [EN CURSO / LADO MAKR COMPLETADO]
 
-**Decisión registrada**: triple motor en el mismo binario (`classic` congelado, `classic-enhanced` con filtros/FX mejorados y `expanded` consumiendo v2). Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` se alimenta del contrato v2 (`05_extended_model/axionik-expanded.json`), y este apartado fija qué debe cumplir el motor y qué porta el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
+**Decisión registrada**: un solo código C++ con tres variantes compiladas vía CMake siguiendo el patrón `ABDJUNiO601` (`classic` congelado, `classic-enhanced` con filtros/FX mejorados en cadena independiente, y `expanded` con nuevos Resynators 100 % propios consumiendo v2). Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` se alimenta del contrato v2 (`05_extended_model/axionik-expanded.json`), y este apartado fija qué debe cumplir el motor y qué porta el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
 
 #### 11.5.1 Arquitectura de doble/triple motor
 - [x] **Motor clásico congelado bit a bit**: la ruta `04_classic_enhanced` es referencia y test dorado; no recibe parámetros nuevos jamás. Lo desconocido futuro la ignora por construcción (verificado en test `11.8`).
@@ -325,6 +325,18 @@
 - [ ] **Preflight en el arranque del motor**: cargar el documento, ejecutar `preflightExpandedModelForAxionik` y aplicar las `adaptations` (bypass de filtros/FX desconocidos, truncado HD declarado) o bloquear con aviso visible, nunca cargar parcialmente en silencio.
 - [ ] **DoD de la fase**: caso de prueba con motor sin caps (carga bloqueada con aviso) y con motor completo (carga con adaptaciones aplicadas).
 - [x] **Puente del modo clásico**: el extractor de cápsulas expone el v2 aparte y el set de parseo clásico queda idéntico con o sin el documento (tests 11.8 y 11.9); el importador de AxionikVS puede replicar esa selección sin tocar el parseo de `04_classic_enhanced/`.
+
+#### 11.5.7 Frontera Arquitectónica Resynator vs. Sinte, Variantes CMake y Salida Dual (Acuerdos 2026-11-03)
+- **Resynators 100 % propios y sin ataduras de retrocompatibilidad**:
+  - Los nuevos Resynators del modo extendido son 100 % nuestros; no tienen por qué arrastrar limitaciones del formato Hartmann 2002 ni el embudo de un único espectro raíz. Cualquier librería o modelo externo pasa siempre por `ABDNeuModMakr` para convertirse a nuestro formato.
+  - Por tanto, en el contrato v2 cada región/muestra puede portar o referenciar directamente su propio modelo espectral HD (`spectralBySample` / por región) y sus parámetros de empalme de transitorio híbrido (`hybridTransient`).
+- **Patrón `ABDJUNiO601` para las 3 variantes del sinte**:
+  - Mismo código fuente C++ con definición de compilación en `CMakeLists.txt` (`<VARIANTE>_TARGET_MODEL` + `add_compile_definitions` + script `build_all_models.bat` que genera cada variante en su carpeta): `0 = Clásico 100 %`, `1 = Clásico con filtros y efectos mejorados`, `2 = Extendido (nuevos Resynators + nuevos filtros + más efectos)`.
+- **Separación limpia entre Materia del Resynator y Cadena/Parámetros del Sinte**:
+  - **Al Resynator (Modelo `.nmpack` / `axionik-expanded.json`)** pertenecen exclusivamente los datos acústicos/espectrales: análisis espectral HD por muestra/región, `pitchTrackHz`, `formantProfileSt`, `morphSpace` / `latentRef`, empalme del transitorio híbrido PCM y disposición espacial `Scape`/`Sphere`.
+  - **Al Sinte (Dispatcher de Voces + Cadena de Audio independiente, como en `ABDJUNiO601`)** pertenecen los filtros y efectos (`filters[]`, `fxChain[]`, situados en la cadena de audio independiente del Resynator) y los parámetros expresivos de ejecución (`trigger: attack/release/first/legato`, `roundRobin`, curvas de crossfade `keyFade/velFade`, `pitchKeytrack`, envolventes DAHDSR y LFOs).
+- **Salida Espacial Dual según Hardware (`Surround Discreto` + `Pseudo-Surround Estéreo`)**:
+  - Ambas rutas conviven en tiempo de ejecución: si el host abre bus multicanal (`4.0` Quad / `5.1`), el motor saca los canales discretos; en hosts `2.0` y en navegador (WASM) aplica la reducción **Pseudo-Surround estéreo**. El documento v2 conserva siempre la información espacial completa.
 
 ---
 

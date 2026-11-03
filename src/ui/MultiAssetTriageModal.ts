@@ -9,7 +9,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
-import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
+import type { FocusTrap } from './modalFocusTrap.ts';
 import type { DiscoveredSamplerItem, MultiAssetDiscoveryReport } from '../formats/MultiAssetDiscovery.ts';
 
 export interface MultiAssetTriageModalOptions {

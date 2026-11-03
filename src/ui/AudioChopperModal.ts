@@ -2065,8 +2065,13 @@ export class AudioChopperModal {
           capabilities: ['resample-96k', 'harmonic-bwe', 'spectral-denoise'],
           noiseProfile: this.capturedNoiseProfile || undefined,
         });
-        const decoded = await decodeWav(enhancedBytes.buffer as ArrayBuffer);
-        this.pcm = decoded.channelData[0];
+        const decoded = decodeWav(
+          enhancedBytes.buffer.slice(
+            enhancedBytes.byteOffset,
+            enhancedBytes.byteOffset + enhancedBytes.byteLength
+          ) as ArrayBuffer
+        );
+        this.pcm = decoded.mono || decoded.channels[0];
         this.sampleRate = decoded.sampleRate;
         this.recomputeSlices(false);
         this.render();

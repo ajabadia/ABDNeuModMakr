@@ -185,13 +185,13 @@ export function reduceNoiseWithProfile(
 
   let working = mono;
 
-  // 1. Adaptive Hum Removal (50 Hz & 60 Hz) if hum level exceeds noise floor by > 3 dB
+  // 1. Adaptive Hum Removal (50 Hz & 60 Hz) if hum component is within 3 dB of (or above) broadband noise floor
   if (removeHum) {
-    if (profile.hum50HzDb > profile.levelDbfs + 3) {
-      working = applyNotchFilter(working, sampleRate, 50, 12);
+    if (profile.hum50HzDb > profile.levelDbfs - 3) {
+      working = applyNotchFilter(working, sampleRate, 50, 8);
     }
-    if (profile.hum60HzDb > profile.levelDbfs + 3) {
-      working = applyNotchFilter(working, sampleRate, 60, 12);
+    if (profile.hum60HzDb > profile.levelDbfs - 3) {
+      working = applyNotchFilter(working, sampleRate, 60, 8);
     }
   }
 

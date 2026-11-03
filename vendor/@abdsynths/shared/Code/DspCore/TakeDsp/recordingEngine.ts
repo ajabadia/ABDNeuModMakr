@@ -19,9 +19,11 @@
 
 import {
   peakAmplitude,
+  detectSilenceRanges,
   trimSilence,
   computeNoiseProfile,
   classifyTake,
+  extractTakeFeatures,
 } from './takeDsp.ts';
 import type { TakeNoiseProfile } from '../../../Contracts/recordingSession.ts';
 
@@ -65,6 +67,8 @@ export interface RecordingEngineOptions {
   noiseBands?: number;
   /** Optional descriptors for take classification at stop time. */
   descriptors?: TakeDescriptors;
+  /** Automatically extract acoustic descriptors and classify the take when `descriptors` is omitted. */
+  autoClassify?: boolean;
 }
 
 export interface FinalizedTake {
@@ -95,6 +99,7 @@ const DEFAULT_OPTIONS: Required<Omit<RecordingEngineOptions, 'descriptors'>> & {
   attachNoiseProfile: true,
   noiseBands: 8,
   descriptors: undefined,
+  autoClassify: false,
 };
 
 function toDbfs(linearPeak: number): number {
@@ -216,8 +221,11 @@ export class RecordingEngine {
     if (frames === 0) return;
     const left = channelData[0] ?? new Float32Array(frames);
     const right = n > 1 ? channelData[1] ?? new Float32Array(frames) : left;
-    this.meterPeakLeft = Math.max(this.meterPeakLeft, peakAmplitude(left));
-    this.meterPeakRight = Math.max(this.meterPeakRight, peakAmplitude(right));
+    const blockLeft = peakAmplitude(left);
+    const blockRight = peakAmplitude(right);
+    // Smooth ballistic decay (~21 ms block -> ~200 ms VU release) so live meters drop when signal ceases
+    this.meterPeakLeft = Math.max(blockLeft, this.meterPeakLeft * 0.85);
+    this.meterPeakRight = Math.max(blockRight, this.meterPeakRight * 0.85);
     if (this.state !== 'recording') return;
     const stored: Float32Array[] = [];
     for (let c = 0; c < n; c++) {
@@ -250,23 +258,42 @@ export class RecordingEngine {
     let peak = 0;
     for (const ch of channels) peak = Math.max(peak, peakAmplitude(ch));
 
-    let noiseProfile: TakeNoiseProfile | undefined;
-    if (this.options.attachNoiseProfile && channels[0].length > 0) {
-      const headFrames = Math.min(channels[0].length, Math.round(sr * 0.5));
-      noiseProfile = computeNoiseProfile(
-        channels[0].slice(0, Math.max(1, headFrames)),
-        sr,
-        this.options.noiseBands
-      );
-    }
-
-    let finalChannels = channels;
-    if (this.options.trimSilence && channels[0].length > 0) {
-      // Detect on a mono mix so stereo takes cut at the same points.
-      const mix = new Float32Array(channels[0].length);
+    // Build mono mix once for silence detection, noise profiling, and acoustic feature extraction
+    const mix = new Float32Array(channels[0].length);
+    if (channels[0].length > 0) {
       for (const ch of channels) {
         for (let i = 0; i < mix.length; i++) mix[i] += ch[i] / n;
       }
+    }
+
+    let noiseProfile: TakeNoiseProfile | undefined;
+    if (this.options.attachNoiseProfile && channels[0].length > 0) {
+      const silentRanges = detectSilenceRanges(mix, sr, {
+        minSilenceMs: Math.min(80, this.options.minSilenceMs),
+      });
+      if (silentRanges.length > 0) {
+        // Pick the longest silent/room-tone segment for accurate noise print
+        const bestSilence = silentRanges.reduce((best, r) =>
+          r.endFrame - r.startFrame > best.endFrame - best.startFrame ? r : best
+        );
+        const slice = channels[0].subarray(
+          bestSilence.startFrame,
+          Math.max(bestSilence.startFrame + 1, bestSilence.endFrame)
+        );
+        noiseProfile = computeNoiseProfile(slice, sr, this.options.noiseBands);
+      } else {
+        const headFrames = Math.min(channels[0].length, Math.round(sr * 0.5));
+        noiseProfile = computeNoiseProfile(
+          channels[0].slice(0, Math.max(1, headFrames)),
+          sr,
+          this.options.noiseBands
+        );
+      }
+    }
+
+    let finalChannels = channels;
+    let finalMix = mix;
+    if (this.options.trimSilence && channels[0].length > 0) {
       const { leadingMs, trailingMs } = trimSilence(mix, sr, {
         minSilenceMs: this.options.minSilenceMs,
       });
@@ -276,10 +303,17 @@ export class RecordingEngine {
         Math.round((trailingMs / 1000) * sr)
       );
       const end = channels[0].length - trail;
-      if (end > lead) finalChannels = channels.map((ch) => ch.slice(lead, end));
+      if (end > lead) {
+        finalChannels = channels.map((ch) => ch.slice(lead, end));
+        finalMix = mix.subarray(lead, end);
+      }
     }
 
-    const desc = this.options.descriptors;
+    const desc =
+      this.options.descriptors ??
+      (this.options.autoClassify && finalMix.length > 0
+        ? extractTakeFeatures(finalMix, sr)
+        : undefined);
     const classified = desc
       ? classifyTake(desc)
       : { kind: 'unknown' as const, confidence: 0 };

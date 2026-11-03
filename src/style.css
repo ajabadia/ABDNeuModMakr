@@ -8908,13 +8908,13 @@ textarea.form-control::placeholder {
    aquí solo lo específico del grabador.
    ───────────────────────────────────────────────────────── */
 .nmm-recorder-window {
-  max-width: 640px;
+  max-width: 780px;
 }
 
 .nmm-recorder-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   padding: var(--space-4);
 }
 
@@ -9024,6 +9024,99 @@ textarea.form-control::placeholder {
   gap: var(--space-2);
 }
 
+.nmm-recorder-inspector-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.nmm-recorder-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.nmm-recorder-inspector-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  color: var(--color-text-main);
+  font-size: var(--text-md);
+}
+
+.nmm-recorder-wave-wrap {
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-lcd-bg);
+}
+
+.nmm-recorder-wave-canvas {
+  display: block;
+  width: 100%;
+  height: 96px;
+  cursor: crosshair;
+}
+
+.nmm-recorder-noise-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.nmm-recorder-noise-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.nmm-recorder-inline-param {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+}
+
+.nmm-recorder-inline-param input {
+  width: 56px;
+  background: var(--color-bg-base);
+  color: var(--color-text-main);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-1);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+
+.nmm-recorder-dsp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.btn-ai-accent {
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-ai);
+  color: var(--color-ai-bright);
+}
+
+.btn-ai-accent:hover:not(:disabled) {
+  background: var(--color-ai);
+  color: var(--color-bg-base);
+}
+
 .nmm-recorder-takes-head {
   display: flex;
   align-items: center;
@@ -9040,7 +9133,7 @@ textarea.form-control::placeholder {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  max-height: 220px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
@@ -9061,6 +9154,12 @@ textarea.form-control::placeholder {
   border: 1px solid var(--color-panel-border-dim);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.nmm-recorder-take.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-panel-surface-elevated);
 }
 
 .nmm-recorder-take-name {

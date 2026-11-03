@@ -28,6 +28,7 @@ export interface CaptureOpenOptions {
   minSilenceMs?: number;
   attachNoiseProfile?: boolean;
   descriptors?: TakeDescriptors;
+  autoClassify?: boolean;
 }
 
 const TAP_PROCESSOR_NAME = 'abd-capture-tap';
@@ -163,6 +164,7 @@ export class AudioCaptureService {
             ? { attachNoiseProfile: options.attachNoiseProfile }
             : {}),
           ...(options.descriptors ? { descriptors: options.descriptors } : {}),
+          autoClassify: options.autoClassify ?? true,
         }
       );
       engineRef = engine;
