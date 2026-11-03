@@ -631,7 +631,7 @@ export class AudioChopperModal {
             <p class="nmm-audio-table-hint">
               Select the uncompressed audio file exported alongside this loop. All ${sliceFrames.length} slice boundaries will be mapped precisely onto it.
             </p>
-            <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" style="display: none;" />
+            <input type="file" id="inp-rx2-companion-wav" accept=".wav,.aif,.aiff,.flac" class="is-hidden-file" />
             <button type="button" class="btn btn-primary" id="btn-rx2-browse-wav">
               ${ICONS.folder || ICONS.wave} Select Companion Audio File...
             </button>
@@ -795,8 +795,8 @@ export class AudioChopperModal {
         </header>
 
         <div class="nmm-modal-body nmm-chopper-body">
-          <input type="file" id="inp-chopper-audio-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.sfz,.cue,.txt,audio/*" style="display: none;" />
-          <input type="file" id="inp-chopper-markers-file" accept=".rx2,.rex,.rcy,.sfz,.cue,.txt,.wav,.aif" style="display: none;" />
+          <input type="file" id="inp-chopper-audio-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.sfz,.cue,.txt,audio/*" class="is-hidden-file" />
+          <input type="file" id="inp-chopper-markers-file" accept=".rx2,.rex,.rcy,.sfz,.cue,.txt,.wav,.aif" class="is-hidden-file" />
 
           ${
             !hasAudio
@@ -2698,11 +2698,11 @@ export class AudioChopperModal {
               </label>
             </div>
           </div>
-          <div id="stem-results-container" class="nmm-audio-table-panel" style="display: none;">
+          <div id="stem-results-container" class="nmm-audio-table-panel is-hidden">
             <div class="nmm-audio-table-title">Separated Audio Stems:</div>
             <div id="stem-buttons-list" class="nmm-recorder-takes"></div>
           </div>
-          <div id="stem-processing-indicator" class="nmm-audio-table-hint" style="display: none;">
+          <div id="stem-processing-indicator" class="nmm-audio-table-hint is-hidden">
             <span>Running Demucs stem separation via Companion Bridge...</span>
           </div>
         </div>
@@ -2741,7 +2741,7 @@ export class AudioChopperModal {
       }
 
       if (runBtn) runBtn.disabled = true;
-      if (processingEl) processingEl.style.display = 'flex';
+      if (processingEl) processingEl.classList.remove('is-hidden');
 
       try {
         const wavBuf = encodePcm16Wav(this.pcm, this.sampleRate);
@@ -2753,7 +2753,7 @@ export class AudioChopperModal {
         }
 
         if (resultsContainer && listEl) {
-          resultsContainer.style.display = 'block';
+          resultsContainer.classList.remove('is-hidden');
           listEl.innerHTML = '';
 
           const stemEntries = Object.entries(res.stems);
@@ -2807,7 +2807,7 @@ export class AudioChopperModal {
         toast(`Stem separation error: ${msg}`, 'error');
       } finally {
         if (runBtn) runBtn.disabled = false;
-        if (processingEl) processingEl.style.display = 'none';
+        if (processingEl) processingEl.classList.add('is-hidden');
       }
     });
   }

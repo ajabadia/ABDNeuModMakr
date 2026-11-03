@@ -6,10 +6,15 @@
 // this modal presents the list of instruments, allowing the user
 // to pick an individual instrument to load or immediately send
 // the entire collection to the Batch Processor.
+//
+// Maquetación según el esqueleto canónico DRY de modales
+// (comparte kit con la puerta de triaje): ventana L, resumen
+// superior, barra de búsqueda, tabla con scroll 200px y pie.
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 
 export interface MultiInstrumentItem {
   id: string;
@@ -38,6 +43,7 @@ export interface MultiInstrumentModalOptions {
 export class MultiInstrumentModal {
   private backdropEl: HTMLElement | null = null;
   private options: MultiInstrumentModalOptions | null = null;
+  private focusTrap: FocusTrap | null = null;
   private filterQuery = '';
   private selectedIndex = 0;
   private isAiGrouping = false;
@@ -49,14 +55,29 @@ export class MultiInstrumentModal {
     this.selectedIndex = 0;
 
     const backdrop = document.createElement('div');
-    backdrop.className = 'nmm-modal-backdrop nmm-multi-inst-backdrop';
+    backdrop.className = 'nmm-modal-backdrop';
     this.backdropEl = backdrop;
     document.body.appendChild(backdrop);
 
     this.render();
+
+    if (!this.focusTrap && this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        onEscape: () => {
+          this.options?.onCancel?.();
+          this.close();
+        },
+        initialFocusSelector: '#inp-multi-inst-filter',
+      });
+      this.focusTrap.activate();
+    }
   }
 
   public close(): void {
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+      this.focusTrap = null;
+    }
     if (this.backdropEl) {
       this.backdropEl.remove();
       this.backdropEl = null;
@@ -88,120 +109,127 @@ export class MultiInstrumentModal {
                 : 'collection';
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-multi-inst-window" role="dialog" aria-modal="true" aria-labelledby="multi-inst-title">
+      <div class="nmm-modal-window nmm-modal-l nmm-multi-inst-window" role="dialog" aria-modal="true" aria-labelledby="multi-inst-title">
         <div class="nmm-modal-header">
-          <div class="nmm-modal-title" id="multi-inst-title">
-            <span class="nmm-modal-icon">${ICONS.layers}</span>
-            <span>MULTI-INSTRUMENT ${escHtml(formatBadge)} DETECTED</span>
+          <div class="nmm-modal-header-title" id="multi-inst-title">
+            <span class="modal-icon">${ICONS.layers}</span>
+            <h2>MULTI-INSTRUMENT ${escHtml(formatBadge)} DETECTED</h2>
+            <span class="badge badge-accent">${items.length} INSTRUMENTS</span>
           </div>
-          <button type="button" class="btn btn-close-drawer btn-modal-close" id="btn-multi-inst-close" title="Cancel">
+          <button type="button" class="btn btn-close-modal" id="btn-multi-inst-close" title="Cancel" aria-label="Cerrar">
             ${ICONS.close}
           </button>
         </div>
 
-        <div class="nmm-modal-body nmm-multi-inst-body">
-          <div class="nmm-multi-inst-banner">
-            <div class="nmm-multi-inst-file">
-              <span class="file-name">${escHtml(fileName)}</span>
-              <span class="badge badge-accent">${items.length} INSTRUMENTS</span>
+        <div class="nmm-triage-body">
+          <div class="triage-summary">
+            <span>${ICONS.layers}</span>
+            <div>
+              <p><strong>${escHtml(fileName)}</strong> trae ${items.length} instrumentos en este ${escHtml(containerNoun)}.</p>
+              <p>Carga uno directo en la sesión o procesa la colección entera en el Batch.</p>
             </div>
-            <p class="nmm-multi-inst-desc">
-              This ${escHtml(containerNoun)} contains <strong>${items.length} playable instruments / presets</strong>.
-              Select one to load directly into your editing session, or process all presets unattended into separate models via the Batch Processor.
-            </p>
           </div>
 
-          <div class="nmm-multi-inst-search-row">
-            <span class="search-icon">${ICONS.search || ''}</span>
-            <input
-              type="text"
-              id="inp-multi-inst-filter"
-              class="form-control nmm-multi-inst-search"
-              placeholder="Search / filter instruments by name (e.g. Piano, Bass, Strings)..."
-              value="${escAttr(this.filterQuery)}"
-              autofocus
-            />
-            ${this.filterQuery ? `<button type="button" class="btn btn-xs btn-outline" id="btn-clear-search">Clear</button>` : ''}
-            ${
-              this.options.onDeduceWithAi
-                ? `<button type="button" class="btn btn-xs btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="Use AI (BYOK LLM) to re-group sample filenames by musical instrument">
-                    ${ICONS.sparkle || ICONS.cpu} ${this.isAiGrouping ? 'AI Grouping...' : 'AI Group by Name'}
-                  </button>`
-                : ''
-            }
+          <div class="triage-toolbar">
+            <div class="triage-toolbar-left">
+              <input
+                type="text"
+                id="inp-multi-inst-filter"
+                class="form-control triage-search"
+                placeholder="Filtrar por nombre (p. ej. Piano, Bass, Strings)…"
+                value="${escAttr(this.filterQuery)}"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              ${this.filterQuery ? `<button type="button" class="btn btn-sm btn-outline" id="btn-clear-search">Limpiar</button>` : ''}
+            </div>
+            <div class="triage-toolbar-right">
+              ${
+                this.options.onDeduceWithAi
+                  ? `<button type="button" class="btn btn-sm btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="Reagrupar por instrumento con IA (BYOK LLM)">
+                      ${ICONS.sparkle || ICONS.cpu} ${this.isAiGrouping ? 'Agrupando…' : 'Agrupar por nombre (IA)'}
+                    </button>`
+                  : ''
+              }
+            </div>
           </div>
 
-          <div class="nmm-multi-inst-list-wrap" tabindex="0">
-            <table class="nmm-multi-inst-table">
-              <thead>
-                <tr>
-                  <th class="col-idx">#</th>
-                  <th class="col-bank">Bank : Prog</th>
-                  <th class="col-name">Instrument / Preset Name</th>
-                  <th class="col-regions">Structure</th>
-                  <th class="col-act">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${
-                  filtered.length === 0
-                    ? `<tr><td colspan="5" class="empty-cell">No instruments match "${escHtml(this.filterQuery)}"</td></tr>`
-                    : filtered
-                        .map((it) => {
-                          const isSel = it.index === this.selectedIndex;
-                          const bankStr =
-                            it.bank !== undefined && it.presetNumber !== undefined
-                              ? `${String(it.bank).padStart(3, '0')} : ${String(it.presetNumber).padStart(3, '0')}`
-                              : `—`;
-                          const regStr =
-                            it.regionCount !== undefined
-                              ? `${it.regionCount} region${it.regionCount === 1 ? '' : 's'}`
-                              : it.detail || 'Standard';
+          <div class="triage-table-panel">
+            <div class="triage-table-scroll">
+              <table class="triage-table">
+                <thead>
+                  <tr>
+                    <th class="triage-col-idx">#</th>
+                    <th class="triage-col-bank">Bank : Prog</th>
+                    <th>Instrumento</th>
+                    <th class="triage-col-regions">Estructura</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    filtered.length === 0
+                      ? `<tr><td colspan="5"><div class="triage-empty">Sin coincidencias para «${escHtml(this.filterQuery)}».</div></td></tr>`
+                      : filtered
+                          .map((it) => {
+                            const isSel = it.index === this.selectedIndex;
+                            const bankStr =
+                              it.bank !== undefined && it.presetNumber !== undefined
+                                ? `${String(it.bank).padStart(3, '0')} : ${String(it.presetNumber).padStart(3, '0')}`
+                                : `—`;
+                            const regStr =
+                              it.regionCount !== undefined
+                                ? `${it.regionCount} region${it.regionCount === 1 ? '' : 's'}`
+                                : it.detail || 'Standard';
 
-                          return `
-                            <tr class="multi-inst-row ${isSel ? 'is-selected' : ''}" data-index="${it.index}">
-                              <td class="col-idx">${it.index + 1}</td>
-                              <td class="col-bank"><span class="bank-tag">${escHtml(bankStr)}</span></td>
-                              <td class="col-name"><strong>${escHtml(it.name)}</strong></td>
-                              <td class="col-regions"><span class="reg-tag">${escHtml(regStr)}</span></td>
-                              <td class="col-act">
-                                <button type="button" class="btn btn-xs btn-accent btn-load-this-inst" data-index="${it.index}" title="Load this instrument">
-                                  ${ICONS.play} Load
-                                </button>
-                              </td>
-                            </tr>
-                          `;
-                        })
-                        .join('')
-                }
-              </tbody>
-            </table>
+                            return `
+                              <tr class="triage-row ${isSel ? 'triage-row-selected' : ''}" data-index="${it.index}">
+                                <td class="triage-col-idx">${it.index + 1}</td>
+                                <td class="triage-col-bank"><span class="bank-tag">${escHtml(bankStr)}</span></td>
+                                <td><div class="triage-item-name">${escHtml(it.name)}</div></td>
+                                <td class="triage-col-regions"><span class="reg-tag">${escHtml(regStr)}</span></td>
+                                <td class="triage-col-action">
+                                  <button type="button" class="btn btn-sm btn-accent btn-load-this-inst" data-index="${it.index}" title="Cargar este instrumento">
+                                    ${ICONS.play} Cargar
+                                  </button>
+                                </td>
+                              </tr>
+                            `;
+                          })
+                          .join('')
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="triage-hint">Doble clic carga el instrumento · «Procesar» manda la colección entera al Batch</p>
           </div>
         </div>
 
-        <div class="nmm-modal-footer nmm-multi-inst-footer">
-          <button type="button" class="btn btn-outline" id="btn-multi-inst-cancel">
-            Cancel
-          </button>
-          <div class="footer-actions-right">
+        <footer class="nmm-modal-footer">
+          <div class="footer-left">
+            <button type="button" class="btn btn-ghost" id="btn-multi-inst-cancel">
+              Cerrar
+            </button>
+          </div>
+          <div class="footer-right">
             <button
               type="button"
               class="btn btn-outline btn-batch-call"
               id="btn-multi-inst-batch"
-              title="Batch process all ${items.length} instruments unattended into Hartmann Neuron models"
+              title="Procesar los ${items.length} instrumentos en el Batch"
             >
-              ${ICONS.cpu} Process All in Batch Processor (${items.length} Models)
+              ${ICONS.cpu} Procesar todo en Batch (${items.length})
             </button>
             <button
               type="button"
               class="btn btn-accent"
               id="btn-multi-inst-load-selected"
-              title="Load the selected instrument into the current workspace"
+              title="Cargar el instrumento seleccionado"
             >
-              ${ICONS.check} Load Selected Instrument
+              ${ICONS.check} Cargar seleccionado
             </button>
           </div>
-        </div>
+        </footer>
       </div>
     `;
 
@@ -210,6 +238,14 @@ export class MultiInstrumentModal {
 
   private bindEvents(filtered: MultiInstrumentItem[]): void {
     if (!this.backdropEl || !this.options) return;
+
+    // Clic fuera cierra (con aviso de cancelación)
+    this.backdropEl.addEventListener('mousedown', (e) => {
+      if (e.target === this.backdropEl) {
+        this.options?.onCancel?.();
+        this.close();
+      }
+    });
 
     // Close / Cancel
     this.backdropEl.querySelector('#btn-multi-inst-close')?.addEventListener('click', () => {
@@ -256,12 +292,12 @@ export class MultiInstrumentModal {
     });
 
     // Row selection & double click
-    this.backdropEl.querySelectorAll('.multi-inst-row').forEach((row) => {
+    this.backdropEl.querySelectorAll('.triage-row').forEach((row) => {
       row.addEventListener('click', () => {
         const idx = parseInt((row as HTMLElement).dataset.index ?? '0', 10);
         this.selectedIndex = idx;
-        this.backdropEl?.querySelectorAll('.multi-inst-row').forEach((r) => r.classList.remove('is-selected'));
-        row.classList.add('is-selected');
+        this.backdropEl?.querySelectorAll('.triage-row').forEach((r) => r.classList.remove('triage-row-selected'));
+        row.classList.add('triage-row-selected');
       });
 
       row.addEventListener('dblclick', () => {
@@ -301,15 +337,5 @@ export class MultiInstrumentModal {
       this.options?.onProcessBatch();
       this.close();
     });
-
-    // Escape key
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        window.removeEventListener('keydown', handleKeydown);
-        this.options?.onCancel?.();
-        this.close();
-      }
-    };
-    window.addEventListener('keydown', handleKeydown);
   }
 }

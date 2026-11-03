@@ -243,7 +243,7 @@ export class LoopEditorModal {
         </header>
 
         <div class="nmm-modal-body nmm-loop-body">
-          <input type="file" id="inp-loop-file-picker" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" style="display:none;" />
+          <input type="file" id="inp-loop-file-picker" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" class="is-hidden-file" />
 
           ${
             !hasAudio
