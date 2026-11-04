@@ -51,3 +51,13 @@ export interface WebkitImportContext extends ImportCtxHost {
     depth?: number
   ) => void;
 }
+
+/** Host services the mixed-content triage gate needs from ImportHandlers. */
+export interface TriageOpsContext extends ImportCtxHost {
+  importMixedFilesOrZip: (
+    files: FileList,
+    preferredKind: 'audio' | 'model',
+    audioMode: 'samples' | 'by-name',
+    sourceLabel: string
+  ) => Promise<void>;
+}
