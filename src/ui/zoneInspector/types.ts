@@ -31,4 +31,8 @@ export interface InspectorContext {
   bindTableEvents: () => void;
   renderZoneTableRows: (zones: Zone[], activeId: string) => string;
   renderExtendedRegionTableRows: (regions: ExtendedRegion[], activeRegionId: string) => string;
+  closeDrawer: () => void;
+  renderDrawer: () => void;
+  handleRowPlayClick: (zoneId: string | null, regionId: string | null) => void;
+  bindDrawerMetadataEvents: () => void;
 }
