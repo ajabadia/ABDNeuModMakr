@@ -11,6 +11,11 @@
 // ─────────────────────────────────────────────────────────
 
 import { encodeWavPcm16 } from '../NeuronFormats/WavAiffDecoder.ts';
+import {
+  isYamahaYsfcFile,
+  parseYamahaYsfc,
+  convertYamahaYsfcToPreset,
+} from './YamahaMotifFormat.ts';
 import type {
   ArchiveSamplerProgramInfo,
   ParsedImportRegion,
@@ -44,12 +49,13 @@ export function isYamahaDiskImage(data: ArrayBufferView | ArrayBuffer): boolean 
 
   if (bytes.length < 512) return false;
 
-  // 1. YSFC container magic ("YSFC" at offset 0)
+  // 1. YSFC container magic ("YSFC" or "YAMAHA-YSFC" at offset 0)
   if (
-    bytes[0] === 0x59 && // 'Y'
-    bytes[1] === 0x53 && // 'S'
-    bytes[2] === 0x46 && // 'F'
-    bytes[3] === 0x43    // 'C'
+    isYamahaYsfcFile(bytes) ||
+    (bytes[0] === 0x59 && // 'Y'
+      bytes[1] === 0x53 && // 'S'
+      bytes[2] === 0x46 && // 'F'
+      bytes[3] === 0x43)   // 'C'
   ) {
     return true;
   }
@@ -89,6 +95,24 @@ export function listYamahaDiskPrograms(
           'byteLength' in data ? data.byteLength : (data as ArrayBuffer).byteLength,
         );
 
+  if (isYamahaYsfcFile(bytes)) {
+    try {
+      const ysfc = parseYamahaYsfc(bytes);
+      if (ysfc.waveforms.length > 0) {
+        return ysfc.waveforms.map((wf, idx) => ({
+          id: `YSFC/${idx}`,
+          index: idx,
+          name: wf.name || `Waveform ${idx + 1}`,
+          format: 'yamaha_disk',
+          regionCount: wf.keybanks.length,
+          detail: `Yamaha YSFC (${ysfc.version || 'Motif/Montage'})`,
+        }));
+      }
+    } catch {
+      // Fallback to raw SFS scan
+    }
+  }
+
   const programs: ArchiveSamplerProgramInfo[] = [];
 
   const progName = decodeAscii(bytes, 32, 16) || 'YamahaProgram';
@@ -109,7 +133,7 @@ export function listYamahaDiskPrograms(
  */
 export function parseYamahaDiskProgram(
   data: ArrayBufferView | ArrayBuffer,
-  _targetPath?: string,
+  targetPath?: string,
 ): ParsedSamplerPreset {
   const bytes =
     data instanceof Uint8Array
@@ -119,6 +143,17 @@ export function parseYamahaDiskProgram(
           'byteOffset' in data ? data.byteOffset : 0,
           'byteLength' in data ? data.byteLength : (data as ArrayBuffer).byteLength,
         );
+
+  if (isYamahaYsfcFile(bytes)) {
+    const ysfc = parseYamahaYsfc(bytes);
+    let wfIdx = 0;
+    if (targetPath && targetPath.startsWith('YSFC/')) {
+      wfIdx = parseInt(targetPath.slice(5), 10) || 0;
+    } else if (targetPath && /^\d+$/.test(targetPath)) {
+      wfIdx = parseInt(targetPath, 10) || 0;
+    }
+    return convertYamahaYsfcToPreset(ysfc, wfIdx);
+  }
 
   const progName = decodeAscii(bytes, 32, 16) || 'YamahaProgram';
 
@@ -136,7 +171,9 @@ export function parseYamahaDiskProgram(
   }
 
   const wavName = `${progName}.wav`;
-  audioBuffers.set(wavName, encodeWavPcm16([float32], 44100));
+  const wavBuf = encodeWavPcm16([float32], 44100);
+  audioBuffers.set(progName, wavBuf);
+  audioBuffers.set(wavName, wavBuf);
 
   regions.push({
     id: `yamaha_reg_001`,

@@ -58,6 +58,14 @@ function runTests(): void {
     canImport: true,
     issues: [
       {
+        code: 'WARN_KEYBED_GAPS',
+        category: 'coverage',
+        severity: 'warning',
+        title: '55 notas extremas sin cubrir',
+        description: 'El rango 24..96 deja 55 notas fuera en los extremos.',
+        resolutionText: 'Extender las zonas extremas hasta 0..127.',
+      },
+      {
         code: 'WARN_MULTI_VEL',
         category: 'velocity',
         severity: 'warning',

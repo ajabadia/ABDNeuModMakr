@@ -29,6 +29,7 @@ import {
   buildTimeCapsuleEntries,
   buildTimeCapsuleZipArchive,
 } from './timeCapsule.ts';
+import type { AxionikExpandedModel } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 import { bridgeClient, type AxionikSaveFileEntry } from './bridge/BridgeClient.ts';
 import { createUniqueModelSlug, slugifyModelName } from './modelSlug.ts';
 import { basename, sanitizeFileName } from './pathUtils.ts';
@@ -136,6 +137,7 @@ export class BankService {
   private readonly ctx: BankContext;
   private readonly modelZoneBinaries: Map<number, ZoneBinaryPair[]> = new Map();
   private readonly modelMapScriptVersions: Map<number, MapScriptVersion> = new Map();
+  private readonly modelExpandedModelsV2: Map<number, AxionikExpandedModel> = new Map();
   private generatedModels: GeneratedModel[] = [...INITIAL_MODELS];
   private bankPresets = [...INITIAL_PRESETS];
   private sublibraries: SublibraryInfo[] = [
@@ -191,7 +193,12 @@ export class BankService {
 
   /** True when slot has compiled `.scape`/`.sphere` binaries cached. */
   public hasBinaries(slot: number): boolean {
-    return Boolean(this.modelZoneBinaries.get(slot)?.length);
+    return Boolean(this.getModelBinaries(slot)?.length);
+  }
+
+  /** Caches compiled `.scape`/`.sphere` binaries for a slot in memory. */
+  public setModelBinaries(slot: number, zoneBinaries: ZoneBinaryPair[]): void {
+    this.modelZoneBinaries.set(slot, zoneBinaries);
   }
 
   /** Inserts or replaces the model record for its slot. */
@@ -341,6 +348,7 @@ export class BankService {
       classicEnhancedBinaries: zoneBinaries,
       mapScriptVersion: this.modelMapScriptVersions.get(activeSlot),
       neuronikModelJson: model?.neuronikModelJson,
+      expandedModelV2: this.modelExpandedModelsV2.get(activeSlot),
       soundParameterOverrides: mapArticulationToSoundOverrides(
         session?.articulation
       ),
@@ -549,6 +557,7 @@ export class BankService {
       classicEnhancedBinaries: zoneBinaries,
       mapScriptVersion: this.modelMapScriptVersions.get(activeSlot),
       neuronikModelJson: model?.neuronikModelJson,
+      expandedModelV2: this.modelExpandedModelsV2.get(activeSlot),
       soundParameterOverrides: mapArticulationToSoundOverrides(session?.articulation),
       previousProvenance: session?.provenance ?? model?.provenance,
       includeTopLevelCompatibility: true,
@@ -731,13 +740,17 @@ export class BankService {
     zoneBinaries: ZoneBinaryPair[],
     neuronikModelJson: string,
     elapsedMs: number,
-    appendStep?: ProvenanceStep
+    appendStep?: ProvenanceStep,
+    expandedModelV2?: AxionikExpandedModel
   ): void {
     const targetSlot =
       config.modelNumber === PINNED_SINEW_SLOT && config.modelName.toLowerCase() !== 'sinew'
         ? this.getNextAvailableSlot(0)
         : config.modelNumber;
     this.modelZoneBinaries.set(targetSlot, zoneBinaries);
+    if (expandedModelV2) {
+      this.modelExpandedModelsV2.set(targetSlot, expandedModelV2);
+    }
 
     const session = this.ctx.getSession();
     const assetStore = this.ctx.getAssetStore();
@@ -775,6 +788,7 @@ export class BankService {
       classicEnhancedBinaries: zoneBinaries,
       mapScriptVersion: this.modelMapScriptVersions.get(targetSlot),
       neuronikModelJson,
+      expandedModelV2,
       previousProvenance: session?.provenance ?? existingModel?.provenance,
       appendStep,
     });
@@ -862,12 +876,27 @@ export class BankService {
     return this.generatedModels.find((m) => m.slot === slot);
   }
 
-  /** Cached `.scape`/`.sphere` binaries for a slot, if present. */
+  /** Cached `.scape`/`.sphere` binaries for a slot, if present in RAM or IndexedDB. */
   public getModelBinaries(slot: number): ZoneBinaryPair[] | undefined {
-    return this.modelZoneBinaries.get(slot);
+    const inRam = this.modelZoneBinaries.get(slot);
+    if (inRam && inRam.length > 0) {
+      return inRam;
+    }
+    const assetStore = this.ctx.getAssetStore();
+    const fromCapsule = assetStore.getCapsuleRecordSync(slot)?.classicEnhancedBinaries;
+    if (fromCapsule && fromCapsule.length > 0) {
+      this.modelZoneBinaries.set(slot, fromCapsule);
+      return fromCapsule;
+    }
+    const fromLegacy = assetStore.getLegacyOriginalSlotBundleSync(slot)?.zoneBinaries;
+    if (fromLegacy && fromLegacy.length > 0) {
+      this.modelZoneBinaries.set(slot, fromLegacy);
+      return fromLegacy;
+    }
+    return undefined;
   }
 
-  /** Restores generated-model metadata previously saved by `persistBank`. */
+  /** Restores generated-model metadata previously saved by `persistBank` and re-hydrates IndexedDB binaries. */
   public restoreBank(): void {
     if (typeof localStorage === 'undefined') return;
     try {
@@ -877,6 +906,22 @@ export class BankService {
         if (Array.isArray(parsedBank) && parsedBank.length > 0) {
           const clean = parsedBank.filter((m) => isSafeBankRecord(m));
           if (clean.length > 0) this.generatedModels = clean;
+        }
+      }
+      const assetStore = this.ctx.getAssetStore();
+      for (const m of this.generatedModels) {
+        const capsule = assetStore.getCapsuleRecordSync(m.slot);
+        if (capsule) {
+          if (capsule.classicEnhancedBinaries?.length && !this.modelZoneBinaries.has(m.slot)) {
+            this.modelZoneBinaries.set(m.slot, capsule.classicEnhancedBinaries);
+          }
+          if (!m.neuronikModelJson && capsule.extendedModelJson) {
+            m.neuronikModelJson = capsule.extendedModelJson;
+          }
+        }
+        const legacy = assetStore.getLegacyOriginalSlotBundleSync(m.slot);
+        if (legacy?.zoneBinaries?.length && !this.modelZoneBinaries.has(m.slot)) {
+          this.modelZoneBinaries.set(m.slot, legacy.zoneBinaries);
         }
       }
     } catch {
@@ -1191,6 +1236,95 @@ export function buildBankLoadPlan(
     zones,
     processConfig: {
       modelName: model.name,
+      expandedName: model.name,
+      modelNumber: model.slot,
+      parameterSet: model.parameterSet,
+      complexity: model.complexity,
+      targetFormat: model.targetFormat ?? 'dual',
+      ...(model.coverWebpDataUrl
+        ? {
+            workingMode: 'extended' as const,
+            coverArtwork: {
+              webpDataUrl: model.coverWebpDataUrl,
+              byteLength: Math.round((model.coverWebpDataUrl.length * 3) / 4),
+              width: 512,
+              height: 512,
+              originalName: `${model.name}.webp`,
+              updatedAt: model.createdAt,
+            },
+          }
+        : {}),
+    },
+    sampleOrder,
+  };
+}
+
+/**
+ * Fallback assembly for legacy or localStorage-only bank models whose
+ * `.scape`/`.sphere` binary cache was not persisted or differs in count.
+ * Reconstructs the full zone layout from `neuronikModelJson`, `zonesAnalysis`,
+ * `legacyZones`, or `zoneCount` so older models can always be loaded into the editor.
+ */
+export function buildFallbackBankLoadPlan(
+  model: GeneratedModel,
+  legacyZones?: Zone[]
+): BankLoadPlan {
+  let zones: BankLoadZone[] =
+    readNeuronikZones(model.neuronikModelJson) ??
+    (model.zonesAnalysis ?? [])
+      .filter((s) => typeof s?.sampleName === 'string' && s.sampleName.length > 0)
+      .map((s) => ({
+        lowKey: s.lowKey,
+        rootKey: s.rootKey,
+        highKey: s.highKey,
+        sampleLow: s.sampleName,
+        sampleHigh: null as string | null,
+      }));
+
+  if (zones.length === 0 && legacyZones && legacyZones.length > 0) {
+    zones = legacyZones.map((z, idx) => ({
+      lowKey: z.lowKey,
+      rootKey: z.rootKey,
+      highKey: z.highKey,
+      sampleLow: z.sampleLow || `${model.name}_Z${idx + 1}.wav`,
+      sampleHigh: z.sampleHigh ?? null,
+    }));
+  }
+
+  if (zones.length === 0) {
+    const count = Math.max(1, Math.min(128, model.zoneCount || 1));
+    const safePrefix = model.name.replace(/[^A-Za-z0-9_-]/g, '_') || `Model_${model.slot}`;
+    zones = [];
+    for (let i = 0; i < count; i++) {
+      const lowKey = Math.round((i * 128) / count);
+      const highKey = i === count - 1 ? 127 : Math.max(lowKey, Math.round(((i + 1) * 128) / count) - 1);
+      const rootKey = count === 1 ? 60 : Math.min(127, Math.max(0, Math.round((lowKey + highKey) * 0.5)));
+      zones.push({
+        lowKey,
+        rootKey,
+        highKey,
+        sampleLow: `${safePrefix}_Z${String(i + 1).padStart(2, '0')}_k${rootKey}.wav`,
+        sampleHigh: null,
+      });
+    }
+  }
+
+  const sampleOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const z of zones) {
+    for (const name of [z.sampleLow, z.sampleHigh]) {
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        sampleOrder.push(name);
+      }
+    }
+  }
+
+  return {
+    zones,
+    processConfig: {
+      modelName: model.name.slice(0, 11) || 'UNTITLED',
+      expandedName: model.name,
       modelNumber: model.slot,
       parameterSet: model.parameterSet,
       complexity: model.complexity,

@@ -244,7 +244,9 @@ export function parseEnsoniqDiskProgram(
   }
 
   const wavName = `${insName}.wav`;
-  audioBuffers.set(wavName, encodeWavPcm16([float32], 44100));
+  const wavBuf = encodeWavPcm16([float32], 44100);
+  audioBuffers.set(insName, wavBuf);
+  audioBuffers.set(wavName, wavBuf);
 
   regions.push({
     id: `ensoniq_reg_001`,

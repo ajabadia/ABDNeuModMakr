@@ -169,6 +169,9 @@ export type SeparationMethod = 'dsp' | 'ai' | 'bypass';
 export type LoopExpansionMethod = 'dsp' | 'ai' | 'manual';
 export type ClassifierMethod = 'dsp' | 'ai' | 'manual';
 export type DenoiseMethod = 'dsp' | 'ai' | 'bypass';
+export type PitchAndSlicerMethod = 'dsp' | 'ai' | 'bypass';
+export type DeEsserMethod = 'dsp' | 'ai' | 'bypass';
+export type CoverArtworkMethod = 'procedural' | 'local-ai' | 'cloud-ai' | 'bypass';
 
 export interface AiAssistanceConfig {
   /** Master switch for AI assistance. If false, entire engine runs 100% deterministic DSP */
@@ -177,12 +180,18 @@ export interface AiAssistanceConfig {
   masterWave: MasterWaveMethod;
   /** 2. Scape vs Sphere Separation: 'dsp' (HPSS median) vs 'ai' (HTDemucs) vs 'bypass' (Direct 1:1) */
   separation: SeparationMethod;
-  /** 3. Sustained Loop Expansion: 'dsp' (NCC Zero-Crossing) vs 'ai' (Outpainting) vs 'manual' (User points) */
+  /** 3. Sustained Loop Expansion: 'dsp' (NCC Zero-Crossing) vs 'ai' (MusicGen Outpainting) vs 'manual' (User points) */
   loopExpansion: LoopExpansionMethod;
-  /** 4. Timbre & Parameter Set: 'dsp' (Spectral centroid heuristic) vs 'ai' (Neural classifier) vs 'manual' (Manual 0..9) */
+  /** 4. Timbre & Parameter Set: 'dsp' (Spectral centroid heuristic) vs 'ai' (Neural classifier / LLM) vs 'manual' (Manual 0..9) */
   classifier: ClassifierMethod;
-  /** 5. Denoise & Audio Restoration: 'dsp' (Multiband gate) vs 'ai' (DeepFilterNet) vs 'bypass' (Raw) */
+  /** 5. Denoise & Audio Restoration: 'dsp' (Multiband gate) vs 'ai' (DeepFilterNet 3) vs 'bypass' (Raw) */
   denoise: DenoiseMethod;
+  /** 6. F0 Pitch & Vocal/Transient Slicer: 'dsp' (YIN/MPM + OpenVPI) vs 'ai' (Basic Pitch + Whisper-tiny) vs 'bypass' */
+  pitchAndSlicer?: PitchAndSlicerMethod;
+  /** 7. De-Esser & Harshness Suppression: 'dsp' (Dynamic split-band) vs 'ai' (DeepFilter Spectral De-Harsh) vs 'bypass' */
+  deEsser?: DeEsserMethod;
+  /** 8. Cover Artwork & Semantic Prompting: 'procedural' (DSP Spectrogram) vs 'local-ai' (SD-Turbo GPU) vs 'cloud-ai' (BYOK Imagen/DALL-E/FLUX) vs 'bypass' */
+  coverArtwork?: CoverArtworkMethod;
 }
 
 export const DEFAULT_AI_ASSISTANCE_CONFIG: AiAssistanceConfig = {
@@ -192,7 +201,52 @@ export const DEFAULT_AI_ASSISTANCE_CONFIG: AiAssistanceConfig = {
   loopExpansion: 'dsp',
   classifier: 'dsp',
   denoise: 'dsp',
+  pitchAndSlicer: 'dsp',
+  deEsser: 'dsp',
+  coverArtwork: 'procedural',
 };
+
+/**
+ * Per-sample ledger tracking which pre-DSP / restoration steps have already been applied
+ * to avoid destructive double-processing unless explicitly forced by the user.
+ */
+export interface SampleProcessingFlags {
+  reconstructedFromClassic?: boolean;
+  stemSeparated?: boolean;
+  silenceTrimmed?: boolean;
+  deEssed?: boolean;
+  denoised?: boolean;
+  upsampledMasterWave?: boolean;
+  normalized?: boolean;
+  pitchDetected?: boolean;
+  autoLooped?: boolean;
+  updatedAt?: string;
+}
+
+export type PipelineStepId =
+  | 'coverageMidi'
+  | 'reconstructFromClassic'
+  | 'sourceSeparation'
+  | 'trimSilence'
+  | 'deEsser'
+  | 'denoise'
+  | 'upsampleMasterWave'
+  | 'normalize'
+  | 'pitchAndLoop'
+  | 'acousticClassifier'
+  | 'enhanceClassicModel'
+  | 'compileClassicModel'
+  | 'compileExtendedResinator2'
+  | 'generateCoverArtwork'
+  | 'packageTimeCapsule';
+
+export interface PipelineChecklistSelection {
+  steps: Record<PipelineStepId, boolean>;
+  /** When true (default), samples that already carry the step flag in `sampleProcessingFlags` are skipped */
+  skipAlreadyProcessedSamples: boolean;
+  /** When true (default for Drum Maps), normalization preserves relative gain across kit pieces */
+  normalizeGroupRelativeForDrums: boolean;
+}
 
 import type {
   LoopMode,
@@ -215,6 +269,8 @@ import type {
   AudioFilePayload,
   SamplerSessionLike,
 } from '@abdsynths/shared/formats/sampler';
+
+import type { AxionikSurfaceTempoSync } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 
 export type {
   LoopMode,
@@ -283,6 +339,59 @@ export interface AutoLoopResult {
   rationale: string;
 }
 
+export interface UnifiedSurfaceUiConfig {
+  /** 'auto' (default) detects melodic_surface vs drum_kit_surface from F0 monotonicity & Bark formants */
+  topologyMode?: 'auto' | 'melodic_surface' | 'drum_kit_surface';
+  /** 'auto' (default) scales 32p..256p from harmonic density; 'manual' uses ProcessConfig.complexity (1..10) */
+  resolutionStrategy?: 'auto' | 'manual';
+  /**
+   * Chimera Mode: When false (default), accidental intruder samples from other instruments are isolated.
+   * When true, intentionally interpolates across disparate instruments to create hybrid chimeras.
+   */
+  includeOutliers?: boolean;
+  /** Preserve phase-locked PCM micro-transient in the first ~20 ms (default true). */
+  preserveHybridTransients?: boolean;
+  /** Bark formant body locking (0..1, default 1.0 prevents chipmunk formant shift). */
+  formantLock01?: number;
+  /** Spectral attack shortening (0..1, default 0; 1 jumps directly to canonicalAttackPeakFrame). */
+  attackShorten01?: number;
+  /** Extra synthesized spectral release tail in seconds (0..10, default 0). */
+  releaseExtendSec?: number;
+  /** Inharmonicity stiffness B (0..0.05, 0 = pure string, >0.01 = stiff bar / metallic bell). */
+  inharmonicityB?: number;
+  /** Even/Odd harmonic parity (-1 = odd/hollow tube, 0 = neutral, +1 = even/warm). */
+  parity?: number;
+  /** Balance between harmonic partials (0) and DDSP stochastic residual air/noise (1). */
+  residualMix?: number;
+  /**
+   * Fase 39.4 — Tempo-Sync & REX Loop / Melodic Groove parameters for the ABDAxionikVS Resynator v2.
+   * When `enabled === true`, the Resynator advances spectral frames at `(hostBpm / sourceBpm)`
+   * without shifting pitch or Bark formants.
+   */
+  tempoSync?: AxionikSurfaceTempoSync;
+}
+
+export const DEFAULT_UNIFIED_SURFACE_CONFIG: UnifiedSurfaceUiConfig = {
+  topologyMode: 'auto',
+  resolutionStrategy: 'auto',
+  includeOutliers: false,
+  preserveHybridTransients: true,
+  formantLock01: 1.0,
+  attackShorten01: 0,
+  releaseExtendSec: 0,
+  inharmonicityB: 0,
+  parity: 0,
+  residualMix: 0.15,
+  tempoSync: {
+    enabled: false,
+    sourceBpm: 120,
+    targetBpm: 120,
+    barCount: 2,
+    timeSignature: [4, 4],
+    grooveMode: 'free',
+  },
+};
+
 export interface ProcessConfig {
   modelNumber: ModelSlot;     // 0..511
   modelName: string;          // max 11 characters (Classic Hartmann MName)
@@ -335,6 +444,10 @@ export interface ProcessConfig {
    * Extended Mode — Rich model metadata & custom tag/value attributes for AxionikDB / ABDAxionikVS.
    */
   extendedMetadata?: ExtendedModelMetadata;
+  /**
+   * Fase 39 — Unified Continuous Spectral Surface & Resinator Sonic Matter Lab configuration.
+   */
+  unifiedSurfaceConfig?: UnifiedSurfaceUiConfig;
 }
 
 /**
@@ -407,6 +520,8 @@ export interface Session {
   articulation?: SynthArticulationConfig;
   detectedInstrumentCategory?: string;
   provenance?: ModelProvenance;
+  /** Per-sample ledger of pre-DSP restoration/conditioning operations already applied */
+  sampleProcessingFlags?: Record<string, SampleProcessingFlags>;
   processConfig: ProcessConfig;
   dirty: boolean;
   /** Modern slug identifier for AxionikDB (e.g. 'grand-piano-steinway') */

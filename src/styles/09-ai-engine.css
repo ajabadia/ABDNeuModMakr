@@ -1278,24 +1278,28 @@
   width: 60px;
   height: 60px;
   position: relative;
+  border-radius: 50%;
 }
 
 .spinner-svg {
   width: 100%;
   height: 100%;
-  animation: spinnerRotate 1.4s linear infinite;
+  display: block;
+  will-change: transform;
+  transform-origin: 50% 50%;
+  animation: spinnerRotate 1.2s linear infinite;
 }
 
 .spinner-track {
-  stroke: rgba(255, 255, 255, 0.12);
+  stroke: var(--color-border-subtle);
+  opacity: 0.35;
 }
 
 .spinner-glow {
-  stroke: var(--color-accent, #00d2ff);
+  stroke: var(--color-accent);
   stroke-dasharray: 90, 150;
   stroke-dashoffset: 0;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 8px var(--color-accent, #00d2ff));
 }
 
 

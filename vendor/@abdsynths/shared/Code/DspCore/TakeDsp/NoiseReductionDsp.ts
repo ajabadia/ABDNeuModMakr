@@ -9,7 +9,6 @@
 // ─────────────────────────────────────────────────────────
 
 import {
-  rmsDbfs,
   computeNoiseProfile,
   type NoiseProfile,
 } from './takeDsp.ts';

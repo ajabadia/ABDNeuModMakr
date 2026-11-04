@@ -17,6 +17,7 @@
   --glow-drag-strong: inset 0 0 18px rgba(0, 200, 255, 0.75);
   /* Dense UI label size reused across table headers, tags and inputs. */
   --text-label: 11px;
+  --color-switch-thumb: #ffffff;
   /* AI accent: single home for the violet AI/bridge palette (was ~30 hardcoded
      #a855f7/#c084fc/#7e22ce/#9333ea + rgba(168,85,247|147,51,234,α)). */
   --color-ai: #a855f7;
@@ -158,8 +159,139 @@ input[type="range"] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Prevent native number spin buttons from clipping digits across the app */
+input[type="number"] {
+  box-sizing: border-box;
+  padding-right: 4px;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.85;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
+/* Non-editable (disabled / readonly) fields across all themes:
+   sunken theme background, muted text, no spin arrows on number inputs */
+input:disabled,
+input[readonly],
+select:disabled,
+textarea:disabled,
+.form-control:disabled,
+.form-control[readonly] {
+  background-color: var(--color-bg-base) !important;
+  color: var(--color-text-dim) !important;
+  border-color: var(--color-panel-border-dim) !important;
+  cursor: not-allowed;
+  opacity: 0.8;
+  box-shadow: none !important;
+}
+
+input[type="number"]:disabled,
+input[type="number"][readonly] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  padding-right: 6px;
+}
+
+input[type="number"]:disabled::-webkit-inner-spin-button,
+input[type="number"]:disabled::-webkit-outer-spin-button,
+input[type="number"][readonly]::-webkit-inner-spin-button,
+input[type="number"][readonly]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  display: none;
+  margin: 0;
+}
+
 input[type="range"] {
   accent-color: var(--color-accent);
   cursor: pointer;
 }
+
+input[type="range"]:disabled,
+.form-range:disabled {
+  accent-color: var(--color-text-dim);
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.8);
+}
+
+button:disabled,
+.btn:disabled,
+.articulation-checkbox:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.45;
+  box-shadow: none !important;
+}
+
+/* ── Global Conditional Options & Mode-Gated Sections (Classic vs Extended, AI, Loop, etc.) ── */
+fieldset.conditioned-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+  display: contents;
+}
+
+fieldset.conditioned-fieldset:disabled {
+  cursor: not-allowed;
+}
+
+.is-conditioned-disabled {
+  position: relative;
+  opacity: 0.46;
+  filter: grayscale(0.35);
+  cursor: not-allowed;
+  transition: opacity var(--transition-fast), filter var(--transition-fast);
+}
+
+.card.is-conditioned-disabled,
+.stage-card.is-conditioned-disabled,
+.library-path-card.is-conditioned-disabled {
+  border-style: dashed !important;
+  border-color: var(--color-panel-border-dim) !important;
+  background-color: var(--color-bg-base) !important;
+}
+
+.is-conditioned-disabled label,
+.is-conditioned-disabled .checkbox-label,
+.is-conditioned-disabled .stage-opt,
+.is-conditioned-disabled .byok-provider-opt {
+  cursor: not-allowed !important;
+}
+
+.is-conditioned-muted {
+  opacity: 0.62;
+  border-style: dashed !important;
+}
+
+.cond-reason-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs, 3px);
+  background: var(--color-panel-surface-elevated);
+  border: 1px solid var(--color-panel-border-strong, var(--color-panel-border));
+  color: var(--color-text-main);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cond-reason-badge.is-extended-only {
+  border-color: var(--color-ai);
+  color: var(--color-ai-bright, var(--color-ai));
+}
+
+.cond-reason-badge.is-classic-only {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 

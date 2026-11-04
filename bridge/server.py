@@ -32,6 +32,7 @@ import base64
 import argparse
 import urllib.request
 import threading
+import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
@@ -150,7 +151,7 @@ MODEL_REGISTRY = {
         "runtime": "onnx",
         "min_vram_mb": 500,
         "filename": "whisper_tiny_en.onnx",
-        "url": "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model_quantized.onnx",
+        "url": "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/decoder_model_merged_quantized.onnx",
         "size_mb": 39,
         "description": "Vocal onset & speech phoneme boundary alignment for semantic audio chopping (Fase 23)."
     },
@@ -242,12 +243,91 @@ def save_custom_model_urls(cfg):
         pass
 
 
+DEAD_CUSTOM_URLS = frozenset([
+    "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/model_quantized.onnx",
+    "https://huggingface.co/test/x.onnx",
+])
+
+
 def get_model_download_url(model_id):
     info = MODEL_REGISTRY.get(model_id)
     if not info:
         return ""
     custom = load_custom_model_urls()
-    return custom.get(model_id) or info["url"]
+    custom_url = custom.get(model_id)
+    if custom_url and custom_url not in DEAD_CUSTOM_URLS:
+        return custom_url
+    return info["url"]
+
+
+def open_native_folder_dialog(initial_path="", title="Seleccionar carpeta"):
+    """
+    Opens the native OS directory selection dialog in a clean child process
+    so Tcl/Tk or WinForms runs on its own main thread and stays topmost.
+    """
+    start_dir = initial_path.strip() if isinstance(initial_path, str) else ""
+    if start_dir and not os.path.isdir(start_dir):
+        parent = os.path.dirname(start_dir)
+        start_dir = parent if (parent and os.path.isdir(parent)) else os.getcwd()
+    if not start_dir:
+        start_dir = os.getcwd()
+
+    tk_script = (
+        "import sys, os, tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "root = tk.Tk()\n"
+        "root.withdraw()\n"
+        "try:\n"
+        "    root.attributes('-topmost', True)\n"
+        "except Exception:\n"
+        "    pass\n"
+        "chosen = filedialog.askdirectory(initialdir=sys.argv[1], title=sys.argv[2], mustexist=False)\n"
+        "root.destroy()\n"
+        "if chosen:\n"
+        "    sys.stdout.write(os.path.normpath(chosen))\n"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", tk_script, start_dir, title],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if proc.returncode == 0:
+            selected = (proc.stdout or "").strip()
+            if selected:
+                return {"status": "ok", "path": os.path.normpath(selected), "cancelled": False}
+            return {"status": "cancelled", "path": "", "cancelled": True}
+    except Exception:
+        pass
+
+    # Fallback on Windows via PowerShell FolderBrowserDialog if tkinter is not installed
+    if os.name == 'nt':
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            f"$dlg.Description = {json.dumps(title)}; "
+            f"$dlg.SelectedPath = {json.dumps(start_dir)}; "
+            "$dlg.ShowNewFolderButton = $true; "
+            "if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
+            "Write-Output $dlg.SelectedPath }"
+        )
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-STA", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            if proc.returncode == 0:
+                selected = (proc.stdout or "").strip()
+                if selected:
+                    return {"status": "ok", "path": os.path.normpath(selected), "cancelled": False}
+                return {"status": "cancelled", "path": "", "cancelled": True}
+        except Exception as ex:
+            return {"status": "error", "path": "", "cancelled": False, "error": str(ex)}
+
+    return {"status": "cancelled", "path": "", "cancelled": True}
 
 
 def download_model_worker(model_id):
@@ -1055,6 +1135,20 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in ('/api/fs/browse_folder', '/fs/browse_folder'):
+            query = parse_qs(parsed.query)
+            init_dir = query.get('path', [''])[0]
+            dlg_title = query.get('title', ['Seleccionar carpeta'])[0]
+            res = open_native_folder_dialog(init_dir, dlg_title)
+            body = json.dumps(res).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ('/api/fs/scan', '/fs/scan'):
             query = parse_qs(parsed.query)
             target_dir = query.get('path', [os.getcwd()])[0]
@@ -1064,7 +1158,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 for root, dirs, files in os.walk(target_dir):
                     for f in files:
                         lower = f.lower()
-                        if lower.endswith(('.model', '.sound', '.sf2', '.sfz', '.wav', '.aif', '.aiff', '.nmmodel', '.zip')):
+                        if lower.endswith(('.model', '.sound', '.sf2', '.sfz', '.wav', '.aif', '.aiff', '.nmmodel', '.zip', '.iso', '.img', '.dsk', '.bin', '.hda', '.out', '.efe', '.ede', '.gkh', '.e4b', '.esi', '.exb', '.svz', '.x7u', '.x8u', '.x3a', '.krz', '.k25', '.k26', '.akp', '.pgm', '.set', '.s3p', '.sxt', '.dwp', '.xpn', '.xpm', '.dspreset', '.exs', '.fxp', '.vstpreset', '.nki', '.adv', '.multisample', '.kmp', '.dls')):
                             full_path = os.path.join(root, f)
                             try:
                                 sz = os.path.getsize(full_path)
@@ -1076,9 +1170,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                                 'size': sz,
                                 'ext': os.path.splitext(lower)[1]
                             })
-                    # Limit depth to 3 levels to remain snappy
+                    # Limit depth to 8 levels to cover nested sampler CDs/folders
                     rel = os.path.relpath(root, target_dir)
-                    if rel != '.' and len(rel.split(os.sep)) >= 3:
+                    if rel != '.' and len(rel.split(os.sep)) >= 8:
                         dirs.clear()
             
             body = json.dumps({
@@ -1244,6 +1338,91 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
+
+        if path in ('/api/cloud/replicate_proxy', '/cloud/replicate_proxy'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            rel_path = str(payload.get('path', '/v1/account')).strip()
+            if not rel_path.startswith('/v1/'):
+                err = json.dumps({'error': 'Only /v1/* Replicate paths are allowed'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            method = str(payload.get('method', 'GET')).upper()
+            token = str(payload.get('token', '')).strip()
+            req_body = payload.get('body', None)
+            target_url = f"https://api.replicate.com{rel_path}"
+
+            headers = {
+                'Authorization': f'Bearer {token}',
+                'Accept': 'application/json',
+                'User-Agent': 'ABDNeuModMakr-Bridge/1.0',
+            }
+            data_bytes = None
+            if req_body is not None and method in ('POST', 'PUT', 'PATCH'):
+                headers['Content-Type'] = 'application/json'
+                data_bytes = (req_body if isinstance(req_body, str) else json.dumps(req_body)).encode('utf-8')
+
+            try:
+                req = urllib.request.Request(target_url, data=data_bytes, headers=headers, method=method)
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_bytes = resp.read()
+                    status_code = resp.getcode()
+                    self.send_response(status_code)
+                    self.send_cors_headers()
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(resp_bytes)))
+                    self.end_headers()
+                    self.wfile.write(resp_bytes)
+                    return
+            except urllib.error.HTTPError as he:
+                err_bytes = he.read() if hasattr(he, 'read') else json.dumps({'detail': str(he)}).encode('utf-8')
+                self.send_response(he.code)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_bytes)))
+                self.end_headers()
+                self.wfile.write(err_bytes)
+                return
+            except Exception as ex:
+                err = json.dumps({'error': str(ex)}).encode('utf-8')
+                self.send_response(502)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+        if path in ('/api/fs/browse_folder', '/fs/browse_folder'):
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            init_dir = payload.get('path', '')
+            dlg_title = payload.get('title', 'Seleccionar carpeta')
+            res = open_native_folder_dialog(init_dir, dlg_title)
+            body = json.dumps(res).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path in ('/api/models/download', '/models/download'):
             content_len = int(self.headers.get('Content-Length', 0))

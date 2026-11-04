@@ -55,6 +55,10 @@ export interface UniversalImportModalContext {
   }) => void;
   onOpenInAudioChopper?: (audioBuffer: ArrayBuffer, filename: string, sliceFrames?: number[]) => void;
   onImportRawAudioFiles?: (files: FileList | File[]) => void;
+  onBrowseFolder?: () => void;
+  onDropDirectoryHandle?: (dirHandle: FileSystemDirectoryHandle) => void;
+  onImportFolderFileList?: (files: FileList) => void;
+  onOpenBatchProcessorWithFiles?: (files: Array<{ name: string; buffer: ArrayBuffer }>, originTitle?: string) => void;
   onOpenBatchProcessor?: () => void;
 }
 
@@ -228,20 +232,24 @@ export class UniversalImportModal {
       <div class="uimport-dropzone-container">
         <div class="uimport-dropzone" id="uimport-dropzone" tabindex="0">
           <div class="dropzone-icon">${ICONS.folder}</div>
-          <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank or Slice Files Here</h3>
+          <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank, Slice Files or Folders Here</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>.model, .neuronikmodel, .nmmodel, .scape, .sphere, .sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
+            Supported formats: <strong>Carpetas completas (.model / librerías / audio)</strong> y archivos <strong>.model, .neuronikmodel, .nmmodel, .scape, .sphere, .sf2, .sfz, .dspreset, .nki, .vstpreset, .fxp, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .akp, .pgm, .set, .exb, .e4b, .esi, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
           </p>
           <div class="dropzone-actions">
-            <label class="btn btn-primary btn-browse-files">
+            <label class="btn btn-primary btn-browse-files" id="lbl-uimport-browse-files">
               ${ICONS.folder} Browse File...
-              <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.script,.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
+              <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.script,.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.fxp,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.akp,.pgm,.set,.exb,.e4b,.esi,.krz,.k25,.k26,.x7u,.x8u,.x3a,.fzv,.fzf,.s3p,.sxt,.dwp,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
+            <button type="button" class="btn btn-secondary btn-browse-folder" id="btn-uimport-browse-folder">
+              ${ICONS.folder} Browse Folder...
+            </button>
+            <input type="file" id="uimport-folder-input" class="is-hidden-file" webkitdirectory directory multiple />
           </div>
         </div>
 
         <div class="uimport-supported-formats-strip">
-          <div class="fmt-chip"><strong>Multisample Banks &amp; Disks:</strong> Hartmann Neuron / Neuronik (.model / .neuronikmodel / .nmmodel / .scape / .sphere / NeuronDB .zip), Akai S-Series, E-mu (Emulator III / EOS E4), Roland S-7xx, Ensoniq (EPS/ASR), Yamaha (A-Series/YSFC) (.iso/.img/.dsk/.out/.hda/.efe), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion, Bitwig, Akai MPC</div>
+          <div class="fmt-chip"><strong>Multisample Banks &amp; Disks:</strong> Hartmann Neuron / Neuronik (.model / .neuronikmodel / .nmmodel / .scape / .sphere / NeuronDB .zip), Akai S1000/S3000 &amp; S5000/S6000/Z4/Z8 (.akp/.iso), E-mu (Emulator III / EOS E4 .e4b / Emulator X .exb), Roland (S-7xx / S-5xx / Zen-Core .svz), Ensoniq (EPS/ASR), Yamaha (A-Series / YSFC .x7u/.x8u/.x3a), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion (.vstpreset/.fxp), Bitwig, Akai MPC</div>
           <div class="fmt-chip"><strong>Loops &amp; Slices:</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
           <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF/AIFC, FLAC, MP3, OGG, M4A/AAC, Opus, CAF, NCW (auto-mapped to zones or chopper)</div>
         </div>
@@ -350,7 +358,37 @@ export class UniversalImportModal {
       }
     });
 
-    // Drag and Drop
+    // Folder input browse
+    const folderInput = this.backdropEl.querySelector<HTMLInputElement>('#uimport-folder-input');
+    folderInput?.addEventListener('change', () => {
+      if (folderInput.files && folderInput.files.length > 0) {
+        if (this.context.onImportFolderFileList) {
+          const files = folderInput.files;
+          this.close();
+          this.context.onImportFolderFileList(files);
+        } else {
+          this.handleFileSelection(folderInput.files[0], folderInput.files);
+        }
+      }
+    });
+
+    const btnBrowseFolder = this.backdropEl.querySelector<HTMLButtonElement>('#btn-uimport-browse-folder');
+    btnBrowseFolder?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.context.onBrowseFolder) {
+        this.close();
+        this.context.onBrowseFolder();
+      } else {
+        folderInput?.click();
+      }
+    });
+
+    const lblBrowseFiles = this.backdropEl.querySelector<HTMLElement>('#lbl-uimport-browse-files');
+    lblBrowseFiles?.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    // Drag and Drop (Files + Directories)
     const dropzone = this.backdropEl.querySelector<HTMLElement>('#uimport-dropzone');
     if (dropzone) {
       dropzone.addEventListener('dragover', (e) => {
@@ -363,11 +401,74 @@ export class UniversalImportModal {
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.classList.remove('is-drag-over');
-        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-          this.handleFileSelection(e.dataTransfer.files[0], e.dataTransfer.files);
-        }
+        void (async () => {
+          const items = e.dataTransfer?.items;
+          if (items && items.length > 0) {
+            const firstItem = items[0] as DataTransferItem & {
+              getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>;
+              webkitGetAsEntry?: () => { isDirectory?: boolean; isFile?: boolean; fullPath?: string; name?: string; createReader?: () => { readEntries: (cb: (entries: any[]) => void, err?: (e: any) => void) => void } } | null;
+            };
+            if (typeof firstItem.getAsFileSystemHandle === 'function' && this.context.onDropDirectoryHandle) {
+              try {
+                const handle = await firstItem.getAsFileSystemHandle();
+                if (handle && handle.kind === 'directory') {
+                  this.close();
+                  this.context.onDropDirectoryHandle(handle as FileSystemDirectoryHandle);
+                  return;
+                }
+              } catch {
+                // Fall back to webkitGetAsEntry or files below
+              }
+            }
+            const entry = firstItem.webkitGetAsEntry?.();
+            if (entry && entry.isDirectory && this.context.onImportFolderFileList) {
+              const collected: File[] = [];
+              const readDirEntry = async (dirEntry: any, depth: number): Promise<void> => {
+                if (depth > 8 || !dirEntry.createReader) return;
+                const reader = dirEntry.createReader();
+                const allSubEntries: any[] = [];
+                while (true) {
+                  const batch = await new Promise<any[]>((resolve) => {
+                    reader.readEntries((res: any[]) => resolve(res || []), () => resolve([]));
+                  });
+                  if (batch.length === 0) break;
+                  allSubEntries.push(...batch);
+                }
+                for (const sub of allSubEntries) {
+                  if (sub.isFile) {
+                    const f = await new Promise<File | null>((resolve) => {
+                      sub.file((fileObj: File) => resolve(fileObj), () => resolve(null));
+                    });
+                    if (f) {
+                      const relPath = String(sub.fullPath || f.name).replace(/^\/+/, '');
+                      try {
+                        Object.defineProperty(f, 'webkitRelativePath', { value: relPath, configurable: true });
+                      } catch {
+                        // ignore
+                      }
+                      collected.push(f);
+                    }
+                  } else if (sub.isDirectory) {
+                    await readDirEntry(sub, depth + 1);
+                  }
+                }
+              };
+              await readDirEntry(entry, 0);
+              if (collected.length > 0) {
+                this.close();
+                this.context.onImportFolderFileList(collected as unknown as FileList);
+                return;
+              }
+            }
+          }
+          if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+            void this.handleFileSelection(e.dataTransfer.files[0], e.dataTransfer.files);
+          }
+        })();
       });
-      dropzone.addEventListener('click', () => {
+      dropzone.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('#btn-uimport-browse-folder, #lbl-uimport-browse-files, input')) return;
         fileInput?.click();
       });
     }
@@ -411,9 +512,9 @@ export class UniversalImportModal {
   }
 
   private async handleFileSelection(file: File, allFiles: FileList | File[]): Promise<void> {
-    // Fase 31 + 32.4: a program file (.xpm/.xty/.xtd/.adv/.exs/.talsmpl/.txprog/.kmp) dropped together with its WAVs/.KSFs is the primary file
+    // Fase 31 + 32.4: a program file (.xpm/.xty/.xtd/.adv/.exs/.fxp/.talsmpl/.txprog/.kmp/.akp/.exb/.e4b/.esi/.s3p/.sxt/.dwp) dropped together with its WAVs/.KSFs is the primary file
     const primaryProgFile = Array.from(allFiles).find((f) =>
-      /\.(xpm|xty|xtd|adv|exs|talsmpl|txprog|kmp)$/i.test(f.name)
+      /\.(xpm|xty|xtd|adv|exs|fxp|talsmpl|txprog|kmp|akp|exb|e4b|esi|s3p|sxt|dwp|pgm|set)$/i.test(f.name)
     );
     if (primaryProgFile) file = primaryProgFile;
     const filename = file.name;
@@ -515,7 +616,11 @@ export class UniversalImportModal {
             },
             onProcessBatch: () => {
               this.close();
-              this.context.onOpenBatchProcessor?.();
+              if (this.context.onOpenBatchProcessorWithFiles) {
+                this.context.onOpenBatchProcessorWithFiles([{ name: zipFileName, buffer: zipBuffer }], zipFileName);
+              } else {
+                this.context.onOpenBatchProcessor?.();
+              }
             },
           });
           return;
@@ -558,22 +663,23 @@ export class UniversalImportModal {
         }
         preset = await parseUniversalSampler(filename, buffer, siblings);
       } else {
-        if (/\.(zip|xpn|iso|img|dsk)$/i.test(filename)) {
+        if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb)$/i.test(filename)) {
           const programs = await listZipSamplerPrograms(filename, buffer);
           if (programs.length > 1) {
             this.isInspecting = false;
             this.render();
             const multiModal = new MultiInstrumentModal();
-            const isAkai = /\.(iso|img|dsk)$/i.test(filename);
+            const isDisk = /\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb)$/i.test(filename);
             multiModal.open({
               fileName: filename,
-              format: isAkai ? 'disk' : filename.toLowerCase().endsWith('.xpn') ? 'mpc' : 'zip',
+              format: isDisk ? 'disk' : filename.toLowerCase().endsWith('.xpn') ? 'mpc' : 'zip',
               items: programs.map((p) => ({
                 id: p.id,
                 index: p.index,
                 name: p.name,
                 regionCount: p.regionCount,
                 detail: p.detail,
+                folderPath: p.entryPath || p.id,
               })),
               onSelect: (chosen) => {
                 void (async () => {
@@ -604,7 +710,11 @@ export class UniversalImportModal {
               },
               onProcessBatch: () => {
                 this.close();
-                this.context.onOpenBatchProcessor?.();
+                if (this.context.onOpenBatchProcessorWithFiles) {
+                  this.context.onOpenBatchProcessorWithFiles([{ name: filename, buffer }], filename);
+                } else {
+                  this.context.onOpenBatchProcessor?.();
+                }
               },
             });
             return;

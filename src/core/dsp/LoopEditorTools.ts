@@ -704,6 +704,8 @@ export interface BatchAutoLoopItemInput {
   sampleRate: number;
   existingLoopStart?: number;
   existingLoopEnd?: number;
+  /** Optional Phase 37.6 NoteOff frame offset inside `monoPcm` so AutoLoop searches strictly inside the sustained [NoteOn..NoteOff] window, never in the release tail. */
+  sustainEndFrame?: number;
 }
 
 export interface BatchAutoLoopItemResult {
@@ -723,14 +725,18 @@ export function computeBatchAutoLoopForZones(
   for (const item of items) {
     const n = item.monoPcm.length;
     if (n < 64) continue;
+    const sustainLimit =
+      item.sustainEndFrame && item.sustainEndFrame > 128 && item.sustainEndFrame <= n
+        ? item.sustainEndFrame
+        : n;
     const candStart =
-      item.existingLoopStart && item.existingLoopStart > 0 && item.existingLoopStart < n - 64
+      item.existingLoopStart && item.existingLoopStart > 0 && item.existingLoopStart < sustainLimit - 64
         ? item.existingLoopStart
-        : Math.floor(n * 0.2);
+        : Math.floor(sustainLimit * 0.22);
     const candEnd =
-      item.existingLoopEnd && item.existingLoopEnd > candStart + 64 && item.existingLoopEnd <= n
+      item.existingLoopEnd && item.existingLoopEnd > candStart + 64 && item.existingLoopEnd <= sustainLimit
         ? item.existingLoopEnd
-        : Math.floor(n * 0.85);
+        : Math.max(candStart + 64, Math.floor(sustainLimit * 0.88));
     const opt = findOptimalZeroCrossingLoop([item.monoPcm], item.sampleRate, candStart, candEnd);
     const seam = computeLoopSeamAnalysis(item.monoPcm, opt.loopStart, opt.loopEnd, 64);
     results.push({

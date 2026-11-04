@@ -55,6 +55,7 @@ import {
 import type { BankService } from '../bankService.ts';
 import type { NeuronAssetStore } from '../storage/NeuronAssetStore.ts';
 import type { SpectralAnalyzer } from '../dsp/SpectralAnalyzer.ts';
+import { yieldToUI } from '../asyncUtils.ts';
 
 /**
  * P0.3 import guardrails: a single decoded sample is fully buffered in
@@ -170,7 +171,11 @@ export async function importAudioFiles(
 
   const items: ParsedSampleItem[] = [];
   const skippedNames: string[] = [...oversizedNames];
-  for (const f of candidateFiles) {
+  for (let fileIdx = 0; fileIdx < candidateFiles.length; fileIdx++) {
+    const f = candidateFiles[fileIdx];
+    if (fileIdx > 0 && fileIdx % 4 === 0) {
+      await yieldToUI(0);
+    }
     if (f.buffer.byteLength > MAX_IMPORT_FILE_BYTES) {
       // Skip without decoding: fully buffered in memory by decodeWav
       continue;
@@ -209,6 +214,7 @@ export async function importAudioFiles(
     } else if (inst && inst.rootKey >= 0 && inst.rootKey <= 127) {
       rootKey = inst.rootKey;
     } else {
+      await yieldToUI(0);
       const detectedHz = host.detectPitch(
         decoded.channels[0],
         decoded.sampleRate

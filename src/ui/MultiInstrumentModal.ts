@@ -24,6 +24,8 @@ export interface MultiInstrumentItem {
   presetNumber?: number;
   regionCount?: number;
   detail?: string;
+  /** Optional relative folder or nested container path for hierarchical navigation */
+  folderPath?: string;
 }
 
 export type MultiInstrumentContainerFormat = 'sf2' | 'sfz' | 'mpc' | 'folder' | 'zip' | 'disk' | 'akai';
@@ -45,6 +47,7 @@ export class MultiInstrumentModal {
   private options: MultiInstrumentModalOptions | null = null;
   private focusTrap: FocusTrap | null = null;
   private filterQuery = '';
+  private activeFolder = '';
   private selectedIndex = 0;
   private isAiGrouping = false;
 
@@ -52,6 +55,7 @@ export class MultiInstrumentModal {
     this.close();
     this.options = options;
     this.filterQuery = '';
+    this.activeFolder = '';
     this.selectedIndex = 0;
 
     const backdrop = document.createElement('div');
@@ -89,10 +93,28 @@ export class MultiInstrumentModal {
     if (!this.backdropEl || !this.options) return;
 
     const { fileName, format, items } = this.options;
+    const folderCounts = new Map<string, number>();
+    for (const it of items) {
+      if (!it.folderPath) continue;
+      const clean = it.folderPath.replace(/\\/g, '/').replace(/^\/+/, '');
+      const top = clean.includes('/') ? clean.slice(0, clean.indexOf('/')) : clean;
+      if (top) folderCounts.set(top, (folderCounts.get(top) ?? 0) + 1);
+    }
+
     const q = this.filterQuery.trim().toLowerCase();
-    const filtered = q
-      ? items.filter((it) => it.name.toLowerCase().includes(q) || (it.detail && it.detail.toLowerCase().includes(q)))
-      : items;
+    const filtered = items.filter((it) => {
+      if (this.activeFolder && it.folderPath) {
+        const clean = it.folderPath.replace(/\\/g, '/').replace(/^\/+/, '');
+        const top = clean.includes('/') ? clean.slice(0, clean.indexOf('/')) : clean;
+        if (top !== this.activeFolder) return false;
+      }
+      if (!q) return true;
+      return (
+        it.name.toLowerCase().includes(q) ||
+        (it.detail && it.detail.toLowerCase().includes(q)) ||
+        (it.folderPath && it.folderPath.toLowerCase().includes(q))
+      );
+    });
 
     const formatBadge = format.toUpperCase();
     const containerNoun =
@@ -103,10 +125,30 @@ export class MultiInstrumentModal {
           : format === 'folder'
             ? 'sample directory'
             : format === 'disk' || format === 'akai'
-              ? 'Akai S-Series disk image'
+              ? 'disk image'
               : format === 'zip'
                 ? 'archive'
                 : 'collection';
+
+    const folderNavHtml =
+      folderCounts.size > 1
+        ? `
+          <div class="triage-folder-nav" role="tablist" aria-label="Carpetas y contenedores">
+            <button type="button" class="btn btn-xs ${this.activeFolder === '' ? 'btn-accent' : 'btn-outline'} btn-folder-pill" data-folder="">
+              ${ICONS.layers} Todas (${items.length})
+            </button>
+            ${Array.from(folderCounts.entries())
+              .map(
+                ([folder, count]) => `
+                  <button type="button" class="btn btn-xs ${this.activeFolder === folder ? 'btn-accent' : 'btn-outline'} btn-folder-pill" data-folder="${escAttr(folder)}" title="${escAttr(folder)}">
+                    ${ICONS.folder} ${escHtml(folder)} (${count})
+                  </button>
+                `
+              )
+              .join('')}
+          </div>
+        `
+        : '';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-modal-l nmm-multi-inst-window" role="dialog" aria-modal="true" aria-labelledby="multi-inst-title">
@@ -126,9 +168,11 @@ export class MultiInstrumentModal {
             <span>${ICONS.layers}</span>
             <div>
               <p><strong>${escHtml(fileName)}</strong> trae ${items.length} instrumentos en este ${escHtml(containerNoun)}.</p>
-              <p>Carga uno directo en la sesión o procesa la colección entera en el Batch.</p>
+              <p>Navega por carpeta/contenedor, carga uno directo en la sesión o procesa la colección entera en el Batch.</p>
             </div>
           </div>
+
+          ${folderNavHtml}
 
           <div class="triage-toolbar">
             <div class="triage-toolbar-left">
@@ -136,7 +180,7 @@ export class MultiInstrumentModal {
                 type="text"
                 id="inp-multi-inst-filter"
                 class="form-control triage-search"
-                placeholder="Filtrar por nombre (p. ej. Piano, Bass, Strings)…"
+                placeholder="Filtrar por nombre o carpeta (p. ej. Guitar, EXS24, HALion, WAV)…"
                 value="${escAttr(this.filterQuery)}"
                 autocomplete="off"
                 spellcheck="false"
@@ -161,7 +205,7 @@ export class MultiInstrumentModal {
                   <tr>
                     <th class="triage-col-idx">#</th>
                     <th class="triage-col-bank">Bank : Prog</th>
-                    <th>Instrumento</th>
+                    <th>Instrumento / Ruta</th>
                     <th class="triage-col-regions">Estructura</th>
                     <th></th>
                   </tr>
@@ -181,12 +225,19 @@ export class MultiInstrumentModal {
                               it.regionCount !== undefined
                                 ? `${it.regionCount} region${it.regionCount === 1 ? '' : 's'}`
                                 : it.detail || 'Standard';
+                            const rawFolder = it.folderPath ? it.folderPath.replace(/\\/g, '/') : '';
+                            const parentFolder = rawFolder.includes('/')
+                              ? rawFolder.slice(0, rawFolder.lastIndexOf('/'))
+                              : rawFolder;
 
                             return `
                               <tr class="triage-row ${isSel ? 'triage-row-selected' : ''}" data-index="${it.index}">
                                 <td class="triage-col-idx">${it.index + 1}</td>
                                 <td class="triage-col-bank"><span class="bank-tag">${escHtml(bankStr)}</span></td>
-                                <td><div class="triage-item-name">${escHtml(it.name)}</div></td>
+                                <td>
+                                  <div class="triage-item-name">${escHtml(it.name)}</div>
+                                  ${parentFolder ? `<div class="triage-item-subpath">${escHtml(parentFolder)}</div>` : ''}
+                                </td>
                                 <td class="triage-col-regions"><span class="reg-tag">${escHtml(regStr)}</span></td>
                                 <td class="triage-col-action">
                                   <button type="button" class="btn btn-sm btn-accent btn-load-this-inst" data-index="${it.index}" title="Cargar este instrumento">
@@ -273,6 +324,13 @@ export class MultiInstrumentModal {
     this.backdropEl.querySelector('#btn-clear-search')?.addEventListener('click', () => {
       this.filterQuery = '';
       this.render();
+    });
+
+    this.backdropEl.querySelectorAll('.btn-folder-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeFolder = (btn as HTMLElement).dataset.folder ?? '';
+        this.render();
+      });
     });
 
     this.backdropEl.querySelector('#btn-ai-deduce-inst')?.addEventListener('click', async () => {

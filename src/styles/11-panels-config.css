@@ -373,28 +373,41 @@
 
 .form-row-classic-identity {
   display: grid;
-  grid-template-columns: 1fr 140px;
+  grid-template-columns: minmax(0, 1fr) 140px;
   gap: var(--space-3);
-  align-items: flex-start;
+  align-items: end;
 }
 
 .form-row-extended-identity {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: flex-start;
+  align-items: end;
 }
 
-.form-group-subbank-preview select {
+.form-group-subbank-preview select:disabled {
   opacity: 0.8;
   cursor: not-allowed;
 }
 
+.model-tab-btn.is-mode-conditioned {
+  opacity: 0.72;
+}
+
+.btn-group-toggle .btn-target-format:disabled,
+.btn-group-toggle .btn-dsp-algorithm:disabled,
+.complexity-buttons-grid .btn-complexity:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--color-text-dim);
+}
+
 .model-cfg-engine-row {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: var(--space-4);
-  align-items: flex-start;
+  align-items: end;
 }
 
 .btn-group-toggle {

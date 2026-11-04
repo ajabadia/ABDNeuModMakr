@@ -6,12 +6,7 @@
 // tree without extracting files to the host hard drive.
 // ─────────────────────────────────────────────────────────
 
-import {
-  indexZipArchive,
-  extractZipEntry,
-  parseZipArchive,
-  type ZipCentralEntry,
-} from '../NeuronFormats/ZipArchive.ts';
+import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
 
 export interface VirtualFileEntry {
   /** Normalized POSIX path with forward slashes (e.g. "Vintage/Rhodes/sample.wav") */
@@ -88,9 +83,8 @@ export class VirtualZipFs {
       const normPath = normalizeVirtualPath(f.path);
       if (isIgnorableOrUnsafePath(normPath)) continue;
       const base = normPath.split('/').pop() || normPath;
-      const getter = typeof f.data === 'function'
-        ? f.data
-        : () => (f.data instanceof Uint8Array ? f.data : new Uint8Array(f.data));
+      const data = f.data;
+      const getter = typeof data === 'function' ? data : () => (data instanceof Uint8Array ? data : new Uint8Array(data));
       const size = f.data instanceof Uint8Array ? f.data.byteLength : f.data instanceof ArrayBuffer ? f.data.byteLength : 0;
       fs.addFile({
         path: normPath,

@@ -23,7 +23,8 @@ import {
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { MAX_SFZ_TEXT_BYTES } from '../formats/SfzParser.ts';
 import { toast, confirmDialog } from '../ui/notify';
-import { withLoading } from '../ui/LoadingModal';
+import { loadingModal, withLoading } from '../ui/LoadingModal';
+import { yieldToUI } from '../core/asyncUtils.ts';
 import { MultiInstrumentModal, type MultiInstrumentItem } from '../ui/MultiInstrumentModal';
 import {
   extractFolderFilesToCandidates,
@@ -40,6 +41,11 @@ import {
   listNeuronBankModels,
   parseNeuronBankOrModelToPreset,
 } from '../core/import/neuronBankImporter.ts';
+import {
+  listZipSamplerPrograms,
+  parseUniversalSampler,
+} from '../core/import/rawSamplerParsers.ts';
+import { identifyDiskImageFormat } from '@abdsynths/shared/formats/sampler';
 import {
   discoverTriageReport,
   extractTriageDefinitionCandidates,
@@ -64,6 +70,7 @@ export interface ImportContext {
   onDropCoverImage?: (file: File) => Promise<void> | void;
   onOpenBatchProcessorWithSf2?: (buffer: ArrayBuffer, fileName: string) => void;
   onOpenBatchProcessorWithCandidates?: (candidates: BatchModelCandidate[], originTitle?: string) => void;
+  onOpenBatchProcessorWithFiles?: (files: Array<{ name: string; buffer: ArrayBuffer }>, originTitle?: string) => void;
   onOpenBatchProcessor?: () => void;
 }
 
@@ -741,7 +748,7 @@ export class ImportHandlers {
             const buffer = await file.arrayBuffer();
             folderInputs.push({ path: relPath, name: entry.name, buffer });
           }
-        } else if (entry.kind === 'directory' && depth < 2) {
+        } else if (entry.kind === 'directory' && depth < 8) {
           await collectAudio(entry as FileSystemDirectoryHandle, relPath, depth + 1);
         }
       }
@@ -785,10 +792,21 @@ export class ImportHandlers {
         `Mapping and decoding ${files.length} audio file(s)${instrumentName ? ` for "${instrumentName}"` : ''}...`,
         async () => {
           const normalizedFiles: { name: string; buffer: ArrayBuffer }[] = [];
-          for (const f of files) {
+          for (let idx = 0; idx < files.length; idx++) {
+            const f = files[idx];
+            if (idx > 0 && idx % 4 === 0) {
+              loadingModal.setMessage(
+                `Decoding audio sample ${idx + 1} / ${files.length}${instrumentName ? ` ("${instrumentName}")` : ''}...`
+              );
+              await yieldToUI(0);
+            }
             const normBuf = await transcodeAnyAudioToWavBuffer(f.buffer, f.name);
             normalizedFiles.push({ name: f.name, buffer: normBuf });
           }
+          loadingModal.setMessage(
+            `Mapping ${normalizedFiles.length} sample(s) to MIDI key zones...`
+          );
+          await yieldToUI(0);
           const zones = await this.ctx.core.importAudioFiles(normalizedFiles, audioMode);
           this.ctx.session = this.ctx.core.getSession()!;
           if (instrumentName && this.ctx.session) {
@@ -826,7 +844,11 @@ export class ImportHandlers {
           }
         },
         onProcessBatch: () => {
-          this.ctx.onOpenBatchProcessor?.();
+          if (this.ctx.onOpenBatchProcessorWithCandidates) {
+            this.ctx.onOpenBatchProcessorWithCandidates(candidates, containerName);
+          } else {
+            this.ctx.onOpenBatchProcessor?.();
+          }
         },
         onDeduceWithAi: async () => {
           const aiCandidates = await extractFolderFilesToCandidatesWithAi(folderInputs, {
@@ -1119,11 +1141,25 @@ export class ImportHandlers {
     }
     const primaryBase = (item.primaryFilePath.split('/').pop() ?? '').toLowerCase();
     if (primaryBase.endsWith('.sf2')) {
-      // Self-contained bank: behave exactly as if the user dropped that file.
-      // The single-SF2 ladder handles it; the gate won't reopen (1 format).
       const primary = files.find((f) => f.name.toLowerCase().endsWith('.sf2')) ?? files[0];
       const base = primary.name.split('/').pop() ?? primary.name;
       try {
+        if (typeof item.subIndex === 'number') {
+          await withLoading(
+            'IMPORTING SOUNDFONT (.SF2)...',
+            `Processing "${base}" (Preset: "${item.name}"), decoding PCM samples and mapping layers...`,
+            async () => {
+              const session = await this.ctx.core.importSf2Buffer(primary.buffer, item.subIndex);
+              this.ctx.session = session;
+              this.ctx.selectedZoneId = session.zones[0]?.id || null;
+              this.ctx.log(
+                `${sourceLabel} (triage): imported SF2 "${base}" -> preset "${session.name}" (${session.extendedRegions?.length ?? 0} regions, ${session.zones.length} classic zones).`
+              );
+              this.ctx.refresh();
+            }
+          );
+          return;
+        }
         const dt = new DataTransfer();
         dt.items.add(new File([primary.buffer], base));
         await this.importMixedFilesOrZip(dt.files, preferredKind, audioMode, `${sourceLabel} (triage)`);
@@ -1277,6 +1313,38 @@ export class ImportHandlers {
    * DirectoryHandle (`showDirectoryPicker`) variant: reads mixed folders carrying
    * preset containers + audio/other files so the triage gate can inspect them.
    */
+  private expandNestedZipBuffer(
+    bytes: Uint8Array,
+    prefix: string,
+    out: { name: string; buffer: ArrayBuffer }[],
+    depth = 0
+  ): void {
+    const unzipped = parseZipArchive(bytes);
+    for (const entry of unzipped) {
+      const entryPath = prefix ? `${prefix}/${entry.path}` : entry.path;
+      const lowerEntry = entry.path.toLowerCase();
+      const isNestedZip =
+        depth < 3 &&
+        lowerEntry.endsWith('.zip') &&
+        entry.data.byteLength >= 4 &&
+        entry.data[0] === 0x50 &&
+        entry.data[1] === 0x4b &&
+        (entry.data[2] === 0x03 || entry.data[2] === 0x05);
+      if (isNestedZip) {
+        const innerStem = entryPath.replace(/\.zip$/i, '');
+        try {
+          this.expandNestedZipBuffer(entry.data, innerStem, out, depth + 1);
+          continue;
+        } catch {
+          // Fall through and keep raw buffer if nested zip is corrupt
+        }
+      }
+      const copy = new Uint8Array(entry.data.byteLength);
+      copy.set(entry.data);
+      out.push({ name: entryPath, buffer: copy.buffer });
+    }
+  }
+
   private async readMixedDirectoryHandleForTriage(
     rootHandle: FileSystemDirectoryHandle
   ): Promise<TriageExpandedFile[] | null> {
@@ -1299,18 +1367,30 @@ export class ImportHandlers {
             hasOther = true;
           }
           entries.push({ rel, handle: entry as FileSystemFileHandle });
-        } else if (entry.kind === 'directory' && depth < 2) {
+        } else if (entry.kind === 'directory' && depth < 8) {
           await walk(entry as FileSystemDirectoryHandle, rel, depth + 1);
         }
       }
     };
     await walk(rootHandle, '', 0);
-    if (!hasContainer || !hasOther || entries.length < 2) return null;
+    if (!hasContainer || (!hasOther && entries.length < 1)) return null;
     const expanded: TriageExpandedFile[] = [];
     for (const item of entries) {
       try {
         const f = await item.handle.getFile();
-        expanded.push({ name: item.rel, buffer: await f.arrayBuffer() });
+        const buf = await f.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        const isPkZip =
+          item.rel.toLowerCase().endsWith('.zip') &&
+          bytes.byteLength >= 4 &&
+          bytes[0] === 0x50 &&
+          bytes[1] === 0x4b &&
+          (bytes[2] === 0x03 || bytes[2] === 0x05);
+        if (isPkZip) {
+          this.expandNestedZipBuffer(bytes, item.rel.replace(/\.zip$/i, ''), expanded, 1);
+        } else {
+          expanded.push({ name: item.rel, buffer: buf });
+        }
       } catch {
         // skip unreadable file
       }
@@ -1342,11 +1422,23 @@ export class ImportHandlers {
       }
       kept.push({ rel, file: f });
     }
-    if (!hasContainer || !hasOther) return null;
+    if (!hasContainer || (!hasOther && kept.length < 1)) return null;
     const expanded: TriageExpandedFile[] = [];
     for (const k of kept) {
       try {
-        expanded.push({ name: k.rel, buffer: await k.file.arrayBuffer() });
+        const buf = await k.file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        const isPkZip =
+          k.rel.toLowerCase().endsWith('.zip') &&
+          bytes.byteLength >= 4 &&
+          bytes[0] === 0x50 &&
+          bytes[1] === 0x4b &&
+          (bytes[2] === 0x03 || bytes[2] === 0x05);
+        if (isPkZip) {
+          this.expandNestedZipBuffer(bytes, k.rel.replace(/\.zip$/i, ''), expanded, 1);
+        } else {
+          expanded.push({ name: k.rel, buffer: buf });
+        }
       } catch {
         // Unreadable entries are left to the legacy flows below.
       }
@@ -1379,12 +1471,7 @@ export class ImportHandlers {
           bytes[1] === 0x4b &&
           (bytes[2] === 0x03 || bytes[2] === 0x05);
         if (lower.endsWith('.zip') || lower.endsWith('.nmpack') || (lower.endsWith('.model') && isPkZip)) {
-          const unzipped = parseZipArchive(bytes);
-          for (const entry of unzipped) {
-            const copy = new Uint8Array(entry.data.byteLength);
-            copy.set(entry.data);
-            expanded.push({ name: entry.path, buffer: copy.buffer });
-          }
+          this.expandNestedZipBuffer(bytes, '', expanded, 0);
         } else {
           expanded.push({ name: f.name, buffer: buf });
         }
@@ -1414,6 +1501,10 @@ export class ImportHandlers {
       const audioFiles: { name: string; path?: string; buffer: ArrayBuffer }[] = [];
       const sf2Files: { name: string; buffer: ArrayBuffer }[] = [];
       const sfzFiles: { name: string; buffer: ArrayBuffer }[] = [];
+      const universalSamplerFiles: { name: string; path: string; buffer: ArrayBuffer }[] = [];
+
+      const universalSamplerExtRe =
+        /\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb|xpn|xpm|xty|xtd|dspreset|nki|vstpreset|fxp|multisample|adv|exs|talsmpl|txprog|kmp|ksf|dls|qpat|tvpst|dexpreset|grp|kit|s24|korgmultisample|3wv|svz|akp|pgm|set|krz|k25|k26|x7u|x8u|x3a|fzv|fzf|synx|cmi|cmi3|vc|s3p|sxt|dwp|sbpack|sbx|zmap|prt_omn|mxsnd|mxgrp|nicnt|rx2|rex|rcy)$/i;
 
       for (const item of expanded) {
         const normPath = item.name.replace(/\\/g, '/');
@@ -1428,6 +1519,10 @@ export class ImportHandlers {
         }
         if (lower.endsWith('.sfz')) {
           sfzFiles.push({ name: base, buffer: item.buffer });
+          continue;
+        }
+        if (universalSamplerExtRe.test(lower) || identifyDiskImageFormat(item.buffer) !== 'unknown') {
+          universalSamplerFiles.push({ name: base, path: normPath, buffer: item.buffer });
           continue;
         }
         const isModelArtifact =
@@ -1470,6 +1565,7 @@ export class ImportHandlers {
       const isNewInstrument =
         sf2Files.length > 0 ||
         sfzFiles.length > 0 ||
+        universalSamplerFiles.length > 0 ||
         modelFolders.size > 0 ||
         looseModelFiles.length > 0 ||
         neuronContainerFiles.length > 0 ||
@@ -1592,13 +1688,187 @@ export class ImportHandlers {
               void loadSfzFile(chosen);
             },
             onProcessBatch: () => {
-              this.ctx.onOpenBatchProcessor?.();
+              if (this.ctx.onOpenBatchProcessorWithFiles) {
+                this.ctx.onOpenBatchProcessorWithFiles(expanded, `${sfzFiles.length} SFZ Definitions`);
+              } else {
+                this.ctx.onOpenBatchProcessor?.();
+              }
             },
           });
           return;
         }
 
         await loadSfzFile(sfzFiles[0]);
+        return;
+      }
+
+      // If a Universal Sampler / Vintage Disk Image (.iso, .img, .dsk, .e4b, .xpn, .xpm, .dspreset, .exs, .fxp, .kmp, .dls, .krz, .x7u, etc.) was provided
+      if (universalSamplerFiles.length > 0) {
+        const siblingMap = new Map<string, Uint8Array>();
+        for (const af of audioFiles) {
+          siblingMap.set(af.name, new Uint8Array(af.buffer));
+          if (af.path) siblingMap.set(af.path, new Uint8Array(af.buffer));
+        }
+        for (const uf of universalSamplerFiles) {
+          siblingMap.set(uf.name, new Uint8Array(uf.buffer));
+          siblingMap.set(uf.path, new Uint8Array(uf.buffer));
+        }
+
+        const loadUniversalProgram = async (
+          targetSampler: { name: string; path: string; buffer: ArrayBuffer },
+          programId?: string,
+          programLabel?: string
+        ) => {
+          await withLoading(
+            'IMPORTING SAMPLER INSTRUMENT...',
+            `Parsing "${targetSampler.name}"${programLabel ? ` (${programLabel})` : ''} and decoding audio zones...`,
+            async () => {
+              const parsedPreset = await parseUniversalSampler(
+                targetSampler.name,
+                targetSampler.buffer,
+                siblingMap.size > 0 ? siblingMap : undefined,
+                programId
+              );
+              const currentMode = this.ctx.session?.processConfig.workingMode ?? 'classic';
+              const isDrumPreset = /drum|kit|perc/i.test(parsedPreset.detectedCategory || '');
+              const adapted = applyPreflightImportAdaptations(parsedPreset, {
+                autoExtendOuterZones: currentMode === 'classic' && !isDrumPreset,
+                adaptVelocityLayers: true,
+                switchToExtendedMode: currentMode === 'extended',
+                currentWorkingMode: currentMode,
+              });
+              if (!this.ctx.session) {
+                this.ctx.session = await this.ctx.core.newSession(parsedPreset.modelName || 'SamplerModel');
+              }
+              for (const [name, buf] of adapted.audioBuffers.entries()) {
+                this.ctx.core.registerSampleBuffer(name, buf);
+              }
+              const rawParamSet = Number(parsedPreset.suggestedParameterSet);
+              const paramSet = Number.isFinite(rawParamSet) ? Math.max(0, Math.min(9, rawParamSet)) : 0;
+              const fullExpandedName = (parsedPreset.presetName || parsedPreset.modelName || 'SamplerModel').trim();
+              const classicShortName = (parsedPreset.modelName || fullExpandedName).trim().slice(0, 11) || 'UNTITLED';
+              this.ctx.session.name = fullExpandedName;
+              this.ctx.session.processConfig.modelName = classicShortName;
+              this.ctx.session.processConfig.expandedName = fullExpandedName;
+              this.ctx.session.processConfig.parameterSet = paramSet;
+              this.ctx.session.processConfig.workingMode = adapted.suggestedWorkingMode;
+              this.ctx.session.processConfig.keyMappingMode = isDrumPreset ? 'drum' : 'chromatic';
+              this.ctx.session.processConfig.extendedMetadata = {
+                ...this.ctx.session.processConfig.extendedMetadata,
+                category: parsedPreset.detectedCategory,
+              };
+              this.ctx.session.zones = adapted.classicZones;
+              this.ctx.session.extendedRegions = adapted.extendedRegions;
+              this.ctx.session.detectedInstrumentCategory = parsedPreset.detectedCategory;
+              this.ctx.session.dirty = true;
+              this.ctx.selectedZoneId = adapted.classicZones[0]?.id ?? null;
+              this.ctx.log(
+                `${sourceLabel}: imported ${parsedPreset.formatLabel} "${parsedPreset.presetName}" (${adapted.extendedRegions.length} region(s), ${adapted.classicZones.length} classic zone(s)).`
+              );
+              this.ctx.refresh();
+              toast(
+                `Imported "${parsedPreset.presetName}" (${adapted.extendedRegions.length} regions, ${adapted.audioBuffers.size} samples).`,
+                'success'
+              );
+            }
+          );
+        };
+
+        const primarySampler = universalSamplerFiles[0];
+        if (universalSamplerFiles.length === 1) {
+          const programs = await listZipSamplerPrograms(primarySampler.name, primarySampler.buffer);
+          if (programs.length > 1) {
+            const multiModal = new MultiInstrumentModal();
+            multiModal.open({
+              fileName: primarySampler.name,
+              format: (programs[0]?.format as any) || 'akai_disk',
+              items: programs.map((p) => ({
+                id: p.id,
+                index: p.index,
+                name: p.name,
+                regionCount: p.regionCount,
+                detail: p.detail,
+                folderPath: p.entryPath || p.id,
+              })),
+              onSelect: (chosen) => {
+                void loadUniversalProgram(primarySampler, String(chosen.id), chosen.name);
+              },
+              onProcessBatch: () => {
+                if (this.ctx.onOpenBatchProcessorWithFiles) {
+                  this.ctx.onOpenBatchProcessorWithFiles(expanded, primarySampler.name);
+                } else {
+                  this.ctx.onOpenBatchProcessor?.();
+                }
+              },
+            });
+            return;
+          }
+
+          await loadUniversalProgram(primarySampler, programs[0]?.id, programs[0]?.name);
+          return;
+        }
+
+        // Multiple sampler definitions or containers (e.g. multiple .exs, .fxp, .akp, or nested .iso/.zip files)
+        const combinedEntries: Array<{
+          sampler: { name: string; path: string; buffer: ArrayBuffer };
+          programId?: string;
+          name: string;
+          regionCount?: number;
+          detail?: string;
+          folderPath: string;
+        }> = [];
+        for (const uf of universalSamplerFiles) {
+          const subProgs = await listZipSamplerPrograms(uf.name, uf.buffer);
+          if (subProgs.length > 0) {
+            const prefix = uf.path.replace(/\.[^.]+$/, '');
+            for (const sp of subProgs) {
+              combinedEntries.push({
+                sampler: uf,
+                programId: sp.id,
+                name: sp.name,
+                regionCount: sp.regionCount,
+                detail: sp.detail ? `${uf.name} — ${sp.detail}` : uf.name,
+                folderPath: `${prefix}/${sp.entryPath || sp.id}`,
+              });
+            }
+          } else {
+            const ext = uf.name.split('.').pop()?.toUpperCase() || 'PRESET';
+            combinedEntries.push({
+              sampler: uf,
+              programId: undefined,
+              name: uf.name.replace(/\.[^.]+$/, ''),
+              detail: `${ext} Instrument`,
+              folderPath: uf.path,
+            });
+          }
+        }
+
+        const multiModal = new MultiInstrumentModal();
+        multiModal.open({
+          fileName: `${combinedEntries.length} Sampler Instruments`,
+          format: 'zip',
+          items: combinedEntries.map((ce, idx) => ({
+            id: `${idx}`,
+            index: idx,
+            name: ce.name,
+            regionCount: ce.regionCount,
+            detail: ce.detail,
+            folderPath: ce.folderPath,
+          })),
+          onSelect: (chosen) => {
+            const entry = combinedEntries[chosen.index] ?? combinedEntries[0];
+            if (entry) {
+              void loadUniversalProgram(entry.sampler, entry.programId, entry.name);
+            }
+          },
+          onProcessBatch: () => {
+            if (this.ctx.onOpenBatchProcessorWithFiles) {
+              this.ctx.onOpenBatchProcessorWithFiles(expanded, `${combinedEntries.length} Sampler Instruments`);
+            } else {
+              this.ctx.onOpenBatchProcessor?.();
+            }
+          },
+        });
         return;
       }
 
@@ -1758,7 +2028,11 @@ export class ImportHandlers {
               void applyNeuronPreset(chosen.id);
             },
             onProcessBatch: () => {
-              this.ctx.onOpenBatchProcessor?.();
+              if (this.ctx.onOpenBatchProcessorWithFiles) {
+                this.ctx.onOpenBatchProcessorWithFiles(expanded, primaryContainer.name);
+              } else {
+                this.ctx.onOpenBatchProcessor?.();
+              }
             },
           });
           return;
@@ -1840,7 +2114,7 @@ export class ImportHandlers {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = `${SUPPORTED_AUDIO_ACCEPT},.sf2,.sfz,.zip`;
+    fileInput.accept = `${SUPPORTED_AUDIO_ACCEPT},.sf2,.sfz,.zip,.iso,.img,.dsk,.bin,.hda,.out,.efe,.ede,.gkh,.e4b,.esi,.exb,.xpn,.xpm,.xty,.xtd,.dspreset,.nki,.vstpreset,.fxp,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.akp,.pgm,.set,.krz,.k25,.k26,.x7u,.x8u,.x3a,.fzv,.fzf,.s3p,.sxt,.dwp`;
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
       if (!fileList || fileList.length === 0) return;
@@ -1855,7 +2129,7 @@ export class ImportHandlers {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.multiple = true;
-    fileInput.accept = `.sf2,.sfz,${SUPPORTED_AUDIO_ACCEPT},.zip`;
+    fileInput.accept = `.sf2,.sfz,.iso,.img,.dsk,.bin,.hda,.out,.efe,.ede,.gkh,.e4b,.esi,.exb,.xpn,.xpm,.xty,.xtd,.dspreset,.nki,.vstpreset,.fxp,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.akp,.pgm,.set,.krz,.k25,.k26,.x7u,.x8u,.x3a,.fzv,.fzf,.s3p,.sxt,.dwp,${SUPPORTED_AUDIO_ACCEPT},.zip`;
     fileInput.addEventListener('change', async () => {
       const fileList = fileInput.files;
       if (!fileList || fileList.length === 0) return;

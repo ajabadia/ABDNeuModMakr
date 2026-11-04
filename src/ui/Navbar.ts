@@ -59,6 +59,7 @@ export interface NavbarHandlers {
   onOpenAudioChopper?: () => void;
   onOpenAudioRecorder?: () => void;
   onOpenLoopEditor?: () => void;
+  onAutoLoopAllZones?: () => void;
   onToggleLogs: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
   onOpenAudit?: () => void;
@@ -130,27 +131,25 @@ export class AppNavbar {
             ],
           },
           { separator: true },
-          { id: 1039, label: 'Asistente Guiado de Músico (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
-          { id: 104, label: 'Universal Smart Import (Audio, Bank, Slices, Chains)...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
+          { id: 104, label: 'Universal Smart Import...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
           {
-            name: 'Advanced Import',
+            id: 1040,
+            label: 'Import Specific Formats',
             submenu: [
               { id: 1041, label: 'Import Audio Files (.wav / .aif / .flac)...', action: 'importSamples' },
               { id: 1045, label: 'Import Audio by Name (Hartmann convention)...', action: 'importByName', shortcut: 'Ctrl+N' },
               { id: 105,  label: 'Import Audio Folder...', action: 'importFolder' },
               { separator: true },
-              { id: 1055, label: 'Import SoundFont / SFZ (.sf2, .sfz)...', action: 'importSampler' },
+              { id: 1055, label: 'Import Sampler / Disk Image (.sf2, .sfz, .iso, .akp, .exb)...', action: 'importSampler' },
+              { separator: true },
+              { id: 106,  label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
+              { id: 107,  label: 'Import Model Files / .zip...', action: 'importModel' },
             ],
           },
-          { id: 1058, label: 'Batch Processor (Multi-Model Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
-          { separator: true },
-          { id: 106,  label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
           { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
-          { id: 107,  label: 'Import Model Files / .zip...', action: 'importModel' },
           { separator: true },
           { id: 1085, label: 'Export Instrument (Choose Destination)...', action: 'openExportDestination', shortcut: 'Ctrl+Shift+X' },
           { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
-          { id: 1056, label: 'Export Sampler / Multi-Format Bank...', action: 'exportSampler', shortcut: 'Ctrl+Shift+E' },
         ],
       },
       {
@@ -159,37 +158,43 @@ export class AppNavbar {
           { id: 201, label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
           { id: 202, label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
           { separator: true },
-          { id: 2005, label: 'Universal Smart Import (Audio, Bank, Slices)...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
-          { separator: true },
           { id: 203, label: 'New Zone (Split at Root Key)', action: 'addZone', shortcut: 'Insert' },
           { id: 204, label: 'Remove Selected Zone', action: 'removeZone', shortcut: 'Delete' },
-          { separator: true },
-          { id: 205, label: 'Auto-Repair MIDI Coverage (0..127)', action: 'autoRepairCoverage' },
           { id: 206, label: 'Reset to Single Zone (0..127)', action: 'clearZones' },
           { separator: true },
-          { id: 207, label: 'Preferences & Settings...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
+          { id: 205, label: 'Auto-Repair MIDI Coverage (0..127)', action: 'autoRepairCoverage' },
+          { id: 302, label: 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
+          { separator: true },
+          { id: 207, label: 'Settings & AI Engine...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
         ],
       },
       {
         name: 'Model',
         items: [
-          { id: 3010, label: 'Asistente Guiado de Músico (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
+          { id: 3011, label: 'Configure Model...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
+          {
+            id: 3000,
+            label: 'Tools',
+            submenu: [
+              { id: 3016, label: 'Record (Audio Recorder & MIDI AutoSampler)...', action: 'openAudioRecorder' },
+              { id: 3013, label: 'Loop Editor (Waveform & Zero-Crossing)...', action: 'openLoopEditor' },
+              { id: 3017, label: 'AutoLoop en todas las zonas', action: 'autoLoopAllZones' },
+              { id: 3012, label: 'AutoSlicer (Audio Chopper)...', action: 'openAudioChopper' },
+              { separator: true },
+              { id: 3014, label: 'AI Cover Artwork Generator...', action: 'openAiCoverGenerator' },
+              { id: 3010, label: 'Asistente Guiado (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
+            ],
+          },
           { separator: true },
-          { id: 3011, label: 'Model Configuration & Global Properties...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
-          { id: 3014, label: 'Generate Cover Artwork with AI (Fase 20)...', action: 'openAiCoverGenerator' },
-          { id: 3012, label: 'Audio Chopper & Auto-Slicer...', action: 'openAudioChopper' },
-          { id: 3016, label: 'Audio Recorder (Takes)...', action: 'openAudioRecorder' },
-          { id: 3013, label: 'Waveform AutoLoop Editor...', action: 'openLoopEditor' },
-          { id: 301, label: 'Process Model Now...', action: 'startProcess', shortcut: 'Ctrl+P' },
-          { id: 3015, label: 'Batch Process Models (Queue)...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
-          { id: 302, label: 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
+          { id: 301, label: 'Generate Neuron Model...', action: 'startProcess', shortcut: 'Ctrl+P' },
+          { id: 3015, label: 'Batch Processor...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { separator: true },
           {
             id: 303,
             label: 'Working Mode',
             submenu: [
-              { id: 304, label: 'Classic Mode (MODELmaker v1.2)', action: 'setWorkingMode', value: 'classic' },
-              { id: 305, label: 'Extended Mode (N-Layer / 2D Regions)', action: 'setWorkingMode', value: 'extended' },
+              { id: 304, label: 'Classic Mode (1:1 Hardware)', action: 'setWorkingMode', value: 'classic' },
+              { id: 305, label: 'Extended Mode (HD Multi-Layer)', action: 'setWorkingMode', value: 'extended' },
             ],
           },
           {
@@ -202,7 +207,8 @@ export class AppNavbar {
             ],
           },
           { separator: true },
-          { id: 310, label: 'AI Assistance & DSP Processing Engine...', action: 'openAiEngineModal' },
+          { id: 310, label: 'AI Assistance & Engine Settings...', action: 'openAiEngineModal' },
+          { id: 906, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
         ],
       },
       {
@@ -211,7 +217,7 @@ export class AppNavbar {
           { id: 401, label: 'Zone Metadata Editor Drawer', action: 'toggleZoneDrawer', shortcut: 'Ctrl+J' },
           { id: 402, label: 'Spectral & A/B Resynthesis Inspector', action: 'toggleSpectral', shortcut: 'Ctrl+E' },
           { separator: true },
-          { id: 403, label: 'NeuronDB Bank Browser', action: 'toggleBank', shortcut: 'Ctrl+B' },
+          { id: 403, label: 'NeuronDB & AxionikDB Bank Browser', action: 'toggleBank', shortcut: 'Ctrl+B' },
           { id: 404, label: 'Telemetry & Coverage Audit', action: 'toggleLogs', shortcut: 'Ctrl+L' },
           { separator: true },
           {
@@ -246,8 +252,7 @@ export class AppNavbar {
           { separator: true },
           { id: 9005, label: 'System Configuration Health & Diagnostics...', action: 'openConfigHealth' },
           { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
-          { id: 905, label: 'Settings & General Preferences...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
-          { id: 906, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
+          { separator: true },
           { id: 904, label: 'About NEURON MODELmaker...', action: 'about' },
         ],
       },
@@ -568,7 +573,7 @@ export class AppNavbar {
             <span class="modal-icon">${ICONS.cpu}</span>
             <span>${title}</span>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-close-doc-modal">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-close-doc-modal" aria-label="Close">${ICONS.close}</button>
         </div>
         <div class="nmm-modal-body doc-modal-body">
           ${bodyHtml}
@@ -679,6 +684,7 @@ export class AppNavbar {
       case 'openAudioChopper': this.handlers.onOpenAudioChopper?.(); break;
       case 'openAudioRecorder': this.handlers.onOpenAudioRecorder?.(); break;
       case 'openLoopEditor': this.handlers.onOpenLoopEditor?.(); break;
+      case 'autoLoopAllZones': this.handlers.onAutoLoopAllZones?.(); break;
       // Note: 'about' and 'checkForUpdates' are handled natively by SynthNavBar's aboutDialog instance
     }
   }

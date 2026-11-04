@@ -12,6 +12,12 @@ import type {
   ProcessProgress,
   ZoneAnalysisSummary,
 } from '../types.ts';
+import { syncExtendedRegionsFromClassicZones } from '../extendedAdapter.ts';
+import type { AxionikExpandedModel } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+import {
+  buildAxionikExpandedModel,
+  type ExpandedSpectralSource,
+} from '../expandedModelWriter.ts';
 import { decodeWav, midiNoteToHz, synthesizeDemoWav } from './WavDecoder.ts';
 import { SpectralAnalyzer } from './SpectralAnalyzer.ts';
 import { buildLayerView } from './GridIndicator.ts';
@@ -57,6 +63,8 @@ export interface PipelineRunResult {
   zonesAnalysis: ZoneAnalysisSummary[];
   neuronikModelJson: string;
   zoneBinaries: ZoneBinaryPair[];
+  /** Fase 38 / Resinator v2: Compiled AxionikExpandedModel (with Unified Spectral Surface, 24-Bark formants, DDSP residual & shapers) */
+  expandedModelV2?: AxionikExpandedModel;
 }
 
 function inferTimbreFromSampleName(
@@ -83,6 +91,7 @@ export function analyzeSingleZone(
   zoneJson: Record<string, unknown>;
   scapeBinary: Uint8Array;
   sphereBinary: Uint8Array;
+  spectralModel?: ExpandedSpectralSource;
 } {
   const { zone } = payload;
   const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
@@ -195,6 +204,7 @@ export function analyzeSingleZone(
     },
     scapeBinary: compiled.scapeBinary,
     sphereBinary: compiled.sphereBinary,
+    spectralModel: activeModel,
   };
 }
 
@@ -370,9 +380,69 @@ export async function runMultiZonePipeline(
     zones: zoneModelsJson,
   };
 
+  // Fase 38 / Resinator v2: Compile AxionikExpandedModel (05_extended_model/axionik-expanded.json)
+  let expandedModelV2: AxionikExpandedModel | undefined;
+  const shouldBuildExpandedV2 =
+    config.workingMode === 'extended' || config.targetFormat !== 'legacy-neuron';
+
+  if (shouldBuildExpandedV2 && analyzedBySample.size > 0) {
+    const spectralBySample: Record<string, ExpandedSpectralSource> = {};
+    let firstSpectral: ExpandedSpectralSource | undefined;
+    for (const [sName, res] of analyzedBySample.entries()) {
+      if (res.spectralModel) {
+        spectralBySample[sName] = res.spectralModel;
+        if (!firstSpectral) firstSpectral = res.spectralModel;
+      }
+    }
+
+    if (firstSpectral) {
+      const normalizedZones: Zone[] = payloads.map((p) => ({
+        ...p.zone,
+        sampleLow: p.zone.sampleLow ?? `Zone_${p.zone.rootKey}.wav`,
+      }));
+      const syntheticRegions = syncExtendedRegionsFromClassicZones(normalizedZones);
+      if (config.keyMappingMode === 'drum') {
+        for (const r of syntheticRegions) {
+          r.pitchKeytrack = 0;
+        }
+      }
+
+      const firstSummary = zonesAnalysis[0];
+      try {
+        expandedModelV2 = buildAxionikExpandedModel({
+          slot: config.modelNumber,
+          modelName: config.modelName,
+          expandedName: config.expandedName || config.modelName,
+          processConfig: config,
+          spectral: firstSpectral,
+          spectralBySample,
+          regions: syntheticRegions,
+          detectedInstrumentCategory:
+            config.extendedMetadata?.category ??
+            firstSummary?.classification?.detectedCategory ??
+            (config.keyMappingMode === 'drum' ? 'Drums' : undefined),
+          qualityScore: firstSummary?.qualityScore,
+          acousticDescriptors: firstSummary?.acousticDescriptors,
+          populateAdvancedSpectralExtensions: true,
+          buildUnifiedSurface: true,
+          hasHybridTransient: true,
+          surfaceTopologyOverride:
+            config.keyMappingMode === 'drum'
+              ? 'drum_kit_surface'
+              : config.unifiedSurfaceConfig?.topologyMode ?? 'auto',
+          surfaceResolutionStrategy:
+            config.unifiedSurfaceConfig?.resolutionStrategy ?? 'auto',
+        });
+      } catch {
+        // Non-fatal if expanded model v2 fails on malformed synthetic region
+      }
+    }
+  }
+
   return {
     zonesAnalysis,
     neuronikModelJson: JSON.stringify(bundleJson, null, 2),
     zoneBinaries,
+    expandedModelV2,
   };
 }

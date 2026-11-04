@@ -9,3 +9,4 @@ export * from './GridIndicator.ts';
 export * from './LayerClustering.ts';
 export * from './SpectralAnalyzer.ts';
 export * from './ScapeSphereGenerator.ts';
+export * from './ResynatorV2Preview.ts';

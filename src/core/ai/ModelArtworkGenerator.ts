@@ -921,21 +921,21 @@ async function generateWithReplicate(
     throw new Error('Replicate API Token is missing. Please configure it in Settings (BYOK).');
   }
 
-  // Create prediction
-  const createRes = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        aspect_ratio: '1:1',
-        output_format: 'webp',
+  // Create prediction via CORS-safe Replicate client
+  const createRes = await cloudByokClient.fetchReplicate(
+    '/v1/models/black-forest-labs/flux-schnell/predictions',
+    token,
+    {
+      method: 'POST',
+      body: {
+        input: {
+          prompt,
+          aspect_ratio: '1:1',
+          output_format: 'webp',
+        },
       },
-    }),
-  });
+    }
+  );
 
   if (!createRes.ok) {
     const errorText = await createRes.text().catch(() => '');
@@ -950,7 +950,7 @@ async function generateWithReplicate(
     urls?: { get?: string };
   };
 
-  const getUrl = prediction.urls?.get || `https://api.replicate.com/v1/predictions/${prediction.id}`;
+  const getUrl = prediction.urls?.get || `/v1/predictions/${prediction.id}`;
 
   // Poll prediction (max 45 seconds)
   const maxAttempts = 15;
@@ -962,9 +962,8 @@ async function generateWithReplicate(
 
     await delay(3000);
 
-    const pollRes = await fetch(getUrl, {
+    const pollRes = await cloudByokClient.fetchReplicate(getUrl, token, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
     });
     if (!pollRes.ok) break;
     prediction = (await pollRes.json()) as typeof prediction;

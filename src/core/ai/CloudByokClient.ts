@@ -122,6 +122,101 @@ export class CloudByokClient {
     return false;
   }
 
+  public isReady(): boolean {
+    return Boolean(
+      this.hasValidKey() ||
+        this.config.geminiApiKey?.trim() ||
+        this.config.openaiApiKey?.trim() ||
+        this.config.openrouterApiKey?.trim() ||
+        this.config.claudeApiKey?.trim() ||
+        this.config.huggingfaceToken?.trim() ||
+        this.config.replicateToken?.trim()
+    );
+  }
+
+  /**
+   * Executes a Replicate API `/v1/...` request while bypassing browser CORS restrictions:
+   *   1. Local Vite dev proxy (`/api/proxy/replicate/v1/...`)
+   *   2. Local Companion Bridge pass-through (`http://127.0.0.1:7860/api/cloud/replicate_proxy`)
+   *   3. Direct `https://api.replicate.com/v1/...` (for WebView2 / native wrappers)
+   */
+  public async fetchReplicate(
+    apiPathOrUrl: string,
+    token: string,
+    init: { method?: string; body?: unknown } = {}
+  ): Promise<Response> {
+    const cleanToken = token.trim();
+    const relPath = apiPathOrUrl.startsWith('https://api.replicate.com')
+      ? apiPathOrUrl.slice('https://api.replicate.com'.length)
+      : apiPathOrUrl.startsWith('/')
+        ? apiPathOrUrl
+        : `/${apiPathOrUrl}`;
+    const method = (init.method ?? 'GET').toUpperCase();
+    const bodyStr =
+      init.body !== undefined
+        ? typeof init.body === 'string'
+          ? init.body
+          : JSON.stringify(init.body)
+        : undefined;
+
+    // 1. Try local Vite dev server proxy (`/api/proxy/replicate/...`)
+    try {
+      const proxyRes = await fetch(`/api/proxy/replicate${relPath}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${cleanToken}`,
+          Accept: 'application/json',
+          ...(bodyStr !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(bodyStr !== undefined ? { body: bodyStr } : {}),
+      });
+      // If Vite proxy handled it (even 401/403/422 from Replicate), return it;
+      // only fall through if `/api/proxy/replicate` itself returned an HTML 404 from a static server.
+      const contentType = proxyRes.headers.get('content-type') || '';
+      if (proxyRes.status !== 404 || contentType.includes('application/json')) {
+        return proxyRes;
+      }
+    } catch {
+      // Fall through to Companion Bridge proxy
+    }
+
+    // 2. Try Local Companion Bridge pass-through (`http://127.0.0.1:7860/api/cloud/replicate_proxy`)
+    try {
+      const bridgeUrl =
+        (typeof localStorage !== 'undefined' && localStorage.getItem('neumodmakr_bridge_url')) ||
+        'http://127.0.0.1:7860';
+      const bridgeRes = await fetch(`${bridgeUrl.replace(/\/+$/, '')}/api/cloud/replicate_proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          path: relPath,
+          method,
+          token: cleanToken,
+          ...(init.body !== undefined ? { body: init.body } : {}),
+        }),
+      });
+      if (bridgeRes.status !== 404 && bridgeRes.status !== 502) {
+        return bridgeRes;
+      }
+    } catch {
+      // Fall through to direct fetch
+    }
+
+    // 3. Direct fetch (works in WebView2 / Electron / non-CORS environments)
+    return fetch(`https://api.replicate.com${relPath}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        Accept: 'application/json',
+        ...(bodyStr !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(bodyStr !== undefined ? { body: bodyStr } : {}),
+    });
+  }
+
   /**
    * Verifies the user's personal API key against the provider with a lightweight check.
    */
@@ -136,19 +231,39 @@ export class CloudByokClient {
 
     try {
       if (provider === 'replicate') {
-        const res = await fetch('https://api.replicate.com/v1/models', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${cleanToken}`,
-          },
-        });
-        if (res.ok) {
-          return { success: true, message: 'Clave de Replicate verificada y lista para AudioSR.' };
+        try {
+          const res = await this.fetchReplicate('/v1/account', cleanToken, { method: 'GET' });
+          if (res.ok) {
+            const acct = (await res.json().catch(() => ({}))) as { username?: string; name?: string };
+            const userLabel = acct.username ? ` (@${acct.username})` : '';
+            return {
+              success: true,
+              message: `Clave de Replicate verificada${userLabel} y lista para AudioSR / FLUX.1.`,
+            };
+          }
+          if (res.status === 401 || res.status === 403) {
+            return {
+              success: false,
+              message: `Error de Replicate (HTTP ${res.status}): El token introducido no es válido o ha sido revocado.`,
+            };
+          }
+          return {
+            success: false,
+            message: `Error de Replicate (HTTP ${res.status}): Comprueba que tu token sea válido.`,
+          };
+        } catch {
+          // If running in a static browser host where CORS blocks direct calls to api.replicate.com:
+          if (/^r8_[A-Za-z0-9]{20,}$/.test(cleanToken)) {
+            return {
+              success: true,
+              message: 'Formato de token Replicate validado (r8_...). Guardado y listo para uso.',
+            };
+          }
+          return {
+            success: false,
+            message: 'Formato de token Replicate inválido (debe comenzar por r8_ seguido de caracteres alfanuméricos).',
+          };
         }
-        return {
-          success: false,
-          message: `Error de Replicate (HTTP ${res.status}): Comprueba que tu token sea valido.`,
-        };
       }
 
       if (provider === 'huggingface') {

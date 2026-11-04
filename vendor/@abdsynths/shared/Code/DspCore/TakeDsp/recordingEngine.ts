@@ -167,6 +167,10 @@ export class RecordingEngine {
     return this.state;
   }
 
+  getSampleRate(): number {
+    return this.source.sampleRate;
+  }
+
   getRecordedFrames(): number {
     return this.recordedFrames;
   }
@@ -207,6 +211,40 @@ export class RecordingEngine {
   resumeRecording(): void {
     this.requireState(['paused'], 'resumeRecording');
     this.state = 'recording';
+  }
+
+  /**
+   * Fase 37.5 — Returns the most recent `windowFrames` of mono audio while recording
+   * or paused so the UI can render a constant-zoom scrolling waveform without waiting
+   * for `stopRecording()`.
+   */
+  getRecentMonoSamples(windowFrames: number): Float32Array {
+    const target = Math.max(0, Math.round(windowFrames));
+    if (target === 0 || this.recordedFrames === 0 || this.takeBuffers.length === 0) {
+      return new Float32Array(0);
+    }
+    const available = Math.min(target, this.recordedFrames);
+    const out = new Float32Array(available);
+    const n = this.source.channels;
+    let writePos = available;
+
+    for (let b = this.takeBuffers.length - 1; b >= 0 && writePos > 0; b--) {
+      const block = this.takeBuffers[b];
+      const len = block[0]?.length ?? 0;
+      if (len === 0) continue;
+      const takeCount = Math.min(writePos, len);
+      const srcOffset = len - takeCount;
+      const dstOffset = writePos - takeCount;
+      for (let c = 0; c < n; c++) {
+        const ch = block[c];
+        if (!ch) continue;
+        for (let i = 0; i < takeCount; i++) {
+          out[dstOffset + i] += ch[srcOffset + i] / n;
+        }
+      }
+      writePos -= takeCount;
+    }
+    return out;
   }
 
   /**

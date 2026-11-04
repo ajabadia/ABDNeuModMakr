@@ -58,28 +58,43 @@
 /* ── Toast notifications (non-blocking alert replacement) ── */
 #toast-stack {
   position: fixed;
+  top: var(--space-4);
   right: var(--space-4);
-  bottom: var(--space-4);
+  bottom: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  z-index: 9999;
-  max-width: min(420px, 90dvw);
+  z-index: 10050;
+  max-width: min(520px, 92dvw);
 }
 .toast {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   background: var(--color-panel-bg);
-  border: 1px solid var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+  border-left-width: 4px;
   color: var(--color-text-main);
-  font-size: var(--text-md);
-  line-height: 1.4;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.45;
   box-shadow: var(--shadow-elevation-3);
   cursor: pointer;
 }
 .toast-success { border-color: var(--color-success); }
 .toast-warning { border-color: var(--color-warning); }
 .toast-error { border-color: var(--color-danger); }
+
+.triage-folder-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1) 0;
+}
+.triage-item-subpath {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
 
 /* ── Confirm dialog (non-blocking confirm replacement) ── */
 .confirm-backdrop {

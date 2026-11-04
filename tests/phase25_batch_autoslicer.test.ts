@@ -13,9 +13,13 @@ import {
 import {
   sliceAudioBuffer,
   buildMidiFileBuffer,
+  conformLoopToTargetBpm,
 } from '../src/core/dsp/AudioSlicerEngine.ts';
 import { encodePcm16Wav } from '../src/core/dsp/WavDecoder.ts';
 import { buildBatchPreflightSummary } from '../src/core/batch/preflight.ts';
+import { BatchQueue } from '../src/core/batch/BatchQueue.ts';
+import { resolveAiActionDeclaration } from '../src/core/ai/aiHonesty.ts';
+import { DEFAULT_AI_ASSISTANCE_CONFIG } from '../src/core/types.ts';
 import type { BatchConfig, BatchModelCandidate } from '../src/core/batch/types.ts';
 
 // ── Synthetic Audio Helper ────────────────────────────────────
@@ -45,18 +49,23 @@ function generateSyntheticDrumLoop(sampleRate = 44100, durationSec = 1.0): Float
 
 let passed = 0;
 let failed = 0;
+const pendingPromises: Promise<void>[] = [];
 
 function test(name: string, fn: () => void | Promise<void>): void {
   try {
     const r = fn();
     if (r instanceof Promise) {
-      r.then(() => {
-        console.log(`  [PASS] ${name}`);
-        passed++;
-      }).catch((err) => {
-        console.error(`  [FAIL] ${name}: ${err instanceof Error ? err.message : String(err)}`);
-        failed++;
-      });
+      pendingPromises.push(
+        r
+          .then(() => {
+            console.log(`  [PASS] ${name}`);
+            passed++;
+          })
+          .catch((err) => {
+            console.error(`  [FAIL] ${name}: ${err instanceof Error ? err.message : String(err)}`);
+            failed++;
+          })
+      );
     } else {
       console.log(`  [PASS] ${name}`);
       passed++;
@@ -280,9 +289,197 @@ test('Bridge clear memory cache response contract', () => {
   assert.equal(res.action, 'cache_cleared');
 });
 
+// 10. Stage-Grouped Queue Execution (Phase-by-phase across all jobs)
+test('BatchQueue executes all jobs stage-by-stage in stage-grouped mode', async () => {
+  const pcm1 = generateSyntheticDrumLoop(44100, 0.25);
+  const wav1 = encodePcm16Wav(pcm1, 44100, { rootKey: 60 });
+  const pcm2 = generateSyntheticDrumLoop(44100, 0.25);
+  const wav2 = encodePcm16Wav(pcm2, 44100, { rootKey: 64 });
+
+  const jobs: BatchModelCandidate[] = [
+    {
+      id: 'job_stage_1',
+      name: 'Stage Test Lead',
+      slug: 'stage_test_lead',
+      sourceType: 'folder-pack',
+      sourceOrigin: 'Lead_C4.wav',
+      zoneCount: 1,
+      detectedCategory: 'Lead',
+      suggestedParameterSet: 0,
+      suggestedComplexity: 2,
+      status: 'pending',
+      progressPct: 0,
+      files: [{ name: 'Lead_C4.wav', buffer: wav1 }],
+    },
+    {
+      id: 'job_stage_2',
+      name: 'Stage Test Pad',
+      slug: 'stage_test_pad',
+      sourceType: 'folder-pack',
+      sourceOrigin: 'Pad_E4.wav',
+      zoneCount: 1,
+      detectedCategory: 'Pad',
+      suggestedParameterSet: 2,
+      suggestedComplexity: 2,
+      status: 'pending',
+      progressPct: 0,
+      files: [{ name: 'Pad_E4.wav', buffer: wav2 }],
+    },
+  ];
+
+  const queue = new BatchQueue();
+  queue.setJobs(jobs);
+
+  const visitedStages: number[] = [];
+  queue.on((ev, data) => {
+    if (ev === 'stage-start' && data && typeof (data as any).stage === 'number') {
+      visitedStages.push((data as any).stage);
+    }
+  });
+
+  const summary = await queue.start({
+    targetFormat: 'dual',
+    destination: 'zip-master',
+    destinationSublibrary: 'Default',
+    complexityStrategy: 'fixed-2',
+    dspAlgorithm: 'legacy',
+    autoAcousticClassification: false,
+    executionOrder: 'stage-grouped',
+    stagePipelineVramSafety: true,
+  });
+
+  assert.equal(summary.succeeded, 2, 'Both jobs should complete in stage-grouped mode');
+  assert.deepEqual(visitedStages, [1, 2, 3, 4, 5], 'Must traverse stages 1 -> 2 -> 3 -> 4 -> 5 in order');
+  assert.ok(summary.masterZipBytes && summary.masterZipBytes.byteLength > 0, 'Must generate master ZIP output');
+});
+
+// 11. AI Denoise readiness gating (DeepFilterNet 3 enabled OR Cloud BYOK LLM API key configured)
+test('resolveAiActionDeclaration enforces AI Denoise readiness (DeepFilterNet 3 or Cloud LLM API key)', () => {
+  // Case A: Neither local DeepFilterNet enabled nor Cloud LLM configured -> requires fallback consent
+  const disabledDecl = resolveAiActionDeclaration('recorder-ai-denoise', {
+    isBridgeConnected: false,
+    isCloudReady: false,
+    aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG, enabled: false, denoise: 'dsp' },
+  });
+  assert.equal(disabledDecl.isPrimaryAvailable, false);
+  assert.equal(disabledDecl.requiresFallbackConsent, true);
+
+  // Case B: Local DeepFilterNet 3 stage enabled + Bridge connected -> ready without fallback consent
+  const bridgeReadyDecl = resolveAiActionDeclaration('recorder-ai-denoise', {
+    isBridgeConnected: true,
+    isCloudReady: false,
+    aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG, enabled: true, denoise: 'ai' },
+  });
+  assert.equal(bridgeReadyDecl.isPrimaryAvailable, true);
+  assert.equal(bridgeReadyDecl.requiresFallbackConsent, false);
+
+  // Case C: Cloud BYOK LLM API key configured -> ready without fallback consent
+  const cloudReadyDecl = resolveAiActionDeclaration('recorder-ai-denoise', {
+    isBridgeConnected: false,
+    isCloudReady: true,
+    activeTextLlmProvider: 'gemini-cloud',
+    aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG, enabled: false, denoise: 'dsp' },
+  });
+  assert.equal(cloudReadyDecl.isPrimaryAvailable, true);
+  assert.equal(cloudReadyDecl.requiresFallbackConsent, false);
+});
+
+// 12. Melodic Phrase Slicing in REX / Groove Loop + Chromatic mode (repeated notes & chronological .mid)
+test('sliceAudioBuffer extracts BPM, non-colliding key ranges for repeated notes, and chronological MIDI from a recorded melody', () => {
+  const sampleRate = 44100;
+  // 4-note melody at 120 BPM (0.5s per quarter note = 2.0s total): C4 (261.63Hz) -> E4 (329.63Hz) -> G4 (392.00Hz) -> C4 (261.63Hz repeated)
+  const freqs = [261.63, 329.63, 392.0, 261.63];
+  const noteDurSec = 0.5;
+  const pcm = new Float32Array(Math.round(sampleRate * noteDurSec * freqs.length));
+
+  for (let n = 0; n < freqs.length; n++) {
+    const startFrame = Math.round(n * noteDurSec * sampleRate);
+    const lenFrames = Math.round(noteDurSec * sampleRate);
+    const f0 = freqs[n];
+    const amp = n === 3 ? 0.9 : 0.55; // second C4 played louder
+    for (let i = 0; i < lenFrames; i++) {
+      const t = i / sampleRate;
+      const env = Math.min(1, i / (0.008 * sampleRate)) * Math.exp(-t * 2.5);
+      pcm[startFrame + i] =
+        amp * env * (0.7 * Math.sin(2 * Math.PI * f0 * t) + 0.3 * Math.sin(2 * Math.PI * f0 * 2 * t));
+    }
+  }
+
+  const res = sliceAudioBuffer(pcm, sampleRate, {
+    workflowMode: 'rex_groove_loop',
+    mode: 'chromatic',
+    sensitivity: 75,
+    silenceThresholdDb: -50,
+    preRollMs: 2,
+    postRollMs: 5,
+    snapZeroCrossing: true,
+    bpm: 120,
+    targetBpm: 120,
+    gridDivision: '1/16',
+    allowOverlap: false,
+    chromaticBaseNote: 36,
+  });
+
+  const active = res.slices.filter((s) => !s.isSilence);
+  assert.ok(active.length >= 4, `Expected at least 4 melodic note slices, got ${active.length}`);
+  assert.ok(res.detectedBpm >= 60 && res.detectedBpm <= 180, `Detected BPM must be valid (${res.detectedBpm})`);
+
+  // Verify every slice has valid non-inverted key bounds (lowKey <= rootKey <= highKey) even with repeated C4
+  for (const s of active) {
+    assert.ok(
+      s.lowKey <= s.rootKey && s.rootKey <= s.highKey,
+      `Slice ${s.index} (${s.noteName}) has invalid bounds: ${s.lowKey}..${s.highKey} (root ${s.rootKey})`
+    );
+  }
+
+  // Verify chronological ordering is preserved for .mid export
+  for (let i = 1; i < active.length; i++) {
+    assert.ok(
+      active[i].startFrame >= active[i - 1].startFrame,
+      'Slices must remain in chronological order so .mid exports the melody in sequence'
+    );
+  }
+});
+
+// 13. Transient-Locked Elastic Loop BPM Conformer (conformLoopToTargetBpm)
+test('conformLoopToTargetBpm time-stretches loop to target BPM while locking transient attacks', () => {
+  const sampleRate = 44100;
+  const pcm = generateSyntheticDrumLoop(sampleRate, 2.0); // 1 bar at 120 BPM = 2.0s
+  const sliceRes = sliceAudioBuffer(pcm, sampleRate, {
+    workflowMode: 'rex_groove_loop',
+    mode: 'drums',
+    sensitivity: 70,
+    silenceThresholdDb: -42,
+    preRollMs: 3,
+    postRollMs: 8,
+    snapZeroCrossing: true,
+    bpm: 120,
+    targetBpm: 140,
+    gridDivision: '1/16',
+    allowOverlap: false,
+    chromaticBaseNote: 36,
+  });
+
+  // Speed up from 120 BPM to 150 BPM -> duration should scale by 120/150 = 0.8 (1.6s)
+  const faster = conformLoopToTargetBpm(pcm, sampleRate, sliceRes.slices, 120, 150);
+  const expectedFasterFrames = Math.round(pcm.length * (120 / 150));
+  assert.ok(
+    Math.abs(faster.pcm.length - expectedFasterFrames) <= 2,
+    `Expected ~${expectedFasterFrames} frames at 150 BPM, got ${faster.pcm.length}`
+  );
+
+  // Slow down from 120 BPM to 90 BPM -> duration should scale by 120/90 = 1.3333
+  const slower = conformLoopToTargetBpm(pcm, sampleRate, sliceRes.slices, 120, 90);
+  const expectedSlowerFrames = Math.round(pcm.length * (120 / 90));
+  assert.ok(
+    Math.abs(slower.pcm.length - expectedSlowerFrames) <= 2,
+    `Expected ~${expectedSlowerFrames} frames at 90 BPM, got ${slower.pcm.length}`
+  );
+});
+
 // ── Summary ───────────────────────────────────────────────────
 
-setTimeout(() => {
+void Promise.all(pendingPromises).then(() => {
   console.log(`\nResult: ${passed} passed, ${failed} failed\n`);
   if (failed > 0) process.exit(1);
-}, 200);
+});

@@ -58,9 +58,14 @@ export interface ImportPreflightReport {
  */
 export function analyzeImportPreflight(
   preset: ParsedSamplerPreset,
-  currentWorkingMode: WorkingMode = 'classic'
+  currentWorkingMode: WorkingMode = 'classic',
+  keyMappingMode?: 'chromatic' | 'drum'
 ): ImportPreflightReport {
   const issues: PreflightIncompatibilityIssue[] = [];
+  const isDrumPreset =
+    keyMappingMode === 'drum' ||
+    /drum|kit|perc/i.test(preset.detectedCategory || '') ||
+    Boolean(preset.isSliceChain);
 
   // 1. Encryption / Protected container check
   if (preset.isEncrypted) {
@@ -99,7 +104,11 @@ export function analyzeImportPreflight(
   // 2. Audio file presence check
   const missingSamplesSet = new Set<string>();
   for (const reg of preset.regions) {
-    if (!preset.audioBuffers.has(reg.sampleName)) {
+    const hasBuf =
+      preset.audioBuffers.has(reg.sampleName) ||
+      (reg.samplePath ? preset.audioBuffers.has(reg.samplePath) : false) ||
+      preset.audioBuffers.has(`${reg.sampleName}.wav`);
+    if (!hasBuf) {
       missingSamplesSet.add(reg.sampleName);
     }
   }
@@ -145,14 +154,65 @@ export function analyzeImportPreflight(
   }
 
   if (uncoveredLow > 0 || uncoveredHigh > 0 || hasInternalGaps) {
+    const isClassicChromatic = currentWorkingMode === 'classic' && !isDrumPreset;
     issues.push({
       code: 'WARN_KEYBED_GAPS',
       category: 'coverage',
-      severity: currentWorkingMode === 'classic' ? 'warning' : 'info',
-      title: 'Keybed Coverage Gaps Detected',
-      description: `Preset covers notes ${minKey} to ${maxKey}. Left gap [0..${minKey - 1}] (${uncoveredLow} notes) and right gap [${maxKey + 1}..127] (${uncoveredHigh} notes) are unmapped.`,
-      resolutionText: 'Enable "Auto-extend Outer Zones" to stretch the lowest and highest zones to 0 and 127 for complete gapless resynthesis.',
+      severity: isClassicChromatic ? 'warning' : 'info',
+      title: isDrumPreset
+        ? 'Drum Map / Percusión: Rango de pads acotado (No requiere cubrir 0..127)'
+        : currentWorkingMode === 'extended'
+          ? 'Cobertura por Superficie Espectral Continua (Solo Classic Cromático requiere estirar 0..127)'
+          : 'Cobertura Cromática en Modo Classic (0..127 obligatorio en map.script)',
+      description: isDrumPreset
+        ? `El kit asigna golpes entre las notas ${minKey} y ${maxKey}. En un Drum Map no es obligatorio cubrir las 128 teclas MIDI; solo suenan las teclas con pad asignado.`
+        : currentWorkingMode === 'extended'
+          ? `Las muestras cubren las notas ${minKey} a ${maxKey}. En Modo Extended, las regiones conservan su rango original sin estirado forzoso y la Superficie Espectral Continua calibra el timbre en todo el teclado.`
+          : `El instrumento cubre las notas ${minKey} a ${maxKey}. Quedan sin asignar [0..${minKey - 1}] (${uncoveredLow} notas) y [${maxKey + 1}..127] (${uncoveredHigh} notas). En los modelos cromáticos originales de Hartmann Neuron (map.script), el teclado debe cubrirse de 0 a 127 sin huecos.`,
+      resolutionText: isDrumPreset
+        ? 'Se mantendrán las teclas originales de cada golpe sin estirar los extremos a 0 y 127.'
+        : currentWorkingMode === 'extended'
+          ? 'Se conservará el rango original de notas en Modo Extended (puedes marcar "Extender zonas extremas" si deseas estirar 0..127).'
+          : 'En Modo Classic Cromático se activará "Auto-extend Outer Zones" para cubrir de C-2 (0) a G8 (127) sin huecos en map.script.',
     });
+  }
+
+  // 3b. Intruder / Outlier Sample Detection across Melodic Set
+  if (!preset.isSliceChain && preset.regions.length >= 4 && preset.detectedCategory !== 'Drums') {
+    const stemCounts = new Map<string, number>();
+    const regionStems: string[] = [];
+    for (const reg of preset.regions) {
+      const base = (reg.sampleName.split('/').pop() || reg.sampleName).replace(/\.[^.]+$/, '');
+      // Extract leading instrument prefix before note/velocity tokens (e.g. "GrandPiano_C3_v100" -> "grandpiano")
+      const prefixMatch = base.toLowerCase().match(/^([a-z]{3,})/);
+      const stem = prefixMatch ? prefixMatch[1] : base.toLowerCase();
+      regionStems.push(stem);
+      stemCounts.set(stem, (stemCounts.get(stem) ?? 0) + 1);
+    }
+    let dominantStem = '';
+    let dominantCount = 0;
+    for (const [stem, count] of stemCounts.entries()) {
+      if (count > dominantCount) {
+        dominantCount = count;
+        dominantStem = stem;
+      }
+    }
+    if (dominantCount >= Math.ceil(preset.regions.length * 0.7)) {
+      const intruderNames = preset.regions
+        .filter((_, idx) => regionStems[idx] !== dominantStem)
+        .map((r) => r.sampleName);
+      if (intruderNames.length > 0 && intruderNames.length <= 2) {
+        issues.push({
+          code: 'WARN_INTRUDER_SAMPLE',
+          category: 'audio',
+          severity: 'warning',
+          title: `Posible muestra intrusa de otro instrumento (${intruderNames.length})`,
+          description: `Se detectó "${intruderNames.join(', ')}" dentro de un lote dominado por "${dominantStem}" (${dominantCount}/${preset.regions.length} muestras).`,
+          resolutionText:
+            'El compilador de Superficie Espectral Continua mide la coherencia en 24 bandas Bark (timbreCoherenceScore) y aísla automáticamente las muestras intrusas para que no contaminen el formante ni la interpolación entre notas.',
+        });
+      }
+    }
   }
 
   // 4. Velocity Layers Check
@@ -236,7 +296,10 @@ export function analyzeImportPreflight(
     canImport: preset.regions.length > 0 || preset.audioBuffers.size > 0,
     issues,
     defaultActions: {
-      autoExtendOuterZones: uncoveredLow > 0 || uncoveredHigh > 0,
+      autoExtendOuterZones:
+        currentWorkingMode === 'classic' &&
+        !isDrumPreset &&
+        (uncoveredLow > 0 || uncoveredHigh > 0 || hasInternalGaps),
       adaptVelocityLayers: maxVelLayers > 2 && currentWorkingMode === 'classic',
       switchToExtendedMode: maxVelLayers > 2,
       openInAudioChopper: Boolean(preset.isSliceChain),
@@ -264,7 +327,7 @@ export function applyPreflightImportAdaptations(
     currentWorkingMode: WorkingMode;
   }
 ): AdaptedImportResult {
-  const regions = [...preset.regions];
+  const regions = preset.regions.map((r) => ({ ...r }));
   if (regions.length === 0) {
     return {
       classicZones: [],
@@ -367,10 +430,22 @@ export function applyPreflightImportAdaptations(
       ? 'extended'
       : 'classic';
 
+  const normalizedBuffers = new Map<string, ArrayBuffer>(preset.audioBuffers);
+  for (const r of regions) {
+    if (!normalizedBuffers.has(r.sampleName)) {
+      const alt =
+        (r.samplePath ? normalizedBuffers.get(r.samplePath) : undefined) ??
+        normalizedBuffers.get(`${r.sampleName}.wav`);
+      if (alt) {
+        normalizedBuffers.set(r.sampleName, alt);
+      }
+    }
+  }
+
   return {
     classicZones,
     extendedRegions,
     suggestedWorkingMode,
-    audioBuffers: preset.audioBuffers,
+    audioBuffers: normalizedBuffers,
   };
 }

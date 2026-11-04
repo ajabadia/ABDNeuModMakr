@@ -101,6 +101,7 @@ async function runPhase34Tests(): Promise<void> {
     let injectedToSession: { bytes: number; name: string } | null = null;
 
     const recorder = new AudioRecorderModal({
+      confirm: async () => true,
       onSendToChopper: (wav, name) => {
         sentToChopper = { bytes: wav.byteLength, name };
       },

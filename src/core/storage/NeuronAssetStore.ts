@@ -172,8 +172,9 @@ export class NeuronAssetStore {
         }
       });
 
-    const [rawEntries, enhancedEntries, capsuleEntries] = await Promise.all([
+    const [rawEntries, legacyEntries, enhancedEntries, capsuleEntries] = await Promise.all([
       readAllEntries<string, ArrayBuffer>(STORE_RAW),
+      readAllEntries<string, LegacyOriginalSampleRecord | LegacyOriginalSlotBundle>(STORE_LEGACY),
       readAllEntries<string, ArrayBuffer>(STORE_ENHANCED),
       readAllEntries<number, StoredTimeCapsuleRecord>(STORE_CAPSULES),
     ]);
@@ -181,6 +182,15 @@ export class NeuronAssetStore {
     for (const { key, value } of rawEntries) {
       if (typeof key === 'string' && value instanceof ArrayBuffer) {
         this.rawSources.set(key, value);
+      }
+    }
+    for (const { key, value } of legacyEntries) {
+      if (typeof key === 'string' && value && typeof value === 'object') {
+        if (key.startsWith('sample:') && 'sampleName' in value) {
+          this.legacySampleBinaries.set(value.sampleName, value as LegacyOriginalSampleRecord);
+        } else if (key.startsWith('slot:') && 'slot' in value) {
+          this.legacySlotBundles.set((value as LegacyOriginalSlotBundle).slot, value as LegacyOriginalSlotBundle);
+        }
       }
     }
     for (const { key, value } of enhancedEntries) {

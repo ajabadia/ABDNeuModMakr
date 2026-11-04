@@ -13,7 +13,7 @@ import { DEFAULT_SAMPLE_NAME, parseRootKeyFromFilename } from './sampleNaming.ts
 import { applyLoopCrossfade, generatePingPongLoopBuffer } from './dsp/LoopEditorTools.ts';
 import type { DahdsrEnvelope, LoopMode, MidiNote, Zone } from './types.ts';
 
-export type PreviewPlaybackMode = 'original' | 'resynthesis' | 'enhanced';
+export type PreviewPlaybackMode = 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2';
 
 export interface PreviewSources {
   getZone(zoneId: string): Zone | undefined;
@@ -24,6 +24,11 @@ export interface PreviewSources {
   getResynthMono(zoneId: string): Float32Array | undefined;
   /** Enhanced DSP resynthesized mono PCM for the zone, if already inspected. */
   getEnhancedMono?(zoneId: string): Float32Array | undefined;
+  /** Resynator v2 (Unified Spectral Surface + Formant Lock + Sonic Matter Shapers) stereo PCM for the zone at `targetNote`. */
+  getResynatorV2Stereo?(
+    zoneId: string,
+    targetNote?: MidiNote
+  ): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined;
   /** Ensure the zone has been spectrally inspected (populates resynth). */
   ensureSpectrum(zoneId: string): void;
 }
@@ -121,13 +126,17 @@ export class AudioPreviewService {
 
     this.stopAudition();
 
-    if ((mode === 'resynthesis' || mode === 'enhanced') && !this.sources.getResynthMono(zone.id)) {
+    if ((mode === 'resynthesis' || mode === 'enhanced' || mode === 'resynator_v2') && !this.sources.getResynthMono(zone.id)) {
       this.sources.ensureSpectrum(zone.id);
     }
     const resynthMono =
       mode === 'enhanced'
         ? (this.sources.getEnhancedMono?.(zone.id) ?? this.sources.getResynthMono(zone.id))
         : this.sources.getResynthMono(zone.id);
+    const resynatorV2Stereo =
+      mode === 'resynator_v2'
+        ? this.sources.getResynatorV2Stereo?.(zone.id, targetNote)
+        : undefined;
 
     // Original mode can play a specific velocity layer / extended region sample
     const useOverride = mode === 'original' && !!sampleOverride?.sampleName;
@@ -136,11 +145,23 @@ export class AudioPreviewService {
       targetNote !== undefined
         ? targetNote - pitchRoot + (zone.detune || 0) / 100
         : (zone.detune || 0) / 100;
-    const playbackRate = Math.pow(2.0, semitoneShift / 12.0);
+    // Note: Resynator v2 synthesizes directly at targetNote with Formant Locking, so playbackRate stays 1.0
+    const playbackRate =
+      mode === 'resynator_v2' && resynatorV2Stereo
+        ? 1.0
+        : Math.pow(2.0, semitoneShift / 12.0);
     const linearGain = Math.pow(10.0, (zone.volume || 0) / 20.0);
 
     let audioBuffer: AudioBuffer;
-    if ((mode === 'resynthesis' || mode === 'enhanced') && resynthMono) {
+    if (mode === 'resynator_v2' && resynatorV2Stereo) {
+      audioBuffer = this.audioCtx.createBuffer(
+        2,
+        resynatorV2Stereo.left.length,
+        resynatorV2Stereo.sampleRate
+      );
+      audioBuffer.copyToChannel(new Float32Array(resynatorV2Stereo.left), 0);
+      audioBuffer.copyToChannel(new Float32Array(resynatorV2Stereo.right), 1);
+    } else if ((mode === 'resynthesis' || mode === 'enhanced') && resynthMono) {
       const mono = resynthMono;
       audioBuffer = this.audioCtx.createBuffer(1, mono.length, 44100);
       audioBuffer.copyToChannel(new Float32Array(mono), 0);

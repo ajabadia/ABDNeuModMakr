@@ -11,6 +11,7 @@ import type {
   ProcessProgress,
   ZoneAnalysisSummary,
 } from '../types.ts';
+import type { AxionikExpandedModel } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
 import {
   runMultiZonePipeline,
   type ZoneWavPayload,
@@ -37,6 +38,7 @@ export type WorkerOutboundMessage =
       zonesAnalysis: ZoneAnalysisSummary[];
       neuronikModelJson: string;
       zoneBinaries: ZoneBinaryPair[];
+      expandedModelV2?: AxionikExpandedModel;
       elapsedMs: number;
     }
   | {
@@ -82,6 +84,7 @@ workerScope.onmessage = async (event: MessageEvent<WorkerInboundMessage>) => {
         zonesAnalysis: result.zonesAnalysis,
         neuronikModelJson: result.neuronikModelJson,
         zoneBinaries: result.zoneBinaries,
+        expandedModelV2: result.expandedModelV2,
         elapsedMs: Date.now() - startTime,
       });
     } catch (err) {

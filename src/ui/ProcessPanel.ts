@@ -436,9 +436,12 @@ export class ProcessPanel {
           </div>
 
           <!-- Card 3: Extended Metadata & Tags -->
-          <div class="hud-card" id="hud-card-metadata" title="Click to view or edit Metadata & Tags">
+          <div class="hud-card ${!isExt ? 'is-conditioned-muted' : ''}" id="hud-card-metadata" title="${!isExt ? 'Exclusivo de Modo Extended (HD) • Click para inspeccionar' : 'Click to view or edit Metadata & Tags'}">
             <div class="hud-card-header">
-              <span class="hud-card-label">${ICONS.database} METADATA &amp; PROVENANCE</span>
+              <span class="hud-card-label">
+                ${ICONS.database} METADATA &amp; PROVENANCE
+                ${!isExt ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
+              </span>
               <button type="button" class="btn-hud-link" id="btn-hud-edit-metadata">Edit</button>
             </div>
             <div class="hud-card-body">
@@ -462,11 +465,14 @@ export class ProcessPanel {
           </div>
 
           <!-- Card 4: Cover Artwork -->
-          <div class="hud-card" id="hud-card-artwork" title="Click to view or edit Cover Artwork">
+          <div class="hud-card ${!isExt ? 'is-conditioned-muted' : ''}" id="hud-card-artwork" title="${!isExt ? 'Exclusivo de Modo Extended (HD) • Click para inspeccionar' : 'Click to view or edit Cover Artwork'}">
             <div class="hud-card-header">
-              <span class="hud-card-label">${ICONS.palette} COVER ARTWORK</span>
+              <span class="hud-card-label">
+                ${ICONS.palette} COVER ARTWORK
+                ${!isExt ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
+              </span>
               <div class="hud-card-header-actions">
-                <button type="button" class="btn-hud-link" id="btn-hud-ai-artwork" title="Generate Cover with AI (Fase 20)">${ICONS.sparkle || ICONS.ai} AI</button>
+                <button type="button" class="btn-hud-link" id="btn-hud-ai-artwork" ${!isExt ? 'disabled' : ''} title="${!isExt ? 'Solo disponible en Modo Extended' : 'Generate Cover with AI (Fase 20)'}">${ICONS.sparkle || ICONS.ai} AI</button>
                 <button type="button" class="btn-hud-link" id="btn-hud-edit-artwork">Edit</button>
               </div>
             </div>

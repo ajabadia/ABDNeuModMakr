@@ -37,7 +37,10 @@ import {
   type AxionikSpectralFrame,
   type AxionikSpectralLayer,
   type AxionikSpectralModel,
+  type AxionikSurfaceTopology,
+  type AxionikUnifiedSpectralSurface,
 } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+import { buildUnifiedSpectralSurface } from './dsp/UnifiedSpectralSurface.ts';
 import type {
   AcousticDescriptors,
   DahdsrEnvelope,
@@ -123,6 +126,15 @@ export interface ExpandedModelWriterInput {
   hybridTransientBySample?: Record<string, AxionikHybridTransient>;
   /** When true, deterministically populates Loris bandwidths, 24-Bark formant envelopes, DDSP residuals, and splice phases. */
   populateAdvancedSpectralExtensions?: boolean;
+  /**
+   * Fase 38: When true (default when `populateAdvancedSpectralExtensions` is true or multiple regions exist),
+   * compiles the Unified Continuous Spectral Surface (`unifiedSurface`) covering the full Pitch × Velocity spectrum.
+   */
+  buildUnifiedSurface?: boolean;
+  /** Optional topology override for `unifiedSurface` ('auto' | 'melodic_surface' | 'drum_kit_surface'). */
+  surfaceTopologyOverride?: 'auto' | AxionikSurfaceTopology;
+  /** Optional resolution strategy for `unifiedSurface` ('auto' by default, or 'manual' using `processConfig.complexity`). */
+  surfaceResolutionStrategy?: 'auto' | 'manual';
   engineMin?: AxionikEngineGeneration;
   requiredCapsOverride?: AxionikEngineCap[];
   classicMapScriptRef?: string;
@@ -324,7 +336,7 @@ function frameToExpanded(
   return frame;
 }
 
-function buildSpectralModel(
+export function buildSpectralModel(
   spectral: ExpandedSpectralSource,
   pitchTrackHz?: number[],
   formantProfileSt?: number[],
@@ -720,10 +732,29 @@ export function buildAxionikExpandedModel(
       hasAi: aiSteps.length > 0,
     });
 
-  // Build Resynator v2 definitions, auto-attaching ABDAxionikVS expanded shapers if acousticDescriptors are provided
-  const derivedShapers = input.acousticDescriptors
+  // Build Resynator v2 definitions, auto-attaching ABDAxionikVS expanded shapers if acousticDescriptors or unifiedSurfaceConfig are provided
+  const uiSurfCfg = input.processConfig.unifiedSurfaceConfig;
+  const baseShapers = input.acousticDescriptors
     ? deriveResonatorShapersFromDescriptors(input.acousticDescriptors)
     : undefined;
+  const derivedShapers: AxionikResonatorShapers | undefined =
+    baseShapers || uiSurfCfg
+      ? {
+          ...baseShapers,
+          ...(typeof uiSurfCfg?.inharmonicityB === 'number'
+            ? { inharmonicityB: roundTo(clamp(uiSurfCfg.inharmonicityB, 0, 0.05), 5) }
+            : {}),
+          ...(typeof uiSurfCfg?.parity === 'number'
+            ? { parity: roundTo(clamp(uiSurfCfg.parity, -1, 1), 3) }
+            : {}),
+          ...(typeof uiSurfCfg?.residualMix === 'number'
+            ? { residualMix: roundTo(clamp(uiSurfCfg.residualMix, 0, 1), 3) }
+            : {}),
+          ...(typeof uiSurfCfg?.formantLock01 === 'number'
+            ? { formantPreserve: roundTo(clamp(uiSurfCfg.formantLock01, 0, 1), 3) }
+            : {}),
+        }
+      : undefined;
   const resynators: AxionikResynatorV2[] =
     input.resynators && input.resynators.length > 0
       ? input.resynators.map((r) => ({
@@ -741,13 +772,53 @@ export function buildAxionikExpandedModel(
               id: 'R1',
               version: 2,
               model: 'resonator-hd',
-              params: {},
+              params: {
+                ...(typeof uiSurfCfg?.attackShorten01 === 'number'
+                  ? { attackShorten01: roundTo(clamp(uiSurfCfg.attackShorten01, 0, 1), 3) }
+                  : {}),
+                ...(typeof uiSurfCfg?.releaseExtendSec === 'number'
+                  ? { releaseExtendSec: roundTo(clamp(uiSurfCfg.releaseExtendSec, 0, 10), 2) }
+                  : {}),
+                ...(uiSurfCfg?.tempoSync
+                  ? {
+                      tempoSyncEnabled: uiSurfCfg.tempoSync.enabled ? 1 : 0,
+                      sourceBpm: clamp(uiSurfCfg.tempoSync.sourceBpm || 120, 20, 300),
+                      barCount: Math.max(1, Math.round(uiSurfCfg.tempoSync.barCount || 2)),
+                    }
+                  : {}),
+              },
               shapers: derivedShapers,
             },
           ]
         : [];
 
   const dspAlgorithm = input.processConfig.dspAlgorithm ?? 'legacy';
+  const shouldBuildUnifiedSurface =
+    input.buildUnifiedSurface ??
+    (populateAdvanced || regions.length > 1 || Boolean(spectralBySample) || Boolean(uiSurfCfg));
+
+  const unifiedSurface: AxionikUnifiedSpectralSurface | undefined = shouldBuildUnifiedSurface
+    ? buildUnifiedSpectralSurface({
+        regions,
+        primarySpectral: spectral,
+        spectralBySample,
+        detectedCategory: input.detectedInstrumentCategory,
+        resolutionStrategy:
+          input.surfaceResolutionStrategy ?? uiSurfCfg?.resolutionStrategy ?? 'auto',
+        complexity: input.processConfig.complexity,
+        topologyOverride:
+          input.surfaceTopologyOverride ?? uiSurfCfg?.topologyMode ?? 'auto',
+        tempoSync: uiSurfCfg?.tempoSync,
+      })
+    : undefined;
+
+  if (unifiedSurface && uiSurfCfg?.includeOutliers === true) {
+    for (const node of unifiedSurface.nodes) {
+      node.isTimbralOutlier = false;
+    }
+    delete unifiedSurface.outlierNodeIds;
+  }
+
   const doc: AxionikExpandedModel = {
     schemaVersion: AXIONIK_EXPANDED_MODEL_CONTRACT_VERSION,
     identity: {
@@ -759,6 +830,7 @@ export function buildAxionikExpandedModel(
     },
     spectral,
     ...(spectralBySample ? { spectralBySample } : {}),
+    ...(unifiedSurface ? { unifiedSurface } : {}),
     regions,
     articulation: mapArticulation(
       input.articulation,

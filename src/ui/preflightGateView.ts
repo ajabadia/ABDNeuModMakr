@@ -99,26 +99,44 @@ export function fromImportPreflightReport(
     ? `El archivo "${report.presetName}" (${report.formatLabel}) requiere atención antes de cargarse en la sesión.`
     : `Se importará "${report.presetName}" (${report.formatLabel}) hacia el modelo "${preset.modelName}" en modo ${effectiveMode} (Set #${preset.suggestedParameterSet} · ${preset.detectedCategory}).`;
 
-  const changes: CommonPreflightChangeItem[] = report.issues.map((iss) => ({
-    severity: iss.severity === 'error' ? 'error' : iss.severity === 'warning' ? 'warn' : 'info',
-    title: iss.title,
-    categoryTag: iss.category,
-    severityTag: iss.severity === 'error' ? 'bloqueo' : iss.severity === 'warning' ? 'ajuste' : 'info',
-    description: iss.description,
-    adaptation: iss.resolutionText,
-  }));
+  const changes: CommonPreflightChangeItem[] = [];
+  for (const iss of report.issues) {
+    if (iss.code === 'WARN_KEYBED_GAPS' && selections && report.canImport) {
+      if (selections.autoExtendOuterZones) {
+        changes.push({
+          severity: 'info',
+          title: 'Extensión de zonas extremas hasta MIDI 0..127',
+          categoryTag: 'coverage',
+          severityTag: 'activo',
+          description: `El rango original (${report.keyRange.minKey}..${report.keyRange.maxKey}) deja notas extremas sin cubrir (${report.keyRange.uncoveredLowNotes + report.keyRange.uncoveredHighNotes} notas).`,
+          adaptation:
+            effectiveMode === 'Classic'
+              ? 'Obligatorio en Modo Classic Cromático (map.script): se estirarán la primera y última zona para cubrir de C-2 (0) a G8 (127) sin huecos.'
+              : 'Se estirarán opcionalmente los límites de la primera y última zona para cubrir de C-2 (0) a G8 (127).',
+        });
+      } else {
+        changes.push({
+          severity: effectiveMode === 'Classic' && !/drum|kit|perc/i.test(preset.detectedCategory || '') ? 'warn' : 'info',
+          title: iss.title,
+          categoryTag: 'coverage',
+          severityTag: 'rango original',
+          description: iss.description,
+          adaptation: `Se conservará el rango original (${report.keyRange.minKey}..${report.keyRange.maxKey}) sin forzar la extensión de las notas extremas.`,
+        });
+      }
+      continue;
+    }
+    changes.push({
+      severity: iss.severity === 'error' ? 'error' : iss.severity === 'warning' ? 'warn' : 'info',
+      title: iss.title,
+      categoryTag: iss.category,
+      severityTag: iss.severity === 'error' ? 'bloqueo' : iss.severity === 'warning' ? 'ajuste' : 'info',
+      description: iss.description,
+      adaptation: iss.resolutionText,
+    });
+  }
 
   if (selections && report.canImport) {
-    if (selections.autoExtendOuterZones && (report.keyRange.uncoveredLowNotes > 0 || report.keyRange.uncoveredHighNotes > 0)) {
-      changes.push({
-        severity: 'info',
-        title: 'Extensión de zonas extremas hasta MIDI 0..127',
-        categoryTag: 'coverage',
-        severityTag: 'activo',
-        description: `El rango original (${report.keyRange.minKey}..${report.keyRange.maxKey}) deja notas extremas sin cubrir.`,
-        adaptation: 'Se estirarán los límites de la primera y última zona para cubrir de C-2 (0) a G8 (127).',
-      });
-    }
     if (selections.switchToExtendedMode && currentMode !== 'extended') {
       changes.push({
         severity: 'info',

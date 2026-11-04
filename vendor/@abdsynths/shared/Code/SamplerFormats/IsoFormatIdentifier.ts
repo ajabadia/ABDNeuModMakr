@@ -125,3 +125,111 @@ export function identifyDiskImageFormat(data: ArrayBuffer | Uint8Array): Identif
 
   return 'unknown';
 }
+
+function decodeUcs2Be(buf: Uint8Array, offset: number, byteLen: number): string {
+  const end = Math.min(buf.length, offset + byteLen);
+  let str = '';
+  for (let i = offset; i + 1 < end; i += 2) {
+    const code = (buf[i] << 8) | buf[i + 1];
+    if (code === 0) break;
+    str += String.fromCharCode(code);
+  }
+  return str.trim();
+}
+
+/**
+ * Extracts all files from an ISO-9660 standard CD-ROM image ("CD001" at 0x8001).
+ * Automatically prefers Joliet Supplementary Volume Descriptor (UTF-16BE long filenames)
+ * when present, falling back to the Primary Volume Descriptor (ASCII).
+ * Returns a Map<string, Uint8Array> mapping relative path inside the CD-ROM to file bytes.
+ */
+export function extractIso9660Entries(data: ArrayBuffer | Uint8Array): Map<string, Uint8Array> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const entries = new Map<string, Uint8Array>();
+  if (bytes.length < 0x8800 || readAscii(bytes, 0x8001, 5) !== 'CD001') {
+    return entries;
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let rootLba = view.getUint32(0x8000 + 156 + 2, true);
+  let rootLen = view.getUint32(0x8000 + 156 + 10, true);
+  let isJoliet = false;
+
+  // Scan volume descriptors (sectors 16..31) for Joliet Supplementary Volume Descriptor (type 2)
+  for (let sec = 16; sec < 32; sec++) {
+    const vdOff = sec * 2048;
+    if (vdOff + 2048 > bytes.length) break;
+    if (readAscii(bytes, vdOff + 1, 5) !== 'CD001') break;
+    const vdType = bytes[vdOff];
+    if (vdType === 255) break; // Volume Descriptor Set Terminator
+    if (vdType === 2) {
+      // Joliet escape sequences at +88: 0x25 0x2F (0x40 | 0x43 | 0x45)
+      const esc0 = bytes[vdOff + 88];
+      const esc1 = bytes[vdOff + 89];
+      const esc2 = bytes[vdOff + 90];
+      if (esc0 === 0x25 && esc1 === 0x2f && (esc2 === 0x40 || esc2 === 0x43 || esc2 === 0x45)) {
+        const jLba = view.getUint32(vdOff + 156 + 2, true);
+        const jLen = view.getUint32(vdOff + 156 + 10, true);
+        if (jLba > 0 && jLen > 0) {
+          rootLba = jLba;
+          rootLen = jLen;
+          isJoliet = true;
+          break;
+        }
+      }
+    }
+  }
+
+  const visitedLbas = new Set<number>();
+
+  function walkDir(lba: number, byteLen: number, prefix: string, depth: number): void {
+    if (depth > 10 || lba <= 0 || visitedLbas.has(lba)) return;
+    visitedLbas.add(lba);
+    const dirStart = lba * 2048;
+    if (dirStart >= bytes.length) return;
+    const maxLen = Math.min(byteLen, bytes.length - dirStart);
+
+    let offset = 0;
+    while (offset < maxLen) {
+      const recLen = bytes[dirStart + offset];
+      if (recLen === 0) {
+        offset = ((offset >>> 11) + 1) << 11;
+        continue;
+      }
+      if (offset + recLen > maxLen || recLen < 34) break;
+
+      const pos = dirStart + offset;
+      const extLba = view.getUint32(pos + 2, true);
+      const dataLen = view.getUint32(pos + 10, true);
+      const flags = bytes[pos + 25];
+      const nameLen = bytes[pos + 32];
+
+      if (nameLen === 1 && (bytes[pos + 33] === 0 || bytes[pos + 33] === 1)) {
+        offset += recLen;
+        continue;
+      }
+
+      const decodedName = isJoliet
+        ? decodeUcs2Be(bytes, pos + 33, nameLen)
+        : readAscii(bytes, pos + 33, nameLen);
+      const rawName = decodedName.replace(/;\d+$/, '').trim();
+      if (rawName) {
+        const fullPath = prefix ? `${prefix}/${rawName}` : rawName;
+        const isDir = (flags & 0x02) !== 0;
+        if (isDir) {
+          walkDir(extLba, dataLen, fullPath, depth + 1);
+        } else {
+          const fileStart = extLba * 2048;
+          if (fileStart > 0 && dataLen > 0 && fileStart + dataLen <= bytes.length) {
+            entries.set(fullPath, bytes.subarray(fileStart, fileStart + dataLen));
+          }
+        }
+      }
+
+      offset += recLen;
+    }
+  }
+
+  walkDir(rootLba, rootLen, '', 0);
+  return entries;
+}

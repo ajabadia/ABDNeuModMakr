@@ -707,6 +707,36 @@ export class BridgeClient {
   }
 
   /**
+   * Opens the native OS folder selection dialog via Companion Bridge and returns the chosen path.
+   */
+  public async browseLocalFolder(
+    initialPath = '',
+    title = 'Seleccionar carpeta',
+    timeoutMs = 120000
+  ): Promise<{ status: string; path: string; cancelled: boolean; error?: string }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${this.url}/api/fs/browse_folder`, {
+        method: 'POST',
+        headers: this.authHeaders({
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        }),
+        body: JSON.stringify({ path: initialPath, title }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return (await res.json()) as { status: string; path: string; cancelled: boolean; error?: string };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Scans an AxionikDB directory for modern models.
    */
   public async scanAxionikDb(libraryPath: string, timeoutMs = 10000): Promise<AxionikDbModelEntry[]> {

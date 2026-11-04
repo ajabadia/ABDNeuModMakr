@@ -1,14 +1,20 @@
 {
   "name": "abdneumodmakr",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.2.0",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "tsx tests/run_all.ts",
-    "test:types": "tsc --noEmit -p tsconfig.tests.json",
+    "test": "npm run test:types && tsx tests/run_all.ts",
+    "test:types": "tsc --noEmit -p tsconfig.json",
+    "test:types:all": "tsc --noEmit -p tsconfig.tests.json",
+    "lint:security": "node scripts/security-grep.mjs",
+    "verify": "npm run test:types && npm run lint:security && tsx tests/run_all.ts",
     "vendor:sync": "node scripts/vendorSync.js"
   },
   "dependencies": {

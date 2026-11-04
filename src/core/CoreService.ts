@@ -38,6 +38,7 @@ import type {
   AssetStoreDiagnostics,
   ModelCoverArtwork,
   ZoneLoopEditorData,
+  PipelineChecklistSelection,
 } from './types.ts';
 import type {
   RawExportOptions,
@@ -139,7 +140,10 @@ export interface CoreService {
   /** Start model generation with current session + config */
   startProcess(
     config: ProcessConfig,
-    options?: { forceReanalyzeImported?: boolean }
+    options?: {
+      forceReanalyzeImported?: boolean;
+      checklist?: PipelineChecklistSelection;
+    }
   ): Promise<void>;
 
 
@@ -193,14 +197,22 @@ export interface CoreService {
   /** Compute or retrieve cached 2D spectrogram, partial tracks, and A/B waveforms for a zone */
   inspectZoneSpectrum(zoneId: string): ZoneSpectralInspection;
 
-  /** Play either the original sample ('original'), Legacy DSP ('resynthesis'), or Enhanced DSP ('enhanced') */
+  /** Play either the original sample ('original'), Legacy DSP ('resynthesis'), Enhanced DSP ('enhanced'), or Resynator v2 ('resynator_v2') */
   auditionZoneComparison(
     zoneId: string,
-    mode: 'original' | 'resynthesis' | 'enhanced',
+    mode: 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2',
     targetNote?: MidiNote,
     /** Original mode: play this sample (velocity layer / extended region) instead of `zone.sampleLow` */
     sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void>;
+
+  /** Synthesize stereo PCM for `zoneId` using ABDShared Resynator v2 (Unified Spectral Surface + Formant Lock + Sonic Matter Shapers). */
+  synthesizeZoneResynatorV2?(
+    zoneId: string,
+    targetNote?: MidiNote,
+    velocity?: number,
+    hostBpm?: number
+  ): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined;
 
   /** Stop any active sample or resynthesis playback */
   stopAudition(): void;
@@ -210,7 +222,7 @@ export interface CoreService {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
-    mode: 'original' | 'resynthesis' | 'enhanced' | null;
+    mode: 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2' | null;
   };
 
   // ── Phase 5: UX Avanzada (Undo/Redo, Config & Auto-Repair) ──

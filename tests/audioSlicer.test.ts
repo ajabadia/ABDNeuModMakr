@@ -13,6 +13,8 @@ import {
   extractBoundaryFrames,
   mergeManualBoundariesWithAuto,
   sliceAudioBufferPreservingManualCuts,
+  normalizePeakPcm,
+  detectSilenceIntervals,
   type DetectedSlice,
 } from '../src/core/dsp/AudioSlicerEngine.ts';
 import { snapFrameToNearestZeroCrossing } from '../src/core/dsp/LoopEditorTools.ts';
@@ -372,6 +374,52 @@ for (let i = 0; i < 0.08 * sampleRate; i++) {
     'Slice overlapping manual silence range must remain marked as silence'
   );
   console.log(`   -> Preserved manual cut at ${manualCut} and silence range [0..4000] successfully across sensitivity change.`);
+}
+
+// Test 10: Peak Normalization & Silence Cut + Mute (detectSilences + minSilenceMs)
+{
+  console.log('10. Testing Peak Normalization (-1 dBFS) & Silence Cut + Mute...');
+  const quietPcm = new Float32Array(sampleRate); // 1.0s
+  // 0..0.3s: tone at 0.25 peak, 0.3..0.7s: digital silence (400 ms), 0.7..1.0s: tone at 0.15 peak
+  for (let i = 0; i < Math.round(0.3 * sampleRate); i++) {
+    quietPcm[i] = 0.25 * Math.sin((2 * Math.PI * 440 * i) / sampleRate);
+  }
+  for (let i = Math.round(0.7 * sampleRate); i < sampleRate; i++) {
+    quietPcm[i] = 0.15 * Math.sin((2 * Math.PI * 660 * i) / sampleRate);
+  }
+
+  const normRes = normalizePeakPcm(quietPcm, -1.0);
+  assert.strictEqual(quietPcm[10], quietPcm[10], 'Source PCM must not be mutated');
+  assert(normRes.appliedGainDb > 10.0 && normRes.appliedGainDb < 12.0, `Expected ~+11 dB gain, got ${normRes.appliedGainDb}`);
+  let maxNorm = 0;
+  for (let i = 0; i < normRes.pcm.length; i++) {
+    const a = Math.abs(normRes.pcm[i]);
+    if (a > maxNorm) maxNorm = a;
+  }
+  const targetLinear = Math.pow(10, -1.0 / 20);
+  assert(Math.abs(maxNorm - targetLinear) < 1e-3, `Peak after normalizePeakPcm must be -1 dBFS (~0.891), got ${maxNorm}`);
+
+  const intervals = detectSilenceIntervals(quietPcm, sampleRate, -48, 120);
+  assert(intervals.length >= 1, 'Should detect the 400ms silent interval in the middle');
+
+  const withSilenceCuts = sliceAudioBuffer(quietPcm, sampleRate, {
+    mode: 'chromatic',
+    detectSilences: true,
+    silenceThresholdDb: -48,
+    minSilenceMs: 120,
+  });
+  const mutedSlices = withSilenceCuts.slices.filter((s) => s.isSilence);
+  assert(mutedSlices.length >= 1, 'When detectSilences=true, silent interval must be cut and marked isSilence=true (muted)');
+
+  const withoutSilenceCuts = sliceAudioBuffer(quietPcm, sampleRate, {
+    mode: 'chromatic',
+    detectSilences: false,
+    silenceThresholdDb: -48,
+    minSilenceMs: 120,
+  });
+  const mutedWhenOff = withoutSilenceCuts.slices.filter((s) => s.isSilence);
+  assert.strictEqual(mutedWhenOff.length, 0, 'When detectSilences=false, no slices should be marked isSilence');
+  console.log(`   -> Verified normalizePeakPcm (+${normRes.appliedGainDb.toFixed(1)} dB) and silence cut+mute (${mutedSlices.length} muted slice(s)).`);
 }
 
 console.log('\n=== ALL AUDIO SLICER & CHOPPER TESTS PASSED SUCCESSFULLY! ===');

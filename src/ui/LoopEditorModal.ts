@@ -233,7 +233,7 @@ export class LoopEditorModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
-            <h2 id="loop-modal-title">Waveform AutoLoop Editor &amp; Zero-Crossing Seam Magnifier</h2>
+            <h2 id="loop-modal-title">Loop Editor — Waveform &amp; Zero-Crossing Seam Magnifier</h2>
             <span class="panel-badge ${hasAudio ? 'badge-ai-on' : 'badge-muted'}">
               ${escHtml(formatBadge)}
             </span>
@@ -318,53 +318,64 @@ export class LoopEditorModal {
                 </div>
 
                 <!-- 2. Loop Start -->
-                <div class="form-group">
+                <div class="form-group ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
                   <div class="label-with-val">
-                    <label for="inp-loop-modal-start">LOOP START (FRAMES)</label>
+                    <label for="inp-loop-modal-start">
+                      LOOP START (FRAMES)
+                      ${d?.loopMode === 'no_loop' ? '<span class="cond-reason-badge">ONE-SHOT</span>' : ''}
+                    </label>
                     <span class="val-pill" id="lbl-loop-start-sec">${((d?.loopStart ?? 0) / (d?.sampleRate ?? 44100)).toFixed(3)}s</span>
                   </div>
-                  <input type="number" id="inp-loop-modal-start" class="form-control font-mono" min="0" max="${Math.max(0, (d?.totalFrames ?? 1) - 2)}" value="${d?.loopStart ?? 0}" />
+                  <input type="number" id="inp-loop-modal-start" class="form-control font-mono" min="0" max="${Math.max(0, (d?.totalFrames ?? 1) - 2)}" value="${d?.loopStart ?? 0}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar puntos de bucle"' : ''} />
                 </div>
 
                 <!-- 3. Loop End -->
-                <div class="form-group">
+                <div class="form-group ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
                   <div class="label-with-val">
-                    <label for="inp-loop-modal-end">LOOP END (FRAMES)</label>
+                    <label for="inp-loop-modal-end">
+                      LOOP END (FRAMES)
+                      ${d?.loopMode === 'no_loop' ? '<span class="cond-reason-badge">ONE-SHOT</span>' : ''}
+                    </label>
                     <span class="val-pill" id="lbl-loop-end-sec">${((d?.loopEnd ?? 0) / (d?.sampleRate ?? 44100)).toFixed(3)}s</span>
                   </div>
-                  <input type="number" id="inp-loop-modal-end" class="form-control font-mono" min="1" max="${d?.totalFrames ?? 1}" value="${d?.loopEnd ?? 1}" />
+                  <input type="number" id="inp-loop-modal-end" class="form-control font-mono" min="1" max="${d?.totalFrames ?? 1}" value="${d?.loopEnd ?? 1}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar puntos de bucle"' : ''} />
                 </div>
 
                 <!-- 4. Crossfade Duration -->
-                <div class="form-group">
+                <div class="form-group ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
                   <div class="label-with-val">
-                    <label for="inp-loop-modal-xfade">CROSSFADE (MS)</label>
+                    <label for="inp-loop-modal-xfade">
+                      CROSSFADE (MS)
+                      ${d?.loopMode === 'no_loop' ? '<span class="cond-reason-badge">ONE-SHOT</span>' : ''}
+                    </label>
                     <span class="val-pill" id="lbl-loop-xfade-val">${d?.loopCrossfadeMs ?? 20} ms</span>
                   </div>
-                  <input type="range" id="inp-loop-modal-xfade" class="form-range" min="0" max="500" value="${d?.loopCrossfadeMs ?? 20}" />
+                  <input type="range" id="inp-loop-modal-xfade" class="form-range" min="0" max="500" value="${d?.loopCrossfadeMs ?? 20}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar el crossfade"' : ''} />
                 </div>
               </div>
 
               <!-- Action Bar -->
               <div class="loop-action-bar">
-                <div class="loop-action-bar-left">
-                  <button type="button" class="btn btn-sm ${this.snapZeroCrossing ? 'btn-accent' : 'btn-outline'}" id="btn-loop-toggle-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
-                    ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.snapZeroCrossing ? 'ON' : 'OFF'}
-                  </button>
-
-                  <div class="loop-algo-group">
-                    <label for="sel-loop-algo-picker">ALGORITHM:</label>
-                    <select id="sel-loop-algo-picker" class="form-control form-control-sm">
-                      <option value="pitch_periodic" ${this.selectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock (Autocorr)</option>
-                      <option value="ncc_zc" ${this.selectedAlgo === 'ncc_zc' ? 'selected' : ''}>Normalized Cross-Correlation (NCC)</option>
-                      <option value="min_seam_energy" ${this.selectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Minimum Seam Discontinuity</option>
-                      <option value="equal_power_xfade" ${this.selectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power Crossfade</option>
-                    </select>
-                    <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" title="Automatically find optimal click-free loop points">
-                      ${ICONS.cpu} Run Auto-Loop
+                <fieldset class="conditioned-fieldset" ${d?.loopMode === 'no_loop' ? 'disabled' : ''}>
+                  <div class="loop-action-bar-left ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
+                    <button type="button" class="btn btn-sm ${this.snapZeroCrossing ? 'btn-accent' : 'btn-outline'}" id="btn-loop-toggle-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
+                      ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.snapZeroCrossing ? 'ON' : 'OFF'}
                     </button>
+
+                    <div class="loop-algo-group">
+                      <label for="sel-loop-algo-picker">ALGORITHM:</label>
+                      <select id="sel-loop-algo-picker" class="form-control form-control-sm">
+                        <option value="pitch_periodic" ${this.selectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock (Autocorr)</option>
+                        <option value="ncc_zc" ${this.selectedAlgo === 'ncc_zc' ? 'selected' : ''}>Normalized Cross-Correlation (NCC)</option>
+                        <option value="min_seam_energy" ${this.selectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Minimum Seam Discontinuity</option>
+                        <option value="equal_power_xfade" ${this.selectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power Crossfade</option>
+                      </select>
+                      <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" title="Automatically find optimal click-free loop points">
+                        ${ICONS.cpu} Run Auto-Loop
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </fieldset>
 
                 <div class="loop-action-bar-right">
                   <button type="button" class="btn btn-sm btn-accent" id="btn-loop-audition-play" title="Audition sample in continuous hardware loop">
@@ -477,6 +488,7 @@ export class LoopEditorModal {
     selMode?.addEventListener('change', () => {
       d.loopMode = selMode.value as LoopMode;
       this.notifyLiveUpdate();
+      this.render();
     });
 
     // Loop Start / End inputs

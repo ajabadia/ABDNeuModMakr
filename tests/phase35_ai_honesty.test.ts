@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────
 
 import {
+  AI_TOTAL_STAGE_COUNT,
   countActiveAiStages,
   resolveAiActionDeclaration,
   resolveAiSystemStatus,
@@ -58,8 +59,8 @@ export async function runPhase35AiHonestyTests(): Promise<void> {
       isCloudReady: false,
     });
     assert(
-      zeroConnectedStatus.badgeText.includes('0/5 ETAPAS'),
-      'Enabled config with 0 stages when connected must report 0/5 ETAPAS instead of SIN CONEXIÓN'
+      zeroConnectedStatus.badgeText.includes(`0/${AI_TOTAL_STAGE_COUNT} ETAPAS`),
+      `Enabled config with 0 stages when connected must report 0/${AI_TOTAL_STAGE_COUNT} ETAPAS instead of SIN CONEXIÓN`
     );
 
     const zeroOfflineStatus = resolveAiSystemStatus({
@@ -89,8 +90,9 @@ export async function runPhase35AiHonestyTests(): Promise<void> {
       localProvider: 'webgpu',
     });
     assert(localStatus.mode === 'local', 'When neither Bridge nor Cloud is active, mode must be local');
-    assert(localStatus.pillClass === 'is-ai-hybrid', '3/5 stages should use is-ai-hybrid pill');
-    assert(localStatus.badgeText.includes('LOCAL (3/5)'), 'Local badge text should include LOCAL (3/5)');
+    const threeActive = `3/${AI_TOTAL_STAGE_COUNT}`;
+    assert(localStatus.pillClass === 'is-ai-hybrid', `${threeActive} stages should use is-ai-hybrid pill`);
+    assert(localStatus.badgeText.includes(`LOCAL (${threeActive})`), `Local badge text should include LOCAL (${threeActive})`);
     assert(localStatus.cardSubtitle.includes('WebGPU'), 'WebGPU localProvider must report WebGPU');
 
     const wasmLocalStatus = resolveAiSystemStatus({
@@ -115,7 +117,7 @@ export async function runPhase35AiHonestyTests(): Promise<void> {
       isCloudReady: true,
     });
     assert(cloudStatus.mode === 'cloud', 'When Cloud BYOK is ready and Bridge is off, mode must be cloud');
-    assert(cloudStatus.badgeText.includes('NUBE (3/5)'), 'Cloud badge text should include NUBE (3/5)');
+    assert(cloudStatus.badgeText.includes(`NUBE (${threeActive})`), `Cloud badge text should include NUBE (${threeActive})`);
 
     const fullAiCfg: AiAssistanceConfig = {
       enabled: true,
@@ -124,15 +126,23 @@ export async function runPhase35AiHonestyTests(): Promise<void> {
       loopExpansion: 'ai',
       classifier: 'ai',
       denoise: 'ai',
+      pitchAndSlicer: 'ai',
+      deEsser: 'ai',
+      coverArtwork: 'local-ai',
     };
+    assert(
+      countActiveAiStages(fullAiCfg) === AI_TOTAL_STAGE_COUNT,
+      'full AI config must enable every one of the counted stages'
+    );
     const bridgeStatus = resolveAiSystemStatus({
       aiConfig: fullAiCfg,
       isBridgeConnected: true,
       isCloudReady: true,
     });
     assert(bridgeStatus.mode === 'bridge', 'When Bridge is connected, mode must be bridge');
-    assert(bridgeStatus.pillClass === 'is-ai-active', '5/5 stages should use is-ai-active pill');
-    assert(bridgeStatus.badgeText.includes('BRIDGE (5/5)'), 'Bridge badge text should include BRIDGE (5/5)');
+    const allActive = `${AI_TOTAL_STAGE_COUNT}/${AI_TOTAL_STAGE_COUNT}`;
+    assert(bridgeStatus.pillClass === 'is-ai-active', `${allActive} stages should use is-ai-active pill`);
+    assert(bridgeStatus.badgeText.includes(`BRIDGE (${allActive})`), `Bridge badge text should include BRIDGE (${allActive})`);
   }
 
   // 2. Every AI button declares primary engine and fallback, and requires consent when primary is unavailable

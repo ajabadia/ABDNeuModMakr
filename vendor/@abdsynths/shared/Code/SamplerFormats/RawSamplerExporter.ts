@@ -65,6 +65,23 @@ import { exportRenoiseXrni } from './RenoiseFormat.ts';
 import { exportBlissZip } from './BlissFormat.ts';
 import { exportPolyendTrackerPti } from './PolyendTrackerFormat.ts';
 import { sessionToUniversalSamplerInstrument } from './UniversalSamplerModel.ts';
+import { writeAkpProgram, type AkpProgram, type AkpKeygroup } from './AkaiAkpFormat.ts';
+import { writeDirectWavePatch } from './DirectWaveFormat.ts';
+import { writeSxtPatch } from './ReasonNnxtFormat.ts';
+import { buildWaldorfQpat } from './WaldorfQpatFormat.ts';
+import { buildOpXyPatchJson } from './OpXyFormat.ts';
+import { buildTonverkPst } from './TonverkFormat.ts';
+import { buildDistingExBinary, generateDistingExSampleFilename } from './DistingExFormat.ts';
+import { buildProphetXGroupText } from './ProphetXFormat.ts';
+import { buildS2400KitBinary } from './IslaS2400Format.ts';
+import { buildKorgMultisampleBinary } from './KorgMultisampleModernFormat.ts';
+import { buildThirdWaveBinary } from './ThirdWaveFormat.ts';
+import { buildZenCoreSvzBinary } from './ZenCoreSvzFormat.ts';
+import { generateSoundboxXml } from './SoundboxFormat.ts';
+import { generateOmnisphereZmap } from './OmnisphereFormat.ts';
+import { generateMaschineSoundXml } from './MaschineNicntFormat.ts';
+import type { ExtendedRegion } from './SamplerTypes.ts';
+import type { ParsedImportRegion } from './rawSamplerParsers.ts';
 
 const textEncoder = new TextEncoder();
 
@@ -1002,6 +1019,331 @@ ${zoneXmlLines.join('\n')}
       outFilename = `${cleanBankName}.pti`;
       mimeType = 'application/octet-stream';
       totalFiles = 1;
+      break;
+    }
+
+    case 'akai_akp': {
+      const keygroups: AkpKeygroup[] = validRegions.map((r) => {
+        const ps = processedSamplesMap.get(r.sampleName)!;
+        const semitoneOffset = 60 - r.rootKey;
+        return {
+          lowKey: Math.max(21, Math.min(127, r.lowKey)),
+          highKey: Math.max(21, Math.min(127, r.highKey)),
+          semitoneTune: Math.max(-36, Math.min(36, semitoneOffset)),
+          fineTune: Math.max(-50, Math.min(50, Math.round(r.detuneCents ?? 0))),
+          pitchMod1: 0,
+          pitchMod2: 0,
+          ampMod: 0,
+          zoneXfade: false,
+          muteGroup: r.muteGroup ?? 0,
+          ampAttack: 0,
+          ampDecay: 50,
+          ampRelease: 20,
+          ampSustain: 100,
+          filterMode: 0,
+          filterCutoff: 100,
+          filterResonance: 0,
+          filterKeyTrack: 0,
+          filtAttack: 0,
+          filtDecay: 50,
+          filtRelease: 20,
+          filtSustain: 100,
+          filtEnvDepth: 0,
+          zones: [
+            {
+              sampleName: ps.cleanName,
+              lowVel: r.lowVel,
+              highVel: r.highVel,
+              fineTune: Math.max(-50, Math.min(50, Math.round(r.detuneCents ?? 0))),
+              semitoneTune: 0,
+              filterOffset: 0,
+              pan: Math.max(-50, Math.min(50, Math.round((r.pan ?? 0) * 0.5))),
+              playbackMode: r.loopMode === 'loop_continuous' ? 2 : r.loopMode === 'one_shot' ? 1 : 0,
+              output: 0,
+              zoneLevel: Math.max(-100, Math.min(100, Math.round(((r.volumeDb ?? 0) / 12.0) * 100))),
+              keyTrack: true,
+              velToStart: 0,
+            },
+          ],
+        };
+      });
+      const akpProg: AkpProgram = {
+        name: cleanBankName,
+        isZSeries: false,
+        loudness: 85,
+        semitoneTune: 0,
+        fineTune: 0,
+        keygroups,
+      };
+      const akpBytes = writeAkpProgram(akpProg, 1);
+      if (options.layout === 'monolithic') {
+        outData = akpBytes;
+        outFilename = `${cleanBankName}.akp`;
+        mimeType = 'application/octet-stream';
+        totalFiles = 1;
+      } else {
+        const zipEntries: ZipEntryInput[] = [
+          { path: `${cleanBankName}.akp`, data: akpBytes },
+        ];
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: ps.cleanName, data: new Uint8Array(ps.wavBuffer) });
+        }
+        outData = createZipArchive(zipEntries);
+        totalFiles = zipEntries.length;
+      }
+      break;
+    }
+
+    case 'directwave': {
+      const parsedRegions: ParsedImportRegion[] = validRegions.map((r, idx) => {
+        const ps = processedSamplesMap.get(r.sampleName)!;
+        return {
+          id: `dw_${idx + 1}`,
+          samplePath: `Samples/${ps.cleanName}`,
+          sampleName: `Samples/${ps.cleanName}`,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detuneCents ?? 0,
+          volumeDb: r.volumeDb ?? 0,
+          pan: (r.pan ?? 0) / 100,
+          loopMode: r.loopMode === 'loop_continuous' ? 'loop_continuous' : 'no_loop',
+          loopStart: r.loopStart,
+          loopEnd: r.loopEnd,
+        };
+      });
+      const dwpBytes = writeDirectWavePatch(bankName, parsedRegions);
+      const zipEntries: ZipEntryInput[] = [
+        { path: `${cleanBankName}.dwp`, data: dwpBytes },
+      ];
+      for (const ps of processedSamplesMap.values()) {
+        zipEntries.push({ path: `Samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'reason_nnxt': {
+      const samplePaths: string[] = [];
+      const parsedRegions: ParsedImportRegion[] = validRegions.map((r, idx) => {
+        const ps = processedSamplesMap.get(r.sampleName)!;
+        const relPath = `Samples/${ps.cleanName}`;
+        if (!samplePaths.includes(relPath)) samplePaths.push(relPath);
+        return {
+          id: `sxt_${idx + 1}`,
+          samplePath: relPath,
+          sampleName: relPath,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detuneCents ?? 0,
+          volumeDb: r.volumeDb ?? 0,
+          pan: (r.pan ?? 0) / 100,
+          loopMode: r.loopMode === 'loop_continuous' ? 'loop_continuous' : 'no_loop',
+          loopStart: r.loopStart,
+          loopEnd: r.loopEnd,
+        };
+      });
+      const sxtBytes = writeSxtPatch(bankName, parsedRegions, samplePaths);
+      const zipEntries: ZipEntryInput[] = [
+        { path: `${cleanBankName}.sxt`, data: sxtBytes },
+      ];
+      for (const ps of processedSamplesMap.values()) {
+        zipEntries.push({ path: `Samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'waldorf_qpat':
+    case 'opxy':
+    case 'tonverk':
+    case 'disting_ex':
+    case 'prophet_x':
+    case 'isla_s2400':
+    case 'korg_modern':
+    case 'third_wave':
+    case 'zencore': {
+      const extRegions: ExtendedRegion[] = validRegions.map((r, idx) => {
+        const ps = processedSamplesMap.get(r.sampleName)!;
+        return {
+          id: `ext_${idx + 1}`,
+          sampleName: ps.cleanName,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          volume: r.volumeDb ?? 0,
+          pan: r.pan ?? 0,
+          detune: r.detuneCents ?? 0,
+          pitchKeytrack: r.pitchKeytrack ?? 100,
+          trigger: r.trigger ?? 'attack',
+          keyFadeIn: r.keyFadeIn ?? 0,
+          keyFadeOut: r.keyFadeOut ?? 0,
+          velFadeIn: r.velFadeIn ?? 0,
+          velFadeOut: r.velFadeOut ?? 0,
+          fadeCurve: r.fadeCurve ?? 'equal-power',
+          loopMode: r.loopMode,
+          loopStart: r.loopStart,
+          loopEnd: r.loopEnd,
+          loopCrossfadeMs: r.loopCrossfadeMs ?? 0,
+          sampleStartFrame: r.sampleStartFrame,
+          sampleEndFrame: r.sampleEndFrame,
+          muteGroup: r.muteGroup,
+          loops:
+            r.loopMode !== 'no_loop' && r.loopMode !== 'one_shot'
+              ? [
+                  {
+                    mode: r.loopMode,
+                    startFrame: r.loopStart,
+                    endFrame: r.loopEnd,
+                    crossfadeMs: r.loopCrossfadeMs ?? 0,
+                  },
+                ]
+              : undefined,
+        };
+      });
+
+      const zipEntries: ZipEntryInput[] = [];
+      if (options.format === 'waldorf_qpat') {
+        const qpatBytes = buildWaldorfQpat({
+          presetName: cleanBankName,
+          bankName: cleanBankName,
+          regions: extRegions,
+          articulation: session.articulation,
+        });
+        zipEntries.push({ path: `${cleanBankName}.qpat`, data: qpatBytes });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: `samples/${cleanBankName}/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'opxy') {
+        const jsonStr = buildOpXyPatchJson({
+          presetName: bankName,
+          regions: extRegions,
+          articulation: session.articulation,
+        });
+        zipEntries.push({ path: `${cleanBankName}.preset/patch.json`, data: textEncoder.encode(jsonStr) });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: `${cleanBankName}.preset/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'tonverk') {
+        const pstStr = buildTonverkPst({
+          presetName: bankName,
+          regions: extRegions,
+          articulation: session.articulation,
+        });
+        zipEntries.push({ path: `${cleanBankName}.tvpst`, data: textEncoder.encode(pstStr) });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: `samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'disting_ex') {
+        const dexBytes = buildDistingExBinary({
+          presetName: cleanBankName,
+          regions: extRegions,
+          articulation: session.articulation,
+        });
+        zipEntries.push({ path: `${cleanBankName}.dexpreset`, data: dexBytes });
+        validRegions.forEach((r, idx) => {
+          const ps = processedSamplesMap.get(r.sampleName)!;
+          const dexFile = generateDistingExSampleFilename(cleanBankName, r.rootKey, r.highKey, idx + 1);
+          zipEntries.push({ path: dexFile, data: new Uint8Array(ps.wavBuffer) });
+        });
+      } else if (options.format === 'prophet_x') {
+        const grpStr = buildProphetXGroupText({
+          presetName: bankName,
+          regions: extRegions,
+        });
+        zipEntries.push({ path: `${cleanBankName}.grp`, data: textEncoder.encode(grpStr) });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: ps.cleanName, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'isla_s2400') {
+        const kitBytes = buildS2400KitBinary({
+          presetName: bankName,
+          regions: extRegions,
+        });
+        zipEntries.push({ path: `${cleanBankName}.kit`, data: kitBytes });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: ps.cleanName, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'korg_modern') {
+        const korgBytes = buildKorgMultisampleBinary({
+          presetName: bankName,
+          regions: extRegions,
+        });
+        zipEntries.push({ path: `${cleanBankName}.korgmultisample`, data: korgBytes });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: `Samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'third_wave') {
+        const twBytes = buildThirdWaveBinary({
+          presetName: bankName,
+          regions: extRegions,
+        });
+        zipEntries.push({ path: `${cleanBankName}.3wv`, data: twBytes });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: ps.cleanName, data: new Uint8Array(ps.wavBuffer) });
+        }
+      } else if (options.format === 'zencore') {
+        const svzBytes = buildZenCoreSvzBinary({
+          presetName: bankName,
+          regions: extRegions,
+        });
+        zipEntries.push({ path: `${cleanBankName}.svz`, data: svzBytes });
+        for (const ps of processedSamplesMap.values()) {
+          zipEntries.push({ path: `Samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+        }
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'soundbox':
+    case 'omnisphere':
+    case 'ni_maschine': {
+      const parsedRegions: ParsedImportRegion[] = validRegions.map((r, idx) => {
+        const ps = processedSamplesMap.get(r.sampleName)!;
+        return {
+          id: `xml_${idx + 1}`,
+          samplePath: `Samples/${ps.cleanName}`,
+          sampleName: `Samples/${ps.cleanName}`,
+          rootKey: r.rootKey,
+          lowKey: r.lowKey,
+          highKey: r.highKey,
+          lowVel: r.lowVel,
+          highVel: r.highVel,
+          detuneCents: r.detuneCents ?? 0,
+          volumeDb: r.volumeDb ?? 0,
+          pan: (r.pan ?? 0) / 100,
+          loopMode: r.loopMode === 'loop_continuous' ? 'loop_continuous' : 'no_loop',
+          loopStart: r.loopStart,
+          loopEnd: r.loopEnd,
+        };
+      });
+      const zipEntries: ZipEntryInput[] = [];
+      if (options.format === 'soundbox') {
+        const xmlStr = generateSoundboxXml(bankName, parsedRegions);
+        zipEntries.push({ path: `${cleanBankName}.xml`, data: textEncoder.encode(xmlStr) });
+      } else if (options.format === 'omnisphere') {
+        const zmapStr = generateOmnisphereZmap(bankName, parsedRegions);
+        zipEntries.push({ path: `${cleanBankName}.zmap`, data: textEncoder.encode(zmapStr) });
+      } else {
+        const mxsndStr = generateMaschineSoundXml(bankName, parsedRegions);
+        zipEntries.push({ path: `${cleanBankName}.mxsnd.xml`, data: textEncoder.encode(mxsndStr) });
+      }
+      for (const ps of processedSamplesMap.values()) {
+        zipEntries.push({ path: `Samples/${ps.cleanName}`, data: new Uint8Array(ps.wavBuffer) });
+      }
+      outData = createZipArchive(zipEntries);
+      totalFiles = zipEntries.length;
       break;
     }
 

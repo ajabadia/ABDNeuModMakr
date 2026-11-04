@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { ICONS } from './icons';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { midiToNoteName } from './ZoneRibbon';
 import { PARAMETER_SETS } from '../core';
 import { escHtml, escAttr } from './escape';
@@ -49,6 +50,7 @@ export class NeuronDbModal {
   private abortScan = false;
   private onPickSlot: ((slot: number) => void) | null = null;
   private viewMode: NeuronDbViewMode = 'grid';
+  private focusTrap: FocusTrap | null = null;
 
   public open(
     initialEntries: NeuronDbModelEntry[],
@@ -213,10 +215,8 @@ export class NeuronDbModal {
           e.preventDefault();
           this.triggerPick(this.selectedSlot);
         }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        closeHandler();
       }
+      // Escape lo gestiona el focus trap compartido (onEscape -> closeHandler).
     };
 
     searchInp?.addEventListener('keydown', handleKeyNav);
@@ -226,13 +226,6 @@ export class NeuronDbModal {
       this.close();
       onCancel?.();
     };
-
-    this.backdropEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeHandler();
-      }
-    });
 
     this.backdropEl.querySelector('#btn-close-ndb-modal')?.addEventListener('click', closeHandler);
     this.backdropEl.querySelector('#btn-cancel-ndb-modal')?.addEventListener('click', closeHandler);
@@ -246,6 +239,17 @@ export class NeuronDbModal {
         this.triggerPick(this.selectedSlot);
       }
     });
+
+    // Trampa de foco compartida (recreada en cada apertura: closeHandler captura el onCancel vigente).
+    // De paso elimina el goteo del listener manual de Escape, que se acumulaba en cada open().
+    this.focusTrap?.deactivate();
+    if (this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        initialFocusSelector: '#inp-ndb-search',
+        onEscape: () => closeHandler(),
+      });
+      this.focusTrap.activate();
+    }
   }
 
   public isAborted(): boolean {
@@ -308,6 +312,9 @@ export class NeuronDbModal {
 
   public close(): void {
     this.abortScan = true;
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+    }
     if (this.backdropEl) {
       this.backdropEl.classList.add('is-hidden');
     }

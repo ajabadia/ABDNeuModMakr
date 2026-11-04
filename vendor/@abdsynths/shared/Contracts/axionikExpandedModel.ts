@@ -489,9 +489,137 @@ export interface AxionikClassicFallback {
 }
 
 /**
+ * Topology of the unified continuous spectral surface (Fase 38):
+ * - `melodic_surface`: 2D continuous field over `Pitch (0..127) × Velocity (1..127) × Time`
+ *   with pitch-formant decoupling and bilinear harmonic interpolation (pianos, synths, strings, tuned bottles/mallets).
+ * - `drum_kit_surface`: Per-key discrete articulation map where each key (`0..127`) has its own
+ *   1D continuous `Velocity (1..127) × Time` surface + anti-machine-gun stochastic DDSP residual (drum kits, unpitched FX).
+ */
+export type AxionikSurfaceTopology = 'melodic_surface' | 'drum_kit_surface';
+
+/** Adaptive resolution tier selected from harmonic richness and temporal evolution. */
+export type AxionikResolutionTier = 'compact' | 'standard' | 'hd' | 'ultra-hd';
+
+/**
+ * Extracted modulation profile for detuned oscillators (beating/unison/chorus),
+ * PWM (odd/even harmonic oscillation), and cyclic LFO filter sweeps so interpolation
+ * preserves movement speed and depth without phase cancellation.
+ */
+export interface AxionikSurfaceModulationProfile {
+  /** Dominant amplitude/timbre modulation or beating rate in Hz (0 = static). */
+  modulationRateHz: number;
+  /** Normalized amplitude beating / unison detune depth (0..1). */
+  modulationDepth: number;
+  /** PWM / odd-vs-even harmonic counter-modulation depth (0..1). */
+  oddEvenModDepth: number;
+  /** Estimated oscillator unison detune spread in cents (0..50). */
+  estimatedDetuneCents: number;
+}
+
+/**
+ * Normalized anchor node inside the unified spectral surface.
+ * Every node in a surface is time-aligned to the exact same `(partialCount, frameCount)` grid
+ * and landmark indices (`attackPeakFrame`, `sustainStartFrame`, `sustainEndFrame`), enabling
+ * zero-artifact bilinear/1D interpolation and real-time attack shortening or infinite release extension.
+ */
+export interface AxionikSpectralSurfaceNode {
+  id: string;
+  sampleRef: string;
+  /** Nominal MIDI note (`0..127`) for this node. */
+  rootKey: number;
+  /** Key coverage bounds (`0..127`) used for drum kit slot matching or fallback bounds. */
+  lowKey: number;
+  highKey: number;
+  /** Velocity center (`1..127`) of this calibration node. */
+  velocityCenter: number;
+  lowVel: number;
+  highVel: number;
+  /** Measured fundamental frequency in Hz (`0` if unpitched percussion). */
+  measuredF0Hz: number;
+  /** Harmonicity confidence (`0..1`). */
+  harmonicity: number;
+  /**
+   * Timbral coherence score (`0..1`) against the robust median centroid of the instrument.
+   * Values `< 0.72` in a melodic instrument indicate a likely intruder sample from another instrument.
+   */
+  timbreCoherenceScore?: number;
+  /** True when this node is flagged as a timbral outlier / intruder sample. */
+  isTimbralOutlier?: boolean;
+  /** Frame index (`0 .. frameCount-1`) where initial attack reaches full spectral bloom (for Attack=0 shortening). */
+  attackPeakFrame: number;
+  /** Frame index range (`0 .. frameCount-1`) of the stationary or cyclic sustain horizon. */
+  sustainStartFrame: number;
+  sustainEndFrame: number;
+  /** Whether sustain orbits cyclically (pad/strings/synth) or decays naturally (piano/pluck/drum). */
+  sustainBehavior: 'looping_orbit' | 'decaying_oneshot';
+  /** Natural high-frequency damping rate in dB/sec for realistic infinite release synthesis. */
+  hfDampingDbPerSec: number;
+  /** Detuned oscillator / LFO / PWM modulation profile extracted before frame normalization. */
+  modulation: AxionikSurfaceModulationProfile;
+  /** Phase-aligned PCM micro-transient splice for the first 10..30 ms of physical impact. */
+  hybridTransient?: AxionikHybridTransient;
+  /** Time-normalized spectral frames of length `surface.frameCount`, each with `surface.partialCount` partials. */
+  frames: AxionikSpectralFrame[];
+}
+
+/**
+ * Tempo-Sync & Groove / REX Loop metadata for the ABDAxionikVS Resynator v2 (Fase 39.4).
+ * When `enabled === true`, the Resynator advances through the spectral surface frames
+ * at rate `(hostBpm / sourceBpm)` instead of fixed time, keeping pitch & formants 100% intact
+ * while locking rhythmic or melodic loops to the DAW host clock.
+ */
+export interface AxionikSurfaceTempoSync {
+  /** When true, the Resynator v2 locks spectral envelope evolution to `hostBpm / sourceBpm`. */
+  enabled: boolean;
+  /** Original detected or authored BPM of the loop/phrase (20..300, default 120). */
+  sourceBpm: number;
+  /** Target conformed BPM if pre-conformed in AutoSlicer, or default playback BPM (20..300). */
+  targetBpm?: number;
+  /** Length of the loop/phrase in musical bars (e.g. 1, 2, 4, 8). */
+  barCount: number;
+  /** Musical time signature `[numerator, denominator]`, default `[4, 4]`. */
+  timeSignature: [number, number];
+  /** Groove workflow mode that originated this surface ('free' | 'rex_loop' | 'melodic_phrase' | 'sliced_kit' | 'slice_synced'). */
+  grooveMode?: 'free' | 'rex_loop' | 'melodic_phrase' | 'sliced_kit' | 'slice_synced';
+  /** Number of rhythmic/melodic slices detected in the phrase (optional). */
+  sliceCount?: number;
+  /** Start frame (mono samples) of every slice, used when `grooveMode === 'slice_synced'`. */
+  sliceStartFrames?: number[];
+}
+
+/**
+ * Unified Continuous Spectral Surface covering the full Pitch × Velocity spectrum in a single model.
+ */
+export interface AxionikUnifiedSpectralSurface {
+  topology: AxionikSurfaceTopology;
+  topologyDetectionReason: string;
+  /** Monotonic pitch progression score across zones (`0..1`, `>= 0.65` indicates tuned melodic scale). */
+  pitchMonotonicityScore: number;
+  /** Average adjacent-zone Bark formant envelope cosine similarity (`0..1`). */
+  adjacentFormantSimilarity: number;
+  resolutionTier: AxionikResolutionTier;
+  /** Unified partial count per frame across all nodes (`32 | 64 | 128 | 256`). */
+  partialCount: number;
+  /** Unified landmark-warped frame count across all nodes (`32 | 48 | 64 | 96`). */
+  frameCount: number;
+  /** Canonical normalized landmark index where attack bloom completes across all nodes. */
+  canonicalAttackPeakFrame: number;
+  /** Canonical normalized landmark index where sustain horizon begins across all nodes. */
+  canonicalSustainStartFrame: number;
+  /** Global 24-Bark body formant reference envelope in dBFS for pitch-independent formant locking. */
+  globalBodyFormantDb: number[];
+  /** Node IDs (`sampleRef` or region `id`) flagged as timbral outliers / accidental intruder samples. */
+  outlierNodeIds?: string[];
+  /** Optional Tempo-Sync & REX/Groove metadata for the ABDAxionikVS Resynator v2. */
+  tempoSync?: AxionikSurfaceTempoSync;
+  /** Calibration anchor nodes sorted by `(rootKey, velocityCenter)`. */
+  nodes: AxionikSpectralSurfaceNode[];
+}
+
+/**
  * Root: the Axionik Expanded Model document (serialised as JSON).
  * Architectural boundary (Fase 11.5.7):
- * - Resynator Sonic Matter: `spectral`, `spectralBySample`, `morphSpace`, `resynators`, and region `hybridTransient`.
+ * - Resynator Sonic Matter: `spectral`, `spectralBySample`, `unifiedSurface`, `morphSpace`, `resynators`, and region `hybridTransient`.
  * - Synth Voice Dispatcher & Independent Audio Chain (`ABDJUNiO601` pattern): `articulation` (`filters[]`, `fxChain[]`, envelopes) and region crossfade/trigger rules.
  */
 export interface AxionikExpandedModel {
@@ -505,6 +633,11 @@ export interface AxionikExpandedModel {
    * distinct HD partials, formants, and DDSP residuals per sample/zone.
    */
   spectralBySample?: Record<string, AxionikSpectralModel>;
+  /**
+   * Unified Continuous Spectral Surface (Fase 38) fusing all zones and velocity layers
+   * into a single landmark-aligned `Pitch × Velocity × Time` (or `DrumKey × Velocity × Time`) field.
+   */
+  unifiedSurface?: AxionikUnifiedSpectralSurface;
   morphSpace?: AxionikMorphSpace;
   regions: AxionikRegion[];
   articulation: AxionikArticulation;

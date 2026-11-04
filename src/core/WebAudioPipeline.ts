@@ -28,7 +28,12 @@ import type {
   ZoneSpectralInspection,
   SpectralPartialTrack,
   HistoryState,
+  PipelineChecklistSelection,
 } from './types.ts';
+import {
+  executeCanonicalPhase1SampleConditioning,
+  generatePipelineModelArtwork,
+} from './dsp/PipelineConditioningSteps.ts';
 import {
   decodeWav,
   encodePcm16Wav,
@@ -55,6 +60,13 @@ import {
   parseNeuronSphere,
   resynthesizeNeuronModelSource,
 } from '@abdsynths/shared/formats/neuron';
+import { synthesizeResynatorV2Preview } from '@abdsynths/shared/dsp/neuron-analysis';
+import { buildSpectralModel } from './expandedModelWriter.ts';
+import {
+  buildUnifiedSpectralSurface,
+  evaluateUnifiedSpectralSurface,
+} from './dsp/UnifiedSpectralSurface.ts';
+import type { SpectralModelData } from './dsp/GridIndicator.ts';
 
 import { parseSessionJson } from './sessionSchema.ts';
 import { DEFAULT_AI_ASSISTANCE_CONFIG } from './types.ts';
@@ -117,9 +129,16 @@ import {
   restoreSessionFromLocalStorage,
 } from './sessionPersistence.ts';
 import { AudioPreviewService } from './audioPreview.ts';
-import { BankService, BankLoadError, buildBankLoadPlan } from './bankService.ts';
+import {
+  BankService,
+  BankLoadError,
+  buildBankLoadPlan,
+  buildFallbackBankLoadPlan,
+  type BankLoadPlan,
+} from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
 import { basename } from './pathUtils.ts';
+import { yieldToUI } from './asyncUtils.ts';
 import { createInitialSession, createZone } from './sessionFactory.ts';
 import {
   buildZoneRibbonWaveforms,
@@ -197,6 +216,10 @@ export class WebAudioPipeline implements CoreService {
     },
     getResynthMono: (zoneId: string) => this.spectralCache.get(zoneId)?.resynthMono,
     getEnhancedMono: (zoneId: string) => this.spectralCache.get(zoneId)?.enhancedMono,
+    getResynatorV2Stereo: (zoneId: string, targetNote?: MidiNote) => {
+      const targetBpm = this.session?.processConfig.unifiedSurfaceConfig?.tempoSync?.targetBpm;
+      return this.synthesizeZoneResynatorV2(zoneId, targetNote, 100, targetBpm);
+    },
     ensureSpectrum: (zoneId: string) => {
       this.inspectZoneSpectrum(zoneId);
     },
@@ -208,6 +231,11 @@ export class WebAudioPipeline implements CoreService {
       inspection: ZoneSpectralInspection;
       resynthMono: Float32Array;
       enhancedMono: Float32Array;
+      enhancedModel: SpectralModelData;
+      decodedMono: Float32Array;
+      decodedSampleRate: number;
+      detectedF0Hz: number;
+      durationSec: number;
     }
   > = new Map();
   private readonly ribbonEnvelopeCache: Map<string, number[]> = new Map();
@@ -615,6 +643,12 @@ export class WebAudioPipeline implements CoreService {
         ...changes.aiConfig,
       };
     }
+    if (changes.unifiedSurfaceConfig !== undefined) {
+      cfg.unifiedSurfaceConfig = {
+        ...(cfg.unifiedSurfaceConfig ?? {}),
+        ...changes.unifiedSurfaceConfig,
+      };
+    }
 
     this.markDirty();
     return this.session;
@@ -973,15 +1007,7 @@ export class WebAudioPipeline implements CoreService {
       cache: this.ribbonEnvelopeCache,
     };
     const slot = this.session?.processConfig.modelNumber ?? 0;
-    let cachedSpec = this.spectralCache.get(zone.id);
-    if (!cachedSpec && zone.sampleLow) {
-      try {
-        this.inspectZoneSpectrum(zone.id);
-        cachedSpec = this.spectralCache.get(zone.id);
-      } catch {
-        // ignore
-      }
-    }
+    const cachedSpec = this.spectralCache.get(zone.id);
     const isEnhancedAlgo =
       (this.session?.processConfig.dspAlgorithm ?? 'legacy') === 'enhanced';
     const activeResynthMono = isEnhancedAlgo
@@ -1282,9 +1308,154 @@ export class WebAudioPipeline implements CoreService {
       inspection,
       resynthMono,
       enhancedMono,
+      enhancedModel,
+      decodedMono: decoded.mono,
+      decodedSampleRate: decoded.sampleRate,
+      detectedF0Hz: summary.detectedF0Hz,
+      durationSec: resynthDuration,
     });
 
     return inspection;
+  }
+
+  /**
+   * Synthesizes a real-time stereo preview for `zoneId` using `ABDShared` Resynator v2
+   * (`buildUnifiedSpectralSurface` + `evaluateUnifiedSpectralSurface` + `synthesizeResynatorV2Preview`),
+   * applying Formant Locking, Inharmonicity (B), Odd/Even Parity, DDSP Bark Residual,
+   * Attack/Release Time-Warping, Tempo-Sync, and Phase-Locked PCM Attack Transients.
+   */
+  public synthesizeZoneResynatorV2(
+    zoneId: string,
+    targetNote?: MidiNote,
+    velocity = 100,
+    hostBpm?: number
+  ): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined {
+    if (!this.session) return undefined;
+    const zone =
+      this.session.zones.find((z) => z.id === zoneId) ?? this.session.zones[0];
+    if (!zone) return undefined;
+
+    if (!this.spectralCache.has(zone.id)) {
+      this.inspectZoneSpectrum(zone.id);
+    }
+    const cached = this.spectralCache.get(zone.id);
+    if (!cached) return undefined;
+
+    const surfCfg = this.session.processConfig.unifiedSurfaceConfig ?? {};
+    const axSpectral = buildSpectralModel(cached.enhancedModel, undefined, undefined, true);
+    const frameCount = Math.max(1, axSpectral.frames.length);
+    for (let f = 0; f < frameCount; f++) {
+      const fr = axSpectral.frames[f];
+      if (!fr.f0Hz || fr.f0Hz <= 0) {
+        fr.f0Hz = cached.detectedF0Hz > 0 ? cached.detectedF0Hz : midiNoteToHz(zone.rootKey);
+      }
+      fr.timeSec = Number(((f / Math.max(1, frameCount - 1)) * cached.durationSec).toFixed(4));
+    }
+
+    const effectiveHostBpm =
+      hostBpm ?? surfCfg.tempoSync?.targetBpm ?? surfCfg.tempoSync?.sourceBpm;
+    const effectiveTempoSync =
+      surfCfg.tempoSync ??
+      (effectiveHostBpm
+        ? {
+            enabled: true,
+            sourceBpm: 120,
+            targetBpm: effectiveHostBpm,
+            barCount: 1,
+            timeSignature: [4, 4] as [number, number],
+            grooveMode: 'slice_synced' as const,
+            sliceStartFrames: [0],
+          }
+        : undefined);
+
+    const sampleName = zone.sampleLow ?? `Zone_${zone.rootKey}.wav`;
+    const surface = buildUnifiedSpectralSurface({
+      regions: [
+        {
+          id: zone.id,
+          sampleRef: sampleName,
+          lowKey: zone.lowKey,
+          highKey: zone.highKey,
+          rootKey: zone.rootKey,
+          lowVel: 1,
+          highVel: 127,
+        },
+      ],
+      primarySpectral: axSpectral,
+      spectralBySample: { [sampleName]: axSpectral },
+      resolutionStrategy: surfCfg.resolutionStrategy ?? 'auto',
+      complexity: this.session.processConfig.complexity,
+      topologyOverride: surfCfg.topologyMode ?? 'auto',
+      tempoSync: effectiveTempoSync,
+    });
+
+    const midiNote = targetNote ?? zone.rootKey;
+    const evaluated = evaluateUnifiedSpectralSurface(surface, {
+      midiNote,
+      velocity,
+      attackShorten01: surfCfg.attackShorten01 ?? 0,
+      releaseExtendSec: surfCfg.releaseExtendSec ?? 0,
+      formantLock01: surfCfg.formantLock01 ?? 1.0,
+      includeOutliers: surfCfg.includeOutliers ?? false,
+      hostBpm: effectiveHostBpm,
+    });
+
+    const baseDur =
+      cached.durationSec *
+      (evaluated.tempoScaleFactor && evaluated.tempoScaleFactor > 0
+        ? 1 / evaluated.tempoScaleFactor
+        : 1);
+    const totalDurSec = Math.min(
+      8.0,
+      Math.max(0.35, baseDur + (surfCfg.releaseExtendSec ?? 0) * 0.65)
+    );
+
+    const preserveTransients = surfCfg.preserveHybridTransients !== false;
+    const transientFrames = Math.min(
+      cached.decodedMono.length,
+      Math.floor(0.03 * cached.decodedSampleRate)
+    );
+    const transientPcm =
+      preserveTransients && (surfCfg.attackShorten01 ?? 0) < 0.5 && transientFrames > 0
+        ? cached.decodedMono.subarray(0, transientFrames)
+        : undefined;
+
+    const synthOut = synthesizeResynatorV2Preview({
+      frames: evaluated.frames,
+      targetF0Hz: evaluated.targetF0Hz,
+      partialCount: evaluated.partialCount,
+      startFrameIndex: evaluated.startFrameIndex,
+      sustainStartFrame: evaluated.sustainStartFrame,
+      sustainEndFrame: evaluated.sustainEndFrame,
+      sustainBehavior: evaluated.sustainBehavior,
+      modulation: evaluated.modulation,
+      shapers: {
+        inharmonicityB:
+          surfCfg.inharmonicityB ??
+          cached.inspection.summary.acousticDescriptors?.inharmonicityB ??
+          0,
+        parity: surfCfg.parity ?? 0,
+        residualMix: surfCfg.residualMix ?? 0.15,
+        formantPreserve: surfCfg.formantLock01 ?? 1.0,
+        spatialSpread: 0.55,
+      },
+      transientPcm,
+      hybridTransient: transientPcm
+        ? {
+            durationMs: 22,
+            crossfadeMs: 8,
+            gainDb: 0,
+          }
+        : undefined,
+      durationSec: totalDurSec,
+      sampleRate: 44100,
+    });
+
+    return {
+      left: synthOut.stereoL,
+      right: synthOut.stereoR,
+      sampleRate: synthOut.sampleRate,
+    };
   }
 
   /**
@@ -1299,11 +1470,12 @@ export class WebAudioPipeline implements CoreService {
 
   /**
    * Plays either the Original sample ('original'), Legacy Scape/Sphere resynthesis ('resynthesis'),
-   * or Phase 7 Enhanced DSP resynthesis ('enhanced') for `zoneId`, optionally pitch-shifted to `targetNote`.
+   * Phase 7 Enhanced DSP resynthesis ('enhanced'), or ABDShared Resynator v2 ('resynator_v2')
+   * for `zoneId`, optionally at `targetNote`.
    */
   public async auditionZoneComparison(
     zoneId: string,
-    mode: 'original' | 'resynthesis' | 'enhanced',
+    mode: 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2',
     targetNote?: MidiNote,
     sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void> {
@@ -1321,7 +1493,7 @@ export class WebAudioPipeline implements CoreService {
     bins: Uint8Array;
     rmsDb: number;
     isPlaying: boolean;
-    mode: 'original' | 'resynthesis' | 'enhanced' | null;
+    mode: 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2' | null;
   } {
     return this.preview.getRealtimeSpectrum();
   }
@@ -1413,8 +1585,29 @@ export class WebAudioPipeline implements CoreService {
     if (!record) {
       throw new BankLoadError('NOT_FOUND', `Model #${slot} is not in the bank.`);
     }
+
+    const capsule = this.assetStore.getCapsuleRecordSync(slot);
+    const legacyBundle = this.assetStore.getLegacyOriginalSlotBundleSync(slot);
+    if (!record.neuronikModelJson && capsule?.extendedModelJson) {
+      record.neuronikModelJson = capsule.extendedModelJson;
+    }
+
     const binaries = this.bank.getModelBinaries(slot);
-    const plan = buildBankLoadPlan(record, binaries);
+    let plan: BankLoadPlan;
+    let hasAlignedBinaries = false;
+    try {
+      plan = buildBankLoadPlan(record, binaries);
+      hasAlignedBinaries = true;
+    } catch (err) {
+      if (
+        err instanceof BankLoadError &&
+        (err.code === 'NO_BINARIES' || err.code === 'MISMATCH' || err.code === 'NO_ZONES')
+      ) {
+        plan = buildFallbackBankLoadPlan(record, legacyBundle?.zones);
+      } else {
+        throw err;
+      }
+    }
 
     if (!this.session) {
       await this.newSession(record.name);
@@ -1429,67 +1622,150 @@ export class WebAudioPipeline implements CoreService {
       }
     }
 
+    const inferTimbre = (name: string): 'bass' | 'piano' | 'bell' | 'pad' | 'strings' => {
+      const lower = `${record.name} ${name}`.toLowerCase();
+      if (lower.includes('piano') || lower.includes('key') || record.parameterSet === 5) return 'piano';
+      if (lower.includes('bass')) return 'bass';
+      if (lower.includes('bell') || lower.includes('pluck') || record.parameterSet === 2 || record.parameterSet === 3) return 'bell';
+      if (lower.includes('pad') || record.parameterSet === 4 || record.parameterSet === 7) return 'pad';
+      return 'strings';
+    };
+
+    const synthesizeFromAnalysisSummary = (
+      summary: ZoneAnalysisSummary | undefined,
+      rootKey: number,
+      lowKey: number,
+      highKey: number
+    ): ArrayBuffer | null => {
+      if (!summary || !Array.isArray(summary.amplitudes) || summary.amplitudes.length === 0) {
+        return null;
+      }
+      const maxAmp = Math.max(...summary.amplitudes.map((a) => (Number.isFinite(a) ? Math.abs(a) : 0)), 0);
+      if (maxAmp <= 1e-5) return null;
+      const sr = 44100;
+      const dur = Math.max(0.6, Math.min(2.5, summary.durationSec || 1.2));
+      const numFrames = Math.round(sr * dur);
+      const pcm = new Float32Array(numFrames);
+      const baseF0 =
+        summary.detectedF0Hz && summary.detectedF0Hz >= 20 && summary.detectedF0Hz <= 8000
+          ? summary.detectedF0Hz
+          : midiNoteToHz(rootKey);
+      const numPartials = Math.min(32, summary.amplitudes.length);
+      for (let p = 0; p < numPartials; p++) {
+        const amp = (summary.amplitudes[p] ?? 0) / maxAmp;
+        if (amp < 0.005) continue;
+        const offsetCents = summary.frequencyOffsets?.[p] ?? 0;
+        const freq = baseF0 * (p + 1) * Math.pow(2, offsetCents / 1200);
+        if (freq >= sr * 0.46) break;
+        const decayRate = 1.6 + p * 0.28;
+        const twoPiF = (2 * Math.PI * freq) / sr;
+        for (let n = 0; n < numFrames; n++) {
+          const t = n / sr;
+          const attack = Math.min(1, t / 0.008);
+          const env = attack * Math.exp(-decayRate * t);
+          pcm[n] += amp * env * Math.sin(twoPiF * n);
+        }
+      }
+      let peak = 0;
+      for (let n = 0; n < numFrames; n++) {
+        const a = Math.abs(pcm[n]);
+        if (a > peak) peak = a;
+      }
+      if (peak > 1e-5) {
+        const scale = 0.85 / peak;
+        for (let n = 0; n < numFrames; n++) pcm[n] *= scale;
+      }
+      return encodePcm16Wav(pcm, sr, { rootKey, lowKey, highKey, detune: 0 });
+    };
+
     plan.sampleOrder.forEach((sampleName, i) => {
-      const pair = binaries![i];
+      const pair = hasAlignedBinaries
+        ? binaries![i]
+        : (binaries?.[i] ?? this.assetStore.getLegacyOriginalSampleSync(sampleName));
       const firstZone = plan.zones.find(
         (z) => z.sampleLow === sampleName || z.sampleHigh === sampleName
       );
+      const summary = analysisBySample.get(sampleName);
       let wavBuf: ArrayBuffer | null = null;
-      try {
-        const parsedScape = parseNeuronScape(pair.scapeBinary);
-        const parsedSphere = parseNeuronSphere(pair.sphereBinary);
-        const pcm =
-          parsedSphere.frames.length > 0 || parsedScape
-            ? resynthesizeNeuronModelSource(parsedSphere, parsedScape, 44100, 0.22)
+
+      if (pair?.scapeBinary && pair?.sphereBinary) {
+        try {
+          const parsedScape = parseNeuronScape(pair.scapeBinary);
+          const parsedSphere = parseNeuronSphere(pair.sphereBinary);
+          const pcm =
+            parsedSphere.frames.length > 0 || parsedScape
+              ? resynthesizeNeuronModelSource(parsedSphere, parsedScape, 44100, 0.22)
+              : null;
+          wavBuf = pcm
+            ? encodePcm16Wav(pcm, 44100, {
+                rootKey: firstZone?.rootKey ?? 60,
+                lowKey: firstZone?.lowKey ?? 0,
+                highKey: firstZone?.highKey ?? 127,
+                detune: 0,
+              })
             : null;
-        wavBuf = pcm
-          ? encodePcm16Wav(pcm, 44100, {
-              rootKey: firstZone?.rootKey ?? 60,
-              lowKey: firstZone?.lowKey ?? 0,
-              highKey: firstZone?.highKey ?? 127,
-              detune: 0,
-            })
-          : null;
-      } catch {
-        wavBuf = null;
+        } catch {
+          wavBuf = null;
+        }
+      }
+
+      if (!wavBuf) {
+        const cachedRawOrEnhanced = this.lookupSampleBuffer(sampleName);
+        if (cachedRawOrEnhanced) {
+          wavBuf = cachedRawOrEnhanced;
+        }
       }
       if (!wavBuf) {
-        wavBuf = synthesizeDemoWav('strings', firstZone?.rootKey ?? 60, 44100, 1.0);
+        wavBuf = synthesizeFromAnalysisSummary(
+          summary,
+          firstZone?.rootKey ?? 60,
+          firstZone?.lowKey ?? 0,
+          firstZone?.highKey ?? 127
+        );
+      }
+      if (!wavBuf) {
+        wavBuf = synthesizeDemoWav(
+          inferTimbre(sampleName),
+          firstZone?.rootKey ?? 60,
+          44100,
+          1.0
+        );
       }
       try {
         this.registerSampleBuffer(sampleName, wavBuf);
       } catch {
         // Oversize buffer: keep the name reference; audition falls back to demo.
       }
-      const summary = analysisBySample.get(sampleName);
-      this.importedSourceBinaries.set(sampleName, {
-        scapeBinary: pair.scapeBinary,
-        sphereBinary: pair.sphereBinary,
-        origParameterSet: record.parameterSet,
-        complexity: record.complexity,
-        summary: summary ?? {
-          zoneId: sampleName,
-          lowKey: firstZone?.lowKey ?? 0,
-          rootKey: firstZone?.rootKey ?? 60,
-          highKey: firstZone?.highKey ?? 127,
-          sampleName,
-          sampleRate: 44100,
-          durationSec: 1.0,
-          detectedF0Hz: 440,
-          targetF0Hz: 440,
-          gridResidualCents: 0,
-          gridObservations: 0,
-          gridBand: 'green',
-          gridNotice: 'Bank model (resynthesized on load)',
-          layerCount: 1,
-          frameCount: 0,
-          activePartials: 0,
-          octaveFoldCents: 0,
-          biGrid: false,
-          amplitudes: new Array<number>(64).fill(0),
-          frequencyOffsets: new Array<number>(64).fill(0),
-        },
-      });
+      if (pair?.scapeBinary && pair?.sphereBinary) {
+        this.importedSourceBinaries.set(sampleName, {
+          scapeBinary: pair.scapeBinary,
+          sphereBinary: pair.sphereBinary,
+          origParameterSet: record.parameterSet,
+          complexity: record.complexity,
+          summary: summary ?? {
+            zoneId: sampleName,
+            lowKey: firstZone?.lowKey ?? 0,
+            rootKey: firstZone?.rootKey ?? 60,
+            highKey: firstZone?.highKey ?? 127,
+            sampleName,
+            sampleRate: 44100,
+            durationSec: 1.0,
+            detectedF0Hz: 440,
+            targetF0Hz: 440,
+            gridResidualCents: 0,
+            gridObservations: 0,
+            gridBand: 'green',
+            gridNotice: 'Bank model (resynthesized on load)',
+            layerCount: 1,
+            frameCount: 0,
+            activePartials: 0,
+            octaveFoldCents: 0,
+            biGrid: false,
+            amplitudes: new Array<number>(64).fill(0),
+            frequencyOffsets: new Array<number>(64).fill(0),
+          },
+        });
+      }
     });
 
     const newZones: Zone[] = plan.zones.map((z) => {
@@ -1499,6 +1775,7 @@ export class WebAudioPipeline implements CoreService {
     });
     this.session!.name = record.name;
     this.session!.zones = newZones;
+    this.session!.extendedRegions = syncExtendedRegionsFromClassicZones(newZones);
     this.session!.processConfig = { ...plan.processConfig };
     if (record.coverWebpDataUrl && !this.session!.processConfig.coverArtwork) {
       this.session!.processConfig.coverArtwork = {
@@ -1578,12 +1855,25 @@ export class WebAudioPipeline implements CoreService {
 
   public async startProcess(
     config: ProcessConfig,
-    options?: { forceReanalyzeImported?: boolean }
+    options?: {
+      forceReanalyzeImported?: boolean;
+      checklist?: PipelineChecklistSelection;
+    }
   ): Promise<void> {
     if (!this.session) throw new Error('No active session');
     if (this.isRunning) throw new Error('Process already running');
 
     this.session.processConfig = { ...config };
+    const checklist = options?.checklist;
+
+    // Step 1 (if checklist enabled): Auto-repair MIDI coverage when requested
+    if (checklist?.steps.coverageMidi) {
+      const covErrs = this.validateCoverage();
+      if (covErrs.length > 0 && this.session.processConfig.keyMappingMode !== 'drum') {
+        this.autoRepairCoverage();
+      }
+    }
+
     let velocityGainMap: Record<string, { lowGain: number; highGain: number }> = {};
     if (
       this.session.processConfig.workingMode === 'extended' &&
@@ -1600,7 +1890,49 @@ export class WebAudioPipeline implements CoreService {
 
     const zones = [...this.session.zones];
     this.ensureZoneDemoBuffers(zones);
-    const forceReanalyze = options?.forceReanalyzeImported === true;
+    const forceReanalyze =
+      options?.forceReanalyzeImported === true ||
+      checklist?.steps.enhanceClassicModel === true ||
+      checklist?.steps.reconstructFromClassic === true;
+
+    // Phase 1 Pre-DSP Sample Conditioning (Trim Silence -> De-Esser -> Denoise -> 96kHz Master Wave -> Normalize)
+    if (checklist) {
+      if (!this.session.sampleProcessingFlags) {
+        this.session.sampleProcessingFlags = {};
+      }
+      await executeCanonicalPhase1SampleConditioning({
+        samples: this.sampleBuffers,
+        checklist,
+        keyMappingMode: this.session.processConfig.keyMappingMode ?? 'chromatic',
+        sampleFlags: this.session.sampleProcessingFlags,
+        aiConfig: this.session.processConfig.aiConfig,
+        onSampleEnhanced: (sampleName, enhancedWav) => {
+          this.assetStore.setEnhancedAudio(sampleName, enhancedWav);
+        },
+      });
+    }
+
+    // Step 14: Cover Artwork Generation (if requested in checklist and not already present)
+    if (checklist?.steps.generateCoverArtwork && !this.session.processConfig.coverArtwork) {
+      try {
+        const generatedArt = await generatePipelineModelArtwork({
+          modelName: this.session.processConfig.modelName || this.session.name,
+          expandedName: this.session.processConfig.expandedName || this.session.name,
+          parameterSet: this.session.processConfig.parameterSet,
+          category: this.session.detectedInstrumentCategory,
+          sampleNames: Array.from(this.sampleBuffers.keys()),
+          aiConfig: this.session.processConfig.aiConfig,
+        });
+        if (generatedArt) {
+          this.session.processConfig.coverArtwork = generatedArt;
+          config = { ...this.session.processConfig };
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+
+    const includeResinator2 = checklist ? checklist.steps.compileExtendedResinator2 !== false : true;
 
     const scaleWavBufferGain = (rawBuf: ArrayBuffer | null, gain: number): ArrayBuffer | null => {
       if (!rawBuf || Math.abs(gain - 1.0) < 1e-3) return rawBuf ? rawBuf.slice(0) : null;
@@ -1687,7 +2019,9 @@ export class WebAudioPipeline implements CoreService {
               msg.zonesAnalysis,
               msg.zoneBinaries,
               msg.neuronikModelJson,
-              msg.elapsedMs
+              msg.elapsedMs,
+              undefined,
+              includeResinator2 ? msg.expandedModelV2 : undefined
             );
           } else if (msg.type === 'cancelled') {
             this.isRunning = false;
@@ -1767,7 +2101,9 @@ export class WebAudioPipeline implements CoreService {
         result.zonesAnalysis,
         result.zoneBinaries,
         result.neuronikModelJson,
-        Date.now() - startTime
+        Date.now() - startTime,
+        undefined,
+        includeResinator2 ? result.expandedModelV2 : undefined
       );
     } catch (err) {
       this.isRunning = false;
@@ -1836,7 +2172,7 @@ export class WebAudioPipeline implements CoreService {
     return parseSf2PresetsList(buffer);
   }
 
-  private applyNativeSamplerImport(imported: NativeSamplerImportResult): Session {
+  private async applyNativeSamplerImport(imported: NativeSamplerImportResult): Promise<Session> {
     // Clean slate for new sampler instrument import (SoundFont SF2 / SFZ)
     this.sampleBuffers.clear();
     this.importedSourceBinaries.clear();
@@ -1873,7 +2209,11 @@ export class WebAudioPipeline implements CoreService {
       };
     }
 
-    for (const audioFile of imported.audioFiles) {
+    for (let i = 0; i < imported.audioFiles.length; i++) {
+      if (i > 0 && i % 6 === 0) {
+        await yieldToUI(0);
+      }
+      const audioFile = imported.audioFiles[i];
       try {
         this.registerSampleBuffer(audioFile.name, audioFile.buffer);
       } catch {

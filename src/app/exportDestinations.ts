@@ -87,11 +87,11 @@ export function buildExportDestinationCards(): ExportDestinationCard[] {
     {
       id: 'other-samplers',
       title: 'Para otros samplers → Kontakt / Decent / SFZ…',
-      targetSubtitle: 'SoundFont 2, SFZ, Decent Sampler, Kontakt, MPC, EXS24, Ableton, HALion, Bitwig…',
-      badge: '15 formatos',
+      targetSubtitle: 'SoundFont 2, SFZ, Decent Sampler, Kontakt, MPC, EXS24, Ableton, HALion, Bitwig, Akai, Roland…',
+      badge: '35 formatos · Multi-Export',
       description:
-        'Convierte las zonas, capas de velocidad, puntos de bucle y muestras actuales al formato nativo de tu sampler hardware o software con revisión preflight automática.',
-      primaryActionLabel: 'Elegir formato de sampler…',
+        'Convierte las zonas, capas de velocidad, puntos de bucle y muestras actuales a uno o múltiples formatos nativos de sampler hardware o software simultáneamente con revisión preflight automática.',
+      primaryActionLabel: 'Elegir formato(s) de sampler…',
       secondaryActions: [
         { id: 'fmt-sf2', label: 'SF2', samplerFormat: 'sf2' },
         { id: 'fmt-sfz', label: 'SFZ', samplerFormat: 'sfz' },

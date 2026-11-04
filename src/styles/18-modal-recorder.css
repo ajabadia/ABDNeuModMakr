@@ -218,3 +218,400 @@
   flex: none;
 }
 
+/* ── Fase 37: AutoSampler MIDI Integrado & Live Scrolling Waveform ────────── */
+
+.nmm-recorder-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-panel-border-dim);
+}
+
+.nmm-recorder-mode-pills {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.nmm-autosampler-grid-wrap {
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-bg);
+  padding: 0;
+}
+
+.nmm-as-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.nmm-as-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-panel-surface-elevated);
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-panel-border-strong);
+  border-right: 1px solid var(--color-panel-border-dim);
+  padding: 4px 6px;
+  text-align: center;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nmm-as-matrix-table thead th.nmm-as-th-note {
+  text-align: left;
+}
+
+.nmm-as-vel-th-sub {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--color-text-dim);
+}
+
+.nmm-as-matrix-table tbody tr {
+  border-bottom: 1px solid var(--color-panel-border-dim);
+}
+
+.nmm-as-matrix-table tbody tr.is-octave-start {
+  border-top: 2px solid var(--color-panel-border-strong);
+}
+
+.nmm-as-oct-cell {
+  background: var(--color-panel-surface);
+  color: var(--color-accent);
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 8px;
+  border-right: 1px solid var(--color-panel-border-strong);
+  white-space: nowrap;
+  vertical-align: middle;
+  width: 68px;
+}
+
+.nmm-as-oct-sub {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--color-text-dim);
+}
+
+.nmm-as-note-cell {
+  background: var(--color-panel-surface);
+  color: var(--color-text-main);
+  padding: 3px 8px;
+  border-right: 1px solid var(--color-panel-border);
+  white-space: nowrap;
+  width: 140px;
+}
+
+.nmm-as-note-main {
+  font-weight: 700;
+  color: var(--color-text-main);
+}
+
+.nmm-as-note-range {
+  margin-left: 6px;
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.nmm-as-td-cell {
+  padding: 3px 4px;
+  border-right: 1px solid var(--color-panel-border-dim);
+}
+
+.nmm-as-cell {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-panel-border-dim);
+  background: var(--color-panel-surface);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nmm-as-cell:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text-main);
+}
+
+.nmm-as-cell.is-recording {
+  border-color: var(--color-warning);
+  background: var(--color-panel-surface-elevated);
+  color: var(--color-warning);
+  font-weight: 700;
+}
+
+.nmm-as-cell.is-recorded {
+  border-color: var(--color-success);
+  color: var(--color-text-main);
+}
+
+.nmm-as-cell.is-failed {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.nmm-as-cell-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  flex: none;
+}
+
+.nmm-as-cell.is-recording .nmm-as-cell-dot {
+  background: var(--color-warning);
+}
+
+.nmm-as-cell.is-recorded .nmm-as-cell-dot {
+  background: var(--color-success);
+}
+
+.nmm-as-cell.is-failed .nmm-as-cell-dot {
+  background: var(--color-danger);
+}
+
+.nmm-drum-help-pre {
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* ── Manual Velocity Slot Editor & Graphical Curve Viz ────── */
+
+.nmm-manual-vel-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.nmm-manual-vel-slots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.nmm-manual-vel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+}
+
+.nmm-manual-vel-chip.is-invalid {
+  border-color: var(--color-danger);
+  background: var(--color-panel-surface-elevated);
+}
+
+.nmm-manual-vel-tag {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.nmm-manual-vel-chip.is-invalid .nmm-manual-vel-tag {
+  color: var(--color-danger);
+}
+
+.nmm-manual-vel-input {
+  width: 66px;
+  min-width: 66px;
+  height: 24px;
+  padding: 0 2px 0 6px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-main);
+  background: var(--color-panel-surface);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.nmm-manual-vel-input.is-invalid {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.nmm-manual-vel-remove {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.nmm-manual-vel-remove:hover:not(:disabled) {
+  color: var(--color-danger);
+}
+
+.nmm-manual-vel-remove:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nmm-vel-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-bg);
+  color: var(--color-danger);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+#as-config-card .nmm-recorder-params-grid {
+  align-items: end;
+}
+
+#as-config-card .nmm-recorder-params-grid > .form-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.nmm-as-drum-group {
+  grid-column: span 2;
+}
+
+.nmm-as-vel-viz-group {
+  grid-column: span 3;
+  min-width: 260px;
+}
+
+@media (max-width: 1100px) {
+  .nmm-as-drum-group {
+    grid-column: span 1;
+  }
+  .nmm-as-vel-viz-group {
+    grid-column: span 2;
+  }
+}
+
+.nmm-vel-curve-viz {
+  margin-top: 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-panel-border-dim);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nmm-vel-curve-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  padding-top: 2px;
+  border-bottom: 1px solid var(--color-panel-border-dim);
+}
+
+.nmm-vel-bar-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 28px;
+  position: relative;
+}
+
+.nmm-vel-bar-track {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+}
+
+.nmm-vel-bar-fill {
+  width: 100%;
+  background: var(--color-accent);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  opacity: 0.85;
+  transition: height var(--transition-fast);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.nmm-vel-bar-col.is-invalid .nmm-vel-bar-fill {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.nmm-vel-bar-val {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  line-height: 1.1;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.nmm-vel-curve-ranges {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+}
+
+.nmm-vel-range-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--color-text-muted);
+  text-align: center;
+  min-width: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+

@@ -35,9 +35,27 @@ export interface TriageExpandedFile {
 export const TRIAGE_CONTAINER_EXTENSIONS = [
   '.sf2',
   '.sfz',
+  '.iso',
+  '.img',
+  '.dsk',
+  '.bin',
+  '.hda',
+  '.out',
+  '.efe',
+  '.ede',
+  '.gkh',
+  '.e4b',
+  '.esi',
+  '.exb',
+  '.akp',
+  '.pgm',
+  '.set',
+  '.xpn',
   '.dspreset',
   '.nki',
   '.vstpreset',
+  '.fxp',
+  '.zip',
   '.multisample',
   '.rx2',
   '.rex',
@@ -50,7 +68,28 @@ export const TRIAGE_CONTAINER_EXTENSIONS = [
   '.talsmpl',
   '.txprog',
   '.kmp',
+  '.ksf',
   '.dls',
+  '.akp',
+  '.pgm',
+  '.set',
+  '.krz',
+  '.k25',
+  '.k26',
+  '.x7u',
+  '.x8u',
+  '.x3a',
+  '.fzv',
+  '.fzf',
+  '.s3p',
+  '.sxt',
+  '.dwp',
+  '.sbpack',
+  '.zmap',
+  '.prt_omn',
+  '.mxsnd',
+  '.mxgrp',
+  '.nicnt',
   '.model',
   '.nmpack',
   '.neuronikmodel',
@@ -242,11 +281,46 @@ export async function parseTriageDefinitionItem(
     siblings.set(triageBasename(f.name), new Uint8Array(f.buffer));
     siblings.set(f.name.replace(/\\/g, '/'), new Uint8Array(f.buffer));
   }
+  // Also expose all available audio buffers in byPath as zero-copy views so multiformat
+  // folders (e.g. EXS24 / HALion patches in one folder and WAV / AIFF in another) resolve cleanly.
+  for (const f of byPath.values()) {
+    if (f === primaryFile) continue;
+    const base = triageBasename(f.name);
+    if (!isSupportedAudioFileName(base.toLowerCase())) continue;
+    if (!siblings.has(base) || base.toLowerCase().endsWith('.wav')) {
+      siblings.set(base, new Uint8Array(f.buffer));
+    }
+    siblings.set(f.name.replace(/\\/g, '/'), new Uint8Array(f.buffer));
+  }
   try {
-    return await parseUniversalSampler(primaryBase, primaryFile.buffer, siblings);
+    const preset = await parseUniversalSampler(primaryBase, primaryFile.buffer, siblings);
+    return preset ? prunePresetAudioToRegions(preset) : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * El VFS de triage expone el audio de todo el paquete para poder resolver muestras
+ * que viven en otra carpeta, pero el preset no debe arrastrarlo entero a la sesión:
+ * nos quedamos solo con los buffers que alguna región referencia de verdad.
+ */
+function prunePresetAudioToRegions(preset: ParsedSamplerPreset): ParsedSamplerPreset {
+  if (preset.audioBuffers.size === 0) return preset;
+  const wanted = new Set<string>();
+  for (const region of preset.regions) {
+    const base = triageBasename(region.sampleName).toLowerCase();
+    if (!base) continue;
+    wanted.add(base);
+    wanted.add(base.replace(/\.(wav|aif|aiff)$/i, ''));
+  }
+  const kept = new Map<string, ArrayBuffer>();
+  for (const [key, buffer] of preset.audioBuffers) {
+    const base = triageBasename(key).toLowerCase();
+    if (wanted.has(base) || wanted.has(base.replace(/\.(wav|aif|aiff)$/i, ''))) kept.set(key, buffer);
+  }
+  // Si el formato no nombra sus muestras por basename, no perdemos audio.
+  return kept.size > 0 ? { ...preset, audioBuffers: kept } : preset;
 }
 
 /**
@@ -301,7 +375,7 @@ export async function extractTriageDefinitionCandidates(
       continue;
     }
     const adapted = applyPreflightImportAdaptations(preset, {
-      autoExtendOuterZones: true,
+      autoExtendOuterZones: false,
       adaptVelocityLayers: true,
       switchToExtendedMode: true,
       currentWorkingMode: 'extended',

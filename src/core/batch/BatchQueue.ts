@@ -26,9 +26,30 @@ import {
 import { isRx2Buffer, decompressRx2Audio } from '../dsp/DwopDecompressor.ts';
 import { fileExtension } from '../pathUtils.ts';
 import { delay, yieldToUI } from '../asyncUtils.ts';
+import { webNeuralEngine } from '../ai/WebNeuralEngine.ts';
+import {
+  computeNoiseProfile,
+  dcBlock,
+  detectSilenceRanges,
+  normalizePeak,
+  peakAmplitude,
+} from '@abdsynths/shared/dsp/take/takeDsp.ts';
+import { reduceNoiseWithProfile } from '@abdsynths/shared/dsp/take/NoiseReductionDsp.ts';
+import { snapFrameToNearestZeroCrossing } from '../dsp/LoopEditorTools.ts';
+import { promoteBufferToMasterWave } from '../dsp/MasterWaveEnhancer.ts';
+import {
+  applyDynamicBandDeEsserDsp,
+  createDefaultPipelineChecklistSelection,
+  generatePipelineModelArtwork,
+} from '../dsp/PipelineConditioningSteps.ts';
+import { SpectralAnalyzer } from '../dsp/SpectralAnalyzer.ts';
+import { extractAcousticDescriptors, classifyAcousticSample } from '../dsp/AcousticIntelligence.ts';
+import { classifyPresetCategory } from '@abdsynths/shared/formats/sampler';
 
 export type BatchQueueEvent =
   | 'progress'
+  | 'stage-start'
+  | 'stage-complete'
   | 'job-start'
   | 'job-complete'
   | 'job-failed'
@@ -39,6 +60,15 @@ export type BatchQueueEvent =
 
 export type BatchEventListener = (event: BatchQueueEvent, data: any) => void;
 
+interface StagedJobWorkspace {
+  job: BatchModelCandidate;
+  index: number;
+  startTime: number;
+  rawSamples: Map<string, ArrayBuffer>;
+  zones: Zone[];
+  midiPatternFile: { name: string; buffer: ArrayBuffer } | null;
+}
+
 export class BatchQueue {
   private jobs: BatchModelCandidate[] = [];
   private listeners: Set<BatchEventListener> = new Set();
@@ -46,6 +76,9 @@ export class BatchQueue {
   private isPaused = false;
   private isCancelled = false;
   private currentIndex = 0;
+  private currentStageIndex = 1;
+  private totalStages = 5;
+  private currentStageLabel = '';
   private startTime = 0;
   private masterZipEntries: ZipEntryInput[] = [];
 
@@ -101,7 +134,11 @@ export class BatchQueue {
     const elapsedMs = this.startTime > 0 ? Date.now() - this.startTime : 0;
 
     const currentJob = this.jobs[this.currentIndex];
-    const overallPct = totalJobs > 0 ? Math.round(((completedJobs + failedJobs) / totalJobs) * 100) : 0;
+    const sumPct = this.jobs.reduce((acc, j) => {
+      if (j.status === 'completed' || j.status === 'failed' || j.status === 'skipped') return acc + 100;
+      return acc + Math.max(0, Math.min(100, j.progressPct || 0));
+    }, 0);
+    const overallPct = totalJobs > 0 ? Math.round(sumPct / totalJobs) : 0;
 
     const remainingJobs = totalJobs - (completedJobs + failedJobs + skippedJobs);
     const avgDuration = completedJobs > 0 ? elapsedMs / completedJobs : 2500;
@@ -125,6 +162,9 @@ export class BatchQueue {
       overallPct,
       elapsedMs,
       estimatedRemainingMs,
+      currentStageIndex: this.currentStageIndex,
+      totalStages: this.totalStages,
+      currentStageLabel: this.currentStageLabel,
     };
   }
 
@@ -151,7 +191,11 @@ export class BatchQueue {
   }
 
   /**
-   * Executes the batch queue sequentially with fault tolerance and per-job memory pruning.
+   * Executes the batch queue.
+   * By default (`executionOrder !== 'per-job'`), runs in **Stage-Grouped (Phase-Batched)** order:
+   * each pipeline stage (1. Ingest/Slice -> 2. Separation -> 3. Denoise -> 4. BWE/Classify -> 5. Spectral STFT & Export)
+   * executes across ALL models in the queue before advancing to the next stage, keeping AI/DSP models warm in memory
+   * and flushing GPU VRAM only once between stage boundaries instead of loading/unloading models on every file.
    */
   public async start(config: BatchConfig): Promise<BatchResultSummary> {
     if (this.isRunning) {
@@ -174,23 +218,549 @@ export class BatchQueue {
     this.startTime = Date.now();
     this.masterZipEntries = [];
 
+    if (config.executionOrder === 'per-job') {
+      await this.runPerJobPipeline(config);
+    } else {
+      await this.runStageGroupedPipeline(config);
+    }
+
+    this.isRunning = false;
+
+    let masterZipBytes: Uint8Array | undefined;
+    if (config.destination === 'zip-master' && this.masterZipEntries.length > 0) {
+      masterZipBytes = createZipArchive(this.masterZipEntries);
+    }
+
+    const summary: BatchResultSummary = {
+      total: this.jobs.length,
+      succeeded: this.jobs.filter((j) => j.status === 'completed').length,
+      failed: this.jobs.filter((j) => j.status === 'failed').length,
+      skipped: this.jobs.filter((j) => j.status === 'skipped').length,
+      totalDurationMs: Date.now() - this.startTime,
+      jobs: [...this.jobs],
+      masterZipBytes,
+    };
+
+    this.emit('queue-complete', summary);
+    return summary;
+  }
+
+  private async waitIfPaused(): Promise<boolean> {
+    while (this.isPaused && !this.isCancelled) {
+      await delay(100);
+    }
+    if (this.isCancelled) {
+      for (const j of this.jobs) {
+        if (j.status === 'pending' || j.status === 'processing') {
+          j.status = 'skipped';
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  private async flushStageVramIfEnabled(config: BatchConfig): Promise<void> {
+    if (config.stagePipelineVramSafety !== false && bridgeClient.isConnected()) {
+      try {
+        await bridgeClient.clearMemoryCache();
+      } catch {
+        // non-blocking
+      }
+    }
+  }
+
+  /**
+   * Stage-Grouped (Phase-Batched) Execution:
+   * Runs all jobs through Stage 1, then all jobs through Stage 2, etc., so any AI model
+   * (HTDemucs, DeepFilterNet 3, AudioSR, WebNeuralEngine) or deterministic DSP stage stays loaded once per stage.
+   */
+  private async runStageGroupedPipeline(config: BatchConfig): Promise<void> {
+    this.totalStages = 5;
+    const activeWorkspaces: StagedJobWorkspace[] = [];
+
+    // ── STAGE 1/5: Ingest, Audio Decoding & Zone / AutoSlicer Mapping ──
+    this.currentStageIndex = 1;
+    this.currentStageLabel = 'Stage 1/5: Ingesta, Decodificación y Mapeo / AutoSlicer (Lote completo)';
+    this.emit('stage-start', { stage: 1, label: this.currentStageLabel });
+
     for (let i = 0; i < this.jobs.length; i++) {
-      if (this.isCancelled) {
-        // Mark all remaining pending jobs as skipped
-        for (let j = i; j < this.jobs.length; j++) {
-          if (this.jobs[j].status === 'pending') {
-            this.jobs[j].status = 'skipped';
+      if (!(await this.waitIfPaused())) return;
+      const job = this.jobs[i];
+      if (job.status === 'completed' || job.status === 'skipped') continue;
+
+      this.currentIndex = i;
+      job.status = 'processing';
+      job.progressPct = 5;
+      this.emit('job-start', { job, index: i });
+      this.emit('progress', this.getProgressState());
+
+      try {
+        const rawSamples = new Map<string, ArrayBuffer>();
+        for (const f of job.files) {
+          let buf = f.buffer;
+          if (isSupportedAudioFileName(f.name)) {
+            try {
+              buf = await transcodeAnyAudioToWavBuffer(f.buffer, f.name);
+              f.buffer = buf;
+            } catch {
+              // keep original if RX2
+            }
+          }
+          rawSamples.set(f.name, buf);
+        }
+
+        const isAutoSlicer =
+          job.sourceType === 'auto-slicer' ||
+          job.sourceType === 'loop-rx2' ||
+          config.ingestionMode === 'slicer';
+
+        let zones: Zone[] = [];
+        let midiPatternFile: { name: string; buffer: ArrayBuffer } | null = null;
+
+        const isDrumJob =
+          config.keyMappingMode === 'drum' ||
+          /drum|kit|perc/i.test(job.detectedCategory || '') ||
+          (isAutoSlicer && config.slicerProfile === 'drums');
+
+        const checklist =
+          config.checklistSelection ??
+          createDefaultPipelineChecklistSelection({
+            workingMode: 'extended',
+            keyMappingMode: isDrumJob ? 'drum' : (config.keyMappingMode ?? 'chromatic'),
+            hasLegacyClassicOnlySources: false,
+            dspAlgorithm: config.dspAlgorithm,
+            aiConfig: config.aiConfig,
+          });
+
+        const shouldExtendCoverage = Boolean(checklist.steps.coverageMidi);
+
+        if (isAutoSlicer && job.files.length > 0) {
+          const sourceFile = job.files[0];
+          const sliceResult = this.sliceCandidateAudio(sourceFile, job, config);
+          zones = sliceResult.zones;
+          for (const [name, buf] of sliceResult.sliceSamples.entries()) {
+            rawSamples.set(name, buf);
+          }
+          if (sliceResult.midiBuffer) {
+            job.midiPatternBytes = sliceResult.midiBuffer;
+            midiPatternFile = {
+              name: `${job.slug}_groove.mid`,
+              buffer: sliceResult.midiBuffer.buffer as ArrayBuffer,
+            };
+            rawSamples.set(midiPatternFile.name, midiPatternFile.buffer);
+          }
+          job.detectedSliceCount = zones.length;
+          job.zoneCount = zones.length;
+        } else {
+          if (job.classicZones && job.classicZones.length > 0) {
+            zones = this.applyCoveragePolicyToZones(job, job.classicZones, shouldExtendCoverage);
+          } else {
+            zones = this.buildZonesFromFiles(job.files, shouldExtendCoverage, isDrumJob);
           }
         }
-        break;
+
+        if (zones.length === 0) {
+          throw new Error('No valid zones could be mapped from input audio files.');
+        }
+
+        // Apply Trim Silence + Zero-Crossing Snap in Stage 1 if checked in checklist
+        if (checklist.steps.trimSilence) {
+          for (const [sName, ab] of Array.from(rawSamples.entries())) {
+            if (sName.endsWith('.mid')) continue;
+            try {
+              const dec = decodeWav(ab);
+              if (dec.mono && dec.mono.length > 64) {
+                const silenceRanges = detectSilenceRanges(dec.mono, dec.sampleRate, {
+                  thresholdDb: isDrumJob ? -48 : -46,
+                  minSilenceMs: isDrumJob ? 25 : 60,
+                  hangoverMs: isDrumJob ? 40 : 30,
+                });
+                let startFrame = 0;
+                let endFrame = dec.mono.length;
+                for (const r of silenceRanges) {
+                  if (r.startFrame === 0) {
+                    const cushionFrames = isDrumJob ? Math.round(dec.sampleRate * 0.0005) : 0;
+                    startFrame = Math.max(0, r.endFrame - cushionFrames);
+                  }
+                  if (!isDrumJob && r.endFrame >= dec.mono.length) {
+                    endFrame = Math.min(endFrame, r.startFrame);
+                  }
+                }
+                if (endFrame > startFrame + 64 && (startFrame > 0 || endFrame < dec.mono.length)) {
+                  startFrame = snapFrameToNearestZeroCrossing(dec.mono, startFrame, 256);
+                  endFrame = snapFrameToNearestZeroCrossing(dec.mono, endFrame, 256);
+                  if (endFrame > startFrame + 64) {
+                    const trimmed = dec.mono.slice(startFrame, endFrame);
+                    rawSamples.set(sName, encodePcm16Wav(trimmed, dec.sampleRate, dec.instrument));
+                  }
+                }
+              }
+            } catch {
+              // ignore non-wav
+            }
+          }
+        }
+
+        job.progressPct = 20;
+        activeWorkspaces.push({
+          job,
+          index: i,
+          startTime: Date.now(),
+          rawSamples,
+          zones,
+          midiPatternFile,
+        });
+      } catch (err) {
+        job.status = 'failed';
+        job.progressPct = 0;
+        job.error = err instanceof Error ? err.message : String(err);
+        job.durationMs = 0;
+        this.emit('job-failed', { job, index: i, error: job.error });
+      }
+      await yieldToUI(5);
+      this.emit('progress', this.getProgressState());
+    }
+    this.emit('stage-complete', { stage: 1 });
+
+    const checklist =
+      config.checklistSelection ??
+      createDefaultPipelineChecklistSelection({
+        workingMode: 'extended',
+        keyMappingMode: config.keyMappingMode ?? 'chromatic',
+        hasLegacyClassicOnlySources: false,
+        dspAlgorithm: config.dspAlgorithm,
+        aiConfig: config.aiConfig,
+      });
+
+    // ── STAGE 2/5: Batch Source Separation / De-bleeding (HTDemucs IA / HPSS DSP) ──
+    const aiCfg = config.aiConfig;
+    const sepEnabled = checklist.steps.sourceSeparation !== false;
+    const runSepStage = Boolean(
+      sepEnabled && aiCfg?.enabled && aiCfg.separation === 'ai' && bridgeClient.isConnected()
+    );
+    this.currentStageIndex = 2;
+    this.currentStageLabel = !sepEnabled
+      ? 'Stage 2/5: Separación de Stems omitida por checklist'
+      : runSepStage
+        ? 'Stage 2/5: Separación de Stems IA (HTDemucs v4 en memoria para todo el lote)'
+        : 'Stage 2/5: Preparación de Aislamiento Acústico (Determinista)';
+    this.emit('stage-start', { stage: 2, label: this.currentStageLabel });
+
+    for (const ws of activeWorkspaces) {
+      if (ws.job.status === 'failed') continue;
+      if (!(await this.waitIfPaused())) return;
+      this.currentIndex = ws.index;
+      if (runSepStage) {
+        for (const [sName, buf] of ws.rawSamples.entries()) {
+          if (sName.endsWith('.mid')) continue;
+          try {
+            const sepRes = await bridgeClient.separateStems(buf, { stems: ['instrumental'], filename: sName });
+            if (sepRes.stems?.instrumental) {
+              ws.rawSamples.set(sName, sepRes.stems.instrumental);
+            }
+          } catch {
+            // keep original sample on failure
+          }
+        }
+      }
+      ws.job.progressPct = 35;
+      this.emit('progress', this.getProgressState());
+      await yieldToUI(5);
+    }
+    if (runSepStage) {
+      await this.flushStageVramIfEnabled(config);
+    }
+    this.emit('stage-complete', { stage: 2 });
+
+    // ── STAGE 3/5: Batch De-Esser (4.5-11 kHz) + Denoise & Restoration (DeepFilterNet 3 IA / Spectral Gate DSP) ──
+    const runDeEsser = Boolean(checklist.steps.deEsser);
+    const runDenoise = checklist.steps.denoise !== false;
+    const denoiseMode = !runDenoise ? 'bypass' : aiCfg?.enabled ? (aiCfg.denoise ?? 'dsp') : 'dsp';
+    this.currentStageIndex = 3;
+    this.currentStageLabel =
+      denoiseMode === 'ai' && bridgeClient.isConnected()
+        ? 'Stage 3/5: De-Esser + Reducción de Ruido IA (DeepFilterNet 3 en memoria para todo el lote)'
+        : denoiseMode === 'dsp' || runDeEsser
+          ? 'Stage 3/5: De-Esser + Denoise Espectral y Filtro DC/Hum (Lote completo)'
+          : 'Stage 3/5: Denoise en Bypass (Audio directo)';
+    this.emit('stage-start', { stage: 3, label: this.currentStageLabel });
+
+    for (const ws of activeWorkspaces) {
+      if (ws.job.status === 'failed') continue;
+      if (!(await this.waitIfPaused())) return;
+      this.currentIndex = ws.index;
+
+      if (runDeEsser || denoiseMode !== 'bypass') {
+        for (const [sName, buf] of Array.from(ws.rawSamples.entries())) {
+          if (sName.endsWith('.mid')) continue;
+          try {
+            let currentBuf = buf;
+            if (runDeEsser) {
+              const dec = decodeWav(currentBuf);
+              if (dec.mono && dec.mono.length > 64) {
+                const deEssed = applyDynamicBandDeEsserDsp(dec.mono, dec.sampleRate);
+                currentBuf = encodePcm16Wav(deEssed, dec.sampleRate, dec.instrument);
+                ws.rawSamples.set(sName, currentBuf);
+              }
+            }
+            if (denoiseMode === 'ai' && bridgeClient.isConnected()) {
+              const enhanced = await bridgeClient.enhanceAudio(new Uint8Array(currentBuf), {
+                targetSampleRate: 44100,
+                capabilities: ['spectral-denoise', 'deepfilter'],
+              });
+              ws.rawSamples.set(
+                sName,
+                enhanced.buffer.slice(enhanced.byteOffset, enhanced.byteOffset + enhanced.byteLength) as ArrayBuffer
+              );
+            } else if (denoiseMode === 'dsp') {
+              // Deterministic Algorithmic Denoise + DC Block across all jobs in Stage 3
+              const decoded = decodeWav(currentBuf);
+              if (decoded.mono && decoded.mono.length > 256) {
+                const winLen = Math.min(decoded.mono.length, Math.max(256, Math.round(decoded.sampleRate * 0.1)));
+                const np = computeNoiseProfile(decoded.mono.subarray(0, winLen), decoded.sampleRate);
+                const cleaned = reduceNoiseWithProfile(
+                  dcBlock(decoded.mono, decoded.sampleRate),
+                  decoded.sampleRate,
+                  np,
+                  { reductionDb: 9, removeHum: true }
+                );
+                ws.rawSamples.set(sName, encodePcm16Wav(cleaned, decoded.sampleRate, decoded.instrument));
+              }
+            }
+          } catch {
+            // preserve original buffer if sample cannot be decoded as standard WAV
+          }
+        }
+      }
+      ws.job.progressPct = 50;
+      this.emit('progress', this.getProgressState());
+      await yieldToUI(5);
+    }
+    if (denoiseMode === 'ai') {
+      await this.flushStageVramIfEnabled(config);
+    }
+    this.emit('stage-complete', { stage: 3 });
+
+    // ── STAGE 4/5: Batch 96 kHz Master Wave (AudioSR / DSP), Normalization & Acoustic Classification ──
+    const runMasterWave = Boolean(checklist.steps.upsampleMasterWave);
+    const runBweStage = Boolean(
+      runMasterWave && aiCfg?.enabled && aiCfg.masterWave === 'ai' && bridgeClient.isConnected()
+    );
+    const runNormalize = checklist.steps.normalize !== false;
+    const runClassifier = checklist.steps.acousticClassifier !== false && config.autoAcousticClassification;
+    const runAiClassifier = Boolean(runClassifier && aiCfg?.enabled && aiCfg.classifier === 'ai');
+    this.currentStageIndex = 4;
+    this.currentStageLabel =
+      runBweStage || runAiClassifier
+        ? 'Stage 4/5: Super-Resolución (AudioSR), Normalización y Clasificación Neuronal en Lote'
+        : 'Stage 4/5: Acondicionamiento Master Wave / Normalización y Clasificación en Lote';
+    this.emit('stage-start', { stage: 4, label: this.currentStageLabel });
+
+    for (const ws of activeWorkspaces) {
+      if (ws.job.status === 'failed') continue;
+      if (!(await this.waitIfPaused())) return;
+      this.currentIndex = ws.index;
+      const isDrumJob =
+        config.keyMappingMode === 'drum' ||
+        ws.job.sourceType === 'auto-slicer' ||
+        (config.ingestionMode === 'slicer' && config.slicerProfile === 'drums');
+
+      if (runMasterWave) {
+        for (const [sName, buf] of Array.from(ws.rawSamples.entries())) {
+          if (sName.endsWith('.mid')) continue;
+          try {
+            if (runBweStage) {
+              const enhanced = await bridgeClient.enhanceAudio(new Uint8Array(buf), {
+                targetSampleRate: 96000,
+                capabilities: ['resample-96k', 'harmonic-bwe'],
+              });
+              ws.rawSamples.set(
+                sName,
+                enhanced.buffer.slice(enhanced.byteOffset, enhanced.byteOffset + enhanced.byteLength) as ArrayBuffer
+              );
+            } else {
+              const dec = decodeWav(buf);
+              if (dec.mono && dec.mono.length > 64) {
+                const promoted = await promoteBufferToMasterWave(buf, sName, 'batch-cond', {
+                  promotionMethod: 'dsp-enhanced',
+                  channelLayout: 'original',
+                  targetSampleRate: 96000,
+                  targetBitDepth: 24,
+                  minLoopDurationSec: isDrumJob ? 0 : 3.0,
+                  enableBandwidthExtension: true,
+                  enableDenoiseGate: false,
+                });
+                if (promoted.channels[0] && promoted.channels[0].length > 0) {
+                  ws.rawSamples.set(
+                    sName,
+                    encodePcm16Wav(promoted.channels[0], promoted.result.masterSampleRate, dec.instrument)
+                  );
+                }
+              }
+            }
+          } catch {
+            // keep current sample
+          }
+        }
       }
 
-      // Handle pause loop
-      while (this.isPaused && !this.isCancelled) {
-        await delay(100);
+      if (runNormalize) {
+        if (isDrumJob && checklist.normalizeGroupRelativeForDrums !== false) {
+          let maxKitPeak = 0;
+          const decodedList: Array<{ name: string; dec: ReturnType<typeof decodeWav> }> = [];
+          for (const [sName, buf] of ws.rawSamples.entries()) {
+            if (sName.endsWith('.mid')) continue;
+            try {
+              const dec = decodeWav(buf);
+              if (dec.mono && dec.mono.length > 0) {
+                const pk = peakAmplitude(dec.mono);
+                if (pk > maxKitPeak) maxKitPeak = pk;
+                decodedList.push({ name: sName, dec });
+              }
+            } catch {
+              // ignore
+            }
+          }
+          const targetPeakLin = Math.pow(10, -1.0 / 20);
+          if (maxKitPeak > 1e-5 && Math.abs(maxKitPeak - targetPeakLin) > 1e-3) {
+            const gain = targetPeakLin / maxKitPeak;
+            for (const item of decodedList) {
+              const scaled = new Float32Array(item.dec.mono.length);
+              for (let k = 0; k < scaled.length; k++) {
+                scaled[k] = Math.max(-1, Math.min(1, item.dec.mono[k] * gain));
+              }
+              ws.rawSamples.set(item.name, encodePcm16Wav(scaled, item.dec.sampleRate, item.dec.instrument));
+            }
+          }
+        } else {
+          for (const [sName, buf] of Array.from(ws.rawSamples.entries())) {
+            if (sName.endsWith('.mid')) continue;
+            try {
+              const dec = decodeWav(buf);
+              if (dec.mono && dec.mono.length > 0) {
+                const norm = normalizePeak(dec.mono, -1.0);
+                ws.rawSamples.set(sName, encodePcm16Wav(norm, dec.sampleRate, dec.instrument));
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
       }
 
-      if (this.isCancelled) break;
+      if (runClassifier) {
+        const firstWav = ws.rawSamples.values().next().value;
+        const nameHint = classifyPresetCategory(ws.job.name, Array.from(ws.rawSamples.keys()));
+        if (firstWav) {
+          try {
+            const dec = decodeWav(firstWav);
+            if (runAiClassifier) {
+              const cls = await webNeuralEngine.classifyTimbre(dec.mono, dec.sampleRate);
+              ws.job.detectedCategory = cls.category;
+              ws.job.suggestedParameterSet = cls.parameterSet;
+            } else if (dec.mono && dec.mono.length > 0) {
+              const analyzer = new SpectralAnalyzer();
+              const descriptors = extractAcousticDescriptors(dec.mono, dec.sampleRate, analyzer);
+              const cls = classifyAcousticSample(descriptors, ws.job.name);
+              // 'Synthesizer' is the name classifier's generic fallback (same role as the
+              // legacy 'vintage' sentinel), so only hint-less names defer to acoustics.
+              const genericName =
+                nameHint.category === 'Synthesizer' || nameHint.category === 'vintage';
+              ws.job.detectedCategory = genericName ? cls.detectedCategory : nameHint.category;
+              ws.job.suggestedParameterSet = genericName
+                ? cls.recommendedParameterSet
+                : nameHint.parameterSet;
+            }
+          } catch {
+            if (!ws.job.detectedCategory || ws.job.detectedCategory === 'Auto' || ws.job.detectedCategory === 'vintage') {
+              ws.job.detectedCategory = nameHint.category;
+              ws.job.suggestedParameterSet = nameHint.parameterSet;
+            }
+          }
+        } else if (!ws.job.detectedCategory || ws.job.detectedCategory === 'Auto' || ws.job.detectedCategory === 'vintage') {
+          ws.job.detectedCategory = nameHint.category;
+          ws.job.suggestedParameterSet = nameHint.parameterSet;
+        }
+      }
+
+      ws.job.progressPct = 65;
+      this.emit('progress', this.getProgressState());
+      await yieldToUI(5);
+    }
+    if (runBweStage) {
+      await this.flushStageVramIfEnabled(config);
+    }
+    this.emit('stage-complete', { stage: 4 });
+
+    // ── STAGE 5/5: Cover Artwork (Batch-Grouped if selected), Spectral STFT (.scape/.sphere + Resinator 2) & Time Capsule ──
+    const runCoverArt = Boolean(checklist.steps.generateCoverArtwork);
+    this.currentStageIndex = 5;
+    this.currentStageLabel = runCoverArt
+      ? 'Stage 5/5: Carátulas 512×512 en Lote, Síntesis Espectral (.scape/.sphere + Resinator 2) y Time Capsule'
+      : 'Stage 5/5: Síntesis Espectral STFT (.scape/.sphere + Resinator 2) y Empaquetado Time Capsule';
+    this.emit('stage-start', { stage: 5, label: this.currentStageLabel });
+
+    if (runCoverArt) {
+      for (const ws of activeWorkspaces) {
+        if (ws.job.status === 'failed') continue;
+        if (!(await this.waitIfPaused())) return;
+        this.currentIndex = ws.index;
+        try {
+          ws.job.coverArtwork = await generatePipelineModelArtwork({
+            modelName: ws.job.name,
+            expandedName: ws.job.name,
+            parameterSet: ws.job.suggestedParameterSet || 0,
+            category: ws.job.detectedCategory,
+            sampleNames: Array.from(ws.rawSamples.keys()),
+            aiConfig: config.aiConfig,
+          });
+        } catch {
+          // non-fatal
+        }
+      }
+      if (aiCfg?.enabled && aiCfg.coverArtwork === 'local-ai') {
+        await this.flushStageVramIfEnabled(config);
+      }
+    }
+
+    for (const ws of activeWorkspaces) {
+      if (ws.job.status === 'failed') continue;
+      if (!(await this.waitIfPaused())) return;
+      this.currentIndex = ws.index;
+      const { job, rawSamples, zones, midiPatternFile } = ws;
+
+      try {
+        await this.compileAndExportStagedJob(job, zones, rawSamples, midiPatternFile, config);
+        job.status = 'completed';
+        job.progressPct = 100;
+        job.durationMs = Date.now() - ws.startTime;
+        // Free per-job audio buffers immediately after export
+        rawSamples.clear();
+        this.emit('job-complete', { job, index: ws.index });
+      } catch (err) {
+        job.status = 'failed';
+        job.progressPct = 0;
+        job.error = err instanceof Error ? err.message : String(err);
+        job.durationMs = Date.now() - ws.startTime;
+        rawSamples.clear();
+        this.emit('job-failed', { job, index: ws.index, error: job.error });
+      }
+
+      await yieldToUI(10);
+      this.emit('progress', this.getProgressState());
+    }
+    await this.flushStageVramIfEnabled(config);
+    this.emit('stage-complete', { stage: 5 });
+  }
+
+  private async runPerJobPipeline(config: BatchConfig): Promise<void> {
+    this.totalStages = 1;
+    this.currentStageIndex = 1;
+    this.currentStageLabel = 'Secuencial por Modelo (Todas las etapas por modelo)';
+
+    for (let i = 0; i < this.jobs.length; i++) {
+      if (!(await this.waitIfPaused())) break;
 
       this.currentIndex = i;
       const job = this.jobs[i];
@@ -218,30 +788,9 @@ export class BatchQueue {
         this.emit('job-failed', { job, index: i, error: job.error });
       }
 
-      // Yield event loop
       await yieldToUI(10);
       this.emit('progress', this.getProgressState());
     }
-
-    this.isRunning = false;
-
-    let masterZipBytes: Uint8Array | undefined;
-    if (config.destination === 'zip-master' && this.masterZipEntries.length > 0) {
-      masterZipBytes = createZipArchive(this.masterZipEntries);
-    }
-
-    const summary: BatchResultSummary = {
-      total: this.jobs.length,
-      succeeded: this.jobs.filter((j) => j.status === 'completed').length,
-      failed: this.jobs.filter((j) => j.status === 'failed').length,
-      skipped: this.jobs.filter((j) => j.status === 'skipped').length,
-      totalDurationMs: Date.now() - this.startTime,
-      jobs: [...this.jobs],
-      masterZipBytes,
-    };
-
-    this.emit('queue-complete', summary);
-    return summary;
   }
 
   /**
@@ -274,6 +823,21 @@ export class BatchQueue {
     let zones: Zone[] = [];
     let midiPatternFile: { name: string; buffer: ArrayBuffer } | null = null;
 
+    const isDrumJob =
+      config.keyMappingMode === 'drum' ||
+      /drum|kit|perc/i.test(job.detectedCategory || '') ||
+      (isAutoSlicer && config.slicerProfile === 'drums');
+    const checklist =
+      config.checklistSelection ??
+      createDefaultPipelineChecklistSelection({
+        workingMode: 'extended',
+        keyMappingMode: isDrumJob ? 'drum' : (config.keyMappingMode ?? 'chromatic'),
+        hasLegacyClassicOnlySources: false,
+        dspAlgorithm: config.dspAlgorithm,
+        aiConfig: config.aiConfig,
+      });
+    const shouldExtendCoverage = Boolean(checklist.steps.coverageMidi);
+
     if (isAutoSlicer && job.files.length > 0) {
       const sourceFile = job.files[0];
       const sliceResult = this.sliceCandidateAudio(sourceFile, job, config);
@@ -293,9 +857,9 @@ export class BatchQueue {
       job.zoneCount = zones.length;
     } else {
       if (job.classicZones && job.classicZones.length > 0) {
-        zones = job.classicZones;
+        zones = this.applyCoveragePolicyToZones(job, job.classicZones, shouldExtendCoverage);
       } else {
-        zones = this.buildZonesFromFiles(job.files);
+        zones = this.buildZonesFromFiles(job.files, shouldExtendCoverage, isDrumJob);
       }
     }
 
@@ -306,27 +870,64 @@ export class BatchQueue {
     job.progressPct = 25;
     this.emit('progress', this.getProgressState());
 
-    // 2. Resolve complexity and parameterSet
+    await this.compileAndExportStagedJob(job, zones, rawSamples, midiPatternFile, config);
+    await this.flushStageVramIfEnabled(config);
+  }
+
+  /**
+   * Executes Stage 5 (Spectral STFT analysis, .scape/.sphere binary compilation, and Time Capsule export)
+   * for a prepared job workspace.
+   */
+  private async compileAndExportStagedJob(
+    job: BatchModelCandidate,
+    zones: Zone[],
+    rawSamples: Map<string, ArrayBuffer>,
+    midiPatternFile: { name: string; buffer: ArrayBuffer } | null,
+    config: BatchConfig
+  ): Promise<void> {
+    // Resolve dual model names:
+    // - Classic hardware MName is strictly trimmed to 11 ASCII characters.
+    // - Extended model name (expandedName) preserves the full name without character limit.
+    const fullExpandedName = (job.name || 'Untitled').trim() || 'Untitled';
+    const classicShortName = fullExpandedName.slice(0, 11).trim() || 'UNTITLED';
+
+    // Resolve initial category & parameterSet from name hint if still generic
+    const sampleNames = Array.from(rawSamples.keys());
+    const nameHint = classifyPresetCategory(fullExpandedName, sampleNames);
+    if (!job.detectedCategory || job.detectedCategory === 'Auto' || job.detectedCategory === 'vintage') {
+      job.detectedCategory = nameHint.category;
+      if (!job.suggestedParameterSet) {
+        job.suggestedParameterSet = nameHint.parameterSet;
+      }
+    }
+
+    // Resolve complexity and parameterSet
     const complexity =
       config.complexityStrategy === 'auto'
         ? job.suggestedComplexity || 8
         : config.complexityStrategy;
 
     const parameterSet = config.autoAcousticClassification
-      ? job.suggestedParameterSet || 0
+      ? job.suggestedParameterSet ?? nameHint.parameterSet ?? 0
       : 0;
 
     const procConfig: ProcessConfig = {
       modelNumber: 1,
-      modelName: job.name.substring(0, 32),
+      modelName: classicShortName,
+      expandedName: fullExpandedName,
       complexity,
       parameterSet,
       targetFormat: config.targetFormat,
       dspAlgorithm: config.dspAlgorithm,
       workingMode: 'extended',
+      keyMappingMode: config.keyMappingMode,
+      coverArtwork: job.coverArtwork || undefined,
+      extendedMetadata: {
+        category: job.detectedCategory || nameHint.category,
+      },
     };
 
-    // 3. Prepare payloads for PipelineRunner
+    // Prepare payloads for PipelineRunner
     const payloads: ZoneWavPayload[] = zones.map((zone) => {
       const sName = zone.sampleLow || `Zone_${zone.rootKey}.wav`;
       const wavBuffer = rawSamples.get(sName) || rawSamples.values().next().value;
@@ -339,27 +940,49 @@ export class BatchQueue {
       };
     });
 
-    job.progressPct = 40;
+    job.progressPct = Math.max(job.progressPct, 65);
     this.emit('progress', this.getProgressState());
 
-    // 4. Run DSP analysis
+    // Run DSP analysis
     const result = await runMultiZonePipeline(
       payloads,
       procConfig,
       (p) => {
-        job.progressPct = 40 + Math.round((p.percent / 100) * 35);
+        job.progressPct = 65 + Math.round((p.percent / 100) * 20);
         this.emit('progress', this.getProgressState());
       },
       () => this.isCancelled
     );
 
-    job.progressPct = 80;
+    // Refine both Classic (parameterSet 0..9) and Expanded (detectedCategory) classification
+    // from acoustic DSP analysis if the preset name was generic ('vintage' / 'Auto')
+    const primaryAcousticCls = result.zonesAnalysis[0]?.classification;
+    if (primaryAcousticCls && config.autoAcousticClassification) {
+      if (!job.detectedCategory || job.detectedCategory === 'Auto' || job.detectedCategory === 'vintage') {
+        job.detectedCategory = primaryAcousticCls.detectedCategory;
+      }
+      if (
+        !job.suggestedParameterSet ||
+        nameHint.category === 'Synthesizer' ||
+        nameHint.category === 'vintage'
+      ) {
+        job.suggestedParameterSet = primaryAcousticCls.recommendedParameterSet;
+        procConfig.parameterSet = primaryAcousticCls.recommendedParameterSet;
+      }
+      procConfig.extendedMetadata = {
+        ...procConfig.extendedMetadata,
+        category: job.detectedCategory,
+      };
+    }
+
+    job.progressPct = 88;
     this.emit('progress', this.getProgressState());
 
-    // 5. Build Time Capsule package entries
+    // Build Time Capsule package entries (including Resinator 2 05_extended_model/axionik-expanded.json)
+    const includeResinator2 = config.checklistSelection?.steps.compileExtendedResinator2 !== false;
     const capsuleResult = buildTimeCapsuleEntries({
       slot: 1,
-      modelName: job.name,
+      modelName: fullExpandedName,
       processConfig: procConfig,
       zones,
       extendedRegions: job.extendedRegions,
@@ -367,12 +990,13 @@ export class BatchQueue {
       detectedInstrumentCategory: job.detectedCategory,
       rawSourceSamples: rawSamples,
       classicEnhancedBinaries: result.zoneBinaries,
+      expandedModelV2: includeResinator2 ? result.expandedModelV2 : undefined,
     });
 
-    job.progressPct = 90;
+    job.progressPct = 95;
     this.emit('progress', this.getProgressState());
 
-    // 6. Handle Destination
+    // Handle Destination
     if (config.destination === 'zip-master') {
       for (const entry of capsuleResult.entries) {
         this.masterZipEntries.push({
@@ -415,7 +1039,6 @@ export class BatchQueue {
           targetSub
         );
       } else {
-        // Fallback: collect into master zip if bridge offline
         for (const entry of capsuleResult.entries) {
           this.masterZipEntries.push({
             path: `${job.slug}/${entry.path}`,
@@ -428,15 +1051,6 @@ export class BatchQueue {
             data: new Uint8Array(midiPatternFile.buffer),
           });
         }
-      }
-    }
-
-    // 7. Fase 25: Stage memory safety: force garbage collection & VRAM flush if bridge online
-    if (config.stagePipelineVramSafety !== false && bridgeClient.isConnected()) {
-      try {
-        await bridgeClient.clearMemoryCache();
-      } catch {
-        // non-blocking
       }
     }
   }
@@ -541,27 +1155,102 @@ export class BatchQueue {
   }
 
   /**
-   * Automatically partitions MIDI notes 0..127 across audio files using Hartmann naming rules.
+   * Applies or skips outer-keybed extension (0..127) on pre-mapped zones and regions
+   * depending on whether Step #1 (`coverageMidi`) is enabled in the Pipeline Checklist.
    */
-  private buildZonesFromFiles(files: { name: string; buffer: ArrayBuffer }[]): Zone[] {
-    const parsed = files.map((f) => {
+  private applyCoveragePolicyToZones(
+    job: BatchModelCandidate,
+    inputZones: Zone[],
+    extendToFullKeybed: boolean
+  ): Zone[] {
+    const cloned = inputZones.map((z) => ({ ...z })).sort((a, b) => a.lowKey - b.lowKey);
+    if (!extendToFullKeybed || cloned.length === 0) {
+      return cloned;
+    }
+
+    const lowestKey = cloned[0].lowKey;
+    if (lowestKey > 0) {
+      cloned[0].lowKey = 0 as MidiNote;
+    }
+    const highestKey = cloned[cloned.length - 1].highKey;
+    if (highestKey < 127) {
+      cloned[cloned.length - 1].highKey = 127 as MidiNote;
+    }
+    for (let i = 1; i < cloned.length; i++) {
+      if (cloned[i].lowKey > cloned[i - 1].highKey + 1) {
+        cloned[i - 1].highKey = (cloned[i].lowKey - 1) as MidiNote;
+      }
+    }
+
+    if (job.extendedRegions && job.extendedRegions.length > 0) {
+      const regCloned = job.extendedRegions.map((r) => ({ ...r }));
+      let minReg = 127;
+      let maxReg = 0;
+      for (const r of regCloned) {
+        if (r.lowKey < minReg) minReg = r.lowKey;
+        if (r.highKey > maxReg) maxReg = r.highKey;
+      }
+      if (minReg > 0) {
+        for (const r of regCloned) {
+          if (r.lowKey === minReg) r.lowKey = 0;
+        }
+      }
+      if (maxReg < 127) {
+        for (const r of regCloned) {
+          if (r.highKey === maxReg) r.highKey = 127;
+        }
+      }
+      job.extendedRegions = regCloned;
+    }
+
+    return cloned;
+  }
+
+  /**
+   * Maps audio files to MIDI key zones using Hartmann naming rules.
+   * Stretches outer zones to 0..127 only when `extendToFullKeybed` is true (or for single-sample chromatic models).
+   */
+  private buildZonesFromFiles(
+    files: { name: string; buffer: ArrayBuffer }[],
+    extendToFullKeybed = false,
+    isDrumJob = false
+  ): Zone[] {
+    const parsed = files.map((f, idx) => {
       const p = parseSampleFilenameByName(f.name.replace(/\.[^.]+$/, ''));
+      const fallbackNote = isDrumJob ? Math.min(127, 36 + idx) : 60;
       return {
         file: f,
-        rootKey: p.rootKey >= 0 ? (p.rootKey as MidiNote) : (60 as MidiNote),
+        rootKey: (p.rootKey >= 0 ? p.rootKey : fallbackNote) as MidiNote,
       };
     });
 
     parsed.sort((a, b) => a.rootKey - b.rootKey);
     const zones: Zone[] = [];
 
+    if (isDrumJob && !extendToFullKeybed) {
+      for (const cur of parsed) {
+        zones.push(createZone(cur.rootKey, cur.rootKey, cur.rootKey, cur.file.name));
+      }
+      return zones;
+    }
+
+    const forceFullSpan = extendToFullKeybed || parsed.length === 1;
+
     for (let i = 0; i < parsed.length; i++) {
       const cur = parsed[i];
       const prev = i > 0 ? parsed[i - 1] : null;
       const next = i < parsed.length - 1 ? parsed[i + 1] : null;
 
-      const lowKey = prev ? Math.floor((prev.rootKey + cur.rootKey) / 2) + 1 : 0;
-      const highKey = next ? Math.floor((cur.rootKey + next.rootKey) / 2) : 127;
+      const lowKey = prev
+        ? Math.floor((prev.rootKey + cur.rootKey) / 2) + 1
+        : forceFullSpan
+          ? 0
+          : cur.rootKey;
+      const highKey = next
+        ? Math.floor((cur.rootKey + next.rootKey) / 2)
+        : forceFullSpan
+          ? 127
+          : cur.rootKey;
 
       zones.push(
         createZone(

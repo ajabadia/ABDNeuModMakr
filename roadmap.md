@@ -1145,10 +1145,23 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - `Code/SamplerFormats/rawSamplerPreflight.ts`:
     - `SAMPLER_FORMAT_METADATA`: descripciones en español de los formatos (`Decent Sampler`, `Native Instruments Kontakt`, `Steinberg HALion`, `Bitwig Studio Multisample`, `Linear Sample Chain`, `SoundFont 2`, `SFZ v2`, `Akai MPC Keygroup`, `Apple Logic EXS24`, `Ableton Sampler`, `Reason NN-XT`, `FL Studio DirectWave`, `Audiomodern Soundbox`, `Spectrasonics Omnisphere`, `NI Maschine`, `Korg KMP/KSF`, `Kurzweil K2000`, `Roland S-7xx`, `E-mu EOS`, `Ensoniq ASR-10`, `Akai S1000/S3000`, `Casio FZ-1`, `Synclavier II`, `Fairlight CMI`, `Yamaha Motif/Montage`).
     - `analyzeRawSamplerPreflight`: títulos, `description` y `adaptation` de todos los avisos de preflight de exportación (`NO_REGIONS`, `NO_VALID_AUDIO`, `LOSSY_8BIT_QUANTIZATION`, `DOWNSAMPLING_NYQUIST`, `UPSAMPLING_INTERPOLATION`, `SAMPLE_CHAIN_FLATTEN`, `MONOLITHIC_CONTAINER_UNSUPPORTED`, `HALION_VST3_STEALTH_CONTAINER`, `SF2_16BIT_ONLY`, `SF2_NO_ROUND_ROBIN`, `MPC_MAX_4_LAYERS`, etc.).
+  - `Code/DspCore/TakeDsp/autoSamplerDsp.ts` (Fase 37):
+    - `analyzePilotNoteResponse`: resumen diagnóstico `rationaleEs` (`"Latencia medida: ... ms · Suelo de ruido: ... dBFS · Ataque: ... ms · Cola de release: ... ms → Recomendado Gate ..."`).
 
-### 36.2 Parte en `ABDNeuModMakr` e Inventario de Puntos ya en Español
+### 36.2 Parte en `ABDNeuModMakr` e Inventario Exhaustivo (`DOCS/I18N_STRING_INVENTORY.md`)
+- [x] **Inventario automatizado completado (`DOCS/I18N_STRING_INVENTORY.md` + `scripts/i18n-inventory.mjs`)**:
+  - **Alcance medido**: **1639 cadenas únicas en 116 ficheros de `src/`** (con `scripts/i18n-inventory.mjs` como regenerador referenciado al pie del documento).
+  - **Estructura de cada entrada**: cadena actual (conservando `${...}` tal cual para marcar interpolaciones a parametrizar), idioma detectado (heurística documentada en cabecera), fichero y líneas (repeticiones idénticas fusionadas) y contexto (`toast`, `confirmDialog`, `html`, `attr:title/aria-label/placeholder/alt`, `textContent`, `prop:...`), más resúmenes por idioma/contexto/fichero.
+  - **Datos clave para la implementación de Fase 36**:
+    1. **Idioma base heterogéneo**: Inglés **1066**, Español **80**, Mixto **39**, Técnico/sin marcas **273**, Sin determinar **181**. Los menús y ajustes están en inglés (`"New Session (Reset)"`, `"Save..."`), mientras que los flujos de músico (wizard, autosampler, preflight) están en español $\rightarrow$ decidir locale base único o normalizar antes de extraer claves.
+    2. **Interpolaciones y formato numérico (233 cadenas)**: contienen `${...}`, `.toFixed(...)` y unidades (`ms`, `dBFS`, `smp`) $\rightarrow$ requerirán formato tipo ICU con parámetros con nombre y formateo numérico por locale, no simple sustitución literal.
+    3. **Cadenas mixtas y marcas fijas (39 cadenas)**: casi todas combinan marcas registradas + español (ej. `"Google Gemini API Key verificada correctamente"`) $\rightarrow$ las marcas no se traducen y las claves deben delimitar qué segmentos son invariables.
+    4. **Dos semillas ya disponibles en el repositorio**:
+       - El glosario `MUSICIAN_TERMS` (`src/ui/preflightGateView.ts:28`, usado en 8 ficheros) como primer catálogo de claves semánticas.
+       - La infraestructura i18n compartida en `vendor/.../Components/I18n/i18n.js` como base de runtime a validar/evolucionar.
+    5. **Limitaciones conocidas del extractor heurístico**: filtra código (`Promise<void>`, ternarias, hex, comentarios), pero las cadenas construidas por concatenación dinámica o interpolaciones puras (`${...}` de variables o `MUSICIAN_TERMS`) quedan en la categoría *sin determinar* y se revisarán al extraer claves.
 - [ ] **Selector de idioma en `SettingsModal.ts` (pestaña General) y sincronización con `ABDShared`**.
-- [ ] **Inventario de archivos en `ABDNeuModMakr` que ya contienen cadenas en español (localizados para no tener que buscarlos luego)**:
+- [ ] **Puntos destacados en español por subsistema**:
   1. `src/ui/preflightGateView.ts`:
      - Diccionario `MUSICIAN_TERMS` (`Revisión antes de importar (Preflight)`, `Revisión antes de procesar el lote (Preflight)`, `Revisión antes de exportar (Preflight)`, `Huella de ruido de esta grabación (Noise Print)`, `Ajustar cortes al cruce por cero (zc-snap)`, `Reconstructor de agudos (BWE)`).
      - Textos de `fromImportPreflightReport`, `fromRawSamplerPreflightReport`, `fromBatchPreflightSummary` y `renderCommonPreflightGate` (`"Qué voy a cambiar"`, `"Compatible al 100 %..."`, `"Listo para importar con adaptaciones automáticas"`, tarjetas de cambios y etiquetas de botones `Ajustar` / `Continuar`).
@@ -1182,47 +1195,221 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
      - Aviso `INFO_CLASSIC_NAME_11_CHARS` y etiquetas de contenedor (`Cápsula del Tiempo (.zip)`).
   15. `src/core/wizard/musicianWizard.ts` y `src/ui/MusicianWizardModal.ts` (Fase 35.5):
      - Textos de los 4 pasos del Asistente Guiado (`1. Material`, `2. Limpiar`, `3. Cortar y mapear`, `4. Generar y exportar`), veredictos de clasificación (`Batería / Percusión`, `Melodía / Frase`, `Nota única / Instrumento cromático`) y botones de apertura de talleres avanzados.
+  16. `src/ui/ZoneInspector.ts`, `src/ui/AudioChopperModal.ts`, `src/ui/LoopEditorModal.ts` y `src/main.ts` (Fase 35.6 — Puentes de Rescate):
+     - `ZoneInspector.ts`: botones de rescate de slot (`Limpiar y mapear (Asistente)`, `AutoLoop en todas las zonas`, `Promover a Master Wave (96k)`).
+     - `AudioChopperModal.ts`: diálogo de consentimiento al limpiar con cortes manuales (`"La limpieza modificó el audio, pero habías ajustado puntos de corte manualmente..."`, `"Recalcular cortes"`, `"Conservar mis cortes"`).
+     - `LoopEditorModal.ts`: botón `AutoLoop en todas las zonas`.
+     - `main.ts`: mensajes toast de `handleBatchAutoLoopAllZones` (`"AutoLoop aplicado en X/Y zona(s) con cruce por cero óptimo."`).
+  17. `src/ui/AudioRecorderModal.ts`, `src/core/midi/WebMidiAutoSamplerService.ts` y `src/core/autoSampler/drumMapParser.ts` (Fase 37 — AutoSampler MIDI):
+     - `AudioRecorderModal.ts`: píldoras de modo superior (`Grabación Directa de Audio` $\leftrightarrow$ `Direct Audio Recording`, `AutoSampler MIDI (Barrido)` $\leftrightarrow$ `MIDI AutoSampler (Sweep)`, `Teclado MIDI en Vivo` $\leftrightarrow$ `Live MIDI Keyboard`, `Caja de Ritmos (Drum Map)` $\leftrightarrow$ `Drum Machine (Hit Map)`), diálogo y botón de calibración de nota piloto (`Aplicar RTL medida (...) y parámetros sugeridos`, `Conservar solo RTL (...)`, `RTL aplicada: ...`), selector de curvas de velocidad (`Lineal (Equidistante)`, `Logarítmica / Exponencial (+ precisión en altos 85..127)`, `Comprimida (+ precisión en bajos 1..65)`, `Clásica Neuron (2 capas: 60 / 120)`, `Tabla Manual Editable`) y acciones de continuación/rescate (`Continuar desde donde se paró`, `Re-ejecutar Corte + AutoLoop`).
+     - `WebMidiAutoSamplerService.ts`: cadenas de estado de `runMidiJitterSmokeTest` (`"Reloj Host (sin MIDI Out conectado)"`, `"Jitter medio ... ms"`).
+     - `drumMapParser.ts`: guía técnica embebida `getDrumMapFormatSpecificationHelpText()`.
 
 ---
 
-## Fase 37 — AutoSampler MIDI Integrado (Hardware / VST) con Avance por Silencio y Calibración de Latencia en `ABDShared` [PLANIFICADA]
+## Fase 37 — AutoSampler MIDI Integrado (Hardware / VST / Teclado en Vivo) con Avance por Silencio, Curvas de Velocidad, Onda en Vivo y Recuperación en `ABDShared` [COMPLETADA]
 
-**Objetivo**: Permitir muestrear automáticamente un sintetizador hardware externo o instrumento MIDI lanzando secuencias de notas y velocidades por WebMIDI, detectando en tiempo real cuándo se extingue la cola de cada nota para avanzar a la siguiente, limpiando la grabación continua antes de trocear y mapeando las zonas al 100 % usando las notas y velocidades MIDI reales enviadas (sin depender de detección ciega de pitch o transitorios).
+**Objetivo**: Evolucionar nuestro **Grabador de Audio (`AudioRecorderModal.ts`)**, nuestro **AutoSlicer (`AudioChopperModal.ts` / `AudioSlicerEngine.ts`)** y nuestro **AutoLoop (`LoopEditorTools.ts` / `LoopEditorModal.ts`)** existentes —sin crear pantallas aisladas ni duplicar motores— para ofrecer **dos funciones claras de grabación en el mismo estudio (`Grabación Directa de Audio` vs `Grabación AutoSampler MIDI`)**. Permite muestrear cualquier sintetizador hardware, plugin VST o caja de ritmos tanto mediante **barridos automáticos por WebMIDI** como **tocando libremente un teclado MIDI en vivo**, visualizando la onda desplazarse en tiempo real con zoom constante (sin achatarse), gestionando la cola post-`NoteOff` (por silencio dinámico o tiempo fijo), aplicando curvas o tablas manuales de velocidad, importando mapas de nombres de cajas de ritmos (`.txt`, `.json`, `.yaml`), permitiendo continuar grabaciones interrumpidas o re-parsear tomas ya grabadas, limpiando el ruido sobre la toma continua antes de cortar y calculando `AutoLoop` directamente sobre el tramo sostenido (`NoteOn..NoteOff`).
 
-### 37.0 Spike 0 — Validación WebMIDI (`navigator.requestMIDIAccess`)
-- [ ] **Prueba de humo de WebMIDI antes de construir el secuenciador**:
-  - `navigator.requestMIDIAccess` es nuevo en `src/`. El primer entregable verificable de la Fase 37 es abrir un puerto `MIDIOutput` real o virtual, disparar 3 notas de prueba (`NoteOn` / `NoteOff` con `performance.now()`) y medir el jitter de envío en el navegador/Electron.
+### 37.0 Estudio de Referencias y Decisiones Arquitectónicas Previas
+- **Qué reutilizamos y mejoramos de lo que YA tenemos (Cero Islas)**:
+  1. **Grabador (`AudioRecorderModal.ts` + `recordingEngine.ts` en `ABDShared`)**: en lugar de crear un modal aparte, el grabador actual pasa a tener **dos modos de operación en su cabecera** (`1. Grabación Directa de Audio` y `2. Grabación AutoSampler MIDI (Barrido automático | Teclado MIDI en vivo | Caja de Ritmos)`), reutilizando sus vúmetros L/R, selector de tarjeta de sonido, captura de `Noise Print`, botones `DSP Denoise` / `Norm -1 dB + DC` / `AI Enhance` y tabla `SESSION TAKES`.
+  2. **Visor de onda y `AutoSlicer` (`AudioChopperModal.ts` + `AudioSlicerEngine.ts`)**: la representación de la onda con sus puntos de corte y regiones es la misma. Cuando una toma viene con `MidiAutoSampleManifest`, el `AutoSlicer` no adivina transitorios ni $F_0$ a ciegas, sino que usa `buildSlicesFromMidiManifest()` con las notas, velocidades, nombres y tiempos exactos grabados, permitiendo abrir la toma en el `AudioChopperModal` para ajustar cualquier marcador con la lupa `±256 smp` y `zc-snap`.
+  3. **`AutoLoop` (`LoopEditorTools.ts` + `MasterWaveEnhancer.ts`)**: reutiliza `computeBatchAutoLoopForZones` y `findOptimalZeroCrossingLoop`, mejorándolos para aceptar la ventana `[noteOnFrame .. noteOffFrame]` del manifiesto MIDI y así buscar el bucle estacionario exclusivamente mientras la nota está pulsada (nunca en la cola de release).
+- **Inspiración verificada de proyectos Open Source analizados**:
+  - **`g-s-k/auto-sampler` (Rust `autosam` / `multirec`)**: separación entre el generador paramétrico de distribuciones (`octava inicial + nº de octavas + notas por octava + capas de velocidad`) y el motor de grabación, produciendo un manifiesto estructurado junto al audio.
+  - **`wudpeker/autosimpler` (C++ / JUCE VST3)**: modo de **Captura Pasiva en Vivo (Live MIDI + Audio)** donde el usuario no programa un barrido, sino que toca su teclado MIDI (o lanza un clip desde el DAW) y el grabador empareja cada `[NoteOn .. NoteOff + cola]` con el audio para recortar y mapear las zonas automáticamente.
+  - **`shinybit/autosampler2sfz.py`**: nomenclatura canónica de muestras (`<Idx>_<NombreGolpeONota>_<NotaMIDI>_v<Vel>_rr<N>.wav`) e inferencia automática de límites `lowKey..highKey` y `lowVel..highVel` contiguos sin huecos.
+  - **`JasonHoku/ComfyUI-Ultimate-Auto-Sampler-Config-Grid-Testing-Suite`**: idea de interfaz de **Matriz X/Y interactiva (`Notas × Velocidades`)** donde cada celda muestra su estado (`Pendiente`, `Grabando`, `OK`, `Clip/Error`), permite audicionar esa nota con 1 clic o re-grabar una única celda sin repetir todo el barrido.
+  - **`khiner/AutoSampler` (C++ / JUCE)**: compensación de deriva analógica por nota midiendo $F_0$ real en el tramo sostenido (`detuneCents` en `-50..+50`) y soporte de pedal de sustain (`CC 64`) en captura en vivo.
 
-### 37.1 Parte en `@abdsynths/shared` (`ABDShared`) — Port Puro desde `ABDAudioLab` + `npm run vendor:sync`
-- [ ] **Condición de pureza (cero acoplo a hardware/reloj de `ABDAudioLab`, edición en repo `ABDShared` + `npm run vendor:sync`)**:
-  - Solo se portan a `@abdsynths/shared/dsp/take/autoSamplerDsp.ts` las primitivas matemáticas puras e independientes de dispositivo (`Float32Array` + `sampleRate`). El scheduling de notas y el reloj WebAudio/WebMIDI viven en `ABDNeuModMakr`.
-  1. **Detector puro de decaimiento a silencio (`Dynamic Early Stopping` + `ADAPTIVE_ENVELOPE`)**:
-     - Basado en la matemática de envolvente de `LabAudioReceiver.cpp:223-249` y `ProfilingSequencer.cpp:668-694` de `ABDAudioLab`: tras enviar `NoteOff` y cumplir un tiempo mínimo de gracia (`gracePeriodMs`, p. ej. 250 ms), evalúa bloque a bloque si el pico/RMS cae por debajo del umbral de silencio (suelo de ruido medido $+ 3\text{ dB}$, o $-60/-80\text{ dBFS}$) durante `sustainedSilenceMs` consecutivos (~50–100 ms) para dar por terminada la cola de release y disparar la siguiente nota MIDI.
-  2. **Medidor puro de latencia (RTL) y correlación cruzada FFT (`measureMidiToAudioLatency` / `findSampleAccurateSyncOffset`)**:
-     - Basado en `LabAudioReceiver.cpp:180-197` y `336-404` de `ABDAudioLab`: calcula el retardo exacto en samples (`latencySamples`) entre el instante de referencia y el onset real en la entrada de audio, más el guardia de clipping sostenido (`SustainedClipping` $> 700$ samples) y recomendación de ganancia (`Auto-Trim` a $-3.0\text{ dBFS}$).
-  3. **Contrato compartido de manifiesto de AutoSampling (`MidiAutoSampleManifest` en `ABDShared/Contracts/recordingSession.ts`)**:
-     - Lista tipada de eventos `{ midiNote, velocity, velocityLayerIndex, lowKey, highKey, lowVel, highVel, noteOnFrame, noteOffFrame, tailEndFrame }` más `latencySamples` y `noiseProfile` adjuntos a la sesión de grabación.
+---
 
-### 37.2 Controlador Puro `src/core/autoSampler/MidiAutoSampleSession.ts` + UI en `AudioRecorderModal.ts`
-- [ ] **Mantener `AudioRecorderModal.ts` delgado**:
-  - La máquina de estados del barrido MIDI (enumeración de puertos WebMIDI, cola de notas/velocidades, reloj `AudioContext.currentTime`, escucha de bloques y construcción del `MidiAutoSampleManifest`) vive en un controlador puro en `src/core/autoSampler/MidiAutoSampleSession.ts` (testeable sin DOM).
-  - `AudioRecorderModal.ts` solo hospeda la pestaña/modo conmutable **`Grabación Libre` vs `AutoSampler MIDI`** (accesible también desde el Paso 1 del `MusicianWizardModal`).
-- [ ] **Parámetros musicales del barrido MIDI**:
-  - Puerto de salida WebMIDI (`MIDI Output`) y canal MIDI (`1..16`).
-  - Rango de notas (`startNote .. endNote`, p. ej. `C1 (24)` a `C6 (84)`) y **paso de semitonos** (`Cada 1 st`, `Cada 3 st (m3)`, `Cada 6 st (tritono)`, `Cada 12 st (octava)`), calculando automáticamente los límites contiguos `lowKey..highKey` de cada zona hasta cubrir `0..127`.
-  - Capas de velocidad (`1 capa`, `2 capas Clásico Neuron [v1=60, v2=120]`, o `N capas` en modo Extended).
-  - Duración de nota pulsada (`gateDurationMs`, p. ej. `1500 ms`) y tiempo máximo de cola (`maxReleaseMs`, con corte anticipado automático por detector de silencio).
+### Subfase 37.1 — Spike 0: Validación de Entrada/Salida WebMIDI (`navigator.requestMIDIAccess`)
+- [x] **Servicio ligero `src/core/midi/WebMidiAutoSamplerService.ts`**:
+  - Enumeración reactiva de puertos `MIDIOutput` (para disparar notas al sintetizador externo) y `MIDIInput` (para el modo en el que el músico toca su teclado MIDI en vivo) con escucha de `onstatechange` al conectar/desconectar cables USB-MIDI.
+  - Prueba verificable (`runMidiJitterSmokeTest`): abrir un puerto `MIDIOutput` / `MIDIInput`, enviar/recibir 3 eventos `NoteOn` / `NoteOff` con marcas de tiempo de alta precisión (`performance.now()` $\leftrightarrow$ `AudioContext.currentTime`) y medir el jitter real antes de construir el secuenciador.
 
-### 37.3 Orden Canónico del Pipeline: Calibrar $\to$ Grabar con Silencio Dinámico $\to$ Limpiar Toma Continua $\to$ Cortar con Manifiesto MIDI
-- [ ] **Paso A — Pre-Roll de 1 s + `dcBlock` Previo + Nota Piloto (Antes de la 1ª nota del barrido)**:
-  1. Graba $1.0\text{ s}$ en silencio sin enviar MIDI, **aplica primero `dcBlock`** sobre ese segundo para que un posible offset DC de la interfaz no sesgue la energía espectral de baja frecuencia, y extrae la **Huella de ruido (`computeNoiseProfile`)** real del sintetizador/previo conectado (asumiendo en v1 suelo de ruido estacionario durante la toma).
-  2. Lanza 1 nota piloto corta $\to$ mide la **latencia real MIDI $\to$ Audio (`latencySamples`)** y verifica ausencia de clipping.
-- [ ] **Paso B — Secuencia MIDI con Avance por Silencio**:
-  - Por cada combinación `(nota, velocidad)`, envía `NoteOn`, mantiene durante `gateDurationMs`, envía `NoteOff` y espera a que el detector de silencio de `ABDShared` confirme que la cola cayó al suelo de ruido antes de lanzar la siguiente nota (registrando `noteOnFrame`, `noteOffFrame` y un `tailEndFrame` aproximado al tamaño de bloque, compensados con `latencySamples`).
-- [ ] **Paso C — Limpieza de Ruido ANTES del Corte (sobre la grabación continua)**:
-  - Aplica `dcBlock` + `reduceNoiseWithProfile` (usando la huella del Paso A) **sobre la toma continua entera antes de cortar**. Así las ventanas STFT overlap-add no sufren artefactos de borde en el transitorio de ataque de cada nota.
-- [ ] **Paso D — Corte Determinista Guiado por el Manifiesto MIDI y Refinado Fino de Bordes**:
-  - En lugar de adivinar transitorios o $F_0$ a ciegas con `AutoSlicer`, corta cada ventana `[noteOnFrame .. tailEndFrame]` sobre el audio ya limpio y **refina la granularidad de bloque de `tailEndFrame`** aplicando `snapFrameToNearestZeroCrossing` (`zc-snap`) en ambos extremos y recortando el silencio residual final con `trimSilence`.
-  - Pasa el resultado (con `rootKey`, `lowKey..highKey` y capas `lowVel..highVel` exactos del mensaje MIDI) directamente a las zonas de la sesión, al **Paso 3/4 del `MusicianWizardModal`** o al **`AudioChopperModal`** (con las regiones y notas ya etiquetadas para inspección visual o `AutoLoop`).
+---
+
+### Subfase 37.2 — Núcleo Matemático y Contratos en `@abdsynths/shared` (`ABDShared`) + `npm run vendor:sync`
+- [x] **Condición estricta de pureza**:
+  - Todo cambio en `@abdsynths/shared` se edita en el repositorio `d:\desarrollos\ABDSynths\ABDShared` y se sincroniza con `npm run vendor:sync` (nunca editando `vendor/` a mano). Solo entran funciones matemáticas puras (`Float32Array` + `sampleRate`), sin acoplos al reloj ni a dispositivos de `ABDAudioLab`.
+- [x] **1. Portar desde `ABDAudioLab` a `@abdsynths/shared/dsp/take/autoSamplerDsp.ts`**:
+  - **Detector en tiempo real de extinción de cola (`evaluateReleaseTailDecay`, basado en `LabAudioReceiver.cpp:223-249` y `ProfilingSequencer.cpp:668-694`)**:
+    - Tras ocurrir `NoteOff` y superarse un tiempo mínimo de gracia (`gracePeriodMs`, ej. `150–250 ms`), analiza bloque a bloque si el nivel pico/RMS cae por debajo del umbral de silencio (`noiseProfile.levelDbfs + marginDb`, o umbral fijo `-60 / -80 dBFS`) durante `sustainedSilenceMs` consecutivos (`50–100 ms`).
+    - Devuelve `{ tailFinished: boolean, approxTailEndFrame: number, peakDbfs: number, sustainedClipping: boolean }`.
+  - **Medidor de latencia MIDI $\to$ Audio y correlación cruzada FFT (`measureMidiToAudioLatency` / `findSampleAccurateSyncOffset`, basado en `LabAudioReceiver.cpp:180-197` y `336-404`)**:
+    - Calcula el retardo exacto en samples (`latencySamples`) entre el envío del `NoteOn` de la nota piloto y el ataque real en el `AudioBuffer` recibido, más detección de saturación sostenida (`> 700 samples` a `0 dBFS`) y sugerencia de ajuste de ganancia (`Auto-Trim` hacia `-3.0 dBFS`).
+- [x] **2. Generador de Rejilla de Notas y Curvas/Tablas de Velocidad (`generateSweepSchedule` en `autoSamplerDsp.ts`)**:
+  - **Eje de Notas (Teclado)**:
+    - Parámetros pensados para músicos: **Octava desde la que se empieza** (`startOctave`, ej. `C0` a `C6`, o nota inicial exacta), **Número de octavas** (`octaveCount`, `1..8`) y **Número de notas por octava** (`notesPerOctave`: `1, 2, 3, 4, 6, 12` $\to$ pasos de `12, 6, 4, 3, 2, 1` semitonos).
+    - Calcula automáticamente los límites `lowKey..highKey` centrando cada nota muestreada (`rootKey`) y extendiendo o acotando los extremos según elija el usuario (`0..127` completo o acotado al rango muestreado).
+  - **Eje de Velocidades (`computeVelocityLayers`, `1..8` capas + `Round-Robin 1..4`)**:
+    - **5 modos de distribución de velocidad**:
+      1. **`linear` (Lineal)**: separación equidistante entre `minVel` y `maxVel`.
+      2. **`logarithmic` / `high_precision` (Más precisión en números altos)**: concentra más capas en la zona `85..127` (donde los filtros low-pass y saturadores cambian drásticamente el timbre por velocidad).
+      3. **`exponential` / `low_precision` (Más precisión en números bajos)**: concentra más capas en la zona `1..65` (ideal para pianos, cuerdas o pads suaves con mucho matiz en *pp/mp*).
+      4. **`classic_neuron_2layer` (Clásico Hartmann 2 capas)**: `v1 = 60 (rango 1..63)` y `v2 = 120 (rango 64..127)`.
+      5. **`manual_table` (Tabla de velocidades manual)**: el usuario introduce o edita directamente la tabla de velocidades exactas a disparar (ej. `[25, 55, 90, 112, 127]`) y sus rangos `lowVel..highVel`.
+- [x] **3. Contrato compartido `MidiAutoSampleManifest` en `ABDShared/Contracts/recordingSession.ts`**:
+  - Estructura serializable que viaja siempre unida a la grabación (en memoria en `SessionTake` y persistida dentro del propio `.wav` en un chunk RIFF `atem`/`cue `):
+    - Metadatos globales: `mode: 'auto_sweep' | 'live_midi_capture' | 'drum_map'`, `sampleRate`, `latencySamples`, `noiseProfile`, `velocityCurve`, `releaseMode: 'auto_decay' | 'fixed_time'`, `createdAt`.
+    - Lista de eventos `MidiCapturedNoteEvent[]`: `{ index, status: 'pending' | 'recording' | 'recorded' | 'failed', midiNote, velocity, velocityLayerIndex, roundRobinIndex, customName?, muteGroup?, lowKey, highKey, lowVel, highVel, noteOnFrame, noteOffFrame, tailEndFrame, loopStartFrame?, loopEndFrame?, isReleaseTrigger?, hasPolyphonicOverlap? }`.
+
+---
+
+### Subfase 37.3 — Importador de Mapas de Cajas de Ritmos (`.txt`, `.json`, `.yaml`) + Especificación Técnica para el Usuario
+- [x] **Parser y validador universal `src/core/autoSampler/drumMapParser.ts`**:
+  - Acepta archivos **`.txt` (o `.csv`/`.tsv`)**, **`.json`** y **`.yaml` / `.yml`** donde el usuario (o el manual de su caja de ritmos) define qué notas MIDI tienen sonido y cómo se llama cada golpe:
+    - **`.txt` sencillo**: líneas `<Nota_MIDI_o_Nombre> : <Nombre_del_Golpe> [: choke=<1..32>] [: gate=<ms>] [: release=<ms>]` (aceptando `:`, `=`, `,` o tabulador como separador y `#` para comentarios).
+    - **`.json` estructurado**: `{ name, channel?, defaultVelocities?, hits: [{ note: 36 | "C1", name: "Kick 808", muteGroup?: 1, gateMs?: 400, maxReleaseMs?: 2500, velocities?: [80, 127] }] }`.
+    - **`.yaml` humano**: diccionario directo `notes: { 36: "Kick", 38: "Snare", 42: { name: "Closed Hat", muteGroup: 1 } }` o lista de objetos.
+  - Incluye **plantillas rápidas preinstaladas**: `General MIDI (GM Standard)`, `Roland TR-808 / TR-909`, `Akai MPC Pads`, `Elektron Digitakt / Syntakt`.
+  - Al activar un mapa de caja de ritmos:
+    1. El barrido automático **solo dispara las notas listadas en el mapa** (sin perder tiempo en las notas vacías).
+    2. Cada corte, zona y archivo WAV recibe el **nombre real del golpe** (`36_Kick_Sub_808.wav`) y su **`muteGroup` (`choke`)** automático (p. ej. el charles cerrado corta al charles abierto).
+- [x] **Entrega de la información técnica al usuario dentro de la propia UI y en `DOCS/`**:
+  - Botón **`[ ? Especificación de archivo / Descargar plantilla (.txt, .json, .yaml) ]`** integrado en el panel de AutoSampler que abre un cuadro de ayuda claro con ejemplos copiables de los 3 formatos y botones para descargar las plantillas listas para rellenar, además del documento `DOCS/AUTOSAMPLER_DRUM_MAP_SPEC.md`.
+
+---
+
+### Subfase 37.4 — Controlador de Sesión (`MidiAutoSampleSession.ts`) con los 3 Modos de Trabajo y Gestión del Release
+- [x] **Módulo puro `src/core/autoSampler/MidiAutoSampleSession.ts` (desacoplado del DOM)**:
+  1. **Modo 1 — Grabación Directa de Audio (`Direct Audio Recording`)**:
+     - Grabación directa de audio como hasta ahora, pero beneficiándose del nuevo visor de onda en vivo con zoom constante (Subfase 37.5).
+  2. **Modo 2 — Barrido Automático MIDI (`Auto-Sweep`)**:
+     - Ejecuta automáticamente: **Pre-Roll de `1.0 s` en silencio** (`dcBlock` previo $\to$ captura de `Noise Print` `computeNoiseProfile`) $\to$ **Nota Piloto** (mide `latencySamples` y comprueba ausencia de clipping) $\to$ bucle automático por cada `(nota, velocidad, roundRobin)` del `generateSweepSchedule` o del mapa de batería.
+  3. **Modo 3 — Captura en Vivo desde Teclado MIDI (`Live MIDI Capture`, el usuario no decide nada, solo toca)**:
+     - El músico pulsa `REC` y toca libremente en su teclado controlador MIDI (o reproduce una pista MIDI desde su DAW):
+     - Se captura cada `NoteOn (nota, velocidad, frame)` y `NoteOff (nota, frame)` en paralelo con el audio.
+     - **Agrupación e inferencia automática al parar**:
+       - Ordena las notas tocadas de grave a agudo y calcula automáticamente las fronteras contiguas `lowKey..highKey` (`0..127`).
+       - Si el músico tocó varias veces la misma nota con distinta fuerza, las reparte automáticamente en **capas de velocidad (`lowVel..highVel`)**; si las tocó con velocidad similar, ofrece asignarlas como **Round-Robin (`seqPosition`)** o conservar la toma más limpia.
+       - Si dos notas se solaparon accidentalmente en el tiempo (acorde), marca ese evento con `hasPolyphonicOverlap: true` y avisa visualmente.
+- [x] **Política de apagado tras soltar la nota (`NoteOff` $\neq$ fin del sonido)**:
+  - Tanto en Barrido Automático como en Teclado en Vivo, soltar la tecla (`NoteOff`) abre la fase de **captura de cola (`Release Tail`)** con 2 modos seleccionables:
+    - **A) Auto-detección de extinción (`auto_decay` con tope `maxReleaseMs`)**: tras el `NoteOff`, sigue grabando la nota hasta que `evaluateReleaseTailDecay` confirma que el sonido cayó al suelo de ruido medido (o, en modo teclado en vivo, hasta un instante antes del siguiente `NoteOn` si el músico toca otra nota antes).
+    - **B) Tiempo de Release definido (`fixed_time`)**: tras el `NoteOff`, graba exactamente durante `releaseDurationMs` (ej. `1500 ms`) antes de cerrar `tailEndFrame` y lanzar la siguiente nota.
+
+---
+
+### Subfase 37.5 — Visor de Onda en Vivo con Zoom Constante (Scrolling Waveform) + Integración UI Nativa
+- [x] **Onda en vivo que avanza sin achatarse (`Scrolling Live Waveform` en `#rec-wave-canvas`)**:
+  - Mejorar el visor de onda de [`AudioRecorderModal.ts`](file:///d:/desarrollos/ABDSynths/ABDNeuModMakr/src/ui/AudioRecorderModal.ts) para que funcione durante la grabación (tanto en **Grabación Directa de Audio** como en **AutoSampler MIDI**).
+  - **Prohibido achatar/comprimir toda la toma en el ancho del canvas mientras graba**: el visor opera como una **ventana deslizante de escala fija** (`pixelsPerSecond` constante), seleccionable con píldoras de zoom (`2 s`, `5 s`, `10 s`, `30 s` visibles en pantalla, más botón `[Ver toma completa]` al detener).
+  - Mientras la onda se desplaza de derecha a izquierda en tiempo real:
+    - El músico aprecia con total nitidez los **ciclos de modulación (LFO, chorus, batidos de osciladores)** para comprobar si el tiempo de nota (`Gate`) es suficiente para lograr un buen bucle.
+    - En modo AutoSampler se pintan en vivo las banderas verticales de cada **`NoteOn` (`C3 v100` / `Kick 808`)**, **`NoteOff` (inicio de release)** y **`Fin de cola`**.
+- [x] **Integración visual 100 % nativa (Cero Islas)**:
+  - Reutiliza estrictamente las tarjetas `.nmm-recorder-deck-card`, `.btn`, `.btn-xs`, `.btn-outline`, `.btn-accent`, `.val-pill`, `.nmm-recorder-console-grid` y `.nmm-modal-footer` de [`19-modal-canonical.css`](file:///d:/desarrollos/ABDSynths/ABDNeuModMakr/src/styles/19-modal-canonical.css).
+  - Añade la **Matriz compacta `Notas × Velocidades` (`Grid View`)** que se ilumina celda a celda en vivo durante el barrido o mientras el usuario toca su teclado.
+
+---
+
+### Subfase 37.6 — Continuar Grabación Interrumpida, Recuperación de Parseo, Empalme con `AutoSlicer` y `AutoLoop`
+- [x] **1. Utilidad de Continuar / Reanudar si se para la grabación (`Resume / Retry Pending & Failed Cells`)**:
+  - Si el usuario detiene o pausa el barrido a mitad, puede pulsar **`[ Continuar desde donde se paró ]`** para grabar únicamente las celdas con `status: 'pending' | 'failed'`, concatenando el nuevo audio y actualizando el manifiesto sin repetir las notas ya grabadas.
+  - Haciendo clic en cualquier celda de la matriz `Notas × Velocidades`, puede elegir **`[ Escuchar esta nota ]`** o **`[ Re-grabar solo esta nota/velocidad ]`** (`Shift+Click`).
+- [x] **2. Recuperación total si falla el parseo o el corte después de grabar (`Non-Destructive Take & Manifest Rescue`)**:
+  - En cuanto termina o se pausa la grabación, el archivo WAV continuo (`rawTake.wav`) con su `MidiAutoSampleManifest` adjunto se guarda **antes de cortar** en `SESSION TAKES` (y con los eventos serializados dentro del chunk RIFF `atem`/`cue ` del propio WAV).
+  - Si falla el parseo posterior, si la latencia desplazó los cortes o si había un error en el archivo de nombres `.txt/.json/.yaml`, **jamás hay que volver a grabar el sintetizador**: desde la fila del take en `SESSION TAKES` el usuario dispone de **`[ Ajustar offset de latencia (± ms) ]`**, **`[ Cargar / Corregir mapa de nombres ]`**, **`[ Re-ejecutar corte por manifiesto ]`** o **`[ Abrir en AutoSlicer (AudioChopperModal) con los puntos de corte ]`**.
+- [x] **3. Limpieza en Toma Continua + Empalme directo con nuestro `AutoSlicer` y nuestro `AutoLoop`**:
+  - **Limpieza antes del corte**: aplica `dcBlock` + `reduceNoiseWithProfile` (con el `Noise Print` del Pre-Roll) sobre la grabación continua completa para evitar artefactos de ventana FFT en los ataques.
+  - **Corte guiado por el Manifiesto (`buildSlicesFromMidiManifest` en `AudioSlicerEngine.ts`)**:
+    - Refina cada ventana `[noteOnFrame .. tailEndFrame]` con `snapFrameToNearestZeroCrossing` (`zc-snap`) y `trimSilence` final.
+    - Tanto en el visor del grabador como al pasar al `AudioChopperModal` se utiliza el **mismo componente de onda con marcadores de corte** (`NoteOn`, `NoteOff`, `TailEnd`).
+  - **`AutoLoop` automático sobre el tramo sostenido (`NoteOn..NoteOff`)**:
+    - Con el checkbox **`Calcular AutoLoop automáticamente`** activo, invoca nuestro motor [`computeBatchAutoLoopForZones`](file:///d:/desarrollos/ABDSynths/ABDNeuModMakr/src/core/dsp/LoopEditorTools.ts#L719-L747) acotando la búsqueda de cruce por cero al intervalo **`[noteOnFrame + margenAtaque .. noteOffFrame - margenRelease]`**, garantizando que el bucle nunca caiga dentro de la cola de release post-`NoteOff`.
+
+---
+
+### Subfase 37.7 — Asistencias de IA Honesta en el AutoSampler (con Alternativa Determinista, Fase 35.4)
+- [x] **1. Nota Piloto Inteligente (`Smart Pre-Check`)**:
+  - Botón **`[ Probar 1 nota y Autoconfigurar ]`**: lanza una nota de prueba, mide latencia RTL, suelo de ruido, tiempo real de extinción de cola tras `NoteOff` y diferencia espectral entre velocidad suave y fuerte, y propone automáticamente `gateDurationMs`, `maxReleaseMs` y la curva/número de velocidades ideal.
+- [x] **2. Extractor IA de Mapas de Cajas de Ritmos desde Manuales**:
+  - Cuadro para pegar texto desordenado copiado del manual PDF de una caja de ritmos o sinte $\to$ lo convierte en un mapa `.json` con notas, nombres y `muteGroup` (usando `CloudByokClient` LLM si está activo, o parser Regex determinista local con aviso transparente según 35.4).
+- [x] **3. Clasificador Acústico de Golpes de Batería (`Drum Hit Auto-Labeler`)**:
+  - Si se graba una caja de ritmos sin mapa de nombres, utiliza `AcousticIntelligence` para etiquetar cada golpe (`Kick`, `Snare`, `Closed Hat`, `Open Hat`, `Clap`, `Tom`, `Cymbal`) y sugerir el `muteGroup` de charles.
+- [x] **4. Mejora Neuronal / BWE Opcional en Toma Continua**:
+  - Integración con el botón `AI Enhance (BWE)` existente antes del corte, respetando los ataques marcados en el manifiesto y pidiendo confirmación explícita si el Bridge está desconectado.
+
+---
+
+### Orden de Ejecución de la Fase 37
+`37.1 (Spike 0 WebMIDI)` $\to$ `37.2 (DSP puro + Curvas de Velocidad + Manifiesto en ABDShared + vendor:sync)` $\to$ `37.3 (Parser .txt/.json/.yaml de Cajas de Ritmos + Plantilla UI/DOCS)` $\to$ `37.5 (Onda en vivo con Zoom constante sin achatar en Grabación Directa de Audio y AutoSampler)` $\to$ `37.4 (Controlador de Barrido Automático + Teclado MIDI en Vivo + Cola Auto/Fija)` $\to$ `37.6 (Continuar grabación + Recuperación de parseo + Empalme con AutoSlicer y AutoLoop NoteOn..NoteOff)` $\to$ `37.7 (Asistencias IA Honesta + Suite de Tests phase37_autosampler.test.ts)`.
+
+---
+
+## Fase 38 — Accesibilidad de la Interfaz (a11y): Trampa de Foco, Nombres Accesibles y Navegación por Teclado [EN CURSO]
+- [x] **Nombres accesibles en botones solo-icono**: `aria-label="Close"` en los 4 cierres que carecían de él (`btn-confirm-close`, `btn-rx2-pairing-close`, `btn-stem-close` en `AudioChopperModal.ts`; `btn-close-doc-modal` en `Navbar.ts`), igualando a los que ya lo tenían (`btn-chopper-close`, `btn-recorder-close`).
+- [x] **Trampa de foco compartida (`createModalFocusTrap`) en los 3 modales que faltaban**:
+  - `AudioChopperModal.ts`: trampa en `open()` / desactivación en `close()`; el `Escape` manual se elimina y su lógica (cerrar menú contextual antes que el modal) pasa al `onEscape` del trap.
+  - Diálogos anidados del chopper (confirmación de cortes, asistente RX2, separación de stems: todos en `document.body`, fuera del backdrop): trampa propia + padre en pausa con reanudación al cerrar, para que `Tab` y `Escape` no fuguen ni cierren el modal padre por error.
+  - `NeuronDbModal.ts`: trampa recreada en cada `open()` (el `closeHandler` captura el `onCancel` vigente); se eliminan los `Escape` manuales, incluyendo el listener de backdrop que se acumulaba en cada apertura.
+  - `ProcessModal.ts`: sustituye su `onKeyDown` manual por el trap, conservando su lógica de `Escape` (cerrar solo si el proceso terminó; si no, cancelar).
+  - `LoadingModal.ts` queda fuera a propósito: es un indicador `role="status"` sin elementos interactivos y no debe robar el foco.
+- [ ] **Auditoría de navegación por teclado en superficies complejas**: rejillas (`Notas × Velocidades`, vistas grid/tabla con flechas como la de NeuronDB), canvas de onda y deslizadores: orden de tabulación lógico y atajos documentados en `title`.
+- [ ] **Foco visible y contraste**: verificar que todos los `.btn`, celdas y controles con foco por teclado tengan indicador visible y que el texto cumpla contraste AA sobre los fondos de tarjeta.
+- [ ] **`prefers-reduced-motion`**: respetar la preferencia del sistema en onda en vivo, scroll, zoom y animaciones de los modales.
+- [ ] **Anuncios para lector de pantalla en operaciones asíncronas**: `aria-live` en progreso largo (lotes, stems, BWE) más allá de los toasts visuales.
+- [ ] **Coordinación con Fase 36 (i18n)**: los `aria-label`/`title` en inglés pasan al catálogo de claves cuando se aplique la internacionalización; no traducir a mano antes.
+
+---
+
+## Fase 39 — Superficie Espectral Continua Unificada (`UnifiedSpectralSurface`), Cola por Fases del Batch Processor Multiformato y Denoise Triple [COMPLETADO]
+- [x] **1. Compilador de Superficie Espectral Continua Unificada (`src/core/dsp/UnifiedSpectralSurface.ts` & `@abdsynths/shared/contracts/axionikExpandedModel.ts`)**:
+  - Destila cualquier colección de zonas y capas de velocidad en un **único modelo continuo (`unifiedSurface`)** dentro de `05_extended_model/axionik-expanded.json` para el Resinator `ABDAxionikVS`:
+  - **Detección automática de topología (`detectSurfaceTopology`)**:
+    - `melodic_surface` (`Pitch 0..127 × Velocity 1..127 × Time`): pianos, sintes, cuerdas, bajos y percusión cromática/botellas afinadas (verificando progresión monotónica de $f_0$ con la tecla MIDI y similitud coseno de la envolvente de formantes en 24 bandas Bark). Basta con conocer los puntos de calibración `(Nota, Velocidad)` para cubrir de `0` a `127` sin huecos ni necesidad de estirar zonas.
+    - `drum_kit_surface` (`Hit_Key → Velocity 1..127 × Time`): mapas de percusión (`drum_map`, `slicer drums`) o colecciones de objetos percusivos no afinados, aislando cada tecla MIDI pero interpolando continuamente sus capas de velocidad y aplicando variación estocástica en el residuo DDSP para eliminar el efecto metralleta (*machine-gun effect*).
+  - **Resolución adaptativa según contenido (`resolveAdaptiveSurfaceResolution`)**:
+    - Modo `auto` (escala entre `compact` $32\text{p}\times32\text{f}$, `standard` $64\text{p}\times48\text{f}$, `hd` $128\text{p}\times64\text{f}$ y `ultra-hd` $256\text{p}\times96\text{f}$ según riqueza armónica real por encima de $-78\text{ dB}$ y evolución temporal) y modo `manual` (`Complexity 1..10`).
+  - **Alineación por hitos temporales (`warpFramesToCanonicalGrid`) y modulación de sintetizadores (`extractModulationProfile`)**:
+    - Alinea `canonicalAttackPeakFrame` y `canonicalSustainStartFrame` en todos los nodos, permitiendo **acortar ataques lentos** (`attackShorten01` saltando al pico de plenitud espectral) y **alargar *releases* inexistentes o cortados en seco** (`releaseExtendSec` con caída física progresiva de agudos `hfDampingDbPerSec`).
+    - Extrae la velocidad y profundidad de batimiento de osciladores desafinados (`modulationRateHz`, `modulationDepth`, `estimatedDetuneCents`) y contramodulación par/impar (`oddEvenModDepth` de PWM) para interpolar sin cancelaciones de fase ni aceleración de LFO por octava.
+  - **Escudo contra muestras intrusas (`timbreCoherenceScore` & `isTimbralOutlier`)**:
+    - Detecta muestras de otro instrumento coladas por error comparando cada nodo contra la mediana robusta de las 24 bandas Bark y la armocidad, excluyéndolas automáticamente del formante global del cuerpo (`globalBodyFormantDb`) y de la interpolación por defecto (`includeOutliers: false`), además de advertir en el Preflight (`WARN_INTRUDER_SAMPLE`).
+- [x] **2. Gestor de Colas por Fases (`stage-grouped`) e Ingesta Multiformato en `BatchProcessorModal.ts` y `BatchQueue.ts`**:
+  - Ejecución agrupada por etapas (`Stage 1/5: Ingesta/Slicing` $\to$ `Stage 2/5: Separación HTDemucs/DSP` $\to$ `Stage 3/5: Denoise DeepFilterNet/DSP` $\to$ `Stage 4/5: BWE AudioSR & Clasificación` $\to$ `Stage 5/5: Resíntesis STFT & Empaquetado`) manteniendo cada modelo IA caliente en memoria/VRAM para todo el lote y liberando caché una sola vez al cerrar cada etapa.
+  - Ingesta multiformato unificada en `BatchProcessorModal.ts` (con soporte drag-and-drop en `#batch-dropzone` y `.articulation-checkbox.switch--sm`): `.sf2`, `.sfz`, `.dspreset`, `.nki`, `.vstpreset`, `.multisample`, `.adv`, `.exs`, `.talsmpl`, `.txprog`, `.kmp`, `.dls`, `.xpm`, `.xpn`, `.model`, `.nmmodel`, `.scape`, `.sphere`, `.iso`, `.img`, `.dsk`, `.zip`, `.rx2`, `.rex` y todos los formatos de audio.
+- [x] **3. Denoise Triple (Algorítmico, Huella de Ruido e IA con `DeepFilterNet 3`) y Normalización en Grabador y AutoSlicer**:
+  - `AudioChopperModal.ts`: normalización pura a `-1.0 dBFS` (`normalizePeakPcm`), detección de silencios con inyección de cortes en `mute` (`injectSilenceCutBoundaries`) para excluirlos de la matriz de zonas y doble botón de reproducción (`Play WAV` completo vs `Play Slice`).
+  - `AudioRecorderModal.ts` y `aiHonesty.ts` (`'recorder-ai-denoise'`): barra de post-procesado en los 4 modos del grabador con `Normalizar (-1 dBFS)`, `Detectar Ruido` y 3 modos de Denoise (`Denoise Algorítmico`, `Denoise Huella`, `Denoise IA`), verificando antes de ejecutar `Denoise IA` si la Etapa 5 (`DeepFilterNet 3`) está habilitada con el Bridge conectado o si existe una API Key de LLM potente en Cloud BYOK.
+- [x] **4. AutoSlicer de Doble Modo (`One-Shot Extractor` vs `REX / Groove Loop`), Extracción de Melodías (BPM + Notas + `.mid`), Conformador Elástico de Tempo y Contrato `tempoSync` para Resinator v2 (`AudioSlicerEngine.ts`, `AudioChopperModal.ts`, `ModelConfigModal.ts`, `UnifiedSpectralSurface.ts`)**:
+  - **Dos modos macro de flujo en `AudioChopperModal.ts` (`SlicerWorkflowMode`)**:
+    1. **`one_shot_extractor` (*Cortar y Mapear One-Shots*)**: para grabaciones nota a nota (cromáticas o caja de ritmos golpe a golpe). Deshabilita condicionalmente (`<fieldset class="conditioned-fieldset" disabled>` + `.is-conditioned-disabled` + `.cond-reason-badge`) los controles de BPM/Compases/Target BPM y los botones de bucle/MIDI, manteniendo el cálculo de `detectedBpm` en segundo plano.
+    2. **`rex_groove_loop` (*Bucle Rítmico / Melodía REX*)**: habilita el estimador conjunto de BPM y compases (`estimateLoopBpmAndBars` por cuantización IOI + rejilla de duración total), el conformador elástico de tempo (`conformLoopToTargetBpm` bloqueando los primeros $25\text{ ms}$ de ataque transitorio de cada golpe/nota), la audición en vivo `Play @ Target BPM`, la exportación de partitura `.mid @ Target BPM` y la inyección `Inyectar Loop Continuo (Target BPM)`.
+  - **Soporte para cortar melodías/riffs grabados, extraer su BPM y ejecutarlos vía MIDI (`chromatic` + `rex_groove_loop`)**:
+    - `detectMelodicPitchChangeBoundaries` añade cortes en cambios de tono ligados (*legato* $> 78\text{ cents}$) además de los transitorios de amplitud SuperFlux.
+    - `buildSlicesFromBoundaries` agrupa notas repetidas de la melodía por `rootKey` única (apilándolas como capas de velocidad / Round-Robin sin colisionar rangos `lowKey..highKey`) mientras conserva el orden cronológico en `slices` para que `buildMidiFileBuffer` exporte la **melodía exacta nota a nota** en el archivo `.mid`.
+  - **Contrato `AxionikSurfaceTempoSync` (`tempoSync`) para el futuro Resinator v2 de `ABDAxionikVS`**:
+    - Persistido en `@abdsynths/shared/contracts/axionikExpandedModel.ts` (`05_extended_model/axionik-expanded.json`), `UnifiedSpectralSurface.ts` (`evaluateUnifiedSpectralSurface` con escalado temporal `sourceBpm / hostBpm` sin alterar $f_0$ ni formantes Bark), `expandedModelWriter.ts` y configurable en `ModelConfigModal.ts` (*Sincronización de Tempo / Bucle REX*). *(Nota: en `ABDAxionikVS` el consumidor Resinator v2 está pendiente de implementación).*
+
+---
+
+## Fase 40 — Exportación Simultánea Multi-Formato (35 Samplers), Navegación de Contenedores Anidados/Joliet, Control de Tempo (`< BPM >`) y Recuperación del Banco [COMPLETADA]
+- [x] **1. Soporte Bidireccional de 35 Formatos de Sampler y Exportación Simultánea Multi-Formato (`RawSamplerExporter.ts`, `RawSamplerExportModal.ts`, `README.md`)**:
+  - Ampliación del motor de importación/exportación a **35 formatos de samplers clásicos, workstation y modernos**: SoundFont 2 (`.sf2`), SFZ v2 (`.sfz`), Decent Sampler (`.dspreset`), Native Instruments Kontakt (`.nki` + `.ncw`), Steinberg HALion (`.fxp`/`.fxb`/`.vstpreset`), Apple Logic EXS24 (`.exs`), Ableton Live Simpler (`.adv`), Bitwig Studio (`.multisample`), TAL-Sampler (`.talsmpl`), TX16Wx (`.txprog`), Korg KMP/KSC/PCG (`.kmp`/`.ksc`/`.pcg`), DLS Level 2 (`.dls`), Akai MPC Keygroup (`.xpm`/`.xpn`), Akai S1000/S3000 (`.p`/`.s`/`.iso`), Akai S5000/S6000/Z4/Z8 (`.akp`), Akai S900/S950, E-mu EIII/ESI/Emax II (`EMU3`), E-mu EOS/E4/Proteus X/Emulator X (`.e4b`/`.exb`), Roland S-50/S-550/S-330/W-30, Roland S-760/S-750/S-770, Roland XV-5080/Fantom/ZEN-Core (`.svd`/`.svz`), Yamaha TX16W, Yamaha A3000/A4000/A5000, Yamaha Motif/Montage/MODX (`YSFC`), Ensoniq EPS/ASR-10 (`.efe`/`.efa`), Ensoniq Mirage, Kurzweil K2000/K2500/K2600 (`.krz`), Korg DSS-1, Casio FZ-1/FZ-10M (`.fz`/`.fzv`), Sequential Prophet 2000, Oberheim DPX-1, Fairlight CMI IIx/III (`.vc`), NED Synclavier II, Peavey SP y OctaMED/ProTracker/FastTracker II (`.mod`/`.xi`).
+  - Reordenación del modal `RawSamplerExportModal.ts` en orden lógico (*1. Nombre y Metadatos* $\to$ *2. Configuración de Audio y Empaquetado* $\to$ *3. Formatos de Sampler Destino*) con selección múltiple (`Todos (35)` / `Solo activo` + casillas por formato) para empaquetar un único `.zip` multi-formato en una sola pasada, o sub-ZIPs individuales por instrumento cuando se activa *Separar en carpetas por zona*.
+  - Unificación del menú `File -> Export Instrument (Choose Destination)...` eliminando la entrada redundante en `File` y cableando el botón `← Volver a Exportar Instrumento` de `RawSamplerExportModal.ts` para regresar a `ExportDestinationModal.ts`.
+- [x] **2. Soporte de Carpetas, Imágenes ISO Joliet Multiformato y Contenedores Anidados (`.zip` / `.iso`) (`UniversalImportModal.ts`, `MultiInstrumentModal.ts`, `MultiAssetTriageModal.ts`, `Iso9660ImageReader.ts`)**:
+  - Botón `Browse Folder...` y soporte recursivo de carpetas por Drag & Drop en `UniversalImportModal.ts`.
+  - Selección del descriptor de volumen suplementario **Joliet (UTF-16BE)** en `Iso9660ImageReader.ts` para preservar nombres largos y subdirectorios multiformato (`AIFF`, `EXS24`, `HALion`, `WAV`) en CD-ROMs de librerías profesionales.
+  - Emparejamiento tolerante a truncamiento ISO 9660 Nivel 1 (8.3, `_` por espacios/símbolos y prefijos numéricos) en `Exs24Format.ts` y parser de programas `HalionFxpFormat.ts` (`.fxp` / `.fxb`).
+  - Navegación interactiva con migas de pan (*breadcrumbs*) dentro de contenedores anidados (`.zip` dentro de `.zip`, `.iso`/`.bin`/`.img` dentro de `.zip`) y paso directo de los archivos expandidos desde `MultiInstrumentModal` / `MultiAssetTriageModal` hacia `BatchProcessorModal.ts`.
+- [x] **3. Control de Tempo en Vivo (`< BPM >`, 30..300) y Reproductor de Secuencias (`Seq`) en el Keymap (`ZoneInspector.ts`, `WebAudioPipeline.ts`)**:
+  - Control numérico de BPM (`30..300`, por defecto `120`) con botones triangulares `<` (`#btn-keymap-bpm-dec`) y `>` (`#btn-keymap-bpm-inc`) a izquierda y derecha en la barra del Keymap, sincronizado bidireccionalmente con `unifiedSurfaceConfig.tempoSync.targetBpm` (Resinator v2) y con el botón reproductor `Seq` para escuchar bucles REX y secuencias cromáticas a la velocidad elegida.
+- [x] **4. Doble Nombre (`modelName` 11 caracteres vs `expandedName` sin límite), Cobertura Condicional `0..127` y Coherencia de Menús (`Navbar.ts`, `ZoneInspector.ts`, `BatchPreflightEngine.ts`, `ModelIdentity.ts`)**:
+  - Separación estricta entre el nombre clásico `MName` (recortado a 11 caracteres ASCII solo para hardware Classic) y `expandedName` (sin recorte en modo Extended ni en exportaciones modernas/Batch).
+  - Extensión obligatoria de notas `0..127` aplicada **únicamente** cuando se cumplen simultáneamente `workingMode === 'classic'` y `keyMappingMode === 'chromatic'`.
+  - Agrupación de herramientas bajo el submenú `Model -> Tools` y el menú desplegable `Tools` de la barra del Keymap (`Loop Editor`, `AutoLoop in All Zones`, `Audio Chopper & Auto-Slicer`, `Audio & MIDI AutoSampler Recorder`).
+  - Notificaciones toast reposicionadas en la esquina superior derecha (`top: 56px; right: 20px`) con mayor tamaño tipográfico y contraste.
+- [x] **5. Hidratación de Binarios desde IndexedDB y Recuperación Automática de Modelos Antiguos del Banco (`NeuronAssetStore.ts`, `bankService.ts`, `WebAudioPipeline.ts`)**:
+  - Hidratación completa de `legacy_originals` (`STORE_LEGACY`) y `model_capsules` (`STORE_CAPSULES`) desde IndexedDB al iniciar y al restaurar el banco (`restoreBank` / `getModelBinaries`), evitando el error `NO_BINARIES` tras recargar la página.
+  - Plan de respaldo (`buildFallbackBankLoadPlan` en `loadBankModel`) para modelos antiguos guardados únicamente en `localStorage` sin binarios `.scape`/`.sphere` en caché: reconstruye sus zonas desde `neuronikModelJson` o `zonesAnalysis`, vincula muestras presentes en `NeuronAssetStore` o sintetiza ondas armónicas desde los parciales analizados (`detectedF0Hz` + `amplitudes`), permitiendo cargar cualquier modelo histórico sin error.
+
+
+
 
 

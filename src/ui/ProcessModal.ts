@@ -5,6 +5,7 @@
 
 import type { ProcessProgress } from '../core/types';
 import { ICONS } from './icons';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 
 export interface ProcessModalHandlers {
   onCancel: () => void;
@@ -18,7 +19,7 @@ export class ProcessModal {
   private modalElement: HTMLElement | null = null;
   private isVisible: boolean = false;
   private currentStatus: ProcessProgress['status'] = 'idle';
-  private onKeyDown: ((e: KeyboardEvent) => void) | null = null;
+  private focusTrap: FocusTrap | null = null;
 
   constructor(container: HTMLElement, handlers: ProcessModalHandlers) {
     this.container = container;
@@ -100,17 +101,21 @@ export class ProcessModal {
       this.handlers.onCancel();
     });
 
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && this.isVisible) {
-        if (this.currentStatus === 'completed' || this.currentStatus === 'error' || this.currentStatus === 'cancelled') {
-          this.handlers.onClose();
-          this.hide();
-        } else {
-          this.handlers.onCancel();
-        }
-      }
-    };
-    window.addEventListener('keydown', this.onKeyDown);
+    if (!this.focusTrap && this.modalElement) {
+      this.focusTrap = createModalFocusTrap(this.modalElement, {
+        initialFocusSelector: '#btn-modal-cancel',
+        onEscape: () => {
+          if (!this.isVisible) return;
+          if (this.currentStatus === 'completed' || this.currentStatus === 'error' || this.currentStatus === 'cancelled') {
+            this.handlers.onClose();
+            this.hide();
+          } else {
+            this.handlers.onCancel();
+          }
+        },
+      });
+      this.focusTrap.activate();
+    }
 
     if (initialProgress) {
       this.updateProgress(initialProgress);
@@ -173,9 +178,9 @@ export class ProcessModal {
 
   public hide(): void {
     if (!this.isVisible || !this.modalElement) return;
-    if (this.onKeyDown) {
-      window.removeEventListener('keydown', this.onKeyDown);
-      this.onKeyDown = null;
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+      this.focusTrap = null;
     }
     this.modalElement.remove();
     this.modalElement = null;

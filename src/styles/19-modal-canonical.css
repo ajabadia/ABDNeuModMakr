@@ -147,7 +147,10 @@
 }
 
 .cfg-ordinal-input {
-  width: 58px;
+  width: 72px;
+  min-width: 72px;
+  padding-left: 6px !important;
+  padding-right: 4px !important;
   text-align: center;
 }
 

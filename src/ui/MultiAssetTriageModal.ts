@@ -27,6 +27,7 @@ export class MultiAssetTriageModal {
   private options: TriageModalOptions | null = null;
   private focusTrap: FocusTrap | null = null;
   private searchTerm = '';
+  private activeFolder = '';
   private selectedIds = new Set<string>();
 
   public isOpen(): boolean {
@@ -37,6 +38,7 @@ export class MultiAssetTriageModal {
     this.close();
     this.options = options;
     this.searchTerm = '';
+    this.activeFolder = '';
     this.selectedIds = new Set(options.discoveryReport.items.map((it) => it.id));
 
     this.backdropEl = document.createElement('div');
@@ -74,13 +76,38 @@ export class MultiAssetTriageModal {
     const opts = this.options!;
     const items = this.filteredItems();
     const formats = new Set(opts.discoveryReport.items.map((it) => it.formatLabel));
+    const folderCounts = new Map<string, number>();
+    for (const it of opts.discoveryReport.items) {
+      const clean = (it.primaryFilePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+      const top = clean.includes('/') ? clean.slice(0, clean.indexOf('/')) : '';
+      if (top) folderCounts.set(top, (folderCounts.get(top) ?? 0) + 1);
+    }
+
+    const folderNavHtml =
+      folderCounts.size > 1
+        ? `
+          <div class="triage-folder-nav" role="tablist" aria-label="Carpetas y contenedores">
+            <button type="button" class="btn btn-xs ${this.activeFolder === '' ? 'btn-accent' : 'btn-outline'} btn-triage-folder" data-folder="">
+              ${ICONS.layers} Todas (${opts.discoveryReport.items.length})
+            </button>
+            ${Array.from(folderCounts.entries())
+              .map(
+                ([folder, count]) => `
+                  <button type="button" class="btn btn-xs ${this.activeFolder === folder ? 'btn-accent' : 'btn-outline'} btn-triage-folder" data-folder="${escAttr(folder)}" title="${escAttr(folder)}">
+                    ${ICONS.folder} ${escHtml(folder)} (${count})
+                  </button>
+                `
+              )
+              .join('')}
+          </div>`
+        : '';
 
     const summaryHtml = `
       <div class="triage-summary">
         <span>${ICONS.layers}</span>
         <div>
           <p><strong>${escHtml(opts.sourceName)}</strong> trae ${opts.discoveryReport.items.length} piezas en ${formats.size} formatos (${escHtml([...formats].join(' · '))}). Elige qué hacer con cada una.</p>
-          <p>Directo a la sesión: audio y SF2. El resto se prepara en el Batch o va a Importación universal (Ctrl+I).</p>
+          <p>Navega por carpeta/contenedor, carga directo a la sesión o manda tu selección al Batch.</p>
         </div>
       </div>`;
 
@@ -88,12 +115,14 @@ export class MultiAssetTriageModal {
       .map((item, i) => {
         const checked = this.selectedIds.has(item.id) ? 'checked' : '';
         const badgeClass = this.isDefinitionFormat(item.format) ? 'badge-accent' : 'badge-neutral';
+        const rawPath = (item.primaryFilePath || '').replace(/\\/g, '/');
+        const parentFolder = rawPath.includes('/') ? rawPath.slice(0, rawPath.lastIndexOf('/')) : '';
         return `
           <tr data-item-id="${escAttr(item.id)}" class="${checked ? 'triage-row-selected' : ''}">
             <td class="triage-col-check"><input type="checkbox" class="triage-check" data-idx="${i}" ${checked} aria-label="Seleccionar ${escAttr(item.name)}" /></td>
             <td>
               <div class="triage-item-name">${escHtml(item.name)}</div>
-              <div class="triage-item-detail">${escHtml(item.detail)} · ${this.formatSize(item.totalSizeBytes)}</div>
+              <div class="triage-item-detail">${escHtml(item.detail)} · ${this.formatSize(item.totalSizeBytes)}${parentFolder ? ` · ${escHtml(parentFolder)}` : ''}</div>
             </td>
             <td><span class="badge ${badgeClass}">${escHtml(item.formatLabel)}</span></td>
             <td class="triage-num">${escHtml(String(item.sampleCount))}</td>
@@ -114,6 +143,7 @@ export class MultiAssetTriageModal {
       </div>
       <div class="nmm-triage-body">
         ${summaryHtml}
+        ${folderNavHtml}
         <div class="triage-toolbar">
           <div class="triage-toolbar-left">
             <input type="text" id="inp-triage-search" class="form-control triage-search" placeholder="Filtrar piezas…" value="${escAttr(this.searchTerm)}" autocomplete="off" spellcheck="false" />
@@ -161,13 +191,20 @@ export class MultiAssetTriageModal {
   private filteredItems(): DiscoveredSamplerItem[] {
     const term = this.searchTerm.trim().toLowerCase();
     const all = this.options?.discoveryReport.items ?? [];
-    if (!term) return all;
-    return all.filter(
-      (it) =>
+    return all.filter((it) => {
+      if (this.activeFolder) {
+        const clean = (it.primaryFilePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const top = clean.includes('/') ? clean.slice(0, clean.indexOf('/')) : '';
+        if (top !== this.activeFolder) return false;
+      }
+      if (!term) return true;
+      return (
         it.name.toLowerCase().includes(term) ||
         it.formatLabel.toLowerCase().includes(term) ||
-        it.detail.toLowerCase().includes(term)
-    );
+        it.detail.toLowerCase().includes(term) ||
+        (it.primaryFilePath && it.primaryFilePath.toLowerCase().includes(term))
+      );
+    });
   }
 
   private bindEvents(): void {
@@ -203,6 +240,17 @@ export class MultiAssetTriageModal {
     root.querySelector('#btn-triage-clear')?.addEventListener('click', () => {
       for (const it of this.filteredItems()) this.selectedIds.delete(it.id);
       this.refreshList();
+    });
+    root.querySelectorAll('.btn-triage-folder').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeFolder = (btn as HTMLElement).dataset.folder ?? '';
+        root.querySelectorAll('.btn-triage-folder').forEach((b) => {
+          const isAct = ((b as HTMLElement).dataset.folder ?? '') === this.activeFolder;
+          b.classList.toggle('btn-accent', isAct);
+          b.classList.toggle('btn-outline', !isAct);
+        });
+        this.refreshList();
+      });
     });
     root.querySelector('#triage-items-body')?.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('[data-act="load"]') as HTMLElement | null;

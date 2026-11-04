@@ -132,9 +132,10 @@ export function normalizeRms(
  */
 export function dcBlock(mono: Float32Array, sampleRate: number, cutoffHz = 20): Float32Array {
   const out = new Float32Array(mono.length);
+  if (mono.length === 0) return out;
   const sr = Math.max(1, sampleRate);
   const r = 1 - (2 * Math.PI * Math.max(0.5, cutoffHz)) / sr;
-  let prevX = 0;
+  let prevX = mono[0];
   let prevY = 0;
   for (let i = 0; i < mono.length; i++) {
     const x = mono[i];
@@ -442,3 +443,6 @@ export function extractTakeFeatures(mono: Float32Array, sampleRate: number): Tak
     spectralFlatness01,
   };
 }
+
+export * from './autoSamplerDsp.ts';
+

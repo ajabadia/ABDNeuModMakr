@@ -54,6 +54,7 @@ export interface MenuContext {
   openAudioChopper?: () => void;
   openAudioRecorder?: () => void;
   openLoopEditor?: () => void;
+  autoLoopAllZones?: () => void;
   openRawSamplerExport?: (initialFormat?: import('../core/export/rawSamplerTypes').RawSamplerFormat) => void;
   openExportDestinationModal?: () => void;
   openUniversalImportModal?: () => void;
@@ -409,6 +410,7 @@ export class MenuActions {
       onOpenAudioChopper: () => this.ctx.openAudioChopper?.(),
       onOpenAudioRecorder: () => this.ctx.openAudioRecorder?.(),
       onOpenLoopEditor: () => this.ctx.openLoopEditor?.(),
+      onAutoLoopAllZones: () => this.ctx.autoLoopAllZones?.(),
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();
         this.ctx.shell.getTelemetry().toggle();

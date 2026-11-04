@@ -2,7 +2,15 @@
 // ABDNeuModMakr — Phase 12: Batch Processor Types
 // ─────────────────────────────────────────────────────────
 
-import type { Zone, ExtendedRegion, SynthArticulationConfig } from '../types.ts';
+import type {
+  Zone,
+  ExtendedRegion,
+  SynthArticulationConfig,
+  AiAssistanceConfig,
+  KeyMappingMode,
+  ModelCoverArtwork,
+  PipelineChecklistSelection,
+} from '../types.ts';
 
 export type BatchJobSourceType =
   | 'sf2-preset'
@@ -61,6 +69,8 @@ export interface BatchModelCandidate {
   detectedSliceCount?: number;
   /** Fase 25: Generated standard MIDI groove pattern (.mid) bytes */
   midiPatternBytes?: Uint8Array;
+  /** Generated or assigned 512x512 WebP cover artwork */
+  coverArtwork?: ModelCoverArtwork | null;
 }
 
 export type BatchComplexityStrategy = 'auto' | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -92,6 +102,19 @@ export interface BatchConfig {
   exportMidiPattern?: boolean;
   /** Fase 25: Clear GPU VRAM cache between heavy batch stages to prevent OOM (default: true) */
   stagePipelineVramSafety?: boolean;
+  /**
+   * Queue execution order:
+   * - 'stage-grouped' (default): executes each pipeline stage (Ingest/Slice -> Separation -> Denoise -> BWE/Classify -> Spectral Resynth & Export)
+   *   across ALL models in the queue before moving to the next stage, keeping AI models warm in memory and avoiding repeated model load/unload thrashing.
+   * - 'per-job': executes all stages for Model 1, then Model 2, etc.
+   */
+  executionOrder?: 'stage-grouped' | 'per-job';
+  /** Active AI Assistance configuration inherited from session */
+  aiConfig?: AiAssistanceConfig;
+  /** Active Pipeline Checklist selection (Fase 0..3 steps) */
+  checklistSelection?: PipelineChecklistSelection;
+  /** Key mapping profile ('chromatic' | 'drum') */
+  keyMappingMode?: KeyMappingMode;
 }
 
 export interface BatchProgressState {
@@ -106,6 +129,9 @@ export interface BatchProgressState {
   overallPct: number;
   elapsedMs: number;
   estimatedRemainingMs: number;
+  currentStageIndex?: number;
+  totalStages?: number;
+  currentStageLabel?: string;
 }
 
 export interface BatchResultSummary {

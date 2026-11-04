@@ -186,9 +186,9 @@ export function createZipArchive(entries: readonly ZipEntryInput[]): Uint8Array 
  * Inflates a raw DEFLATE (RFC 1951, method 8) byte stream into an uncompressed Uint8Array.
  * Supports Block Type 0 (stored), Block Type 1 (fixed Huffman), and Block Type 2 (dynamic Huffman).
  */
-export const MAX_ZIP_ENTRIES = 2000;
-export const MAX_ZIP_ENTRY_BYTES = 100 * 1024 * 1024;
-export const MAX_ZIP_TOTAL_BYTES = 300 * 1024 * 1024;
+export const MAX_ZIP_ENTRIES = 5000;
+export const MAX_ZIP_ENTRY_BYTES = 800 * 1024 * 1024;
+export const MAX_ZIP_TOTAL_BYTES = 1024 * 1024 * 1024;
 
 export function inflateRaw(compressed: Uint8Array, expectedSize?: number): Uint8Array {
   if (expectedSize !== undefined && expectedSize > MAX_ZIP_ENTRY_BYTES) {

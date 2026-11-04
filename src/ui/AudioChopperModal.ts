@@ -34,18 +34,23 @@ import {
   sliceAudioBufferPreservingManualCuts,
   buildSlicesFromBoundaries,
   buildSlicesFromPhoneticWords,
+  buildSlicesFromMidiManifest,
   moveSliceBoundary,
   splitSliceAtFrame,
   deleteSlice,
   toggleSliceSilence,
   extractBoundaryFrames,
+  normalizePeakPcm,
+  conformLoopToTargetBpm,
   DEFAULT_SLICER_OPTIONS,
   type DetectedSlice,
   type SlicerOptions,
   type SlicerResult,
   type SlicerMode,
+  type SlicerWorkflowMode,
   type ManualSilenceRange,
 } from '../core/dsp/AudioSlicerEngine.ts';
+import { extractManifestFromWavBytes } from '../core/autoSampler/MidiAutoSampleSession.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
@@ -54,8 +59,9 @@ import {
   reduceNoiseWithProfile,
   type NoiseProfile,
 } from '../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
-import type { Zone, ExtendedRegion, WorkingMode } from '../core/types.ts';
+import type { Zone, ExtendedRegion, WorkingMode, UnifiedSurfaceUiConfig } from '../core/types.ts';
 import { midiToNoteName } from './ZoneRibbon.ts';
+import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 
 export interface AudioChopperContext {
   getCurrentWorkingMode: () => WorkingMode;
@@ -67,6 +73,7 @@ export interface AudioChopperContext {
     regions: ExtendedRegion[],
     audioSamples: Array<{ name: string; buffer: ArrayBuffer }>
   ) => void;
+  onUpdateTempoSync?: (tempoSync: NonNullable<UnifiedSurfaceUiConfig['tempoSync']>) => void;
   onAuditionPcm?: (pcm: Float32Array, sampleRate: number) => void;
   onStopAudition?: () => void;
   onRegisterSampleBuffer?: (name: string, buffer: ArrayBuffer) => void;
@@ -115,11 +122,19 @@ export class AudioChopperModal {
   // Floating Context Menu element
   private activeContextMenuEl: HTMLElement | null = null;
 
+  // Unnormalized source audio: normalize works on a copy, never mutates this.
+  private sourcePcm: Float32Array | null = null;
+  private normalizeEnabled: boolean = false;
+
   // Manual slice boundary & silence tracking
   private manualCutFrames: Set<number> = new Set();
   private manualSilenceRanges: ManualSilenceRange[] = [];
   private manualCutsPolicy: 'prompt' | 'keep' | 'discard' = 'prompt';
   private activeConfirmModalEl: HTMLElement | null = null;
+
+  // Trampa de foco compartida + trampa del diálogo anidado (confirm/stems viven en body).
+  private focusTrap: FocusTrap | null = null;
+  private nestedTrap: FocusTrap | null = null;
 
   // Fase 30: Captured Noise Print from selected slice or silence
   private capturedNoiseProfile: NoiseProfile | null = null;
@@ -134,8 +149,12 @@ export class AudioChopperModal {
     sourceFilename: string = '',
     sliceFrames?: number[]
   ): void {
-    if (this.backdropEl) return;
-    this.pcm = pcm;
+    // Recarga permitida: si el modal ya está abierto, se sustituye el audio
+    // y se repinta (antes se ignoraba en silencio y solo salía el toast).
+    if (this.backdropEl) {
+      this.context.onStopAudition?.();
+    }
+    this.setWorkingAudio(pcm);
     this.sampleRate = Math.max(1, sampleRate);
     this.sourceFilename = sourceFilename;
     this.zoomFactor = 1.0;
@@ -164,6 +183,20 @@ export class AudioChopperModal {
     }
 
     this.render();
+
+    if (!this.focusTrap && this.backdropEl) {
+      this.focusTrap = createModalFocusTrap(this.backdropEl, {
+        initialFocusSelector: '#btn-chopper-close',
+        onEscape: () => {
+          if (this.activeContextMenuEl) {
+            this.closeContextMenu();
+          } else if (this.backdropEl) {
+            this.close();
+          }
+        },
+      });
+      this.focusTrap.activate();
+    }
   }
 
   public openWithAudioBuffer(arrayBuf: ArrayBuffer, filename: string, sliceFrames?: number[]): void {
@@ -183,13 +216,40 @@ export class AudioChopperModal {
         mono[i] = (decoded.channels[0][i] + decoded.channels[1][i]) * 0.5;
       }
     }
+
+    // Fase 37.6: Check if WAV contains an embedded MidiAutoSampleManifest (`atem` chunk)
+    if (!isAif && (!sliceFrames || sliceFrames.length === 0)) {
+      const autoManifest = extractManifestFromWavBytes(arrayBuf);
+      if (autoManifest && autoManifest.events.length > 0) {
+        this.open(mono, decoded.sampleRate, filename);
+        this.currentResult = buildSlicesFromMidiManifest(mono, decoded.sampleRate, autoManifest);
+        const boundaries = extractBoundaryFrames(this.currentResult, mono.length);
+        this.manualCutFrames = new Set(boundaries.filter((f) => f > 0 && f < mono.length));
+        this.selectedSliceId = this.currentResult.slices[0]?.id ?? null;
+        this.render();
+        toast(
+          `Cargadas ${this.currentResult.slices.length} notas/velocidades desde el manifiesto MIDI de AutoSampler (${filename})`,
+          'success'
+        );
+        return;
+      }
+    }
+
     this.open(mono, decoded.sampleRate, filename, sliceFrames);
   }
 
   public close(): void {
     this.context.onStopAudition?.();
     this.closeContextMenu();
-    this.closeConfirmModal();
+    this.closeConfirmModal(false);
+    if (this.nestedTrap) {
+      this.nestedTrap.deactivate();
+      this.nestedTrap = null;
+    }
+    if (this.focusTrap) {
+      this.focusTrap.deactivate();
+      this.focusTrap = null;
+    }
     if (this.backdropEl) {
       this.backdropEl.remove();
       this.backdropEl = null;
@@ -352,7 +412,7 @@ export class AudioChopperModal {
         pcm[i] += (Math.random() * 2 - 1) * Math.exp(-hatT * 60) * 0.25;
       }
     }
-    this.pcm = pcm;
+    this.setWorkingAudio(pcm);
     this.sampleRate = sr;
     this.sourceFilename = 'DemoBreak.wav';
     this.zoomFactor = 1.0;
@@ -396,6 +456,17 @@ export class AudioChopperModal {
 
   private hasManualCuts(): boolean {
     return this.manualCutFrames.size > 0 || this.manualSilenceRanges.length > 0;
+  }
+
+  /** Guarda el original sin tocar y deriva el buffer de trabajo (copia normalizada si está activo). */
+  private setWorkingAudio(pcm: Float32Array): void {
+    this.sourcePcm = pcm;
+    this.pcm = this.applyNormalize(pcm);
+  }
+
+  private applyNormalize(pcm: Float32Array): Float32Array {
+    if (!this.normalizeEnabled || pcm.length === 0) return pcm;
+    return normalizePeakPcm(pcm).pcm;
   }
 
   private recomputeSlices(forceAuto: boolean = false): void {
@@ -490,10 +561,29 @@ export class AudioChopperModal {
     }
   }
 
-  private closeConfirmModal(): void {
+  /** Suspende la trampa del chopper mientras un diálogo anidado (body) tiene el foco. */
+  private suspendFocusTrap(): void {
+    this.focusTrap?.deactivate();
+  }
+
+  /** Reanuda la trampa del chopper al cerrarse el diálogo anidado. */
+  private resumeFocusTrap(): void {
+    if (this.backdropEl && this.focusTrap) {
+      this.focusTrap.activate();
+    }
+  }
+
+  private closeConfirmModal(resumeParent: boolean = true): void {
+    if (this.nestedTrap) {
+      this.nestedTrap.deactivate();
+      this.nestedTrap = null;
+    }
     if (this.activeConfirmModalEl) {
       this.activeConfirmModalEl.remove();
       this.activeConfirmModalEl = null;
+    }
+    if (resumeParent) {
+      this.resumeFocusTrap();
     }
   }
 
@@ -514,7 +604,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
             <h2>Manual Slice Edits Detected</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-confirm-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-confirm-close" aria-label="Close">${ICONS.close}</button>
         </header>
         <div class="nmm-modal-body nmm-audio-modal-body">
           <p>
@@ -530,9 +620,9 @@ export class AudioChopperModal {
           <p class="nmm-audio-table-hint">
             How would you like to handle your manual cuts?
           </p>
-          <label class="nmm-audio-table-hint">
-            <input type="checkbox" id="chk-remember-policy" />
-            Remember choice for subsequent changes in this session
+          <label class="batch-check nmm-audio-table-hint">
+            <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-remember-policy" />
+            <span>Remember choice for subsequent changes in this session</span>
           </label>
         </div>
         <footer class="nmm-modal-footer">
@@ -549,6 +639,17 @@ export class AudioChopperModal {
 
     document.body.appendChild(modal);
     this.activeConfirmModalEl = modal;
+
+    // El diálogo anidado vive fuera del backdrop: trampa propia + padre en pausa.
+    this.suspendFocusTrap();
+    this.nestedTrap = createModalFocusTrap(modal, {
+      initialFocusSelector: '#btn-cuts-keep',
+      onEscape: () => {
+        this.closeConfirmModal();
+        onCancel();
+      },
+    });
+    this.nestedTrap.activate();
 
     const rememberCheck = modal.querySelector('#chk-remember-policy') as HTMLInputElement | null;
 
@@ -666,7 +767,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>REX2 Audio Pairing Assistant</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-rx2-pairing-close" aria-label="Close">${ICONS.close}</button>
         </header>
 
         <div class="nmm-modal-body nmm-audio-modal-body">
@@ -720,6 +821,15 @@ export class AudioChopperModal {
 
     document.body.appendChild(modal);
     this.activeConfirmModalEl = modal;
+
+    // Diálogo anidado fuera del backdrop: trampa propia + padre en pausa.
+    // Todos los cierres pasan por closeConfirmModal(), que reanuda al padre.
+    this.suspendFocusTrap();
+    this.nestedTrap = createModalFocusTrap(modal, {
+      initialFocusSelector: '#btn-rx2-browse-wav',
+      onEscape: () => this.closeConfirmModal(),
+    });
+    this.nestedTrap.activate();
 
     modal.querySelector('#btn-rx2-pairing-close')?.addEventListener('click', () => {
       this.closeConfirmModal();
@@ -809,15 +919,7 @@ export class AudioChopperModal {
       this.backdropEl.addEventListener('click', (e) => {
         if (e.target === this.backdropEl) this.close();
       });
-      window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          if (this.activeContextMenuEl) {
-            this.closeContextMenu();
-          } else if (this.backdropEl) {
-            this.close();
-          }
-        }
-      });
+      // Escape + Tab los gestiona la trampa de foco compartida (ver open()).
     }
 
     const hasAudio = this.pcm.length > 0;
@@ -835,13 +937,17 @@ export class AudioChopperModal {
     const demucsDecl = resolveAiActionDeclaration('chopper-demucs-split', { isBridgeConnected: isBridgeConn });
     const whisperDecl = resolveAiActionDeclaration('chopper-whisper-align', { isBridgeConnected: isBridgeConn });
     const bweDecl = resolveAiActionDeclaration('chopper-bwe-enhance', { isBridgeConnected: isBridgeConn });
+    const isOneShotWorkflow = (this.options.workflowMode ?? 'rex_groove_loop') === 'one_shot_extractor';
+    const detectedBpm = res?.detectedBpm ?? this.options.bpm ?? 120;
+    const detectedBars = res?.detectedBars ?? this.options.barCount ?? 2;
+    const effectiveTargetBpm = this.options.targetBpm ?? res?.targetBpm ?? detectedBpm;
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-chopper-window" role="dialog" aria-modal="true" aria-labelledby="chopper-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
-            <h2 id="chopper-title">Audio Chopper &amp; Multi-Layer Auto-Slicer</h2>
+            <h2 id="chopper-title">AutoSlicer — Audio Chopper &amp; Multi-Layer Slicer</h2>
             <span class="panel-badge ${hasAudio ? 'badge-ai-on' : 'badge-muted'}">
               ${hasAudio ? escHtml(this.sourceFilename) : 'No Sample Loaded'}
             </span>
@@ -888,6 +994,9 @@ export class AudioChopperModal {
                   <span class="val-pill" id="lbl-chopper-zoom">${this.zoomFactor.toFixed(1)}x</span>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-zoom-in" title="Zoom In Waveform">+</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-zoom-fit" title="Fit Entire Audio File to Viewport">Fit</button>
+                  <button type="button" class="btn btn-xs ${this.playingSliceId === '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-chopper-play-full" title="Play or stop the entire WAV file from start to end">
+                    ${this.playingSliceId === '__full_wav__' ? ICONS.stop : ICONS.play} Play Full WAV
+                  </button>
                 </div>
                 <div class="chopper-toolbar-right">
                   <div class="chopper-waveform-stats">
@@ -935,8 +1044,11 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p1" title="Nudge boundary +1 sample">+1</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p10" title="Nudge boundary +10 samples">+10 &gt;</button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p100" title="Nudge boundary +100 samples">+100 &gt;&gt;</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-play-slice" title="Audition selected slice">
-                    ${ICONS.play} Play
+                  <button type="button" class="btn btn-xs ${this.playingSliceId === '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-mag-play-full" title="Reproducir o detener todo el WAV completo de principio a fin">
+                    ${this.playingSliceId === '__full_wav__' ? ICONS.stop : ICONS.play} Play WAV
+                  </button>
+                  <button type="button" class="btn btn-xs ${this.playingSliceId && this.playingSliceId !== '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-mag-play-slice" title="Reproducir solo el slice seleccionado">
+                    ${this.playingSliceId && this.playingSliceId !== '__full_wav__' ? ICONS.stop : ICONS.play} Play Slice
                   </button>
                   <button type="button" class="btn btn-xs btn-outline" id="btn-mag-toggle-silence" title="Toggle silence for current slice">
                     ${ICONS.eyeOff || 'Mute'} Silence
@@ -954,6 +1066,57 @@ export class AudioChopperModal {
 
             <!-- Real-Time Parameters & DSP/AI Action Card (Matches AutoLoop & Audio Recorder) -->
             <div class="chopper-params-card">
+              <!-- Top Row: Macro-Workflow Mode (One-Shot Extractor vs REX/Groove Loop) + Elastic BPM Conformer -->
+              <div class="chopper-params-row" style="padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--color-panel-border);">
+                <div class="chopper-param-group">
+                  <div class="chopper-param-header">
+                    <span>MODO DE FLUJO (WORKFLOW)</span>
+                  </div>
+                  <div class="btn-group">
+                    <button type="button" class="btn btn-xs ${isOneShotWorkflow ? 'btn-accent is-active' : 'btn-outline'}" id="btn-wf-oneshot" title="Cortar y mapear notas aisladas de un instrumento cromático o golpes sueltos de una caja de ritmos grabados nota a nota">
+                      ${ICONS.scissors} 1. Cortar One-Shots (Notas / Kit)
+                    </button>
+                    <button type="button" class="btn btn-xs ${!isOneShotWorkflow ? 'btn-accent is-active' : 'btn-outline'}" id="btn-wf-rex" title="Bucle rítmico o frase melódica tipo REX: detecta el BPM y compases, extrae la partitura MIDI (.mid) con las notas reales y permite igualar el BPM a un Target BPM">
+                      ${ICONS.wave} 2. Bucle Rítmico / Melodía REX (BPM + .mid)
+                    </button>
+                  </div>
+                </div>
+
+                <fieldset class="conditioned-fieldset" ${isOneShotWorkflow ? 'disabled' : ''} style="display: contents;">
+                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
+                    <div class="chopper-param-header">
+                      <span>BPM DETECTADO ${isOneShotWorkflow ? '<span class="cond-reason-badge">SOLO MODO REX</span>' : ''}</span>
+                    </div>
+                    <span class="val-pill font-mono" id="lbl-chopper-detected-bpm" title="BPM estimado automáticamente por intervalos entre ataques (IOI) y duración de compases">
+                      ${detectedBpm} BPM (${detectedBars} comp.)
+                    </span>
+                  </div>
+
+                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
+                    <div class="chopper-param-header">
+                      <span>COMPASES (BARS)</span>
+                    </div>
+                    <input type="number" id="inp-chopper-bars" class="form-control font-mono" min="1" max="64" step="1" value="${detectedBars}" title="Número de compases (4/4) del bucle o melodía" />
+                  </div>
+
+                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
+                    <div class="chopper-param-header">
+                      <span>TARGET BPM (ELÁSTICO)</span>
+                    </div>
+                    <input type="number" id="inp-chopper-target-bpm" class="form-control font-mono" min="20" max="300" step="0.5" value="${effectiveTargetBpm}" title="Ajusta el BPM de destino conservando intactos los primeros 25 ms de cada ataque" />
+                  </div>
+
+                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
+                    <div class="chopper-param-header">
+                      <span>AUDICIÓN A TARGET BPM</span>
+                    </div>
+                    <button type="button" class="btn btn-xs ${this.playingSliceId === '__conformed_loop__' ? 'btn-accent' : 'btn-outline'}" id="btn-chopper-play-conformed" title="Escuchar el bucle o melodía re-ensamblado elásticamente a Target BPM sin perder pegada de ataque">
+                      ${this.playingSliceId === '__conformed_loop__' ? ICONS.stop : ICONS.play} Play @ ${effectiveTargetBpm} BPM
+                    </button>
+                  </div>
+                </fieldset>
+              </div>
+
               <div class="chopper-params-row">
                 <!-- Slicing Mode -->
                 <div class="chopper-param-group">
@@ -996,12 +1159,20 @@ export class AudioChopperModal {
                 </div>
 
                 <!-- Silence Gate Threshold -->
-                <div class="chopper-param-group flex-1">
+                <div class="chopper-param-group flex-1 ${this.options.detectSilences === false ? 'is-conditioned-disabled' : ''}">
                   <div class="chopper-param-header">
-                    <span>SILENCE GATE</span>
+                    <span>SILENCE GATE ${this.options.detectSilences === false ? '<span class="cond-reason-badge">OFF</span>' : ''}</span>
                     <span class="chopper-param-val" id="lbl-silence-val">${this.options.silenceThresholdDb} dB</span>
                   </div>
-                  <input type="range" class="form-control" id="rng-silence" min="-60" max="-18" value="${this.options.silenceThresholdDb}" />
+                  <input type="range" class="form-control" id="rng-silence" min="-60" max="-18" value="${this.options.silenceThresholdDb}" ${this.options.detectSilences === false ? 'disabled title="Activa Detect Silences abajo para ajustar el umbral"' : ''} />
+                </div>
+
+                <!-- Min Silence Duration -->
+                <div class="chopper-param-group ${this.options.detectSilences === false ? 'is-conditioned-disabled' : ''}">
+                  <div class="chopper-param-header">
+                    <span>MIN SILENCE (MS) ${this.options.detectSilences === false ? '<span class="cond-reason-badge">OFF</span>' : ''}</span>
+                  </div>
+                  <input type="number" id="inp-minsilence" class="form-control font-mono" min="0" max="2000" step="10" value="${this.options.minSilenceMs ?? 120}" ${this.options.detectSilences === false ? 'disabled title="Activa Detect Silences abajo para ajustar la duración mínima"' : 'title="Minimum quiet duration to flag a slice as silence"'} />
                 </div>
 
                 <!-- Min Slice Ms Input -->
@@ -1027,8 +1198,14 @@ export class AudioChopperModal {
                   <button type="button" class="btn btn-sm ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
                     ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.options.snapZeroCrossing ? 'ON' : 'OFF'}
                   </button>
-                  <button type="button" class="btn btn-sm ${this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-overlap" title="Allow overlapping key & velocity zones">
-                    Overlaps: ${this.options.allowOverlap ? 'ALLOW' : 'DISJOINT'}
+                  <button type="button" class="btn btn-sm ${isWorkingExtended && this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'} ${!isWorkingExtended ? 'is-conditioned-disabled' : ''}" id="btn-toggle-overlap" ${!isWorkingExtended ? 'disabled title="Overlaps solo disponibles en Modo Extended (en Modo Classic el teclado 0..127 es contiguo y disjunto)"' : 'title="Allow overlapping key & velocity zones"'}>
+                    Overlaps: ${isWorkingExtended && this.options.allowOverlap ? 'ALLOW' : 'DISJOINT'} ${!isWorkingExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}
+                  </button>
+                  <button type="button" class="btn btn-sm ${this.options.detectSilences !== false ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-silence-detect" title="Auto-flag quiet slices as silence (excluded when injecting into session)">
+                    Detect Silences: ${this.options.detectSilences !== false ? 'ON' : 'OFF'}
+                  </button>
+                  <button type="button" class="btn btn-sm ${this.normalizeEnabled ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-normalize" title="Peak-normalize working audio to -1 dBFS (non-destructive: source buffer untouched)">
+                    Normalize: ${this.normalizeEnabled ? 'ON' : 'OFF'}
                   </button>
                 </div>
 
@@ -1095,8 +1272,13 @@ export class AudioChopperModal {
               hasAudio
                 ? `
               <!-- Draggable MIDI Pattern Button -->
-              <button type="button" class="btn btn-accent btn-drag-midi" id="btn-drag-midi" draggable="true" title="Drag MIDI Pattern directly to DAW track or click to download .mid file">
-                ${ICONS.piano} Drag MIDI to DAW (.mid)
+              <button type="button" class="btn btn-accent btn-drag-midi ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}" id="btn-drag-midi" draggable="${!isOneShotWorkflow}" ${isOneShotWorkflow ? 'disabled title="Cambia al Modo 2 (Bucle Rítmico / Melodía REX) para exportar o arrastrar la partitura MIDI (.mid) al DAW"' : 'title="Drag MIDI Pattern directly to DAW track or click to download .mid file (at Target BPM)"'}>
+                ${ICONS.piano} Drag MIDI to DAW (.mid @ ${effectiveTargetBpm} BPM) ${isOneShotWorkflow ? '<span class="cond-reason-badge">MODO REX</span>' : ''}
+              </button>
+
+              <!-- Inject Conformed Loop at Target BPM Button -->
+              <button type="button" class="btn btn-outline ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}" id="btn-chopper-inject-loop" ${validCount === 0 || isOneShotWorkflow ? 'disabled' : ''} title="${isOneShotWorkflow ? 'Solo disponible en Modo 2 (Bucle Rítmico / Melodía REX)' : 'Inyecta el bucle continuo re-ensamblado a Target BPM en una zona con loop continuo y guarda Tempo-Sync para el Resinator v2'}">
+                ${ICONS.wave} Inyectar Loop Continuo (${effectiveTargetBpm} BPM) ${isOneShotWorkflow ? '<span class="cond-reason-badge">MODO REX</span>' : ''}
               </button>
 
               <!-- Inject as Zones Button -->
@@ -1861,6 +2043,47 @@ export class AudioChopperModal {
       this.render();
     };
 
+    const switchWorkflowMode = (newWf: SlicerWorkflowMode) => {
+      if ((this.options.workflowMode ?? 'rex_groove_loop') === newWf) return;
+      this.options.workflowMode = newWf;
+      this.recomputeSlices(false);
+      this.render();
+      toast(
+        newWf === 'one_shot_extractor'
+          ? 'Modo 1 activado: Cortar y Mapear One-Shots (Cromático o Caja de Ritmos nota a nota).'
+          : 'Modo 2 activado: Bucle Rítmico / Melodía tipo REX (BPM, Groove MIDI y Conformador de Tempo).',
+        'info'
+      );
+    };
+
+    this.backdropEl.querySelector('#btn-wf-oneshot')?.addEventListener('click', () => {
+      switchWorkflowMode('one_shot_extractor');
+    });
+    this.backdropEl.querySelector('#btn-wf-rex')?.addEventListener('click', () => {
+      switchWorkflowMode('rex_groove_loop');
+    });
+
+    const inpBars = this.backdropEl.querySelector<HTMLInputElement>('#inp-chopper-bars');
+    inpBars?.addEventListener('change', () => {
+      const bars = Math.max(1, Math.min(64, parseInt(inpBars.value, 10) || 2));
+      this.options.barCount = bars;
+      this.recomputeSlices(false);
+      this.render();
+    });
+
+    const inpTargetBpm = this.backdropEl.querySelector<HTMLInputElement>('#inp-chopper-target-bpm');
+    inpTargetBpm?.addEventListener('change', () => {
+      const bpm = Math.max(20, Math.min(300, parseFloat(inpTargetBpm.value) || 120));
+      this.options.targetBpm = bpm;
+      this.recomputeSlices(false);
+      this.render();
+      toast(`Target BPM ajustado a ${bpm} BPM (transitorios de 25 ms bloqueados).`, 'info');
+    });
+
+    this.backdropEl.querySelector('#btn-chopper-play-conformed')?.addEventListener('click', () => {
+      this.auditionConformedLoop();
+    });
+
     this.backdropEl.querySelector('#btn-mode-drums')?.addEventListener('click', () => switchMode('drums', 45));
     this.backdropEl.querySelector('#btn-mode-vocals')?.addEventListener('click', () => switchMode('vocals', 250));
     this.backdropEl.querySelector('#btn-mode-chromatic')?.addEventListener('click', () => switchMode('chromatic'));
@@ -1986,6 +2209,50 @@ export class AudioChopperModal {
       this.render();
     });
 
+    // Detect Silences Toggle (inserts cuts around silent intervals >= minSilenceMs and mutes them so they do not go to the zone matrix)
+    this.backdropEl.querySelector('#btn-toggle-silence-detect')?.addEventListener('click', () => {
+      this.options.detectSilences = this.options.detectSilences === false;
+      this.recomputeSlices(false);
+      this.render();
+      const n = this.currentResult?.silenceSlicesCount ?? 0;
+      toast(
+        this.options.detectSilences === false
+          ? 'Silence detection OFF: all slices active.'
+          : `Silence detection ON: ${n} silent interval(s) cut and muted (excluded from Zone Matrix).`,
+        'info'
+      );
+    });
+
+    // Min Silence Duration Input (flags only: boundaries never move, manuals preserved)
+    const inpMinSilence = this.backdropEl.querySelector('#inp-minsilence') as HTMLInputElement | null;
+    inpMinSilence?.addEventListener('change', () => {
+      const v = parseInt(inpMinSilence.value, 10);
+      this.options.minSilenceMs = Number.isFinite(v) ? Math.max(0, Math.min(2000, v)) : 120;
+      this.recomputeSlices(false);
+      this.render();
+    });
+
+    // Peak Normalize Toggle (gain only: boundaries and manual frames never move)
+    this.backdropEl.querySelector('#btn-toggle-normalize')?.addEventListener('click', () => {
+      if (!this.sourcePcm || this.sourcePcm.length === 0) {
+        toast('Load audio before toggling Normalize.', 'warning');
+        return;
+      }
+      this.normalizeEnabled = !this.normalizeEnabled;
+      if (this.normalizeEnabled) {
+        const { pcm, appliedGainDb, inputPeakDb } = normalizePeakPcm(this.sourcePcm);
+        this.pcm = pcm;
+        this.recomputeSlices(false);
+        this.render();
+        toast(`Normalized to -1 dBFS: ${appliedGainDb >= 0 ? '+' : ''}${appliedGainDb.toFixed(1)} dB (was ${inputPeakDb.toFixed(1)} dBFS).`, 'success');
+      } else {
+        this.pcm = this.sourcePcm;
+        this.recomputeSlices(false);
+        this.render();
+        toast('Normalize OFF: back to original levels.', 'info');
+      }
+    });
+
     // Reset Manual Cuts to Full Auto
     this.backdropEl.querySelector('#btn-reset-cuts-auto')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2037,9 +2304,17 @@ export class AudioChopperModal {
     this.backdropEl.querySelector('#btn-nudge-p10')?.addEventListener('click', () => this.nudgeActiveBoundary(10));
     this.backdropEl.querySelector('#btn-nudge-p100')?.addEventListener('click', () => this.nudgeActiveBoundary(100));
 
+    this.backdropEl.querySelector('#btn-chopper-play-full')?.addEventListener('click', () => {
+      this.auditionFullWav();
+    });
+
+    this.backdropEl.querySelector('#btn-mag-play-full')?.addEventListener('click', () => {
+      this.auditionFullWav();
+    });
+
     this.backdropEl.querySelector('#btn-mag-play-slice')?.addEventListener('click', () => {
       const sl = this.currentResult?.slices.find((s) => s.id === this.selectedSliceId) || this.currentResult?.slices[0];
-      if (sl) this.auditionSlice(sl);
+      if (sl) this.auditionSlice(sl, true);
     });
 
     this.backdropEl.querySelector('#btn-mag-toggle-silence')?.addEventListener('click', () => {
@@ -2098,6 +2373,11 @@ export class AudioChopperModal {
         toast('Downloaded Standard MIDI pattern for sliced audio.', 'success');
       });
     }
+
+    // Inject Conformed Loop at Target BPM Action
+    this.backdropEl.querySelector('#btn-chopper-inject-loop')?.addEventListener('click', () => {
+      this.handleInjectConformedLoopIntoSession();
+    });
 
     // Inject Zones Action
     this.backdropEl.querySelector('#btn-chopper-inject')?.addEventListener('click', () => {
@@ -2616,11 +2896,201 @@ export class AudioChopperModal {
     });
   }
 
-  private auditionSlice(sl: DetectedSlice): void {
+  private auditionSlice(sl: DetectedSlice, toggleStopIfSame: boolean = false): void {
+    if (toggleStopIfSame && this.playingSliceId === sl.id) {
+      this.stopAudition();
+      return;
+    }
     this.playingSliceId = sl.id;
     if (this.context.onAuditionPcm) {
       this.context.onAuditionPcm(sl.pcm, this.sampleRate);
     }
+    this.syncPlayButtonsUi();
+  }
+
+  private auditionFullWav(): void {
+    if (this.pcm.length === 0) return;
+    if (this.playingSliceId === '__full_wav__') {
+      this.stopAudition();
+      return;
+    }
+    this.playingSliceId = '__full_wav__';
+    if (this.context.onAuditionPcm) {
+      this.context.onAuditionPcm(this.pcm, this.sampleRate);
+    }
+    this.syncPlayButtonsUi();
+  }
+
+  private auditionConformedLoop(): void {
+    if (this.pcm.length === 0 || !this.currentResult) return;
+    if (this.playingSliceId === '__conformed_loop__') {
+      this.stopAudition();
+      return;
+    }
+    const sourceBpm = this.currentResult.detectedBpm || this.options.bpm || 120;
+    const targetBpm = this.options.targetBpm ?? this.currentResult.targetBpm ?? sourceBpm;
+    const conformed = conformLoopToTargetBpm(
+      this.pcm,
+      this.sampleRate,
+      this.currentResult.slices,
+      sourceBpm,
+      targetBpm,
+      { barCount: this.currentResult.detectedBars ?? this.options.barCount }
+    );
+    this.playingSliceId = '__conformed_loop__';
+    if (this.context.onAuditionPcm) {
+      this.context.onAuditionPcm(conformed.pcm, this.sampleRate);
+    }
+    this.syncPlayButtonsUi();
+  }
+
+  private stopAudition(): void {
+    this.playingSliceId = null;
+    this.context.onStopAudition?.();
+    this.syncPlayButtonsUi();
+  }
+
+  private syncPlayButtonsUi(): void {
+    if (!this.backdropEl) return;
+    const isFull = this.playingSliceId === '__full_wav__';
+    const isConformed = this.playingSliceId === '__conformed_loop__';
+    const isSlice = Boolean(
+      this.playingSliceId &&
+        this.playingSliceId !== '__full_wav__' &&
+        this.playingSliceId !== '__conformed_loop__'
+    );
+
+    const topFullBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-chopper-play-full');
+    if (topFullBtn) {
+      topFullBtn.classList.toggle('btn-accent', isFull);
+      topFullBtn.classList.toggle('btn-outline', !isFull);
+      topFullBtn.innerHTML = `${isFull ? ICONS.stop : ICONS.play} Play Full WAV`;
+    }
+
+    const conformedBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-chopper-play-conformed');
+    if (conformedBtn) {
+      const targetBpm =
+        this.options.targetBpm ??
+        this.currentResult?.targetBpm ??
+        this.currentResult?.detectedBpm ??
+        120;
+      conformedBtn.classList.toggle('btn-accent', isConformed);
+      conformedBtn.classList.toggle('btn-outline', !isConformed);
+      conformedBtn.innerHTML = `${isConformed ? ICONS.stop : ICONS.play} Play @ ${targetBpm} BPM`;
+    }
+
+    const magFullBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-mag-play-full');
+    if (magFullBtn) {
+      magFullBtn.classList.toggle('btn-accent', isFull);
+      magFullBtn.classList.toggle('btn-outline', !isFull);
+      magFullBtn.innerHTML = `${isFull ? ICONS.stop : ICONS.play} Play WAV`;
+    }
+
+    const magSliceBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-mag-play-slice');
+    if (magSliceBtn) {
+      magSliceBtn.classList.toggle('btn-accent', isSlice);
+      magSliceBtn.classList.toggle('btn-outline', !isSlice);
+      magSliceBtn.innerHTML = `${isSlice ? ICONS.stop : ICONS.play} Play Slice`;
+    }
+  }
+
+  private handleInjectConformedLoopIntoSession(): void {
+    const res = this.currentResult;
+    if (!res || this.pcm.length === 0) return;
+
+    const validSlices = res.slices.filter((s) => !s.isSilence);
+    if (validSlices.length === 0) {
+      toast('No valid slices to conform into a loop.', 'warning');
+      return;
+    }
+
+    const sourceBpm = res.detectedBpm || this.options.bpm || 120;
+    const targetBpm = this.options.targetBpm ?? res.targetBpm ?? sourceBpm;
+    const barCount = res.detectedBars ?? this.options.barCount ?? 2;
+
+    const conformed = conformLoopToTargetBpm(
+      this.pcm,
+      this.sampleRate,
+      res.slices,
+      sourceBpm,
+      targetBpm,
+      { barCount }
+    );
+
+    const isExtended = this.context.getCurrentWorkingMode() === 'extended';
+    const baseName = (this.sourceFilename || 'loop').replace(/\.[^/.]+$/, '');
+    const loopWavName = `${baseName}_loop_${Math.round(targetBpm)}bpm.wav`;
+    const rootKey = this.options.mode === 'chromatic' ? (validSlices[0]?.rootKey ?? 60) : 60;
+    const wavBuffer = encodePcm16Wav(conformed.pcm, this.sampleRate, {
+      rootKey,
+      lowKey: 0,
+      highKey: 127,
+      loopStart: 0,
+      loopEnd: Math.max(0, conformed.pcm.length - 1),
+    });
+
+    const audioSamples = [{ name: loopWavName, buffer: wavBuffer }];
+
+    // Persist Tempo-Sync contract metadata for the ABDAxionikVS Resinator v2
+    this.context.onUpdateTempoSync?.({
+      enabled: true,
+      sourceBpm: targetBpm,
+      targetBpm,
+      barCount,
+      timeSignature: [4, 4],
+      grooveMode: this.options.mode === 'chromatic' ? 'melodic_phrase' : 'rex_loop',
+      sliceCount: validSlices.length,
+    });
+
+    if (isExtended) {
+      const region: ExtendedRegion = {
+        id: `reg_loop_${Date.now()}`,
+        sampleName: loopWavName,
+        rootKey,
+        lowKey: 0,
+        highKey: 127,
+        lowVel: 1,
+        highVel: 127,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: this.options.mode === 'drums' ? 0 : 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'loop_continuous',
+        loopStart: 0,
+        loopEnd: conformed.pcm.length,
+        loopCrossfadeMs: 5,
+        sampleRate: this.sampleRate,
+        numChannels: 1,
+      };
+      this.context.onInjectExtendedRegions?.([region], audioSamples);
+      toast(
+        `Inyectado Loop Continuo conformado a ${targetBpm} BPM (${barCount} compases) + Tempo-Sync activo para Resinator v2.`,
+        'success'
+      );
+    } else {
+      const zone: Zone = {
+        id: `zone_loop_${Date.now()}`,
+        rootKey,
+        lowKey: 0,
+        highKey: 127,
+        sampleLow: loopWavName,
+        sampleHigh: null,
+        velSplit: 64,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+      };
+      this.context.onInjectClassicZones?.([zone], audioSamples);
+      toast(`Inyectado Loop Continuo conformado a ${targetBpm} BPM en sesión Classic.`, 'success');
+    }
+
+    this.close();
   }
 
   private handleInjectSlicesIntoSession(): void {
@@ -2631,6 +3101,22 @@ export class AudioChopperModal {
     if (validSlices.length === 0) {
       toast('No valid slices to inject into session.', 'warning');
       return;
+    }
+
+    // If in REX / Groove Loop workflow, also store Tempo-Sync metadata in ProcessConfig
+    if ((this.options.workflowMode ?? 'rex_groove_loop') === 'rex_groove_loop') {
+      const sourceBpm = res.detectedBpm || this.options.bpm || 120;
+      const targetBpm = this.options.targetBpm ?? res.targetBpm ?? sourceBpm;
+      const barCount = res.detectedBars ?? this.options.barCount ?? 2;
+      this.context.onUpdateTempoSync?.({
+        enabled: true,
+        sourceBpm,
+        targetBpm,
+        barCount,
+        timeSignature: [4, 4],
+        grooveMode: this.options.mode === 'chromatic' ? 'melodic_phrase' : 'sliced_kit',
+        sliceCount: validSlices.length,
+      });
     }
 
     const isExtended = this.context.getCurrentWorkingMode() === 'extended';
@@ -2788,7 +3274,7 @@ export class AudioChopperModal {
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
             <h2>Demucs AI Stem Separation</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-stem-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-stem-close" aria-label="Close">${ICONS.close}</button>
         </header>
         <div class="nmm-modal-body nmm-audio-modal-body">
           <p>
@@ -2797,20 +3283,20 @@ export class AudioChopperModal {
           <div class="nmm-audio-controls-card">
             <div class="nmm-audio-table-title">Stems to Separate:</div>
             <div class="nmm-audio-params-grid">
-              <label>
-                <input type="checkbox" id="chk-stem-vocals" checked />
+              <label class="batch-check">
+                <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-stem-vocals" checked />
                 <span>Vocals (Acapella)</span>
               </label>
-              <label>
-                <input type="checkbox" id="chk-stem-drums" checked />
+              <label class="batch-check">
+                <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-stem-drums" checked />
                 <span>Drums (Percussion)</span>
               </label>
-              <label>
-                <input type="checkbox" id="chk-stem-bass" checked />
+              <label class="batch-check">
+                <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-stem-bass" checked />
                 <span>Bass (Low-End)</span>
               </label>
-              <label>
-                <input type="checkbox" id="chk-stem-instrumental" checked />
+              <label class="batch-check">
+                <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-stem-instrumental" checked />
                 <span>Instrumental (Other)</span>
               </label>
             </div>
@@ -2836,7 +3322,23 @@ export class AudioChopperModal {
 
     document.body.appendChild(modal);
 
-    const closeModal = () => modal.remove();
+    const closeModal = () => {
+      if (this.nestedTrap) {
+        this.nestedTrap.deactivate();
+        this.nestedTrap = null;
+      }
+      modal.remove();
+      this.resumeFocusTrap();
+    };
+
+    // Diálogo anidado fuera del backdrop: trampa propia + padre en pausa.
+    this.suspendFocusTrap();
+    this.nestedTrap = createModalFocusTrap(modal, {
+      initialFocusSelector: '#btn-stem-run',
+      onEscape: () => closeModal(),
+    });
+    this.nestedTrap.activate();
+
     modal.querySelector('#btn-stem-close')?.addEventListener('click', closeModal);
     modal.querySelector('#btn-stem-cancel')?.addEventListener('click', closeModal);
 

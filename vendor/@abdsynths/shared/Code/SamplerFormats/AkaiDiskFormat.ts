@@ -548,8 +548,8 @@ export class AkaiS1000DiskReader {
     const volume = this.bytes[pos + 25];
     const velocityToVolume = this.view.getInt8(pos + 26);
     const keyToVolume = this.view.getInt8(pos + 27);
-    const bendToPitch = this.bytes[pos + 38];
-    const numberOfKeygroups = this.bytes[pos + 41];
+    const bendToPitch = this.bytes[pos + 39];
+    const numberOfKeygroups = this.bytes[pos + 42];
 
     const keygroups: AkaiParsedKeygroup[] = [];
     const headerSize = isS3000 ? 192 : 150;
@@ -618,7 +618,7 @@ export class AkaiS1000DiskReader {
           loopMode,
         });
 
-        zonePos += 20;
+        zonePos += 24;
       }
 
       keygroups.push({
@@ -1146,12 +1146,29 @@ export async function parseAkaiDiskProgram(
     for (const kg of program.keygroups) {
       const kgLowKey = clamp(kg.lowKey - octaveShift, 0, 127);
       const kgHighKey = clamp(kg.highKey - octaveShift, 0, 127);
-      const kgTuningCents = kg.tuneSemitones * 100 + kg.tuneCents + octaveShift * 100;
+      const kgTuningCents =
+        (kg.tuneSemitones + (kg.tuneCents & 0xff) / 256.0 + octaveShift) * 100;
 
       for (const sZone of kg.samples) {
         if (!sZone.name || sZone.highVelocity === 0) continue;
         const sample = samples.get(sZone.name.toUpperCase());
         if (!sample) continue;
+
+        // `firstActiveLoop` is a 1-based index in the Akai header (0 = none).
+        const firstLoopIdx = clamp(sample.firstActiveLoop > 0 ? sample.firstActiveLoop - 1 : 0, 0, 7);
+        const loop0 = sample.loops[firstLoopIdx] || sample.loops[0];
+        const effLoopMode = sZone.loopMode === 0 ? sample.loopMode : sZone.loopMode - 1;
+        const hasLoop = sample.activeLoops > 0 && effLoopMode < 2 && loop0 && loop0.coarseLength > 0;
+        const loopModeStr: LoopMode =
+          effLoopMode === 3
+            ? 'one_shot'
+            : hasLoop
+              ? 'loop_continuous'
+              : 'no_loop';
+        const loopStart = hasLoop ? Math.max(0, loop0.marker - loop0.coarseLength) : 0;
+        const loopEnd = hasLoop ? loop0.marker : 0;
+        const normLowVel = clamp(Math.max(1, sZone.lowVelocity), 1, 127);
+        const normHighVel = clamp(Math.max(normLowVel, sZone.highVelocity), 1, 127);
 
         // Encode WAV if not already encoded
         let wavBuffer = audioBuffers.get(sample.name);
@@ -1160,24 +1177,13 @@ export async function parseAkaiDiskProgram(
           for (let i = 0; i < sample.samples16.length; i++) {
             float32[i] = sample.samples16[i] / 32768.0;
           }
-          const loop0 = sample.loops[0];
-          const hasLoop = sample.activeLoops > 0 && loop0 && loop0.coarseLength > 0;
-          const loopModeStr: LoopMode =
-            sZone.loopMode === 3 || sample.loopMode === 3
-              ? 'one_shot'
-              : hasLoop
-                ? 'loop_continuous'
-                : 'no_loop';
-
-          const loopStart = hasLoop ? Math.max(0, loop0.marker - loop0.coarseLength) : 0;
-          const loopEnd = hasLoop ? loop0.marker : 0;
 
           wavBuffer = encodeWavPcm16([float32], sample.sampleRate, {
             rootKey: sample.rootNote,
             lowKey: kgLowKey,
             highKey: kgHighKey,
-            lowVelocity: sZone.lowVelocity,
-            highVelocity: sZone.highVelocity,
+            lowVelocity: normLowVel,
+            highVelocity: normHighVel,
             detune: sample.tuneCents,
             gainDb: 0,
             loopMode: loopModeStr,
@@ -1185,22 +1191,15 @@ export async function parseAkaiDiskProgram(
             loopEnd,
           });
           audioBuffers.set(sample.name, wavBuffer);
+          audioBuffers.set(`${sample.name}.wav`, wavBuffer);
         }
-
-        const loop0 = sample.loops[0];
-        const hasLoop = sample.activeLoops > 0 && loop0 && loop0.coarseLength > 0;
-        const loopModeStr: LoopMode =
-          sZone.loopMode === 3 || sample.loopMode === 3
-            ? 'one_shot'
-            : hasLoop
-              ? 'loop_continuous'
-              : 'no_loop';
-        const loopStart = hasLoop ? Math.max(0, loop0.marker - loop0.coarseLength) : 0;
-        const loopEnd = hasLoop ? loop0.marker : 0;
 
         const zoneGainDb =
           programGainDb + stereoLevelDb + akaiLoudnessToDb(sZone.loudness);
         const zonePan = clamp(sZone.pan + stereoPan, -50, 50);
+        const sZoneTuningCents =
+          (sZone.tuneSemitones + (sZone.tuneCents & 0xff) / 256.0) * 100;
+        const sampleTuningCents = sample.tuneSemitones * 100 + sample.tuneCents;
 
         regions.push({
           id: `akai_reg_${++regionCounter}`,
@@ -1209,9 +1208,9 @@ export async function parseAkaiDiskProgram(
           rootKey: sample.rootNote,
           lowKey: kgLowKey,
           highKey: kgHighKey,
-          lowVel: sZone.lowVelocity,
-          highVel: sZone.highVelocity,
-          detuneCents: Math.round(kgTuningCents + sZone.tuneSemitones * 100 + sZone.tuneCents),
+          lowVel: normLowVel,
+          highVel: normHighVel,
+          detuneCents: Math.round(kgTuningCents + sZoneTuningCents + sampleTuningCents),
           volumeDb: Math.round(zoneGainDb * 10) / 10,
           pan: zonePan,
           loopMode: loopModeStr,

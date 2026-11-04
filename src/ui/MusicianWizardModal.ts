@@ -117,6 +117,7 @@ export interface MusicianWizardModalContext extends ExportDestinationCallbacks {
   onOpenAdvancedChopper?: (wavBytes?: ArrayBuffer, filename?: string) => void;
   onOpenAdvancedLoopEditor?: () => void;
   onOpenAdvancedModelConfig?: () => void;
+  onOpenBatchProcessorWithFiles?: (files: Array<{ name: string; buffer: ArrayBuffer }>, originTitle?: string) => void;
   onOpenBatchProcessor?: () => void;
 }
 
@@ -336,7 +337,7 @@ export class MusicianWizardModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.sparkle}</span>
-            <h2 id="musician-wizard-title">Asistente Guiado de Creación de Instrumento</h2>
+            <h2 id="musician-wizard-title">Asistente Guiado (4 Pasos)</h2>
             <span class="panel-badge badge-ai-on">4 PASOS</span>
           </div>
           <button type="button" class="nmm-modal-close" aria-label="Cerrar" id="btn-wiz-close">${ICONS.close}</button>
@@ -522,7 +523,7 @@ export class MusicianWizardModal {
                   type="file"
                   id="inp-wiz-file"
                   class="is-hidden-file"
-                  accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.sf2,.sfz,.dspreset,.nki,.vstpreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.zip"
+                  accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.sf2,.sfz,.iso,.img,.dsk,.bin,.hda,.out,.efe,.ede,.gkh,.e4b,.esi,.x7u,.x8u,.x3a,.krz,.k25,.k26,.akp,.pgm,.set,.fzv,.fzf,.s3p,.sxt,.dwp,.dspreset,.nki,.vstpreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.zip"
                   multiple
                 />
               </label>
@@ -1201,7 +1202,11 @@ export class MusicianWizardModal {
             },
             onProcessBatch: () => {
               this.close();
-              this.context.onOpenBatchProcessor?.();
+              if (this.context.onOpenBatchProcessorWithFiles) {
+                this.context.onOpenBatchProcessorWithFiles([{ name: primary.name, buffer }], primary.name);
+              } else {
+                this.context.onOpenBatchProcessor?.();
+              }
             },
           });
           return;
@@ -1231,15 +1236,15 @@ export class MusicianWizardModal {
         return;
       }
 
-      // 3. Pre-mapped Sampler Bank (.sf2, .sfz, .dspreset, .zip, etc.)
-      if (/\.(zip|xpn|iso|img|dsk)$/i.test(primary.name)) {
+      // 3. Pre-mapped Sampler Bank (.sf2, .sfz, .dspreset, .zip, .iso, etc.)
+      if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|x7u|x8u|x3a)$/i.test(primary.name)) {
         const programs = await listZipSamplerPrograms(primary.name, buffer);
         if (programs.length > 1) {
           this.isBusy = false;
           const multi = new MultiInstrumentModal();
           multi.open({
             fileName: primary.name,
-            format: 'zip',
+            format: (programs[0]?.format as any) || 'zip',
             items: programs.map((p) => ({
               id: p.id,
               index: p.index,
@@ -1253,15 +1258,18 @@ export class MusicianWizardModal {
                   primary.name,
                   buffer,
                   undefined,
-                  undefined,
-                  chosen.id
+                  String(chosen.id)
                 );
                 this.loadParsedBankIntoWizard(preset);
               })();
             },
             onProcessBatch: () => {
               this.close();
-              this.context.onOpenBatchProcessor?.();
+              if (this.context.onOpenBatchProcessorWithFiles) {
+                this.context.onOpenBatchProcessorWithFiles([{ name: primary.name, buffer }], primary.name);
+              } else {
+                this.context.onOpenBatchProcessor?.();
+              }
             },
           });
           return;

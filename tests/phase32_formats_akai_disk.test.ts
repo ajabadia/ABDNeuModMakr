@@ -83,8 +83,8 @@ function createMockS1000Disk(): Uint8Array {
   disk[progOffset + 23] = 99; // stereoLevel
   view.setInt8(progOffset + 24, 0); // mixPan
   disk[progOffset + 25] = 99; // volume
-  disk[progOffset + 38] = 2; // bendToPitch
-  disk[progOffset + 41] = 1; // numberOfKeygroups = 1
+  disk[progOffset + 39] = 2; // bendToPitch
+  disk[progOffset + 42] = 1; // numberOfKeygroups = 1
 
   // Keygroup 1 at progOffset + 150:
   const kgOffset = progOffset + 150;
@@ -160,7 +160,7 @@ function createMockS1000Disk(): Uint8Array {
   disk[partBProgOffset] = 1; // AKAI_PROGRAM_ID
   disk.set(partBProgName, partBProgOffset + 3);
   disk[partBProgOffset + 17] = 16;
-  disk[partBProgOffset + 41] = 0; // 0 keygroups
+  disk[partBProgOffset + 42] = 0; // 0 keygroups
 
   return disk;
 }

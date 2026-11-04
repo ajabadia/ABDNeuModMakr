@@ -271,6 +271,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   min-width: 0;
+  align-items: end;
 }
 
 .drawer-grid-4 {
@@ -278,6 +279,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
   min-width: 0;
+  align-items: end;
 }
 
 @container zone-drawer (max-width: 500px) {
@@ -297,6 +299,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-1);
+  align-items: end;
 }
 
 .drawer-input,
@@ -363,9 +366,11 @@
 }
 
 /* Unified switch (was 2 implementations: .articulation-checkbox 28px + .toggle-slider 40px).
-   Geometry scales with --switch-w so both sizes share one rule set. */
+   Geometry scales with --switch-w so both sizes share one rule set.
+   Also covers standalone input[type="checkbox"] across modals so no native checkbox is shown. */
 .articulation-checkbox,
-.toggle-slider {
+.toggle-slider,
+input[type='checkbox']:not(.toggle-switch-label input) {
   --switch-w: 40px;
   --switch-h: 22px;
   --switch-knob: 16px;
@@ -374,9 +379,10 @@
   -webkit-appearance: none;
   width: var(--switch-w);
   height: var(--switch-h);
-  background: var(--color-panel-surface);
-  border: 1px solid var(--color-panel-border);
+  background: var(--color-panel-bg);
+  border: 1.5px solid var(--color-panel-border-strong);
   border-radius: calc(var(--switch-h) / 2);
+  box-shadow: var(--shadow-inset-soft);
   position: relative;
   cursor: pointer;
   outline: none;
@@ -385,8 +391,20 @@
   vertical-align: middle;
 }
 
+/* Compact inline variant (30x16px) — higher specificity so it always wins on checkbox inputs */
+.articulation-checkbox.switch--sm,
+.toggle-slider.switch--sm,
+input[type='checkbox'].switch--sm:not(.toggle-switch-label input),
+input[type='checkbox']:not(.toggle-switch-label input):not(.articulation-checkbox) {
+  --switch-w: 30px;
+  --switch-h: 16px;
+  --switch-knob: 12px;
+  --switch-pad: 1px;
+}
+
 .articulation-checkbox::after,
-.toggle-slider::after {
+.toggle-slider::after,
+input[type='checkbox']:not(.toggle-switch-label input)::after {
   content: '';
   position: absolute;
   top: var(--switch-pad);
@@ -394,29 +412,25 @@
   width: var(--switch-knob);
   height: var(--switch-knob);
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  background: var(--color-text-muted);
+  box-shadow: var(--shadow-chip);
   transition: all var(--transition-fast);
 }
 
 .articulation-checkbox:checked,
-.toggle-switch-label input:checked + .toggle-slider {
+.toggle-switch-label input:checked + .toggle-slider,
+input[type='checkbox']:not(.toggle-switch-label input):checked {
   background: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-active, var(--color-accent));
+  box-shadow: none;
 }
 
 .articulation-checkbox:checked::after,
-.toggle-switch-label input:checked + .toggle-slider::after {
-  left: calc(var(--switch-w) - var(--switch-knob) - var(--switch-pad) * 2);
-  background: #ffffff;
-}
-
-/* Compact inline variant (former 28x16 articulation size) */
-.switch--sm {
-  --switch-w: 28px;
-  --switch-h: 16px;
-  --switch-knob: 12px;
-  --switch-pad: 1px;
+.toggle-switch-label input:checked + .toggle-slider::after,
+input[type='checkbox']:not(.toggle-switch-label input):checked::after {
+  left: calc(var(--switch-w) - var(--switch-knob) - var(--switch-pad) * 2 - 1px);
+  background: var(--color-switch-thumb);
+  box-shadow: var(--shadow-chip);
 }
 
 .acoustic-intel-grid,

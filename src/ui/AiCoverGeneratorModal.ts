@@ -203,8 +203,8 @@ export class AiCoverGeneratorModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.palette}</span>
-            <h2 id="ai-cover-title">AI Model Cover Artwork Generator</h2>
-            <span class="panel-badge badge-ai-on">FASE 20 — NEURAL &amp; PROCEDURAL</span>
+            <h2 id="ai-cover-title">AI Cover Artwork Generator</h2>
+            <span class="panel-badge badge-ai-on">NEURAL &amp; PROCEDURAL</span>
           </div>
           <button type="button" class="nmm-modal-close" id="btn-ai-cover-close" aria-label="Close" ${this.isGenerating ? 'disabled' : ''}>
             ${ICONS.close}

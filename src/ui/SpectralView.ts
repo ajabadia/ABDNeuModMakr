@@ -19,7 +19,7 @@ export type SpectralDisplayMode =
   | 'partials'
   | 'waveform-ab'
   | 'log-curve';
-export type AuditionTargetMode = 'original' | 'resynthesis' | 'enhanced';
+export type AuditionTargetMode = 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2';
 
 export interface SpectralViewHandlers {
   onAuditionZone: (zoneId: string, mode: AuditionTargetMode) => void;
@@ -213,12 +213,15 @@ export class SpectralView {
             <button type="button" class="btn btn-xs ${this.keyboardMode === 'enhanced' ? 'btn-accent' : 'btn-outline'}" id="btn-play-enhanced" title="Play &amp; Inspect Enhanced DSP Resynthesis (C: HPSS + Trajectory Smoothing + Noise Floor Gate)">
               ${ICONS.cpu} C: Enhanced DSP (${enhancedPeaks.rmsDb} dB)
             </button>
+            <button type="button" class="btn btn-xs ${this.keyboardMode === 'resynator_v2' ? 'btn-accent' : 'btn-outline'}" id="btn-play-resv2" title="Play &amp; Inspect ABDShared Resinator v2 (D: Unified Spectral Surface + 24-Bark Formant Lock + Sonic Matter Shapers)">
+              ${ICONS.cpu} D: Resinator v2 (HD)
+            </button>
             <button type="button" class="btn btn-xs btn-outline" id="btn-stop-audition" title="Stop Playback [Space]">
               ${ICONS.stop} Stop
             </button>
           </div>
 
-          <div class="ab-keyb-toggle" title="Choose active signal for Graph Inspection &amp; MIDI Keyboard Audition: Original (A), Legacy DSP (B), or Enhanced DSP (C)">
+          <div class="ab-keyb-toggle" title="Choose active signal for Graph Inspection &amp; MIDI Keyboard Audition: Original (A), Legacy DSP (B), Enhanced DSP (C), or Resinator v2 (D)">
             <span class="keyb-mode-label">${ICONS.piano} SOURCE / KEYB:</span>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'original' ? 'is-active' : ''}" data-keyb="original">
               A: ORIGINAL
@@ -228,6 +231,9 @@ export class SpectralView {
             </button>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'enhanced' ? 'is-active' : ''}" data-keyb="enhanced">
               C: ENHANCED
+            </button>
+            <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'resynator_v2' ? 'is-active' : ''}" data-keyb="resynator_v2" title="Tocar el teclado MIDI con el nuevo motor Resinator v2 (ABDShared)">
+              D: RESINATOR V2
             </button>
           </div>
 
@@ -312,6 +318,19 @@ export class SpectralView {
           this.renderShell();
         }
         this.handlers.onAuditionZone(zoneId, 'enhanced');
+        this.drawCanvas();
+        this.ensureRealtimeLoop();
+      });
+
+    this.container
+      .querySelector('#btn-play-resv2')
+      ?.addEventListener('click', () => {
+        if (this.keyboardMode !== 'resynator_v2') {
+          this.keyboardMode = 'resynator_v2';
+          this.handlers.onKeyboardModeChange('resynator_v2');
+          this.renderShell();
+        }
+        this.handlers.onAuditionZone(zoneId, 'resynator_v2');
         this.drawCanvas();
         this.ensureRealtimeLoop();
       });

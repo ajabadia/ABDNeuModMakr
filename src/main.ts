@@ -134,6 +134,15 @@ class App {
       onOpenAiCoverGenerator: () => {
         self.aiCoverModal.open();
       },
+      getSessionResynatorV2Stereo: (midiNote, velocity, hostBpm) => {
+        if (!self.session || self.session.zones.length === 0) return undefined;
+        const found =
+          self.session.zones.find((z) => midiNote >= z.lowKey && midiNote <= z.highKey) ??
+          self.getActiveZone() ??
+          self.session.zones[0];
+        if (!found) return undefined;
+        return self.core.synthesizeZoneResynatorV2?.(found.id, midiNote, velocity, hostBpm);
+      },
     });
 
     this.aiCoverModal = new AiCoverGeneratorModal({
@@ -185,6 +194,19 @@ class App {
         toast(`Injected ${regions.length} sliced regions into session.`, 'success');
         self.refreshUI();
       },
+      onUpdateTempoSync: (tempoSync) => {
+        if (!self.session) return;
+        const prevSurf = self.session.processConfig.unifiedSurfaceConfig ?? {};
+        self.session = self.core.updateProcessConfig({
+          unifiedSurfaceConfig: {
+            ...prevSurf,
+            tempoSync: { ...tempoSync },
+          },
+        });
+        self.telemetryDrawer.addLog(
+          `AutoSlicer: Stored Resinator v2 Tempo-Sync contract (sourceBpm=${tempoSync.sourceBpm}, targetBpm=${tempoSync.targetBpm ?? tempoSync.sourceBpm}, bars=${tempoSync.barCount}, mode=${tempoSync.grooveMode}).`
+        );
+      },
       onAuditionPcm: (pcm, sRate) => {
         self.playAuditionPcm(pcm, sRate);
       },
@@ -194,6 +216,7 @@ class App {
     });
 
     this.audioRecorderModal = new AudioRecorderModal({
+      getAiConfig: () => self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG,
       onAuditionPcm: (pcm, sRate) => {
         self.playAuditionPcm(pcm, sRate);
       },
@@ -209,6 +232,30 @@ class App {
         const file = new File([wavBytes], filename, { type: 'audio/wav' });
         void self.imports.loadSampleFileIntoZone(activeZone.id, 'low', file);
         toast(`Injected "${filename}" into active zone [${activeZone.id}].`, 'success');
+      },
+      onInjectAutoSampledInstrument: (payload) => {
+        if (!self.session) return;
+        for (const [name, buf] of payload.audioBuffers.entries()) {
+          self.core.registerSampleBuffer(name, buf);
+        }
+        if (payload.classicZones.length > 0) {
+          self.session.zones = payload.classicZones;
+          self.selectedZoneId = payload.classicZones[0]?.id ?? null;
+        }
+        if (payload.extendedRegions.length > 0) {
+          self.session.extendedRegions = payload.extendedRegions;
+        }
+        if (payload.modelName && payload.modelName.trim()) {
+          self.session.processConfig.modelName = payload.modelName.trim().slice(0, 32);
+        }
+        self.telemetryDrawer.addLog(
+          `AutoSampler MIDI: Injected ${payload.classicZones.length} zones (${payload.extendedRegions.length} velocity/RR regions) into session.`
+        );
+        toast(
+          `AutoSampler MIDI: Injected ${payload.classicZones.length} zones (${payload.extendedRegions.length} regions) into session.`,
+          'success'
+        );
+        self.refreshUI();
       },
     });
 
@@ -276,6 +323,9 @@ class App {
       onExportSuccess: (filename, totalBytes) => {
         self.telemetryDrawer.addLog(`Exported raw sampler library: ${filename} (${totalBytes} bytes).`);
       },
+      onBack: () => {
+        self.exportDestinationModal.open('other-samplers');
+      },
     });
 
     this.exportDestinationModal = new ExportDestinationModal({
@@ -306,17 +356,27 @@ class App {
         for (const [name, buf] of data.audioBuffers.entries()) {
           self.core.registerSampleBuffer(name, buf);
         }
-        self.session.name = data.modelName;
-        self.session.processConfig.modelName = data.modelName;
-        self.session.processConfig.expandedName = data.presetName;
+        const fullExpandedName = (data.presetName || data.modelName || 'SamplerModel').trim();
+        const classicShortName = (data.modelName || fullExpandedName).trim().slice(0, 11) || 'UNTITLED';
+        const isDrumPreset = /drum|kit|perc/i.test(data.category || '');
+        self.session.name = fullExpandedName;
+        self.session.processConfig.modelName = classicShortName;
+        self.session.processConfig.expandedName = fullExpandedName;
         self.session.processConfig.parameterSet = data.parameterSet;
         self.session.processConfig.workingMode = data.workingMode;
+        self.session.processConfig.keyMappingMode = isDrumPreset ? 'drum' : 'chromatic';
+        self.session.processConfig.extendedMetadata = {
+          ...self.session.processConfig.extendedMetadata,
+          category: data.category,
+          instrumentFamily: data.category,
+        };
+        self.session.detectedInstrumentCategory = data.category;
         self.session.zones = data.classicZones;
         self.session.extendedRegions = data.extendedRegions;
         self.session.dirty = true;
         self.selectedZoneId = data.classicZones[0]?.id ?? null;
         self.telemetryDrawer.addLog(
-          `Universal Import: Injected bank "${data.presetName}" (${data.classicZones.length} zones, mode: ${data.workingMode}).`
+          `Universal Import: Injected bank "${fullExpandedName}" (Classic MName: "${classicShortName}", ${data.classicZones.length} zones, mode: ${data.workingMode}, category: ${data.category}, Set #${data.parameterSet}).`
         );
         self.refreshUI();
       },
@@ -327,8 +387,20 @@ class App {
         // FileList | File[] – cast to FileList (importMixedFilesOrZip iterates by index)
         void self.imports.importMixedFilesOrZip(files as FileList, 'audio', 'samples', 'Universal Import');
       },
+      onOpenBatchProcessorWithFiles: (files, originTitle) => {
+        void self.batchModal.loadExpandedFiles(files, originTitle);
+      },
       onOpenBatchProcessor: () => {
         self.batchModal.open();
+      },
+      onBrowseFolder: () => {
+        self.imports.triggerFolderImport();
+      },
+      onDropDirectoryHandle: (dirHandle) => {
+        void self.imports.importFromDirectoryHandle(dirHandle, 'audio');
+      },
+      onImportFolderFileList: (files) => {
+        void self.imports.importFromWebkitFileList(files, 'audio');
       },
     });
 
@@ -434,6 +506,9 @@ class App {
       },
       onOpenAdvancedLoopEditor: () => self.openLoopEditor(),
       onOpenAdvancedModelConfig: () => self.modelConfigModal.open('general'),
+      onOpenBatchProcessorWithFiles: (files, originTitle) => {
+        void self.batchModal.loadExpandedFiles(files, originTitle);
+      },
       onOpenBatchProcessor: () => self.batchModal.open(),
     });
 
@@ -470,6 +545,19 @@ class App {
         if (bridgeClient.isConnected()) return 'Local Companion Bridge (FastAPI / CUDA GPU)';
         return 'Web Worker DSP & In-Browser Additive Engine';
       },
+      getActiveSession: () => self.session ?? self.core.getSession(),
+      inspectProcessSources: () => self.core.inspectProcessSources(),
+      getLoadedSampleNames: () => self.core.getLoadedSampleNames(),
+      validateCoverage: () => self.core.validateCoverage(),
+      onOpenAiSettings: () => {
+        self.settingsModal.open(
+          'web',
+          self.session?.processConfig.aiConfig ?? DEFAULT_AI_ASSISTANCE_CONFIG
+        );
+      },
+      onStartSingleModelProcess: async (config, options) => {
+        await self.executeSingleModelProcess(config, options);
+      },
       onRefreshBankDrawer: () => {
         void self.refreshAxionikModels();
       },
@@ -492,6 +580,9 @@ class App {
       // Fase 35 — triage gate delivers pre-mapped candidates straight to preflight.
       onOpenBatchProcessorWithCandidates: (candidates, originTitle) => {
         self.batchModal.loadCandidates(candidates, originTitle);
+      },
+      onOpenBatchProcessorWithFiles: (files, originTitle) => {
+        void self.batchModal.loadExpandedFiles(files, originTitle);
       },
       onOpenBatchProcessor: () => {
         self.batchModal.open();
@@ -535,6 +626,7 @@ class App {
       openAudioChopper: () => void self.openAudioChopper(),
       openAudioRecorder: () => self.audioRecorderModal.open(),
       openLoopEditor: () => self.openLoopEditor(),
+      autoLoopAllZones: () => void self.handleAutoLoopAllZones(),
       openRawSamplerExport: (fmt) => self.rawSamplerExportModal.open(fmt),
       openExportDestinationModal: () => self.exportDestinationModal.open(),
       openUniversalImportModal: () => self.universalImportModal.open(),
@@ -1029,9 +1121,39 @@ class App {
       onAutoLoopAllZones: () => {
         void this.handleAutoLoopAllZones();
       },
+      getAuditionBpm: () => {
+        return (
+          this.session?.processConfig.unifiedSurfaceConfig?.tempoSync?.targetBpm ??
+          this.session?.processConfig.unifiedSurfaceConfig?.tempoSync?.sourceBpm ??
+          120
+        );
+      },
+      onUpdateAuditionBpm: (bpm) => {
+        if (!this.session) return;
+        const prevSurf = this.session.processConfig.unifiedSurfaceConfig ?? {};
+        const prevTempo = prevSurf.tempoSync;
+        this.session = this.core.updateProcessConfig({
+          unifiedSurfaceConfig: {
+            ...prevSurf,
+            tempoSync: {
+              enabled: prevTempo?.enabled ?? false,
+              sourceBpm: prevTempo?.sourceBpm ?? 120,
+              targetBpm: bpm,
+              barCount: prevTempo?.barCount ?? 1,
+              timeSignature: [
+                prevTempo?.timeSignature?.[0] ?? 4,
+                prevTempo?.timeSignature?.[1] ?? 4,
+              ],
+              grooveMode: prevTempo?.grooveMode ?? 'slice_synced',
+              sliceStartFrames: prevTempo?.sliceStartFrames ?? [0],
+            },
+          },
+        });
+        this.telemetryDrawer.addLog(`Tempo / BPM actualizado a ${bpm} BPM (sincronizado con Resinator v2 y reproductor de secuencias REX / cromáticas).`);
+      },
     });
 
-    // 3b. Spectral & A/B/C Resynthesis Monitor + Fase 13 Loop Editor
+    // 3b. Spectral & A/B/C/D Resynthesis Monitor + Fase 13 Loop Editor
     this.spectralView = new SpectralView(spectralMount, {
       onAuditionZone: (zoneId, mode) => {
         const modeLabel =
@@ -1039,8 +1161,10 @@ class App {
             ? 'A: Original'
             : mode === 'enhanced'
               ? 'C: Enhanced DSP'
-              : 'B: Legacy DSP';
-        this.telemetryDrawer.addLog(`A/B/C Audition [${modeLabel}] on zone ${zoneId}`);
+              : mode === 'resynator_v2'
+                ? 'D: Resinator v2 (ABDShared HD)'
+                : 'B: Legacy DSP';
+        this.telemetryDrawer.addLog(`A/B/C/D Audition [${modeLabel}] on zone ${zoneId}`);
         void this.core.auditionZoneComparison(zoneId, mode);
       },
       onStopAudition: () => {
@@ -1052,7 +1176,9 @@ class App {
             ? 'A: Original Sample'
             : mode === 'enhanced'
               ? 'C: Enhanced DSP Resynthesis'
-              : 'B: Legacy DSP Resynthesis';
+              : mode === 'resynator_v2'
+                ? 'D: Resinator v2 (ABDShared HD)'
+                : 'B: Legacy DSP Resynthesis';
         this.telemetryDrawer.addLog(`Keyboard audition mode switched to ${modeLabel}`);
       },
       getRealtimeSpectrum: () => this.core.getRealtimeSpectrum(),
@@ -1612,8 +1738,8 @@ class App {
 
   private updateSpectralView(activeZone: Zone | null): void {
     if (!this.spectralView) return;
-    if (!activeZone) {
-      this.spectralView.setInspection(null);
+    if (!activeZone || !this.isSpectralVisible) {
+      if (!activeZone) this.spectralView.setInspection(null);
       return;
     }
     try {
@@ -1626,23 +1752,38 @@ class App {
 
   private async handleStartProcess(): Promise<void> {
     if (!this.session) return;
-    const errors = this.core.validateCoverage();
-    if (errors.length > 0) {
-      toast(
-        `Cannot start Process: gaps in MIDI note coverage (${errors.length}). Adjust zone boundaries or Reset to a single 0..127 zone.`,
-        'error'
-      );
-      // Telemetry shares its fixed slot with the Bank drawer: move Bank
-      // aside so the audit (not Bank) is what the user sees.
-      this.bankDrawer.close();
-      this.telemetryDrawer.open();
-      return;
+    // Open the unified Pre-Flight & Pipeline Checklist Modal directly for the active session
+    this.batchModal.openForActiveSession();
+  }
+
+  private async executeSingleModelProcess(
+    config: import('./core/types.ts').ProcessConfig,
+    options: {
+      forceReanalyzeImported: boolean;
+      checklist: import('./core/types.ts').PipelineChecklistSelection;
+    }
+  ): Promise<void> {
+    if (!this.session) return;
+
+    // Enforce strict 0..127 coverage only in Classic mode (if not auto-repairing via Step #1)
+    const isClassic = config.workingMode === 'classic';
+    if (isClassic && !options.checklist.steps.coverageMidi) {
+      const errors = this.core.validateCoverage();
+      if (errors.length > 0) {
+        toast(
+          `Cannot start Classic Process: gaps in MIDI note coverage (${errors.length}). Enable Step #1 (Cobertura MIDI) or adjust zone boundaries.`,
+          'error'
+        );
+        this.bankDrawer.close();
+        this.telemetryDrawer.open();
+        return;
+      }
     }
 
     const srcInfo = this.core.inspectProcessSources();
-    let forceReanalyzeImported = false;
+    let forceReanalyzeImported = options.forceReanalyzeImported;
 
-    if (srcInfo.importedSources.length > 0) {
+    if (srcInfo.importedSources.length > 0 && !forceReanalyzeImported) {
       if (srcInfo.newAudioSources.length > 0) {
         // Hybrid session: some zones have new WAV/AIFFs, other zones come from an imported .model
         const proceedHybrid = await confirmDialog(
@@ -1657,7 +1798,7 @@ class App {
       } else if (!this.session.dirty && !srcInfo.complexityChanged) {
         // Pure imported .model and nothing was modified at all
         const forceLossy = await confirmDialog(
-          `Model "${this.session.processConfig.modelName}" comes from an already-compiled legacy .model (no original WAVs) and nothing was modified. It is ready to use or export as-is.\n\n` +
+          `Model "${config.modelName}" comes from an already-compiled legacy .model (no original WAVs) and nothing was modified. It is ready to use or export as-is.\n\n` +
             `Only force a re-analysis from the resynthesized wave (lossy / photocopy effect) if you know what you are doing.`,
           { confirmLabel: 'Force lossy re-analysis', cancelLabel: 'Keep original (recommended)', danger: true }
         );
@@ -1667,13 +1808,13 @@ class App {
         // Pure imported .model and user changed Complexity
         const keepLossless = await confirmDialog(
           `The ${srcInfo.importedSources.length} source(s) of this model come from a legacy .model without the original WAVs.\n\n` +
-            `Recalculating Complexity (${srcInfo.importedComplexity} -> ${this.session.processConfig.complexity}) would force a re-analysis of the resynthesized audio (lossy photocopy effect).\n\n` +
+            `Recalculating Complexity (${srcInfo.importedComplexity} -> ${config.complexity}) would force a re-analysis of the resynthesized audio (lossy photocopy effect).\n\n` +
             `Accept updates headers/zones while keeping the original .scape/.sphere data lossless (recommended).`,
           { confirmLabel: 'Update losslessly (recommended)', cancelLabel: 'Cancel' }
         );
         if (!keepLossless) {
           const confirmForce = await confirmDialog(
-            `Force the lossy re-analysis (photocopy effect) at Complexity ${this.session.processConfig.complexity}?`,
+            `Force the lossy re-analysis (photocopy effect) at Complexity ${config.complexity}?`,
             { confirmLabel: 'Force re-analysis', danger: true }
           );
           if (!confirmForce) return;
@@ -1699,12 +1840,15 @@ class App {
       totalZones: this.session.zones.length,
       currentSample: this.session.zones[0]?.sampleLow || 'Excitation waveform',
       percent: 0,
-      message: 'Beginning spectral neural resynthesis...',
-      elapsedMs: 0
+      message: 'Beginning spectral neural resynthesis & Resinator 2 compilation...',
+      elapsedMs: 0,
     });
 
     this.navbar.setProcessing(true);
-    await this.core.startProcess(this.session.processConfig, { forceReanalyzeImported });
+    await this.core.startProcess(config, {
+      forceReanalyzeImported,
+      checklist: options.checklist,
+    });
   }
 }
 

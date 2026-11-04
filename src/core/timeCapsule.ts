@@ -126,8 +126,10 @@ export function buildTimeCapsuleEntries(
   const nowIso = new Date().toISOString();
   const slot = Math.max(0, Math.min(511, Math.round(input.slot)));
   const slotStr = String(slot).padStart(3, '0');
-  const fullName = input.modelName.trim() || 'UNTITLED';
-  const legacyMName = fullName.slice(0, 11);
+  const fullName =
+    (input.processConfig.expandedName || input.modelName || input.processConfig.modelName || 'UNTITLED').trim();
+  const legacyMName =
+    (input.processConfig.modelName || fullName).trim().slice(0, 11) || 'UNTITLED';
   const extRegions =
     input.extendedRegions && input.extendedRegions.length > 0
       ? input.extendedRegions
@@ -283,6 +285,7 @@ export function buildTimeCapsuleEntries(
         layer: '05_extended_model',
         slot,
         modelName: fullName,
+        classicModelName: legacyMName,
         workingMode: input.processConfig.workingMode ?? 'classic',
         dspAlgorithm: input.processConfig.dspAlgorithm ?? 'legacy',
         masterWaveConfig: input.processConfig.masterWaveConfig,

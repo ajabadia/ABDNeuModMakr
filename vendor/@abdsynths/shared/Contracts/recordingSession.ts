@@ -49,6 +49,74 @@ export interface TakeNoiseProfile {
   hum60HzDb?: number;
 }
 
+/** Velocity distribution curve modes for MIDI AutoSampler. */
+export type AutoSamplerVelocityCurve =
+  | 'linear'
+  | 'high_precision'
+  | 'low_precision'
+  | 'classic_neuron_2layer'
+  | 'manual_table';
+
+/** Release tail capture mode after NoteOff. */
+export type AutoSamplerReleaseMode = 'auto_decay' | 'fixed_time';
+
+/** AutoSampler operating mode. */
+export type AutoSamplerCaptureMode = 'auto_sweep' | 'live_midi_capture' | 'drum_map';
+
+/** Status of an individual note/velocity cell in an AutoSampler session. */
+export type AutoSamplerCellStatus = 'pending' | 'recording' | 'recorded' | 'failed';
+
+/** Manual or computed velocity layer entry. */
+export interface VelocityLayerSpec {
+  layerIndex: number;
+  velocity: number;
+  lowVel: number;
+  highVel: number;
+}
+
+/** A single captured or scheduled MIDI note event inside an AutoSampler manifest. */
+export interface MidiCapturedNoteEvent {
+  index: number;
+  status: AutoSamplerCellStatus;
+  midiNote: number;
+  noteName: string;
+  velocity: number;
+  velocityLayerIndex: number;
+  roundRobinIndex: number;
+  customName?: string;
+  muteGroup?: number;
+  lowKey: number;
+  highKey: number;
+  lowVel: number;
+  highVel: number;
+  noteOnFrame: number;
+  noteOffFrame: number;
+  tailEndFrame: number;
+  loopStartFrame?: number;
+  loopEndFrame?: number;
+  peakDbfs?: number;
+  isReleaseTrigger?: boolean;
+  hasPolyphonicOverlap?: boolean;
+}
+
+/** Complete manifest pairing a continuous audio recording with its MIDI events. */
+export interface MidiAutoSampleManifest {
+  contractVersion: string;
+  id: string;
+  name: string;
+  mode: AutoSamplerCaptureMode;
+  sampleRate: number;
+  channel: number;
+  latencySamples: number;
+  velocityCurve: AutoSamplerVelocityCurve;
+  releaseMode: AutoSamplerReleaseMode;
+  gateDurationMs: number;
+  maxReleaseMs: number;
+  noiseProfile?: TakeNoiseProfile;
+  events: MidiCapturedNoteEvent[];
+  createdAt: string;
+}
+
 /** A single recorded take with its analysis metadata. */
 export interface RecordingTake {
   id: string;

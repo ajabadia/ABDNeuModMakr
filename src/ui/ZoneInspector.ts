@@ -147,6 +147,9 @@ export interface ZoneInspectorHandlers {
   }) => void;
   /** Fase 35.6: Ejecuta AutoLoop (zc-snap) en lote sobre todas las zonas/regiones con muestra */
   onAutoLoopAllZones?: () => void;
+  /** Tempo / BPM (30..300, por defecto 120) para audición de Resinator v2, REX slices y secuencias cromáticas */
+  getAuditionBpm?: () => number;
+  onUpdateAuditionBpm?: (bpm: number) => void;
 }
 
 
@@ -177,6 +180,9 @@ export class ZoneInspector {
   private playingRowId: string | null = null;
   private playingRowStartedAt: number = 0;
   private auditionCheckTimer: number | null = null;
+  private auditionBpm: number = 120;
+  private isPlayingSequence: boolean = false;
+  private seqPlayTimer: number | null = null;
   /** Fase 18 / GM Drum Map: 'chromatic' (default) vs 'drum' (GM Drum Map piece naming & collision detection) */
   private keyMappingMode: KeyMappingMode = 'chromatic';
 
@@ -203,10 +209,28 @@ export class ZoneInspector {
     this.drawerMount.appendChild(this.drawerElement);
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.isDrawerOpen) {
-        this.closeDrawer();
+      if (e.key === 'Escape') {
+        this.closeToolsMenu();
+        if (this.isDrawerOpen) {
+          this.closeDrawer();
+        }
       }
     });
+
+    document.addEventListener('click', (e) => {
+      const dropdown = this.container.querySelector('#keymap-tools-dropdown');
+      if (dropdown && !dropdown.contains(e.target as Node)) {
+        this.closeToolsMenu();
+      }
+    });
+  }
+
+  private closeToolsMenu(): void {
+    const popover = this.container.querySelector('#keymap-tools-popover');
+    const toggle = this.container.querySelector('#btn-keymap-tools-toggle');
+    popover?.classList.remove('is-open');
+    toggle?.classList.remove('is-active');
+    toggle?.setAttribute('aria-expanded', 'false');
   }
 
   public getSelectedRegionId(): string | null {
@@ -601,20 +625,36 @@ export class ZoneInspector {
                   <button type="button" class="btn btn-xs ${isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-drum" title="General MIDI Drum Map (Percussion piece names, auto-placement &amp; collision detection)">
                     ${ICONS.drum} GM Drum Map
                   </button>
+                  <div class="keymap-bpm-group" style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--border-subtle);">
+                    <label for="input-keymap-bpm" class="toolbar-mode-label" title="Tempo (BPM) para audición Resinator v2, bucles REX y secuencias cromáticas">BPM:</label>
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-dec" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Bajar BPM (-1, Shift: -5)" aria-label="Bajar BPM">${ICONS.caretLeft}</button>
+                    <input type="text" inputmode="numeric" id="input-keymap-bpm" class="form-control" value="${this.getEffectiveBpm()}" style="width: 44px; height: 24px; padding: 2px 4px; text-align: center; font-size: var(--text-xs); font-variant-numeric: tabular-nums;" title="Velocidad en BPM (30..300) para sincronizar Resinator v2 y reproducir secuencias REX / cromáticas" />
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-inc" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Subir BPM (+1, Shift: +5)" aria-label="Subir BPM">${ICONS.caretRight}</button>
+                    <button type="button" class="btn btn-xs ${this.isPlayingSequence ? 'btn-accent is-active' : 'btn-outline'}" id="btn-keymap-play-seq" title="${this.isPlayingSequence ? 'Detener secuencia' : 'Reproducir secuencia cromática / slices REX al BPM indicado'}">
+                      ${this.isPlayingSequence ? ICONS.stop : ICONS.play} Seq
+                    </button>
+                  </div>
                 </div>
                 <div class="panel-actions">
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Region #${activeIndex + 1}">
-                    ${ICONS.wave} Loop Editor
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-autoloop-all-zones" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las regiones">
-                    ${ICONS.refresh} AutoLoop en todas las zonas
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
-                    ${ICONS.scissors} AutoSlicer
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-recorder" title="Audio Recorder &amp; Noise Print Capture (Mic / Line-In / System Loopback)">
-                    ${ICONS.mic} Record
-                  </button>
+                  <div class="keymap-tools-dropdown" id="keymap-tools-dropdown">
+                    <button type="button" class="btn btn-xs btn-outline keymap-tools-toggle" id="btn-keymap-tools-toggle" aria-haspopup="true" aria-expanded="false" title="Audio &amp; Zone Tools (Record, Loop Editor, AutoLoop en todas las zonas, AutoSlicer)">
+                      ${ICONS.repair} Tools
+                    </button>
+                    <div class="keymap-tools-popover" id="keymap-tools-popover" role="menu">
+                      <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="Record (Audio Recorder &amp; MIDI AutoSampler)">
+                        ${ICONS.mic} <span>Record</span>
+                      </button>
+                      <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="Loop Editor (Waveform &amp; Zero-Crossing) for Region #${activeIndex + 1}">
+                        ${ICONS.wave} <span>Loop Editor</span>
+                      </button>
+                      <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las regiones">
+                        ${ICONS.refresh} <span>AutoLoop en todas las zonas</span>
+                      </button>
+                      <button type="button" class="keymap-tools-item" id="btn-open-autoslicer" role="menuitem" title="AutoSlicer (Audio Chopper)">
+                        ${ICONS.scissors} <span>AutoSlicer</span>
+                      </button>
+                    </div>
+                  </div>
                   <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B/C Resynthesis Inspector (Shortcut: Ctrl+E)">
                     ${ICONS.wave} Spectral / A-B
                   </button>
@@ -705,20 +745,36 @@ export class ZoneInspector {
               <button type="button" class="btn btn-xs ${isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-drum" title="General MIDI Drum Map (Percussion piece names, auto-placement &amp; collision detection)">
                 ${ICONS.drum} GM Drum Map
               </button>
+              <div class="keymap-bpm-group" style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--border-subtle);">
+                <label for="input-keymap-bpm" class="toolbar-mode-label" title="Tempo (BPM) para audición Resinator v2, bucles REX y secuencias cromáticas">BPM:</label>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-dec" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Bajar BPM (-1, Shift: -5)" aria-label="Bajar BPM">${ICONS.caretLeft}</button>
+                <input type="text" inputmode="numeric" id="input-keymap-bpm" class="form-control" value="${this.getEffectiveBpm()}" style="width: 44px; height: 24px; padding: 2px 4px; text-align: center; font-size: var(--text-xs); font-variant-numeric: tabular-nums;" title="Velocidad en BPM (30..300) para sincronizar Resinator v2 y reproducir secuencias REX / cromáticas" />
+                <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-inc" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Subir BPM (+1, Shift: +5)" aria-label="Subir BPM">${ICONS.caretRight}</button>
+                <button type="button" class="btn btn-xs ${this.isPlayingSequence ? 'btn-accent is-active' : 'btn-outline'}" id="btn-keymap-play-seq" title="${this.isPlayingSequence ? 'Detener secuencia' : 'Reproducir secuencia cromática / slices REX al BPM indicado'}">
+                  ${this.isPlayingSequence ? ICONS.stop : ICONS.play} Seq
+                </button>
+              </div>
             </div>
             <div class="panel-actions">
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-loop-drawer" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier for Zone #${this.zoneIndex + 1}">
-                ${ICONS.wave} Loop Editor
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-autoloop-all-zones" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las zonas">
-                ${ICONS.refresh} AutoLoop en todas las zonas
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-autoslicer" title="Audio Chopper &amp; Auto-Slicer (Transient Slicing, GM Drum Auto-Map, MIDI Drag-and-Drop)">
-                ${ICONS.scissors} AutoSlicer
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-recorder" title="Audio Recorder &amp; Noise Print Capture (Mic / Line-In / System Loopback)">
-                ${ICONS.mic} Record
-              </button>
+              <div class="keymap-tools-dropdown" id="keymap-tools-dropdown">
+                <button type="button" class="btn btn-xs btn-outline keymap-tools-toggle" id="btn-keymap-tools-toggle" aria-haspopup="true" aria-expanded="false" title="Audio &amp; Zone Tools (Record, Loop Editor, AutoLoop en todas las zonas, AutoSlicer)">
+                  ${ICONS.repair} Tools
+                </button>
+                <div class="keymap-tools-popover" id="keymap-tools-popover" role="menu">
+                  <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="Record (Audio Recorder &amp; MIDI AutoSampler)">
+                    ${ICONS.mic} <span>Record</span>
+                  </button>
+                  <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="Loop Editor (Waveform &amp; Zero-Crossing) for Zone #${this.zoneIndex + 1}">
+                    ${ICONS.wave} <span>Loop Editor</span>
+                  </button>
+                  <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las zonas">
+                    ${ICONS.refresh} <span>AutoLoop en todas las zonas</span>
+                  </button>
+                  <button type="button" class="keymap-tools-item" id="btn-open-autoslicer" role="menuitem" title="AutoSlicer (Audio Chopper)">
+                    ${ICONS.scissors} <span>AutoSlicer</span>
+                  </button>
+                </div>
+              </div>
               <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
                 ${ICONS.wave} Spectral / A-B
               </button>
@@ -1010,8 +1066,11 @@ export class ZoneInspector {
                   : ''
               }
               <div class="keys-inputs-row">
-                <div class="form-group">
-                  <label for="inp-low-key">LOW KEY</label>
+                <div class="form-group ${!isExtended && !prevZone ? 'is-conditioned-disabled' : ''}">
+                  <label for="inp-low-key">
+                    LOW KEY
+                    ${!isExtended && !prevZone ? '<span class="cond-reason-badge is-classic-only">FIJO EN CLASSIC (0)</span>' : ''}
+                  </label>
                   <div class="input-with-note">
                     <input type="number" id="inp-low-key" min="${isExtended ? 0 : minLowKey}" max="${isExtended ? 127 : maxLowKey}" value="${effLowKey}" ${!isExtended && !prevZone ? 'disabled title="First zone always starts at 0 C-2 in Classic Mode"' : ''} />
                     <span class="note-display" id="disp-low-note">${midiToNoteName(effLowKey)}</span>
@@ -1026,44 +1085,51 @@ export class ZoneInspector {
                   </div>
                 </div>
 
-                <div class="form-group">
-                  <label for="inp-high-key">HIGH KEY</label>
+                <div class="form-group ${!isExtended && !nextZone ? 'is-conditioned-disabled' : ''}">
+                  <label for="inp-high-key">
+                    HIGH KEY
+                    ${!isExtended && !nextZone ? '<span class="cond-reason-badge is-classic-only">FIJO EN CLASSIC (127)</span>' : ''}
+                  </label>
                   <div class="input-with-note">
                     <input type="number" id="inp-high-key" min="${isExtended ? 0 : minHighKey}" max="${isExtended ? 127 : maxHighKey}" value="${effHighKey}" ${!isExtended && !nextZone ? 'disabled title="Last zone always ends at 127 G8 in Classic Mode"' : ''} />
                     <span class="note-display" id="disp-high-note">${midiToNoteName(effHighKey)}</span>
                   </div>
                 </div>
               </div>
-              ${
-                isExtended && activeReg
-                  ? `
-              <div class="keys-inputs-row" style="margin-top: 8px;">
-                <div class="form-group">
-                  <label for="inp-ext-low-vel">LOW VEL (START 1..127)</label>
-                  <div class="input-with-note">
-                    <input type="number" id="inp-ext-low-vel" min="1" max="127" value="${activeReg.lowVel}" title="Region Start Velocity (1..127)" />
-                    <span class="note-display">Start</span>
+              <fieldset class="conditioned-fieldset" ${!isExtended || !activeReg ? 'disabled' : ''}>
+                <div class="keys-inputs-row ${!isExtended ? 'is-conditioned-disabled' : ''}" style="margin-top: 8px;">
+                  <div class="form-group">
+                    <label for="inp-ext-low-vel">
+                      LOW VEL (START 1..127)
+                      ${!isExtended ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
+                    </label>
+                    <div class="input-with-note">
+                      <input type="number" id="inp-ext-low-vel" min="1" max="127" value="${isExtended && activeReg ? activeReg.lowVel : 1}" title="${!isExtended ? 'Solo disponible en Modo Extended' : 'Region Start Velocity (1..127)'}" />
+                      <span class="note-display">Start</span>
+                    </div>
                   </div>
-                </div>
 
-                <div class="form-group">
-                  <label for="inp-ext-high-vel">HIGH VEL (END 1..127)</label>
-                  <div class="input-with-note">
-                    <input type="number" id="inp-ext-high-vel" min="1" max="127" value="${activeReg.highVel}" title="Region End Velocity (1..127)" />
-                    <span class="note-display">End</span>
+                  <div class="form-group">
+                    <label for="inp-ext-high-vel">
+                      HIGH VEL (END 1..127)
+                      ${!isExtended ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
+                    </label>
+                    <div class="input-with-note">
+                      <input type="number" id="inp-ext-high-vel" min="1" max="127" value="${isExtended && activeReg ? activeReg.highVel : (hasHighVel ? split - 1 : 127)}" title="${!isExtended ? 'Solo disponible en Modo Extended' : 'Region End Velocity (1..127)'}" />
+                      <span class="note-display">End</span>
+                    </div>
                   </div>
-                </div>
 
-                <div class="form-group is-highlight">
-                  <label>VELOCITY SPAN</label>
-                  <div class="input-with-note">
-                    <span class="note-display" id="disp-vel-span" style="width: 100%; text-align: center;">Vel ${activeReg.lowVel}..${activeReg.highVel} (${Math.max(1, activeReg.highVel - activeReg.lowVel + 1)})</span>
+                  <div class="form-group is-highlight">
+                    <label>VELOCITY SPAN</label>
+                    <div class="input-with-note">
+                      <span class="note-display" id="disp-vel-span" style="width: 100%; text-align: center;">
+                        ${isExtended && activeReg ? `Vel ${activeReg.lowVel}..${activeReg.highVel} (${Math.max(1, activeReg.highVel - activeReg.lowVel + 1)})` : (hasHighVel ? 'Fijo 1..63 / 64..127' : 'Vel 1..127 (127)')}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              `
-                  : ''
-              }
+              </fieldset>
             </div>
 
             <!-- 2. Sample Assignment -->
@@ -1144,9 +1210,9 @@ export class ZoneInspector {
                   </div>
                 </div>
 
-                <div class="sample-vel-split-control is-disabled">
+                <div class="sample-vel-split-control is-disabled is-conditioned-disabled">
                   <label for="slider-vel-split" class="sample-vel-split-label">
-                    <span>VELOCITY SPLIT POINT</span>
+                    <span>VELOCITY SPLIT POINT <span class="cond-reason-badge is-extended-only">SOLO MODO EXTENDED</span></span>
                     <span class="val-display" id="val-vel-split">64 (Fixed: 1–63 / 64–127)</span>
                   </label>
                   <input type="range" id="slider-vel-split" min="64" max="64" value="64" disabled title="Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Switch WORKING MODE → Extended for free per-region start/end velocities." />
@@ -1308,19 +1374,72 @@ export class ZoneInspector {
       this.setKeyMappingMode('drum');
     });
 
+    const inputBpm = this.container.querySelector<HTMLInputElement>('#input-keymap-bpm');
+    const applyBpmValue = (nextVal: number) => {
+      const clamped = Math.max(30, Math.min(300, Math.round(nextVal || 120)));
+      this.auditionBpm = clamped;
+      if (inputBpm) inputBpm.value = String(clamped);
+      this.handlers.onUpdateAuditionBpm?.(clamped);
+    };
+
+    inputBpm?.addEventListener('change', () => {
+      applyBpmValue(Number(inputBpm.value));
+    });
+    inputBpm?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        applyBpmValue(this.getEffectiveBpm() + (e.shiftKey ? 5 : 1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        applyBpmValue(this.getEffectiveBpm() - (e.shiftKey ? 5 : 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        applyBpmValue(Number(inputBpm.value));
+        inputBpm.blur();
+      }
+    });
+
+    this.container.querySelector('#btn-keymap-bpm-dec')?.addEventListener('click', (e) => {
+      const step = (e as MouseEvent).shiftKey ? 5 : 1;
+      applyBpmValue(this.getEffectiveBpm() - step);
+    });
+
+    this.container.querySelector('#btn-keymap-bpm-inc')?.addEventListener('click', (e) => {
+      const step = (e as MouseEvent).shiftKey ? 5 : 1;
+      applyBpmValue(this.getEffectiveBpm() + step);
+    });
+
+    this.container.querySelector('#btn-keymap-play-seq')?.addEventListener('click', () => {
+      this.toggleSequencePlayback();
+    });
+
+    this.container.querySelector('#btn-keymap-tools-toggle')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const popover = this.container.querySelector('#keymap-tools-popover');
+      const toggle = this.container.querySelector('#btn-keymap-tools-toggle');
+      const willOpen = !popover?.classList.contains('is-open');
+      popover?.classList.toggle('is-open', willOpen);
+      toggle?.classList.toggle('is-active', willOpen);
+      toggle?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+
     this.container.querySelector('#btn-open-loop-drawer')?.addEventListener('click', () => {
+      this.closeToolsMenu();
       this.openLoopEditorDrawer();
     });
 
     this.container.querySelector('#btn-autoloop-all-zones')?.addEventListener('click', () => {
+      this.closeToolsMenu();
       this.handlers.onAutoLoopAllZones?.();
     });
 
     this.container.querySelector('#btn-open-autoslicer')?.addEventListener('click', () => {
+      this.closeToolsMenu();
       this.handlers.onOpenAutoSlicer?.();
     });
 
     this.container.querySelector('#btn-open-recorder')?.addEventListener('click', () => {
+      this.closeToolsMenu();
       this.handlers.onOpenAudioRecorder?.();
     });
 
@@ -1524,9 +1643,85 @@ export class ZoneInspector {
 
   /** Called when another audition source (e.g. the keyboard) takes over playback. */
   public clearPlayingRow(): void {
+    this.stopSequencePlayback(false);
     if (!this.playingRowId) return;
     this.setPlayingRow(null);
     this.updatePlayButtonStates();
+  }
+
+  private getEffectiveBpm(): number {
+    const fromHandler = this.handlers.getAuditionBpm?.();
+    if (fromHandler && fromHandler >= 30 && fromHandler <= 300) {
+      this.auditionBpm = Math.round(fromHandler);
+    }
+    return this.auditionBpm;
+  }
+
+  private toggleSequencePlayback(): void {
+    if (this.isPlayingSequence) {
+      this.stopSequencePlayback(true);
+      return;
+    }
+
+    const isExtended = this.workingMode === 'extended';
+    const steps: Array<{ rowKey: string; zoneId?: string; regionId?: string }> = [];
+
+    if (isExtended) {
+      const regions = [...(this.handlers.getExtendedRegions?.() ?? [])]
+        .filter((r) => Boolean(r.sampleName))
+        .sort((a, b) => a.lowKey - b.lowKey || a.rootKey - b.rootKey);
+      for (const r of regions) {
+        steps.push({ rowKey: r.id, zoneId: this.currentZone?.id, regionId: r.id });
+      }
+    } else {
+      const zones = [...(this.allZones.length > 0 ? this.allZones : this.currentZone ? [this.currentZone] : [])]
+        .filter((z) => Boolean(z.sampleLow || z.sampleHigh))
+        .sort((a, b) => a.lowKey - b.lowKey || a.rootKey - b.rootKey);
+      for (const z of zones) {
+        steps.push({ rowKey: z.id, zoneId: z.id });
+      }
+    }
+
+    if (steps.length === 0) return;
+
+    this.isPlayingSequence = true;
+    this.renderTable();
+
+    let stepIdx = 0;
+    const playStep = () => {
+      if (!this.isPlayingSequence) return;
+      const step = steps[stepIdx % steps.length];
+      stepIdx++;
+
+      this.setPlayingRow(step.rowKey, { zoneId: step.zoneId, regionId: step.regionId });
+      this.updatePlayButtonStates();
+      if (this.handlers.onAuditionRow) {
+        this.handlers.onAuditionRow({ zoneId: step.zoneId, regionId: step.regionId });
+      } else if (step.zoneId) {
+        this.handlers.onAuditionLoop?.({ zoneId: step.zoneId, regionId: step.regionId });
+      }
+
+      const bpm = Math.max(30, Math.min(300, this.getEffectiveBpm()));
+      // 1/8th note step duration (in ms) synced to active BPM
+      const stepMs = Math.max(80, Math.round((60 / bpm / 2) * 1000));
+      this.seqPlayTimer = window.setTimeout(playStep, stepMs);
+    };
+
+    playStep();
+  }
+
+  public stopSequencePlayback(stopAudio = true): void {
+    if (this.seqPlayTimer !== null) {
+      clearTimeout(this.seqPlayTimer);
+      this.seqPlayTimer = null;
+    }
+    if (!this.isPlayingSequence) return;
+    this.isPlayingSequence = false;
+    if (stopAudio) {
+      this.handlers.onStopAudition?.();
+    }
+    this.setPlayingRow(null);
+    this.renderTable();
   }
 
   /**

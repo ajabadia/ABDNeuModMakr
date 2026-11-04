@@ -215,6 +215,20 @@ textarea.form-control {
   transition: border-color var(--transition-fast, 0.15s ease), box-shadow var(--transition-fast, 0.15s ease);
 }
 
+input[type="number"].form-control {
+  padding-left: 8px;
+  padding-right: 4px;
+  min-width: 68px;
+}
+
+.form-group > select.form-control,
+.form-group > input[type="text"].form-control,
+.form-group > input[type="url"].form-control {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
 .form-control:focus,
 .bank-path-input-wrap input:focus,
 .model-url-field:focus,
