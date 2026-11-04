@@ -18,9 +18,7 @@ export function getThemeColor(tokenName: string, fallback: string): string {
     .trim();
   return val || fallback;
 }
-import { midiNoteToString } from './ZoneRibbon';
 import { ICONS } from './icons';
-import { confirmDialog } from './notify';
 import { onAppLocaleChange } from '../core/i18n';
 import { renderExtendedRegionTableRows as tplRenderExtendedRegionTableRows, renderGmDrumOptions as tplRenderGmDrumOptions, renderZoneTableRows as tplRenderZoneTableRows } from './zoneInspector/zoneTemplates.ts';
 import type { InspectorContext } from './zoneInspector/types.ts';
@@ -41,6 +39,7 @@ import {
   bindDrawerSampleHighEvents,
   bindDrawerSampleLowEvents,
 } from './zoneInspector/drawerSampleEventOps.ts';
+import { bindDrawerMetadataEvents, bindTableEvents } from './zoneInspector/tableEventOps.ts';
 
 export interface ZoneInspectorHandlers {
   onSelectZone?: (zoneId: string) => void;
@@ -172,6 +171,18 @@ export class ZoneInspector {
       set drawerElement(v) {
         host.drawerElement = v;
       },
+      get selectedRegionId() {
+        return host.selectedRegionId;
+      },
+      set selectedRegionId(v) {
+        host.selectedRegionId = v;
+      },
+      get auditionBpm() {
+        return host.auditionBpm;
+      },
+      set auditionBpm(v) {
+        host.auditionBpm = v;
+      },
       get currentZone() {
         return host.currentZone;
       },
@@ -275,6 +286,15 @@ export class ZoneInspector {
       renderDrawer: () => host.renderDrawer(),
       handleRowPlayClick: (zoneId, regionId) => host.handleRowPlayClick(zoneId, regionId),
       bindDrawerMetadataEvents: () => host.bindDrawerMetadataEvents(),
+      applyNoteHighlights: (scrollIntoView) => host.applyNoteHighlights(scrollIntoView),
+      closeToolsMenu: () => host.closeToolsMenu(),
+      openDrawer: () => host.openDrawer(),
+      openLoopEditorDrawer: (regionId) => host.openLoopEditorDrawer(regionId),
+      openModelCommonDrawer: () => host.openModelCommonDrawer(),
+      renderTable: () => host.renderTable(),
+      setKeyMappingMode: (mode) => host.setKeyMappingMode(mode),
+      toggleDrawer: () => host.toggleDrawer(),
+      toggleSequencePlayback: () => host.toggleSequencePlayback(),
     };
   }
 
@@ -569,203 +589,7 @@ export class ZoneInspector {
   }
 
   private bindTableEvents(): void {
-    if (!this.currentZone) return;
-    const z = this.currentZone;
-    const isExtended = this.workingMode === 'extended';
-
-    // Re-apply live keyboard note highlights after every table re-render
-    this.applyNoteHighlights(false);
-
-    // Row selection in Zone / Region Table
-    const rows = this.container.querySelectorAll<HTMLElement>('tr.zone-table-row');
-    rows.forEach((row) => {
-      row.addEventListener('click', (e: MouseEvent) => {
-        const playBtn = (e.target as HTMLElement).closest<HTMLElement>('.btn-row-play');
-        const editBtn = (e.target as HTMLElement).closest<HTMLElement>('.btn-row-edit');
-        const loopCellBtn = (e.target as HTMLElement).closest<HTMLElement>('.btn-cell-loop');
-        const regionId = row.getAttribute('data-region-id');
-        const zoneId = row.getAttribute('data-zone-id');
-
-        if (playBtn) {
-          e.stopPropagation();
-          const targetRegId = isExtended ? (regionId || playBtn.getAttribute('data-play-region-id')) : null;
-          const targetZoneId = zoneId || playBtn.getAttribute('data-play-zone-id') || null;
-          this.handleRowPlayClick(targetZoneId, targetRegId);
-          return;
-        }
-
-        if (isExtended && regionId) {
-          const regionChanged = regionId !== this.selectedRegionId;
-          this.selectedRegionId = regionId;
-          if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
-            this.handlers.onSelectZone(zoneId);
-          } else if (regionChanged) {
-            this.renderTable();
-            this.renderDrawer();
-          }
-          if (loopCellBtn) {
-            e.stopPropagation();
-            this.openLoopEditorDrawer(regionId);
-            return;
-          }
-          if (editBtn) {
-            e.stopPropagation();
-            this.openDrawer();
-          }
-          return;
-        }
-
-        if (!zoneId) return;
-        if (zoneId !== z.id && this.handlers.onSelectZone) {
-          this.handlers.onSelectZone(zoneId);
-        }
-        if (editBtn) {
-          e.stopPropagation();
-          this.openDrawer();
-        }
-      });
-
-      row.addEventListener('dblclick', () => {
-        const regionId = row.getAttribute('data-region-id');
-        const zoneId = row.getAttribute('data-zone-id');
-        if (isExtended && regionId) {
-          this.selectedRegionId = regionId;
-          if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
-            this.handlers.onSelectZone(zoneId);
-          }
-          this.openDrawer();
-          return;
-        }
-        if (zoneId && zoneId !== z.id && this.handlers.onSelectZone) {
-          this.handlers.onSelectZone(zoneId);
-        }
-        this.openDrawer();
-      });
-    });
-
-    this.container.querySelector('#btn-map-mode-chromatic')?.addEventListener('click', () => {
-      this.setKeyMappingMode('chromatic');
-    });
-
-    this.container.querySelector('#btn-map-mode-drum')?.addEventListener('click', () => {
-      this.setKeyMappingMode('drum');
-    });
-
-    const inputBpm = this.container.querySelector<HTMLInputElement>('#input-keymap-bpm');
-    const applyBpmValue = (nextVal: number) => {
-      const clamped = Math.max(30, Math.min(300, Math.round(nextVal || 120)));
-      this.auditionBpm = clamped;
-      if (inputBpm) inputBpm.value = String(clamped);
-      this.handlers.onUpdateAuditionBpm?.(clamped);
-    };
-
-    inputBpm?.addEventListener('change', () => {
-      applyBpmValue(Number(inputBpm.value));
-    });
-    inputBpm?.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        applyBpmValue(this.getEffectiveBpm() + (e.shiftKey ? 5 : 1));
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        applyBpmValue(this.getEffectiveBpm() - (e.shiftKey ? 5 : 1));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        applyBpmValue(Number(inputBpm.value));
-        inputBpm.blur();
-      }
-    });
-
-    this.container.querySelector('#btn-keymap-bpm-dec')?.addEventListener('click', (e) => {
-      const step = (e as MouseEvent).shiftKey ? 5 : 1;
-      applyBpmValue(this.getEffectiveBpm() - step);
-    });
-
-    this.container.querySelector('#btn-keymap-bpm-inc')?.addEventListener('click', (e) => {
-      const step = (e as MouseEvent).shiftKey ? 5 : 1;
-      applyBpmValue(this.getEffectiveBpm() + step);
-    });
-
-    this.container.querySelector('#btn-keymap-play-seq')?.addEventListener('click', () => {
-      this.toggleSequencePlayback();
-    });
-
-    this.container.querySelector('#btn-keymap-tools-toggle')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const popover = this.container.querySelector('#keymap-tools-popover');
-      const toggle = this.container.querySelector('#btn-keymap-tools-toggle');
-      const willOpen = !popover?.classList.contains('is-open');
-      popover?.classList.toggle('is-open', willOpen);
-      toggle?.classList.toggle('is-active', willOpen);
-      toggle?.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-    });
-
-    this.container.querySelector('#btn-open-loop-drawer')?.addEventListener('click', () => {
-      this.closeToolsMenu();
-      this.openLoopEditorDrawer();
-    });
-
-    this.container.querySelector('#btn-autoloop-all-zones')?.addEventListener('click', () => {
-      this.closeToolsMenu();
-      this.handlers.onAutoLoopAllZones?.();
-    });
-
-    this.container.querySelector('#btn-open-autoslicer')?.addEventListener('click', () => {
-      this.closeToolsMenu();
-      this.handlers.onOpenAutoSlicer?.();
-    });
-
-    this.container.querySelector('#btn-open-recorder')?.addEventListener('click', () => {
-      this.closeToolsMenu();
-      this.handlers.onOpenAudioRecorder?.();
-    });
-
-    this.container.querySelector('#btn-open-zone-drawer')?.addEventListener('click', () => {
-      this.toggleDrawer();
-    });
-
-    this.container
-      .querySelector('#btn-open-model-common-drawer')
-      ?.addEventListener('click', () => {
-        this.openModelCommonDrawer();
-      });
-
-    this.container.querySelector('#btn-toggle-spectral')?.addEventListener('click', () => {
-      this.handlers.onToggleSpectral?.();
-    });
-
-    this.container.querySelector('#btn-split-zone')?.addEventListener('click', () => {
-      if (isExtended && this.handlers.onAddExtendedRegion) {
-        const { activeRegion } = this.getExtendedContext();
-        // Create a new empty-sample region at the next available key/velocity range
-        this.handlers.onAddExtendedRegion(undefined, activeRegion?.id);
-        return;
-      }
-      this.handlers.onSplitZone(z.id);
-    });
-
-    this.container.querySelector('#btn-delete-zone')?.addEventListener('click', () => {
-      if (isExtended && this.handlers.onRemoveExtendedRegion) {
-        const { activeRegion, activeIndex } = this.getExtendedContext();
-        if (!activeRegion) return;
-        void confirmDialog(
-          `Remove region #${activeIndex + 1} (${midiNoteToString(activeRegion.lowKey)} .. ${midiNoteToString(activeRegion.highKey)}, Vel ${activeRegion.lowVel}..${activeRegion.highVel})?`,
-          { confirmLabel: 'Remove region', danger: true }
-        ).then((ok) => {
-          if (ok) {
-            this.selectedRegionId = null;
-            this.handlers.onRemoveExtendedRegion!(activeRegion.id);
-          }
-        });
-        return;
-      }
-      void confirmDialog(
-        `Remove zone #${this.zoneIndex + 1} (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})? Adjacent zones will expand to maintain 0..127 coverage.`,
-        { confirmLabel: 'Remove zone', danger: true }
-      ).then((ok) => {
-        if (ok) this.handlers.onDeleteZone(z.id);
-      });
-    });
+    bindTableEvents(this.inspectorCtx());
   }
 
   /**
@@ -1062,108 +886,7 @@ export class ZoneInspector {
   }
 
   private bindDrawerMetadataEvents(): void {
-    if (!this.drawerElement) return;
-
-    const getMeta = (): ExtendedModelMetadata => {
-      return this.handlers.getExtendedMetadata?.() ?? {};
-    };
-
-    const updateMeta = (changes: Partial<ExtendedModelMetadata>) => {
-      const cur = getMeta();
-      const updated: ExtendedModelMetadata = {
-        ...cur,
-        ...changes,
-      };
-      this.handlers.onUpdateExtendedMetadata?.(updated);
-    };
-
-    const authorInp = this.drawerElement.querySelector('#drawer-meta-inp-author') as HTMLInputElement | null;
-    authorInp?.addEventListener('input', () => {
-      updateMeta({ author: authorInp.value.trim() });
-    });
-
-    const versionInp = this.drawerElement.querySelector('#drawer-meta-inp-version') as HTMLInputElement | null;
-    versionInp?.addEventListener('input', () => {
-      updateMeta({ version: versionInp.value.trim() });
-    });
-
-    const licenseInp = this.drawerElement.querySelector('#drawer-meta-inp-license') as HTMLInputElement | null;
-    licenseInp?.addEventListener('input', () => {
-      updateMeta({ license: licenseInp.value.trim() });
-    });
-
-    const urlInp = this.drawerElement.querySelector('#drawer-meta-inp-source-url') as HTMLInputElement | null;
-    urlInp?.addEventListener('input', () => {
-      updateMeta({ sourceUrl: urlInp.value.trim() });
-    });
-
-    const descInp = this.drawerElement.querySelector('#drawer-meta-inp-description') as HTMLTextAreaElement | null;
-    descInp?.addEventListener('input', () => {
-      updateMeta({ description: descInp.value.trim() });
-    });
-
-    this.drawerElement.querySelector('#btn-drawer-add-meta-tag')?.addEventListener('click', () => {
-      const cur = getMeta();
-      const attrs = [...(cur.customAttributes ?? [])];
-      attrs.push({ tag: '', value: '' });
-      updateMeta({ customAttributes: attrs });
-      this.renderDrawer();
-    });
-
-    this.drawerElement.querySelectorAll<HTMLSelectElement>('.sel-drawer-meta-tag').forEach((sel) => {
-      sel.addEventListener('change', () => {
-        const idx = parseInt(sel.dataset.index ?? '-1', 10);
-        const cur = getMeta();
-        const attrs = [...(cur.customAttributes ?? [])];
-        if (idx >= 0 && attrs[idx]) {
-          const selectedVal = sel.value;
-          if (selectedVal === '__custom__') {
-            attrs[idx].tag = '';
-          } else {
-            attrs[idx].tag = selectedVal;
-          }
-          updateMeta({ customAttributes: attrs });
-          this.renderDrawer();
-        }
-      });
-    });
-
-    this.drawerElement.querySelectorAll<HTMLInputElement>('.inp-drawer-meta-tag').forEach((inp) => {
-      inp.addEventListener('input', () => {
-        const idx = parseInt(inp.dataset.index ?? '-1', 10);
-        const cur = getMeta();
-        const attrs = [...(cur.customAttributes ?? [])];
-        if (idx >= 0 && attrs[idx]) {
-          attrs[idx].tag = inp.value;
-          updateMeta({ customAttributes: attrs });
-        }
-      });
-    });
-
-    this.drawerElement.querySelectorAll<HTMLInputElement>('.inp-drawer-meta-val').forEach((inp) => {
-      inp.addEventListener('input', () => {
-        const idx = parseInt(inp.dataset.index ?? '-1', 10);
-        const cur = getMeta();
-        const attrs = [...(cur.customAttributes ?? [])];
-        if (idx >= 0 && attrs[idx]) {
-          attrs[idx].value = inp.value;
-          updateMeta({ customAttributes: attrs });
-        }
-      });
-    });
-
-    this.drawerElement.querySelectorAll<HTMLButtonElement>('.btn-drawer-remove-meta-tag').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.index ?? '-1', 10);
-        const cur = getMeta();
-        const attrs = [...(cur.customAttributes ?? [])];
-        if (idx >= 0 && idx < attrs.length) {
-          attrs.splice(idx, 1);
-          updateMeta({ customAttributes: attrs });
-          this.renderDrawer();
-        }
-      });
-    });
+    bindDrawerMetadataEvents(this.inspectorCtx());
   }
 
 

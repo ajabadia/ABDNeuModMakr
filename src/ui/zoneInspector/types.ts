@@ -19,6 +19,8 @@ export interface InspectorState {
   isPlayingSequence: boolean;
   isSpectralVisible: boolean;
   totalZones: number;
+  selectedRegionId: string | null;
+  auditionBpm: number;
 }
 
 export interface InspectorContext {
@@ -35,4 +37,13 @@ export interface InspectorContext {
   renderDrawer: () => void;
   handleRowPlayClick: (zoneId: string | null, regionId: string | null) => void;
   bindDrawerMetadataEvents: () => void;
+  applyNoteHighlights: (scrollIntoView: boolean) => void;
+  closeToolsMenu: () => void;
+  openDrawer: () => void;
+  openLoopEditorDrawer: (regionId?: string) => void;
+  openModelCommonDrawer: () => void;
+  renderTable: () => void;
+  setKeyMappingMode: (mode: KeyMappingMode) => void;
+  toggleDrawer: () => void;
+  toggleSequencePlayback: () => void;
 }
