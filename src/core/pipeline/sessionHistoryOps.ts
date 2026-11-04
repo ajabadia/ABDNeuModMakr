@@ -1,11 +1,4 @@
-import type {
-  ExtendedRegion,
-  HistoryState,
-  ProcessConfig,
-  Session,
-  SynthArticulationConfig,
-  Zone,
-} from '../types.ts';
+import type { ExtendedRegion, HistoryState, ProcessConfig, Session, SynthArticulationConfig, Zone } from '../types.ts';
 import type { PipelineContext } from './types.ts';
 import { createInitialSession, createZone } from '../sessionFactory.ts';
 import { parseSessionJson } from '../sessionSchema.ts';

@@ -6,10 +6,13 @@
 // extracted without owning any of that state.
 // ─────────────────────────────────────────────────────────
 
-import type { CoreEvent, Session, Zone, ZoneSpectralInspection } from '../types.ts';
+import type { CoreEvent, ProcessProgress, Session, Zone, ZoneSpectralInspection } from '../types.ts';
 import type { SpectralModelData } from '../dsp/GridIndicator.ts';
 import type { PreservedSourceBinary } from '../dsp/PipelineRunner.ts';
 import type { NeuronAssetStore } from '../storage/NeuronAssetStore.ts';
+import type { BankService } from '../bankService.ts';
+import type { SpectralAnalyzer } from '../dsp/SpectralAnalyzer.ts';
+import type { AudioPreviewService } from '../audioPreview.ts';
 import type { SessionHistory } from '../sessionHistory.ts';
 
 /** Cached per-zone spectrum / resynthesis payload. */
@@ -35,8 +38,16 @@ export interface PipelineSessionState {
   readonly sampleBuffers: Map<string, ArrayBuffer>;
   readonly importedSourceBinaries: Map<string, PreservedSourceBinary & { complexity: number }>;
   readonly assetStore: NeuronAssetStore;
+  readonly bank: BankService;
+  readonly analyzer: SpectralAnalyzer;
+  readonly preview: AudioPreviewService;
+  readonly enhancedSourceHashes: Map<string, string>;
   readonly spectralCache: Map<string, SpectralCacheEntry>;
   readonly ribbonEnvelopeCache: Map<string, number[]>;
+  worker: Worker | null;
+  isRunning: boolean;
+  cancelFlag: boolean;
+  processProgress: ProcessProgress | null;
 }
 
 /** What a pipeline module needs from the engine. */
@@ -45,4 +56,5 @@ export interface PipelineContext {
   emit(event: CoreEvent): void;
   persistToLocalStorage(): void;
   ensureZoneDemoBuffers(zones: Zone[]): void;
+  computeAudioBufferHash(buf: ArrayBuffer, extraTag?: string): string;
 }
