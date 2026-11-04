@@ -315,7 +315,16 @@ console.log('Running Phase 35.5 Musician Guided Wizard Tests...');
 
 // Test 9 (Phase 35.6): UI bridges verification (ZoneInspector slot rescue, batch AutoLoop, Master Wave re-exposure, Chopper reconcile)
 {
-  const zoneInspectorSrc = fs.readFileSync(new URL('../src/ui/ZoneInspector.ts', import.meta.url), 'utf8');
+  // La clase y sus módulos de render viven en src/ui/ y src/ui/zoneInspector/.
+  const zoneInspectorSrc = [
+    fs.readFileSync(new URL('../src/ui/ZoneInspector.ts', import.meta.url), 'utf8'),
+    ...fs
+      .readdirSync(new URL('../src/ui/zoneInspector/', import.meta.url))
+      .filter((file) => file.endsWith('.ts'))
+      .map((file) =>
+        fs.readFileSync(new URL(`../src/ui/zoneInspector/${file}`, import.meta.url), 'utf8')
+      ),
+  ].join('\n');
   const wizardModalSrc = fs.readFileSync(new URL('../src/ui/MusicianWizardModal.ts', import.meta.url), 'utf8');
   const chopperModalSrc = fs.readFileSync(new URL('../src/ui/AudioChopperModal.ts', import.meta.url), 'utf8');
 
