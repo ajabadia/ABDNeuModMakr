@@ -61,3 +61,9 @@ export interface TriageOpsContext extends ImportCtxHost {
     sourceLabel: string
   ) => Promise<void>;
 }
+
+/** Host services the multi-file / zip import needs from ImportHandlers. */
+export interface MixedImportContext extends ImportCtxHost {
+  setLibrarySource: SetLibrarySourceFn;
+  maybeOpenTriageGate: TriageGateFn;
+}
