@@ -21,6 +21,14 @@ export interface InspectorState {
   totalZones: number;
   selectedRegionId: string | null;
   auditionBpm: number;
+  auditionCheckTimer: number | null;
+  playingRowId: string | null;
+  playingRowStartedAt: number;
+  seqPlayTimer: number | null;
+  drawerMount: HTMLElement;
+  isDrawerOpen: boolean;
+  lastExtendedRegionCount: number;
+  noteReleaseTimers: Map<number, number>;
 }
 
 export interface InspectorContext {
@@ -46,4 +54,7 @@ export interface InspectorContext {
   setKeyMappingMode: (mode: KeyMappingMode) => void;
   toggleDrawer: () => void;
   toggleSequencePlayback: () => void;
+  setPlayingRow: (rowKey: string | null, ids?: { zoneId?: string; regionId?: string }) => void;
+  updatePlayButtonStates: () => void;
+  startAuditionStateMonitor: () => void;
 }

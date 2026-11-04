@@ -18,12 +18,10 @@ export function getThemeColor(tokenName: string, fallback: string): string {
     .trim();
   return val || fallback;
 }
-import { ICONS } from './icons';
 import { onAppLocaleChange } from '../core/i18n';
-import { renderExtendedRegionTableRows as tplRenderExtendedRegionTableRows, renderGmDrumOptions as tplRenderGmDrumOptions, renderZoneTableRows as tplRenderZoneTableRows } from './zoneInspector/zoneTemplates.ts';
 import type { InspectorContext } from './zoneInspector/types.ts';
 import { renderDrawer } from './zoneInspector/drawerRenderOps.ts';
-import { applyNoteHighlights, syncActiveDom } from './zoneInspector/drawerStateOps.ts';
+import { applyNoteHighlights } from './zoneInspector/drawerStateOps.ts';
 import { renderTable } from './zoneInspector/tableRenderOps.ts';
 import {
   bindDrawerAutoDetectEvents,
@@ -40,6 +38,10 @@ import {
   bindDrawerSampleLowEvents,
 } from './zoneInspector/drawerSampleEventOps.ts';
 import { bindDrawerMetadataEvents, bindTableEvents } from './zoneInspector/tableEventOps.ts';
+import { clearPlayingRow, getEffectiveBpm, setPlayingRow, startAuditionStateMonitor, stopSequencePlayback, toggleSequencePlayback, updatePlayButtonStates } from './zoneInspector/playbackOps.ts';
+import { destroyZoneKnobs, getExtendedContext, initDrawer, setZone } from './zoneInspector/zoneStateOps.ts';
+import { handleRowPlayClick, highlightNote, releaseNote } from './zoneInspector/notePreviewOps.ts';
+import { closeDrawer, closeToolsMenu, openDrawer, openLoopEditorDrawer, openModelCommonDrawer, openModelMetadataDrawer, renderExtendedRegionTableRows, renderGmDrumOptions, renderZoneTableRows, setSpectralVisible, toggleDrawer } from './zoneInspector/viewOps.ts';
 
 export interface ZoneInspectorHandlers {
   onSelectZone?: (zoneId: string) => void;
@@ -165,114 +167,58 @@ export class ZoneInspector {
     const host = this;
     return {
       state: {
-      get drawerElement() {
-        return host.drawerElement;
-      },
-      set drawerElement(v) {
-        host.drawerElement = v;
-      },
-      get selectedRegionId() {
-        return host.selectedRegionId;
-      },
-      set selectedRegionId(v) {
-        host.selectedRegionId = v;
-      },
-      get auditionBpm() {
-        return host.auditionBpm;
-      },
-      set auditionBpm(v) {
-        host.auditionBpm = v;
-      },
-      get currentZone() {
-        return host.currentZone;
-      },
-      set currentZone(v) {
-        host.currentZone = v;
-      },
-      get allZones() {
-        return host.allZones;
-      },
-      set allZones(v) {
-        host.allZones = v;
-      },
-      get zoneIndex() {
-        return host.zoneIndex;
-      },
-      set zoneIndex(v) {
-        host.zoneIndex = v;
-      },
-      get workingMode() {
-        return host.workingMode;
-      },
-      set workingMode(v) {
-        host.workingMode = v;
-      },
-      get handlers() {
-        return host.handlers;
-      },
-      set handlers(v) {
-        host.handlers = v;
-      },
-      get keyMappingMode() {
-        return host.keyMappingMode;
-      },
-      set keyMappingMode(v) {
-        host.keyMappingMode = v;
-      },
-      get container() {
-        return host.container;
-      },
-      set container(v) {
-        host.container = v;
-      },
-      get isDraggingKnob() {
-        return host.isDraggingKnob;
-      },
-      set isDraggingKnob(v) {
-        host.isDraggingKnob = v;
-      },
-      get detuneKnob() {
-        return host.detuneKnob;
-      },
-      set detuneKnob(v) {
-        host.detuneKnob = v;
-      },
-      get volumeKnob() {
-        return host.volumeKnob;
-      },
-      set volumeKnob(v) {
-        host.volumeKnob = v;
-      },
-      get panKnob() {
-        return host.panKnob;
-      },
-      set panKnob(v) {
-        host.panKnob = v;
-      },
-      get activeNoteHits() {
-        return host.activeNoteHits;
-      },
-      set activeNoteHits(v) {
-        host.activeNoteHits = v;
-      },
-      get isPlayingSequence() {
-        return host.isPlayingSequence;
-      },
-      set isPlayingSequence(v) {
-        host.isPlayingSequence = v;
-      },
-      get isSpectralVisible() {
-        return host.isSpectralVisible;
-      },
-      set isSpectralVisible(v) {
-        host.isSpectralVisible = v;
-      },
-      get totalZones() {
-        return host.totalZones;
-      },
-      set totalZones(v) {
-        host.totalZones = v;
-      },
+      get drawerElement() { return host.drawerElement; },
+      set drawerElement(v) { host.drawerElement = v; },
+      get selectedRegionId() { return host.selectedRegionId; },
+      set selectedRegionId(v) { host.selectedRegionId = v; },
+      get auditionBpm() { return host.auditionBpm; },
+      set auditionBpm(v) { host.auditionBpm = v; },
+      get currentZone() { return host.currentZone; },
+      set currentZone(v) { host.currentZone = v; },
+      get allZones() { return host.allZones; },
+      set allZones(v) { host.allZones = v; },
+      get zoneIndex() { return host.zoneIndex; },
+      set zoneIndex(v) { host.zoneIndex = v; },
+      get workingMode() { return host.workingMode; },
+      set workingMode(v) { host.workingMode = v; },
+      get handlers() { return host.handlers; },
+      set handlers(v) { host.handlers = v; },
+      get keyMappingMode() { return host.keyMappingMode; },
+      set keyMappingMode(v) { host.keyMappingMode = v; },
+      get container() { return host.container; },
+      set container(v) { host.container = v; },
+      get isDraggingKnob() { return host.isDraggingKnob; },
+      set isDraggingKnob(v) { host.isDraggingKnob = v; },
+      get detuneKnob() { return host.detuneKnob; },
+      set detuneKnob(v) { host.detuneKnob = v; },
+      get volumeKnob() { return host.volumeKnob; },
+      set volumeKnob(v) { host.volumeKnob = v; },
+      get panKnob() { return host.panKnob; },
+      set panKnob(v) { host.panKnob = v; },
+      get activeNoteHits() { return host.activeNoteHits; },
+      set activeNoteHits(v) { host.activeNoteHits = v; },
+      get isPlayingSequence() { return host.isPlayingSequence; },
+      set isPlayingSequence(v) { host.isPlayingSequence = v; },
+      get isSpectralVisible() { return host.isSpectralVisible; },
+      set isSpectralVisible(v) { host.isSpectralVisible = v; },
+      get totalZones() { return host.totalZones; },
+      set totalZones(v) { host.totalZones = v; },
+      get auditionCheckTimer() { return host.auditionCheckTimer; },
+      set auditionCheckTimer(v) { host.auditionCheckTimer = v; },
+      get playingRowId() { return host.playingRowId; },
+      set playingRowId(v) { host.playingRowId = v; },
+      get playingRowStartedAt() { return host.playingRowStartedAt; },
+      set playingRowStartedAt(v) { host.playingRowStartedAt = v; },
+      get seqPlayTimer() { return host.seqPlayTimer; },
+      set seqPlayTimer(v) { host.seqPlayTimer = v; },
+      get drawerMount() { return host.drawerMount; },
+      set drawerMount(v) { host.drawerMount = v; },
+      get isDrawerOpen() { return host.isDrawerOpen; },
+      set isDrawerOpen(v) { host.isDrawerOpen = v; },
+      get lastExtendedRegionCount() { return host.lastExtendedRegionCount; },
+      set lastExtendedRegionCount(v) { host.lastExtendedRegionCount = v; },
+      get noteReleaseTimers() { return host.noteReleaseTimers; },
+      set noteReleaseTimers(v) { host.noteReleaseTimers = v; },
       },
       destroyZoneKnobs: () => host.destroyZoneKnobs(),
       getExtendedContext: () => host.getExtendedContext(),
@@ -295,6 +241,9 @@ export class ZoneInspector {
       setKeyMappingMode: (mode) => host.setKeyMappingMode(mode),
       toggleDrawer: () => host.toggleDrawer(),
       toggleSequencePlayback: () => host.toggleSequencePlayback(),
+      setPlayingRow: (rowKey, ids) => host.setPlayingRow(rowKey, ids),
+      startAuditionStateMonitor: () => host.startAuditionStateMonitor(),
+      updatePlayButtonStates: () => host.updatePlayButtonStates(),
     };
   }
 
@@ -322,33 +271,11 @@ export class ZoneInspector {
   }
 
   private initDrawer(): void {
-    this.drawerElement = document.createElement('div');
-    this.drawerElement.className = 'zone-metadata-drawer-panel is-closed';
-    this.drawerMount.appendChild(this.drawerElement);
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        this.closeToolsMenu();
-        if (this.isDrawerOpen) {
-          this.closeDrawer();
-        }
-      }
-    });
-
-    document.addEventListener('click', (e) => {
-      const dropdown = this.container.querySelector('#keymap-tools-dropdown');
-      if (dropdown && !dropdown.contains(e.target as Node)) {
-        this.closeToolsMenu();
-      }
-    });
+    initDrawer(this.inspectorCtx());
   }
 
   private closeToolsMenu(): void {
-    const popover = this.container.querySelector('#keymap-tools-popover');
-    const toggle = this.container.querySelector('#btn-keymap-tools-toggle');
-    popover?.classList.remove('is-open');
-    toggle?.classList.remove('is-active');
-    toggle?.setAttribute('aria-expanded', 'false');
+    closeToolsMenu(this.inspectorCtx());
   }
 
   public getSelectedRegionId(): string | null {
@@ -360,53 +287,31 @@ export class ZoneInspector {
   }
 
   public openDrawer(): void {
-    this.isDrawerOpen = true;
-    this.drawerElement?.classList.remove('is-closed');
-    this.renderDrawer();
+    openDrawer(this.inspectorCtx());
   }
 
   public openLoopEditorDrawer(regionId?: string): void {
-    if (regionId) {
-      this.selectedRegionId = regionId;
-    }
-    this.handlers.onOpenLoopEditor?.();
+    openLoopEditorDrawer(this.inspectorCtx(), regionId);
   }
 
   public openModelCommonDrawer(): void {
-    if (this.handlers.onOpenModelConfig) {
-      this.handlers.onOpenModelConfig('general');
-    } else {
-      this.openDrawer();
-    }
+    openModelCommonDrawer(this.inspectorCtx());
   }
 
   public openModelMetadataDrawer(): void {
-    if (this.handlers.onOpenModelConfig) {
-      this.handlers.onOpenModelConfig('metadata');
-    } else {
-      this.openDrawer();
-    }
+    openModelMetadataDrawer(this.inspectorCtx());
   }
 
   public closeDrawer(): void {
-    this.isDrawerOpen = false;
-    this.drawerElement?.classList.add('is-closed');
+    closeDrawer(this.inspectorCtx());
   }
 
   public toggleDrawer(): void {
-    if (this.isDrawerOpen) {
-      this.closeDrawer();
-    } else {
-      this.openDrawer();
-    }
+    toggleDrawer(this.inspectorCtx());
   }
 
   public setSpectralVisible(visible: boolean): void {
-    this.isSpectralVisible = visible;
-    const btn = this.container.querySelector('#btn-toggle-spectral');
-    if (btn) {
-      btn.classList.toggle('is-active', visible);
-    }
+    setSpectralVisible(this.inspectorCtx(), visible);
   }
 
   private getExtendedContext(): {
@@ -414,36 +319,7 @@ export class ZoneInspector {
     activeRegion: ExtendedRegion | null;
     activeIndex: number;
   } {
-    const regions = this.handlers.getExtendedRegions?.() ?? [];
-    if (regions.length === 0) {
-      return { regions: [], activeRegion: null, activeIndex: 0 };
-    }
-    let idx = this.selectedRegionId
-      ? regions.findIndex((r) => r.id === this.selectedRegionId)
-      : -1;
-    if (idx < 0 && this.currentZone) {
-      const z = this.currentZone;
-      idx = regions.findIndex(
-        (r) =>
-          r.sampleName === z.sampleLow &&
-          r.lowKey <= z.lowKey &&
-          r.highKey >= z.highKey
-      );
-      if (idx < 0) {
-        idx = regions.findIndex(
-          (r) => r.lowKey <= z.highKey && r.highKey >= z.lowKey
-        );
-      }
-      if (idx < 0 && z.sampleLow) {
-        idx = regions.findIndex((r) => r.sampleName === z.sampleLow);
-      }
-    }
-    if (idx < 0) {
-      idx = Math.max(0, Math.min(regions.length - 1, this.zoneIndex));
-    }
-    const activeRegion = regions[idx] ?? regions[0];
-    this.selectedRegionId = activeRegion.id;
-    return { regions, activeRegion, activeIndex: idx };
+    return getExtendedContext(this.inspectorCtx());
   }
 
 
@@ -459,117 +335,21 @@ export class ZoneInspector {
     if (this.isDrawerOpen) this.renderDrawer();
   }
 
-  public setZone(
-    zone: Zone | null,
-    index: number,
-    total: number,
-    allZones?: Zone[],
-    workingMode?: WorkingMode,
-    keyMappingMode?: KeyMappingMode
-  ): void {
-    const modeChanged = workingMode !== undefined && workingMode !== this.workingMode;
-    const keyMappingChanged =
-      keyMappingMode !== undefined && keyMappingMode !== this.keyMappingMode;
-    if (workingMode !== undefined) {
-      this.workingMode = workingMode;
-    }
-    if (keyMappingMode !== undefined) {
-      this.keyMappingMode = keyMappingMode;
-    } else if (this.handlers.getKeyMappingMode) {
-      this.keyMappingMode = this.handlers.getKeyMappingMode();
-    }
-    const sameZone = this.currentZone && zone && this.currentZone.id === zone.id;
-    const sameCount = allZones ? allZones.length === this.allZones.length : true;
-    const extRegions =
-      this.workingMode === 'extended'
-        ? (this.handlers.getExtendedRegions?.() ?? [])
-        : [];
-    const sameRegionCount = extRegions.length === this.lastExtendedRegionCount;
-    this.lastExtendedRegionCount = extRegions.length;
-
-    if (!sameZone && zone && this.workingMode === 'extended' && extRegions.length > 0) {
-      const currentReg = extRegions.find((r) => r.id === this.selectedRegionId);
-      const overlapsZone =
-        currentReg &&
-        currentReg.lowKey <= zone.highKey &&
-        currentReg.highKey >= zone.lowKey;
-      if (!overlapsZone) {
-        const matchReg =
-          extRegions.find(
-            (r) =>
-              r.sampleName === zone.sampleLow &&
-              r.lowKey <= zone.highKey &&
-              r.highKey >= zone.lowKey
-          ) ??
-          extRegions.find(
-            (r) => r.lowKey <= zone.highKey && r.highKey >= zone.lowKey
-          );
-        if (matchReg) {
-          this.selectedRegionId = matchReg.id;
-        }
-      }
-    }
-
-    this.currentZone = zone ? { ...zone } : null;
-    this.zoneIndex = index;
-    this.totalZones = total;
-    this.allZones = allZones ? allZones.map((z) => ({ ...z })) : zone ? [{ ...zone }] : [];
-
-    if (this.handlers.isAuditionPlaying && !this.handlers.isAuditionPlaying()) {
-      this.setPlayingRow(null);
-    }
-
-    const activeEl = document.activeElement;
-    if (
-      sameZone &&
-      sameCount &&
-      sameRegionCount &&
-      !modeChanged &&
-      !keyMappingChanged &&
-      ((activeEl &&
-        this.drawerElement &&
-        this.drawerElement.contains(activeEl)) ||
-        this.isDraggingKnob)
-    ) {
-      this.syncActiveDom();
-      return;
-    }
-    this.renderTable();
-    this.renderDrawer();
+  public setZone(zone: Zone | null, index: number, total: number, allZones?: Zone[], workingMode?: WorkingMode, keyMappingMode?: KeyMappingMode): void {
+    setZone(this.inspectorCtx(), zone, index, total, allZones, workingMode, keyMappingMode);
   }
 
   private destroyZoneKnobs(): void {
-    if (this.auditionCheckTimer !== null) {
-      clearInterval(this.auditionCheckTimer);
-      this.auditionCheckTimer = null;
-    }
-    this.detuneKnob?.destroy();
-    this.detuneKnob = null;
-    this.volumeKnob?.destroy();
-    this.volumeKnob = null;
-    this.panKnob?.destroy();
-    this.panKnob = null;
+    destroyZoneKnobs(this.inspectorCtx());
   }
 
-  private syncActiveDom(): void {
-    syncActiveDom(this.inspectorCtx());
-  }
 
   private renderZoneTableRows(zones: Zone[], activeId: string): string {
-    return tplRenderZoneTableRows(zones, activeId, {
-      keyMappingMode: this.keyMappingMode,
-      playingRowId: this.playingRowId,
-    });
+    return renderZoneTableRows(this.inspectorCtx(), zones, activeId);
   }
 
-  private renderExtendedRegionTableRows(
-    regions: ExtendedRegion[],
-    activeRegionId: string
-  ): string {
-    return tplRenderExtendedRegionTableRows(regions, activeRegionId, this.allZones, this.currentZone, {
-      keyMappingMode: this.keyMappingMode,
-      playingRowId: this.playingRowId,
-    });
+  private renderExtendedRegionTableRows(regions: ExtendedRegion[], activeRegionId: string): string {
+    return renderExtendedRegionTableRows(this.inspectorCtx(), regions, activeRegionId);
   }
 
   private renderTable(): void {
@@ -577,11 +357,7 @@ export class ZoneInspector {
   }
 
   private renderGmDrumOptions(currentKey: number, currentId: string): string {
-    const isExtended = this.workingMode === 'extended';
-    const items = isExtended
-      ? this.getExtendedContext().regions.map((r, i) => ({ id: r.id, index: i + 1, rootKey: r.rootKey }))
-      : this.allZones.map((z, i) => ({ id: z.id, index: i + 1, rootKey: z.rootKey }));
-    return tplRenderGmDrumOptions(currentKey, currentId, items);
+    return renderGmDrumOptions(this.inspectorCtx(), currentKey, currentId);
   }
 
   private renderDrawer(): void {
@@ -597,34 +373,13 @@ export class ZoneInspector {
    * Classic: the zone row plus its Low Vel / High Vel cell for the played velocity.
    * Extended: every region row whose key AND velocity ranges contain the note.
    */
-  public highlightNote(
-    note: number,
-    hit: { zoneId?: string; layer?: 'low' | 'high'; regionIds: string[] }
-  ): void {
-    const pending = this.noteReleaseTimers.get(note);
-    if (pending !== undefined) {
-      clearTimeout(pending);
-      this.noteReleaseTimers.delete(note);
-    }
-    this.activeNoteHits.set(note, { ...hit, regionIds: [...hit.regionIds], startedAt: performance.now() });
-    this.applyNoteHighlights(true);
+  public highlightNote(note: number, hit: { zoneId?: string; layer?: 'low' | 'high'; regionIds: string[] }): void {
+    highlightNote(this.inspectorCtx(), note, hit);
   }
 
   /** Clears a note highlight (kept visible ≥ 250 ms so quick taps are still noticeable). */
   public releaseNote(note: number): void {
-    const hit = this.activeNoteHits.get(note);
-    if (!hit) return;
-    const remaining = Math.max(0, 250 - (performance.now() - hit.startedAt));
-    const clear = () => {
-      this.noteReleaseTimers.delete(note);
-      this.activeNoteHits.delete(note);
-      this.applyNoteHighlights(false);
-    };
-    if (remaining === 0) {
-      clear();
-    } else {
-      this.noteReleaseTimers.set(note, window.setTimeout(clear, remaining));
-    }
+    releaseNote(this.inspectorCtx(), note);
   }
 
   private applyNoteHighlights(scrollIntoView: boolean): void {
@@ -632,199 +387,40 @@ export class ZoneInspector {
   }
 
   private handleRowPlayClick(zoneId: string | null, regionId: string | null): void {
-    const isExtended = this.workingMode === 'extended';
-    const rowKey = isExtended ? (regionId ?? zoneId ?? '') : (zoneId ?? '');
-    if (!rowKey) return;
-
-    if (this.playingRowId === rowKey) {
-      this.handlers.onStopAudition?.();
-      this.setPlayingRow(null);
-      this.updatePlayButtonStates();
-      return;
-    }
-
-    const rowIds = {
-      zoneId: zoneId || undefined,
-      regionId: isExtended && regionId ? regionId : undefined,
-    };
-    this.setPlayingRow(rowKey, rowIds);
-    this.updatePlayButtonStates();
-
-    if (this.handlers.onAuditionRow) {
-      this.handlers.onAuditionRow(rowIds);
-    } else if (isExtended && regionId) {
-      this.selectedRegionId = regionId;
-      const targetZoneId = zoneId || this.currentZone?.id;
-      this.handlers.onAuditionLoop?.({
-        zoneId: targetZoneId,
-        regionId: regionId,
-      });
-    } else if (zoneId) {
-      this.handlers.onAuditionLoop?.({
-        zoneId: zoneId,
-        regionId: undefined,
-      });
-    }
-
-    this.startAuditionStateMonitor();
+    handleRowPlayClick(this.inspectorCtx(), zoneId, regionId);
   }
 
   private updatePlayButtonStates(): void {
-    const playButtons = this.container.querySelectorAll<HTMLButtonElement>('.btn-row-play');
-    playButtons.forEach((btn) => {
-      const rowId = btn.getAttribute('data-play-row-id');
-      const isPlaying = this.playingRowId !== null && rowId === this.playingRowId;
-      btn.classList.toggle('is-playing', isPlaying);
-      btn.innerHTML = isPlaying ? ICONS.stop : ICONS.play;
-      btn.setAttribute(
-        'title',
-        isPlaying
-          ? 'Stop auditioning'
-          : 'Audition sample (Loop, DAHDSR Envelopes, Volume, Pan, Detune)'
-      );
-    });
-
-    const isExtended = this.workingMode === 'extended';
-    const activeReg = isExtended ? this.getExtendedContext().activeRegion : null;
-    const rowKey = isExtended ? (activeReg?.id ?? this.currentZone?.id ?? '') : (this.currentZone?.id ?? '');
-    const isDrawerPlaying = this.playingRowId !== null && this.playingRowId === rowKey;
-
-    const drawerStatusDot = this.drawerElement?.querySelector('.drawer-waveform-status-info .status-indicator-dot');
-    const drawerStatusText = this.drawerElement?.querySelector('.drawer-waveform-status-info .status-text');
-    if (drawerStatusDot) drawerStatusDot.classList.toggle('is-active', isDrawerPlaying);
-    if (drawerStatusText) {
-      drawerStatusText.textContent = isDrawerPlaying
-        ? 'Auditioning (Synced with Table Play)'
-        : 'Ready for audition (Volume, Pan, Detune & Loop applied)';
-    }
+    updatePlayButtonStates(this.inspectorCtx());
   }
 
   /** Called when another audition source (e.g. the keyboard) takes over playback. */
   public clearPlayingRow(): void {
-    this.stopSequencePlayback(false);
-    if (!this.playingRowId) return;
-    this.setPlayingRow(null);
-    this.updatePlayButtonStates();
+    clearPlayingRow(this.inspectorCtx());
   }
 
   private getEffectiveBpm(): number {
-    const fromHandler = this.handlers.getAuditionBpm?.();
-    if (fromHandler && fromHandler >= 30 && fromHandler <= 300) {
-      this.auditionBpm = Math.round(fromHandler);
-    }
-    return this.auditionBpm;
+    return getEffectiveBpm(this.inspectorCtx());
   }
 
   private toggleSequencePlayback(): void {
-    if (this.isPlayingSequence) {
-      this.stopSequencePlayback(true);
-      return;
-    }
-
-    const isExtended = this.workingMode === 'extended';
-    const steps: Array<{ rowKey: string; zoneId?: string; regionId?: string }> = [];
-
-    if (isExtended) {
-      const regions = [...(this.handlers.getExtendedRegions?.() ?? [])]
-        .filter((r) => Boolean(r.sampleName))
-        .sort((a, b) => a.lowKey - b.lowKey || a.rootKey - b.rootKey);
-      for (const r of regions) {
-        steps.push({ rowKey: r.id, zoneId: this.currentZone?.id, regionId: r.id });
-      }
-    } else {
-      const zones = [...(this.allZones.length > 0 ? this.allZones : this.currentZone ? [this.currentZone] : [])]
-        .filter((z) => Boolean(z.sampleLow || z.sampleHigh))
-        .sort((a, b) => a.lowKey - b.lowKey || a.rootKey - b.rootKey);
-      for (const z of zones) {
-        steps.push({ rowKey: z.id, zoneId: z.id });
-      }
-    }
-
-    if (steps.length === 0) return;
-
-    this.isPlayingSequence = true;
-    this.renderTable();
-
-    let stepIdx = 0;
-    const playStep = () => {
-      if (!this.isPlayingSequence) return;
-      const step = steps[stepIdx % steps.length];
-      stepIdx++;
-
-      this.setPlayingRow(step.rowKey, { zoneId: step.zoneId, regionId: step.regionId });
-      this.updatePlayButtonStates();
-      if (this.handlers.onAuditionRow) {
-        this.handlers.onAuditionRow({ zoneId: step.zoneId, regionId: step.regionId });
-      } else if (step.zoneId) {
-        this.handlers.onAuditionLoop?.({ zoneId: step.zoneId, regionId: step.regionId });
-      }
-
-      const bpm = Math.max(30, Math.min(300, this.getEffectiveBpm()));
-      // 1/8th note step duration (in ms) synced to active BPM
-      const stepMs = Math.max(80, Math.round((60 / bpm / 2) * 1000));
-      this.seqPlayTimer = window.setTimeout(playStep, stepMs);
-    };
-
-    playStep();
+    toggleSequencePlayback(this.inspectorCtx());
   }
 
   public stopSequencePlayback(stopAudio = true): void {
-    if (this.seqPlayTimer !== null) {
-      clearTimeout(this.seqPlayTimer);
-      this.seqPlayTimer = null;
-    }
-    if (!this.isPlayingSequence) return;
-    this.isPlayingSequence = false;
-    if (stopAudio) {
-      this.handlers.onStopAudition?.();
-    }
-    this.setPlayingRow(null);
-    this.renderTable();
+    stopSequencePlayback(this.inspectorCtx(), stopAudio);
   }
 
   /**
    * Single place that changes the auditioning row, so the keyboard and the zone map
    * highlights always follow start / manual stop / natural end of playback.
    */
-  private setPlayingRow(
-    rowKey: string | null,
-    ids?: { zoneId?: string; regionId?: string }
-  ): void {
-    const changed = rowKey !== this.playingRowId;
-    this.playingRowId = rowKey;
-    this.playingRowStartedAt = rowKey ? performance.now() : 0;
-    if (rowKey) {
-      this.handlers.onRowAuditionChange?.(ids ?? {});
-    } else if (changed) {
-      this.handlers.onRowAuditionChange?.(null);
-    }
+  private setPlayingRow(rowKey: string | null, ids?: { zoneId?: string; regionId?: string }): void {
+    setPlayingRow(this.inspectorCtx(), rowKey, ids);
   }
 
   private startAuditionStateMonitor(): void {
-    if (this.auditionCheckTimer !== null) {
-      clearInterval(this.auditionCheckTimer);
-      this.auditionCheckTimer = null;
-    }
-    this.auditionCheckTimer = window.setInterval(() => {
-      if (this.playingRowId) {
-        // Grace period: decoding/AudioContext resume may delay the actual start
-        if (performance.now() - this.playingRowStartedAt < 600) return;
-        const isPlaying = this.handlers.isAuditionPlaying?.() ?? false;
-        if (!isPlaying) {
-          this.setPlayingRow(null);
-          this.updatePlayButtonStates();
-          if (this.auditionCheckTimer !== null) {
-            clearInterval(this.auditionCheckTimer);
-            this.auditionCheckTimer = null;
-          }
-        }
-      } else {
-        if (this.auditionCheckTimer !== null) {
-          clearInterval(this.auditionCheckTimer);
-          this.auditionCheckTimer = null;
-        }
-      }
-    }, 150);
+    startAuditionStateMonitor(this.inspectorCtx());
   }
 
   private bindDrawerEvents(): void {
