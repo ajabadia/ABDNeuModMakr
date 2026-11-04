@@ -17,7 +17,6 @@ import {
   separateStemsDspFallback,
 } from '../core/ai/aiHonesty.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
-import { downloadBlob } from './download.ts';
 import {
   encodePcm16Wav,
   decodeWav,
@@ -27,34 +26,12 @@ import {
 import {
   snapFrameToNearestZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
-import {
-  sliceAudioBuffer,
-  sliceAudioBufferPreservingManualCuts,
-  buildSlicesFromBoundaries,
-  buildSlicesFromPhoneticWords,
-  buildSlicesFromMidiManifest,
-  moveSliceBoundary,
-  deleteSlice,
-  toggleSliceSilence,
-  extractBoundaryFrames,
-  normalizePeakPcm,
-  conformLoopToTargetBpm,
-  DEFAULT_SLICER_OPTIONS,
-  type DetectedSlice,
-  type SlicerOptions,
-  type SlicerResult,
-  type SlicerMode,
-  type SlicerWorkflowMode,
-  type ManualSilenceRange,
-} from '../core/dsp/AudioSlicerEngine.ts';
+import { sliceAudioBuffer, sliceAudioBufferPreservingManualCuts, buildSlicesFromBoundaries, buildSlicesFromPhoneticWords, buildSlicesFromMidiManifest, moveSliceBoundary, toggleSliceSilence, extractBoundaryFrames, normalizePeakPcm, conformLoopToTargetBpm, DEFAULT_SLICER_OPTIONS, type DetectedSlice, type SlicerOptions, type SlicerResult, type ManualSilenceRange } from '../core/dsp/AudioSlicerEngine.ts';
 import { extractManifestFromWavBytes } from '../core/autoSampler/MidiAutoSampleSession.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
-import {
-  reduceNoiseWithProfile,
-  type NoiseProfile,
-} from '../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
+import { type NoiseProfile } from '../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
 import type { Zone, ExtendedRegion, WorkingMode, UnifiedSurfaceUiConfig } from '../core/types.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import type { ChopperContext } from './chopper/types.ts';
@@ -72,6 +49,8 @@ import {
   auditionFullWav,
   auditionSlice,
 } from './chopper/auditionOps.ts';
+import { bindChopperDetectControlsEvents, bindChopperFileEvents } from './chopper/bindEventsOps.ts';
+import { bindChopperActionEvents } from './chopper/actionEventOps.ts';
 
 export interface AudioChopperContext {
   getCurrentWorkingMode: () => WorkingMode;
@@ -153,156 +132,60 @@ export class AudioChopperModal {
     const host = this;
     return {
       state: {
-      get backdropEl() {
-        return host.backdropEl;
-      },
-      set backdropEl(v) {
-        host.backdropEl = v;
-      },
-      get canvas() {
-        return host.canvas;
-      },
-      set canvas(v) {
-        host.canvas = v;
-      },
-      get magnifierCanvas() {
-        return host.magnifierCanvas;
-      },
-      set magnifierCanvas(v) {
-        host.magnifierCanvas = v;
-      },
-      get pcm() {
-        return host.pcm;
-      },
-      set pcm(v) {
-        host.pcm = v;
-      },
-      get zoomFactor() {
-        return host.zoomFactor;
-      },
-      set zoomFactor(v) {
-        host.zoomFactor = v;
-      },
-      get viewCenterNorm() {
-        return host.viewCenterNorm;
-      },
-      set viewCenterNorm(v) {
-        host.viewCenterNorm = v;
-      },
-      get currentResult() {
-        return host.currentResult;
-      },
-      set currentResult(v) {
-        host.currentResult = v;
-      },
-      get selectedSliceId() {
-        return host.selectedSliceId;
-      },
-      set selectedSliceId(v) {
-        host.selectedSliceId = v;
-      },
-      get hoveredBoundaryIndex() {
-        return host.hoveredBoundaryIndex;
-      },
-      set hoveredBoundaryIndex(v) {
-        host.hoveredBoundaryIndex = v;
-      },
-      get draggedBoundaryIndex() {
-        return host.draggedBoundaryIndex;
-      },
-      set draggedBoundaryIndex(v) {
-        host.draggedBoundaryIndex = v;
-      },
-      get activeBoundaryIndex() {
-        return host.activeBoundaryIndex;
-      },
-      set activeBoundaryIndex(v) {
-        host.activeBoundaryIndex = v;
-      },
-      get isDraggingMagnifier() {
-        return host.isDraggingMagnifier;
-      },
-      set isDraggingMagnifier(v) {
-        host.isDraggingMagnifier = v;
-      },
-      get context() {
-        return host.context;
-      },
-      set context(v) {
-        host.context = v;
-      },
-      get options() {
-        return host.options;
-      },
-      set options(v) {
-        host.options = v;
-      },
-      get sourceFilename() {
-        return host.sourceFilename;
-      },
-      set sourceFilename(v) {
-        host.sourceFilename = v;
-      },
-      get sampleRate() {
-        return host.sampleRate;
-      },
-      set sampleRate(v) {
-        host.sampleRate = v;
-      },
-      get playingSliceId() {
-        return host.playingSliceId;
-      },
-      set playingSliceId(v) {
-        host.playingSliceId = v;
-      },
-      get normalizeEnabled() {
-        return host.normalizeEnabled;
-      },
-      set normalizeEnabled(v) {
-        host.normalizeEnabled = v;
-      },
-      get manualCutFrames() {
-        return host.manualCutFrames;
-      },
-      set manualCutFrames(v) {
-        host.manualCutFrames = v;
-      },
-      get isDraggingBoundary() {
-        return host.isDraggingBoundary;
-      },
-      set isDraggingBoundary(v) {
-        host.isDraggingBoundary = v;
-      },
-      get magDragStartMouseX() {
-        return host.magDragStartMouseX;
-      },
-      set magDragStartMouseX(v) {
-        host.magDragStartMouseX = v;
-      },
-      get magDragStartCutFrame() {
-        return host.magDragStartCutFrame;
-      },
-      set magDragStartCutFrame(v) {
-        host.magDragStartCutFrame = v;
-      },
-      get capturedNoiseProfile() {
-        return host.capturedNoiseProfile;
-      },
-      set capturedNoiseProfile(v) {
-        host.capturedNoiseProfile = v;
-      },
-      get activeContextMenuEl() {
-        return host.activeContextMenuEl;
-      },
-      set activeContextMenuEl(v) {
-        host.activeContextMenuEl = v;
-      },
-      get manualSilenceRanges() {
-        return host.manualSilenceRanges;
-      },
-      set manualSilenceRanges(v) {
-        host.manualSilenceRanges = v;
-      },
+      get backdropEl() { return host.backdropEl; },
+      set backdropEl(v) { host.backdropEl = v; },
+      get canvas() { return host.canvas; },
+      set canvas(v) { host.canvas = v; },
+      get magnifierCanvas() { return host.magnifierCanvas; },
+      set magnifierCanvas(v) { host.magnifierCanvas = v; },
+      get pcm() { return host.pcm; },
+      set pcm(v) { host.pcm = v; },
+      get zoomFactor() { return host.zoomFactor; },
+      set zoomFactor(v) { host.zoomFactor = v; },
+      get viewCenterNorm() { return host.viewCenterNorm; },
+      set viewCenterNorm(v) { host.viewCenterNorm = v; },
+      get currentResult() { return host.currentResult; },
+      set currentResult(v) { host.currentResult = v; },
+      get selectedSliceId() { return host.selectedSliceId; },
+      set selectedSliceId(v) { host.selectedSliceId = v; },
+      get hoveredBoundaryIndex() { return host.hoveredBoundaryIndex; },
+      set hoveredBoundaryIndex(v) { host.hoveredBoundaryIndex = v; },
+      get draggedBoundaryIndex() { return host.draggedBoundaryIndex; },
+      set draggedBoundaryIndex(v) { host.draggedBoundaryIndex = v; },
+      get activeBoundaryIndex() { return host.activeBoundaryIndex; },
+      set activeBoundaryIndex(v) { host.activeBoundaryIndex = v; },
+      get isDraggingMagnifier() { return host.isDraggingMagnifier; },
+      set isDraggingMagnifier(v) { host.isDraggingMagnifier = v; },
+      get context() { return host.context; },
+      set context(v) { host.context = v; },
+      get options() { return host.options; },
+      set options(v) { host.options = v; },
+      get sourceFilename() { return host.sourceFilename; },
+      set sourceFilename(v) { host.sourceFilename = v; },
+      get sampleRate() { return host.sampleRate; },
+      set sampleRate(v) { host.sampleRate = v; },
+      get playingSliceId() { return host.playingSliceId; },
+      set playingSliceId(v) { host.playingSliceId = v; },
+      get normalizeEnabled() { return host.normalizeEnabled; },
+      set normalizeEnabled(v) { host.normalizeEnabled = v; },
+      get manualCutFrames() { return host.manualCutFrames; },
+      set manualCutFrames(v) { host.manualCutFrames = v; },
+      get isDraggingBoundary() { return host.isDraggingBoundary; },
+      set isDraggingBoundary(v) { host.isDraggingBoundary = v; },
+      get magDragStartMouseX() { return host.magDragStartMouseX; },
+      set magDragStartMouseX(v) { host.magDragStartMouseX = v; },
+      get magDragStartCutFrame() { return host.magDragStartCutFrame; },
+      set magDragStartCutFrame(v) { host.magDragStartCutFrame = v; },
+      get capturedNoiseProfile() { return host.capturedNoiseProfile; },
+      set capturedNoiseProfile(v) { host.capturedNoiseProfile = v; },
+      get activeContextMenuEl() { return host.activeContextMenuEl; },
+      set activeContextMenuEl(v) { host.activeContextMenuEl = v; },
+      get manualSilenceRanges() { return host.manualSilenceRanges; },
+      set manualSilenceRanges(v) { host.manualSilenceRanges = v; },
+      get manualCutsPolicy() { return host.manualCutsPolicy; },
+      set manualCutsPolicy(v) { host.manualCutsPolicy = v; },
+      get sourcePcm() { return host.sourcePcm; },
+      set sourcePcm(v) { host.sourcePcm = v; },
       },
       isBoundaryManual: (frame) => host.isBoundaryManual(frame),
       getActiveCutFrame: () => host.getActiveCutFrame(),
@@ -311,13 +194,32 @@ export class AudioChopperModal {
       bindEvents: () => host.bindEvents(),
       navigateBoundary: (delta) => host.navigateBoundary(delta),
       bindTableEvents: () => host.bindTableEvents(),
-      auditionSlice: (slice, toggleStopIfSame) => host.auditionSlice(slice, toggleStopIfSame),
+      auditionSlice: (sl, toggleStopIfSame) => host.auditionSlice(sl, toggleStopIfSame),
       showContextMenu: (x, y, items) => host.showContextMenu(x, y, items),
       removeManualBoundary: (frame) => host.removeManualBoundary(frame),
       render: () => host.render(),
       snapActiveBoundary0X: () => host.snapActiveBoundary0X(),
       handleToggleSliceSilence: (sliceId) => host.handleToggleSliceSilence(sliceId),
       registerManualBoundary: (newFrame, oldFrame) => host.registerManualBoundary(newFrame, oldFrame),
+      auditionConformedLoop: () => host.auditionConformedLoop(),
+      auditionFullWav: () => host.auditionFullWav(),
+      bindCanvasInteraction: () => host.bindCanvasInteraction(),
+      bindMagnifierInteraction: () => host.bindMagnifierInteraction(),
+      drawMagnifierCanvas: () => host.drawMagnifierCanvas(),
+      drawWaveformCanvas: () => host.drawWaveformCanvas(),
+      handleInjectConformedLoopIntoSession: () => host.handleInjectConformedLoopIntoSession(),
+      handleInjectSlicesIntoSession: () => host.handleInjectSlicesIntoSession(),
+      hasManualCuts: () => host.hasManualCuts(),
+      importSliceMarkersFile: (file) => host.importSliceMarkersFile(file),
+      loadAudioFile: (file) => host.loadAudioFile(file),
+      loadTestDemoBeat: () => host.loadTestDemoBeat(),
+      nudgeActiveBoundary: (deltaSamples) => host.nudgeActiveBoundary(deltaSamples),
+      recomputeSlices: (forceAuto) => host.recomputeSlices(forceAuto),
+      reconcileSlicesAfterAudioClean: (actionLabel) => host.reconcileSlicesAfterAudioClean(actionLabel),
+      refreshTable: () => host.refreshTable(),
+      runWhisperVocalAlignment: () => host.runWhisperVocalAlignment(),
+      showManualCutsConfirmationModal: (descriptionHtml, onKeep, onDiscard, onCancel) => host.showManualCutsConfirmationModal(descriptionHtml, onKeep, onDiscard, onCancel),
+      showStemSeparationModal: () => host.showStemSeparationModal(),
     };
   }
 
@@ -1200,538 +1102,23 @@ export class AudioChopperModal {
 
   private bindEvents(): void {
     if (!this.backdropEl) return;
-
-    this.backdropEl.querySelector('#btn-chopper-close')?.addEventListener('click', () => this.close());
-    this.backdropEl.querySelector('#btn-chopper-discard')?.addEventListener('click', () => this.close());
-
-    // File inputs setup
-    const fileInp = this.backdropEl.querySelector('#inp-chopper-audio-file') as HTMLInputElement | null;
-    fileInp?.addEventListener('change', () => {
-      const file = fileInp.files?.[0];
-      if (file) void this.loadAudioFile(file);
-    });
-
-    const markerInp = this.backdropEl.querySelector('#inp-chopper-markers-file') as HTMLInputElement | null;
-    markerInp?.addEventListener('change', () => {
-      const file = markerInp.files?.[0];
-      if (file) void this.importSliceMarkersFile(file);
-    });
-
-    this.backdropEl.querySelector('#btn-chopper-browse-file')?.addEventListener('click', () => fileInp?.click());
-    this.backdropEl.querySelector('#btn-chopper-change-file')?.addEventListener('click', () => fileInp?.click());
-    this.backdropEl.querySelector('#btn-chopper-import-cues')?.addEventListener('click', () => markerInp?.click());
-
-    this.backdropEl.querySelector('#btn-chopper-whisper-align')?.addEventListener('click', () => {
-      void this.runWhisperVocalAlignment();
-    });
-    this.backdropEl.querySelector('#btn-chopper-demucs-split')?.addEventListener('click', () => {
-      this.showStemSeparationModal();
-    });
-
-    this.backdropEl.querySelector('#btn-chopper-demo-beat')?.addEventListener('click', () => {
-      this.loadTestDemoBeat();
-    });
-
-    // Dropzone drag & drop
-    const dropzone = this.backdropEl.querySelector('#chopper-empty-dropzone');
-    if (dropzone) {
-      dropzone.addEventListener('dragover', (e: Event) => {
-        e.preventDefault();
-        dropzone.classList.add('is-dragover');
-      });
-      dropzone.addEventListener('dragleave', (e: Event) => {
-        e.preventDefault();
-        dropzone.classList.remove('is-dragover');
-      });
-      dropzone.addEventListener('drop', (e: Event) => {
-        e.preventDefault();
-        dropzone.classList.remove('is-dragover');
-        const dt = (e as DragEvent).dataTransfer;
-        const file = dt?.files?.[0];
-        if (file) void this.loadAudioFile(file);
-      });
-    }
-
-    // Zoom Controls
-    this.backdropEl.querySelector('#btn-chopper-zoom-in')?.addEventListener('click', () => {
-      this.zoomFactor = Math.min(16, this.zoomFactor * 1.5);
-      this.render();
-    });
-    this.backdropEl.querySelector('#btn-chopper-zoom-out')?.addEventListener('click', () => {
-      this.zoomFactor = Math.max(1.0, this.zoomFactor / 1.5);
-      this.render();
-    });
-    this.backdropEl.querySelector('#btn-chopper-zoom-fit')?.addEventListener('click', () => {
-      this.zoomFactor = 1.0;
-      this.viewCenterNorm = 0.5;
-      this.render();
-    });
-
-    // Mode Switching with Manual Cuts Guard
-    const switchMode = (newMode: SlicerMode, defaultMinSlice?: number) => {
-      if (this.options.mode === newMode) return;
-      if (this.hasManualCuts() && this.manualCutsPolicy === 'prompt') {
-        this.showManualCutsConfirmationModal(
-          `You are switching <strong>Slicing Mode</strong> to <strong>${newMode.toUpperCase()}</strong>.`,
-          () => {
-            this.options.mode = newMode;
-            if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
-            this.recomputeSlices(false);
-            this.render();
-            toast(`Mode switched to ${newMode}: manual cuts preserved.`, 'success');
-          },
-          () => {
-            this.options.mode = newMode;
-            if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
-            this.manualCutFrames.clear();
-            this.manualSilenceRanges = [];
-            this.recomputeSlices(true);
-            this.render();
-            toast(`Mode switched to ${newMode}: reset to auto.`, 'info');
-          },
-          () => {
-            // Cancelled: leave mode unchanged
-          }
-        );
-        return;
-      }
-      this.options.mode = newMode;
-      if (defaultMinSlice !== undefined) this.options.minSliceMs = defaultMinSlice;
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    };
-
-    const switchWorkflowMode = (newWf: SlicerWorkflowMode) => {
-      if ((this.options.workflowMode ?? 'rex_groove_loop') === newWf) return;
-      this.options.workflowMode = newWf;
-      this.recomputeSlices(false);
-      this.render();
-      toast(
-        newWf === 'one_shot_extractor'
-          ? 'Modo 1 activado: Cortar y Mapear One-Shots (Cromático o Caja de Ritmos nota a nota).'
-          : 'Modo 2 activado: Bucle Rítmico / Melodía tipo REX (BPM, Groove MIDI y Conformador de Tempo).',
-        'info'
-      );
-    };
-
-    this.backdropEl.querySelector('#btn-wf-oneshot')?.addEventListener('click', () => {
-      switchWorkflowMode('one_shot_extractor');
-    });
-    this.backdropEl.querySelector('#btn-wf-rex')?.addEventListener('click', () => {
-      switchWorkflowMode('rex_groove_loop');
-    });
-
-    const inpBars = this.backdropEl.querySelector<HTMLInputElement>('#inp-chopper-bars');
-    inpBars?.addEventListener('change', () => {
-      const bars = Math.max(1, Math.min(64, parseInt(inpBars.value, 10) || 2));
-      this.options.barCount = bars;
-      this.recomputeSlices(false);
-      this.render();
-    });
-
-    const inpTargetBpm = this.backdropEl.querySelector<HTMLInputElement>('#inp-chopper-target-bpm');
-    inpTargetBpm?.addEventListener('change', () => {
-      const bpm = Math.max(20, Math.min(300, parseFloat(inpTargetBpm.value) || 120));
-      this.options.targetBpm = bpm;
-      this.recomputeSlices(false);
-      this.render();
-      toast(`Target BPM ajustado a ${bpm} BPM (transitorios de 25 ms bloqueados).`, 'info');
-    });
-
-    this.backdropEl.querySelector('#btn-chopper-play-conformed')?.addEventListener('click', () => {
-      this.auditionConformedLoop();
-    });
-
-    this.backdropEl.querySelector('#btn-mode-drums')?.addEventListener('click', () => switchMode('drums', 45));
-    this.backdropEl.querySelector('#btn-mode-vocals')?.addEventListener('click', () => switchMode('vocals', 250));
-    this.backdropEl.querySelector('#btn-mode-chromatic')?.addEventListener('click', () => switchMode('chromatic'));
-    this.backdropEl.querySelector('#btn-mode-grid')?.addEventListener('click', () => switchMode('grid'));
-
-    // Sensitivity Slider with Manual Cuts Protection
-    const rngSens = this.backdropEl.querySelector('#rng-sens') as HTMLInputElement | null;
-    let prevSensVal = this.options.sensitivity;
-
-    rngSens?.addEventListener('input', () => {
-      const newSens = parseInt(rngSens.value, 10);
-      if (newSens === this.options.sensitivity) return;
-
-      if (this.hasManualCuts()) {
-        if (this.manualCutsPolicy === 'prompt') {
-          this.showManualCutsConfirmationModal(
-            `You are changing <strong>Transient Sensitivity</strong> from ${this.options.sensitivity}% to ${newSens}%.`,
-            () => {
-              this.options.sensitivity = newSens;
-              prevSensVal = newSens;
-              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
-              if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
-              this.recomputeSlices(false);
-              this.render();
-              toast(`Sensitivity set to ${newSens}%: preserved ${this.manualCutFrames.size} manual cut(s).`, 'success');
-            },
-            () => {
-              this.options.sensitivity = newSens;
-              prevSensVal = newSens;
-              this.manualCutFrames.clear();
-              this.manualSilenceRanges = [];
-              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
-              if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
-              this.recomputeSlices(true);
-              this.render();
-              toast(`Sensitivity set to ${newSens}%: reset to automatic transient detection.`, 'info');
-            },
-            () => {
-              rngSens.value = String(prevSensVal);
-              const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
-              if (lbl) lbl.textContent = `${prevSensVal}%`;
-            }
-          );
-          return;
-        } else if (this.manualCutsPolicy === 'keep') {
-          this.options.sensitivity = newSens;
-          prevSensVal = newSens;
-          const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
-          if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
-          this.recomputeSlices(false);
-          this.drawWaveformCanvas();
-          this.drawMagnifierCanvas();
-          this.refreshTable();
-          return;
-        }
-      }
-
-      this.options.sensitivity = newSens;
-      prevSensVal = newSens;
-      const lbl = this.backdropEl?.querySelector('#lbl-sens-val');
-      if (lbl) lbl.textContent = `${this.options.sensitivity}%`;
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-
-    // Silence Gate Slider with Manual Cuts Protection
-    const rngSilence = this.backdropEl.querySelector('#rng-silence') as HTMLInputElement | null;
-    let prevSilenceVal = this.options.silenceThresholdDb;
-
-    rngSilence?.addEventListener('input', () => {
-      const newSilence = parseInt(rngSilence.value, 10);
-      if (newSilence === this.options.silenceThresholdDb) return;
-
-      if (this.hasManualCuts()) {
-        if (this.manualCutsPolicy === 'prompt') {
-          this.showManualCutsConfirmationModal(
-            `You are changing <strong>Silence Gate Threshold</strong> from ${this.options.silenceThresholdDb} dB to ${newSilence} dB.`,
-            () => {
-              this.options.silenceThresholdDb = newSilence;
-              prevSilenceVal = newSilence;
-              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
-              if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
-              this.recomputeSlices(false);
-              this.render();
-              toast(`Silence gate set to ${newSilence} dB: preserved manual edits.`, 'success');
-            },
-            () => {
-              this.options.silenceThresholdDb = newSilence;
-              prevSilenceVal = newSilence;
-              this.manualCutFrames.clear();
-              this.manualSilenceRanges = [];
-              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
-              if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
-              this.recomputeSlices(true);
-              this.render();
-              toast(`Silence gate set to ${newSilence} dB: reset to auto.`, 'info');
-            },
-            () => {
-              rngSilence.value = String(prevSilenceVal);
-              const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
-              if (lbl) lbl.textContent = `${prevSilenceVal} dB`;
-            }
-          );
-          return;
-        } else if (this.manualCutsPolicy === 'keep') {
-          this.options.silenceThresholdDb = newSilence;
-          prevSilenceVal = newSilence;
-          const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
-          if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
-          this.recomputeSlices(false);
-          this.drawWaveformCanvas();
-          this.drawMagnifierCanvas();
-          this.refreshTable();
-          return;
-        }
-      }
-
-      this.options.silenceThresholdDb = newSilence;
-      prevSilenceVal = newSilence;
-      const lbl = this.backdropEl?.querySelector('#lbl-silence-val');
-      if (lbl) lbl.textContent = `${this.options.silenceThresholdDb} dB`;
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-
-    // Detect Silences Toggle (inserts cuts around silent intervals >= minSilenceMs and mutes them so they do not go to the zone matrix)
-    this.backdropEl.querySelector('#btn-toggle-silence-detect')?.addEventListener('click', () => {
-      this.options.detectSilences = this.options.detectSilences === false;
-      this.recomputeSlices(false);
-      this.render();
-      const n = this.currentResult?.silenceSlicesCount ?? 0;
-      toast(
-        this.options.detectSilences === false
-          ? 'Silence detection OFF: all slices active.'
-          : `Silence detection ON: ${n} silent interval(s) cut and muted (excluded from Zone Matrix).`,
-        'info'
-      );
-    });
-
-    // Min Silence Duration Input (flags only: boundaries never move, manuals preserved)
-    const inpMinSilence = this.backdropEl.querySelector('#inp-minsilence') as HTMLInputElement | null;
-    inpMinSilence?.addEventListener('change', () => {
-      const v = parseInt(inpMinSilence.value, 10);
-      this.options.minSilenceMs = Number.isFinite(v) ? Math.max(0, Math.min(2000, v)) : 120;
-      this.recomputeSlices(false);
-      this.render();
-    });
-
-    // Peak Normalize Toggle (gain only: boundaries and manual frames never move)
-    this.backdropEl.querySelector('#btn-toggle-normalize')?.addEventListener('click', () => {
-      if (!this.sourcePcm || this.sourcePcm.length === 0) {
-        toast('Load audio before toggling Normalize.', 'warning');
-        return;
-      }
-      this.normalizeEnabled = !this.normalizeEnabled;
-      if (this.normalizeEnabled) {
-        const { pcm, appliedGainDb, inputPeakDb } = normalizePeakPcm(this.sourcePcm);
-        this.pcm = pcm;
-        this.recomputeSlices(false);
-        this.render();
-        toast(`Normalized to -1 dBFS: ${appliedGainDb >= 0 ? '+' : ''}${appliedGainDb.toFixed(1)} dB (was ${inputPeakDb.toFixed(1)} dBFS).`, 'success');
-      } else {
-        this.pcm = this.sourcePcm;
-        this.recomputeSlices(false);
-        this.render();
-        toast('Normalize OFF: back to original levels.', 'info');
-      }
-    });
-
-    // Reset Manual Cuts to Full Auto
-    this.backdropEl.querySelector('#btn-reset-cuts-auto')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.manualCutFrames.clear();
-      this.manualSilenceRanges = [];
-      this.manualCutsPolicy = 'prompt';
-      this.recomputeSlices(true);
-      this.render();
-      toast('Reset all slices to automatic transient detection.', 'info');
-    });
-
-    // Min Slice Ms Input
-    const inpMinSlice = this.backdropEl.querySelector('#inp-minslice') as HTMLInputElement | null;
-    inpMinSlice?.addEventListener('change', () => {
-      this.options.minSliceMs = Math.max(10, parseInt(inpMinSlice.value, 10) || 45);
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-
-    // Pre-roll Input
-    const inpPreroll = this.backdropEl.querySelector('#inp-preroll') as HTMLInputElement | null;
-    inpPreroll?.addEventListener('change', () => {
-      this.options.preRollMs = Math.max(0, parseInt(inpPreroll.value, 10) || 0);
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-
-    // Toggles
-    this.backdropEl.querySelector('#btn-toggle-zc-snap')?.addEventListener('click', () => {
-      this.options.snapZeroCrossing = !this.options.snapZeroCrossing;
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-    this.backdropEl.querySelector('#btn-toggle-overlap')?.addEventListener('click', () => {
-      this.options.allowOverlap = !this.options.allowOverlap;
-      this.recomputeSlices(this.manualCutsPolicy === 'discard');
-      this.render();
-    });
-
-    // Cut-Point Magnifier Toolbar Buttons
-    this.backdropEl.querySelector('#btn-mag-prev-cut')?.addEventListener('click', () => this.navigateBoundary(-1));
-    this.backdropEl.querySelector('#btn-mag-next-cut')?.addEventListener('click', () => this.navigateBoundary(1));
-
-    this.backdropEl.querySelector('#btn-nudge-m100')?.addEventListener('click', () => this.nudgeActiveBoundary(-100));
-    this.backdropEl.querySelector('#btn-nudge-m10')?.addEventListener('click', () => this.nudgeActiveBoundary(-10));
-    this.backdropEl.querySelector('#btn-nudge-m1')?.addEventListener('click', () => this.nudgeActiveBoundary(-1));
-    this.backdropEl.querySelector('#btn-nudge-snap0x')?.addEventListener('click', () => this.snapActiveBoundary0X());
-    this.backdropEl.querySelector('#btn-nudge-p1')?.addEventListener('click', () => this.nudgeActiveBoundary(1));
-    this.backdropEl.querySelector('#btn-nudge-p10')?.addEventListener('click', () => this.nudgeActiveBoundary(10));
-    this.backdropEl.querySelector('#btn-nudge-p100')?.addEventListener('click', () => this.nudgeActiveBoundary(100));
-
-    this.backdropEl.querySelector('#btn-chopper-play-full')?.addEventListener('click', () => {
-      this.auditionFullWav();
-    });
-
-    this.backdropEl.querySelector('#btn-mag-play-full')?.addEventListener('click', () => {
-      this.auditionFullWav();
-    });
-
-    this.backdropEl.querySelector('#btn-mag-play-slice')?.addEventListener('click', () => {
-      const sl = this.currentResult?.slices.find((s) => s.id === this.selectedSliceId) || this.currentResult?.slices[0];
-      if (sl) this.auditionSlice(sl, true);
-    });
-
-    this.backdropEl.querySelector('#btn-mag-toggle-silence')?.addEventListener('click', () => {
-      if (this.selectedSliceId && this.currentResult) {
-        this.handleToggleSliceSilence(this.selectedSliceId);
-      }
-    });
-
-    this.backdropEl.querySelector('#btn-mag-del-boundary')?.addEventListener('click', () => {
-      if (this.currentResult) {
-        const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-        if (boundaries.length <= 2) return;
-        const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
-        const bFrame = boundaries[bIdx];
-        this.removeManualBoundary(bFrame);
-
-        // Find slice starting at this boundary and delete it
-        const slice = this.currentResult.slices[bIdx];
-        if (slice) {
-          this.currentResult = deleteSlice(this.currentResult, this.pcm, this.sampleRate, slice.id, this.options);
-          this.activeBoundaryIndex = Math.max(1, bIdx - 1);
-          this.render();
-          toast(`Removed cut boundary #${bIdx}.`, 'info');
-        }
-      }
-    });
-
-    // Waveform & Magnifier Canvas Interactions
-    this.bindCanvasInteraction();
-    this.bindMagnifierInteraction();
-
-    // Table rows play/silence/delete events
-    this.bindTableEvents();
-
-    // Drag MIDI to DAW Setup
-    const dragBtn = this.backdropEl.querySelector('#btn-drag-midi') as HTMLElement | null;
-    if (dragBtn && this.currentResult) {
-      dragBtn.addEventListener('dragstart', (e: DragEvent) => {
-        if (!this.currentResult) return;
-        const midiBytes = this.currentResult.midiFileBuffer;
-        const blob = new Blob([midiBytes.buffer as ArrayBuffer], { type: 'audio/midi' });
-        const url = URL.createObjectURL(blob);
-        const filename = `${(this.sourceFilename || 'sliced_audio').replace(/\.[^/.]+$/, '')}_slices.mid`;
-
-        if (e.dataTransfer) {
-          e.dataTransfer.setData('DownloadURL', `audio/midi:${filename}:${url}`);
-          e.dataTransfer.setData('text/plain', filename);
-        }
-      });
-
-      dragBtn.addEventListener('click', () => {
-        if (!this.currentResult) return;
-        const midiBytes = this.currentResult.midiFileBuffer;
-        const blob = new Blob([midiBytes.buffer as ArrayBuffer], { type: 'audio/midi' });
-        downloadBlob(blob, `${(this.sourceFilename || 'sliced_audio').replace(/\.[^/.]+$/, '')}_slices.mid`);
-        toast('Downloaded Standard MIDI pattern for sliced audio.', 'success');
-      });
-    }
-
-    // Inject Conformed Loop at Target BPM Action
-    this.backdropEl.querySelector('#btn-chopper-inject-loop')?.addEventListener('click', () => {
-      this.handleInjectConformedLoopIntoSession();
-    });
-
-    // Inject Zones Action
-    this.backdropEl.querySelector('#btn-chopper-inject')?.addEventListener('click', () => {
-      this.handleInjectSlicesIntoSession();
-    });
-
-    // Fase 30 & 35.6: DSP Denoise button (recomputes auto slices or asks if manual cuts exist)
-    this.backdropEl.querySelector('#btn-chopper-dsp-denoise')?.addEventListener('click', async () => {
-      if (this.pcm.length === 0) return;
-      try {
-        const profile = this.capturedNoiseProfile || {
-          levelDbfs: -48,
-          spectrumBands: new Array(16).fill(1 / 16),
-          hum50HzDb: -80,
-          hum60HzDb: -80,
-        };
-        const cleaned = reduceNoiseWithProfile(this.pcm, this.sampleRate, profile, {
-          reductionDb: 15,
-          removeHum: true,
-        });
-        this.pcm = cleaned;
-        await this.reconcileSlicesAfterAudioClean('Cleaned audio using DSP Spectral Gate');
-      } catch (err) {
-        toast(`DSP Denoise failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    });
-
-    // Fase 30, 35.4 & 35.6: AI Enhance button passing captured noise profile to bridge (with explicit fallback consent & manual-cuts check)
-    this.backdropEl.querySelector('#btn-chopper-ai-enhance')?.addEventListener('click', async () => {
-      if (this.pcm.length === 0) return;
-      if (!bridgeClient.isConnected()) {
-        await bridgeClient.checkHealth();
-      }
-      const decl = resolveAiActionDeclaration('chopper-bwe-enhance', {
-        isBridgeConnected: bridgeClient.isConnected(),
-      });
-      if (decl.requiresFallbackConsent) {
-        const ok = await confirmDialog(decl.consentMessage, {
-          title: decl.consentTitle,
-          confirmLabel: decl.consentConfirmLabel,
-          cancelLabel: 'Cancelar',
-        });
-        if (!ok) return;
-        const profile = this.capturedNoiseProfile || {
-          levelDbfs: -48,
-          spectrumBands: new Array(16).fill(1 / 16),
-          hum50HzDb: -80,
-          hum60HzDb: -80,
-        };
-        this.pcm = reduceNoiseWithProfile(this.pcm, this.sampleRate, profile, {
-          reductionDb: 15,
-          removeHum: true,
-        });
-        await this.reconcileSlicesAfterAudioClean(
-          `Aplicada ${decl.fallbackEngine} (confirmado por el usuario)`
-        );
-        return;
-      }
-
-      try {
-        const wavBytes = encodePcm16Wav(this.pcm, this.sampleRate);
-        toast('Sending audio to AI Bridge with noise profile removal...', 'info');
-        const enhancedBytes = await bridgeClient.enhanceAudio(wavBytes, {
-          targetSampleRate: 96000,
-          capabilities: ['resample-96k', 'harmonic-bwe', 'spectral-denoise'],
-          noiseProfile: this.capturedNoiseProfile || undefined,
-        });
-        const decoded = decodeWav(
-          enhancedBytes.buffer.slice(
-            enhancedBytes.byteOffset,
-            enhancedBytes.byteOffset + enhancedBytes.byteLength
-          ) as ArrayBuffer
-        );
-        const oldRate = this.sampleRate;
-        this.pcm = decoded.mono || decoded.channels[0];
-        this.sampleRate = decoded.sampleRate;
-        if (oldRate > 0 && this.sampleRate !== oldRate && this.hasManualCuts()) {
-          const ratio = this.sampleRate / oldRate;
-          const rescaled = new Set<number>();
-          for (const mf of this.manualCutFrames) {
-            rescaled.add(Math.round(mf * ratio));
-          }
-          this.manualCutFrames = rescaled;
-          this.manualSilenceRanges = this.manualSilenceRanges.map((r) => ({
-            start: Math.round(r.start * ratio),
-            end: Math.round(r.end * ratio),
-          }));
-        }
-        await this.reconcileSlicesAfterAudioClean(
-          'Audio enhanced via Bridge AI with noise profile removed!'
-        );
-      } catch (err) {
-        toast(`AI Enhance failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
-      }
-    });
+    this.bindChopperFileEvents();
+    this.bindChopperDetectControlsEvents();
+    this.bindChopperActionEvents();
   }
+
+  private bindChopperFileEvents(): void {
+    bindChopperFileEvents(this.chopperCtx());
+  }
+
+  private bindChopperDetectControlsEvents(): void {
+    bindChopperDetectControlsEvents(this.chopperCtx());
+  }
+
+  private bindChopperActionEvents(): void {
+    bindChopperActionEvents(this.chopperCtx());
+  }
+
 
   private bindCanvasInteraction(): void {
     bindCanvasInteraction(this.chopperCtx());

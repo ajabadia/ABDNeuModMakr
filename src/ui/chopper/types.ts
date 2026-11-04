@@ -33,6 +33,8 @@ export interface ChopperState {
   capturedNoiseProfile: NoiseProfile | null;
   activeContextMenuEl: HTMLElement | null;
   manualSilenceRanges: ManualSilenceRange[];
+  manualCutsPolicy: 'prompt' | 'keep' | 'discard';
+  sourcePcm: Float32Array | null;
 }
 
 export interface ChopperContext {
@@ -51,4 +53,23 @@ export interface ChopperContext {
   snapActiveBoundary0X: () => void;
   handleToggleSliceSilence: (sliceId: string) => void;
   registerManualBoundary: (newFrame: number, oldFrame?: number) => void;
+  auditionConformedLoop: () => void;
+  auditionFullWav: () => void;
+  bindCanvasInteraction: () => void;
+  bindMagnifierInteraction: () => void;
+  drawMagnifierCanvas: () => void;
+  drawWaveformCanvas: () => void;
+  handleInjectConformedLoopIntoSession: () => void;
+  handleInjectSlicesIntoSession: () => void;
+  hasManualCuts: () => boolean;
+  importSliceMarkersFile: (file: File) => Promise<void>;
+  loadAudioFile: (file: File) => Promise<void>;
+  loadTestDemoBeat: () => void;
+  nudgeActiveBoundary: (deltaSamples: number) => void;
+  recomputeSlices: (forceAuto: boolean) => void;
+  reconcileSlicesAfterAudioClean: (actionLabel: string) => Promise<void>;
+  refreshTable: () => void;
+  runWhisperVocalAlignment: () => Promise<void>;
+  showManualCutsConfirmationModal: (descriptionHtml: string, onKeep: () => void, onDiscard: () => void, onCancel: () => void) => void;
+  showStemSeparationModal: () => void;
 }
