@@ -72,10 +72,5 @@
     "Assets",
     "Utils",
     "docs"
-  ],
-  "dependencies": {
-    "@abdsynths/contracts": "workspace:*",
-    "@abdsynths/i18n": "workspace:*",
-    "@abdsynths/scope": "workspace:*"
-  }
+  ]
 }

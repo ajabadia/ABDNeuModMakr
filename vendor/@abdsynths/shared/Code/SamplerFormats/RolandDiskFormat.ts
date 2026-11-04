@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { encodeWavPcm16 } from '../NeuronFormats/WavAiffDecoder.ts';
+import { classifyPresetCategory } from './PresetIdentity.ts';
 import type {
   ArchiveSamplerProgramInfo,
   ParsedImportRegion,
@@ -447,13 +448,18 @@ export function parseRolandDiskProgram(
     }
   }
 
+  const cls = classifyPresetCategory(
+    selectedName,
+    regions.map((r) => r.sampleName),
+  );
+
   return {
     format: 'roland_disk' as any,
     formatLabel: 'Roland S-7xx Disk Image',
     presetName: selectedName,
     modelName: `${diskName}_${selectedName}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-    detectedCategory: 'Vintage Hardware Samplers',
-    suggestedParameterSet: 0,
+    detectedCategory: cls.category,
+    suggestedParameterSet: cls.parameterSet,
     regions,
     audioBuffers,
     polyphony: 24,

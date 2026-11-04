@@ -1154,7 +1154,8 @@ export async function parseAkaiDiskProgram(
         const sample = samples.get(sZone.name.toUpperCase());
         if (!sample) continue;
 
-        const firstLoopIdx = clamp(sample.firstActiveLoop, 0, 7);
+        // `firstActiveLoop` is a 1-based index in the Akai header (0 = none).
+        const firstLoopIdx = clamp(sample.firstActiveLoop > 0 ? sample.firstActiveLoop - 1 : 0, 0, 7);
         const loop0 = sample.loops[firstLoopIdx] || sample.loops[0];
         const effLoopMode = sZone.loopMode === 0 ? sample.loopMode : sZone.loopMode - 1;
         const hasLoop = sample.activeLoops > 0 && effLoopMode < 2 && loop0 && loop0.coarseLength > 0;

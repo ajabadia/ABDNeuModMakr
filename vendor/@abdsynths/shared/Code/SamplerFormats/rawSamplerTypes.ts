@@ -143,6 +143,7 @@ export interface UniformSamplerRegion {
   loopEnd: number;
   loopCrossfadeMs: number;
   crossfadeCurve?: CrossfadeCurve;
+  fadeCurve?: CrossfadeCurve;
   keyFadeIn?: number;
   keyFadeOut?: number;
   velFadeIn?: number;

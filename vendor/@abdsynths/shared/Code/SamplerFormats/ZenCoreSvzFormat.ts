@@ -14,6 +14,7 @@
 import type { ExtendedRegion, SynthArticulationConfig } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
+import { toArrayBuffer } from './BytesUtil.ts';
 
 export const ZENCORE_SVZ_MAGIC = 'SVZ\0';
 
@@ -166,7 +167,7 @@ export function importZenCoreZip(zipBuffer: ArrayBuffer): {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
       sampleNames.push(name);
-      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+      audioBuffers.set(name, toArrayBuffer(data));
     }
   }
 
@@ -176,7 +177,7 @@ export function importZenCoreZip(zipBuffer: ArrayBuffer): {
 
   const sBytes = extractZipEntry(zipBytes, svzEntry);
   const parsed = parseZenCoreSvz(
-    sBytes.buffer.slice(sBytes.byteOffset, sBytes.byteOffset + sBytes.byteLength),
+    toArrayBuffer(sBytes),
     sampleNames
   );
 

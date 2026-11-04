@@ -13,6 +13,7 @@
 import type { ExtendedRegion, SynthArticulationConfig } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
+import { toArrayBuffer } from './BytesUtil.ts';
 
 export const KORG_MULTISAMPLE_MAGIC = 0x00000001;
 
@@ -194,7 +195,7 @@ export function importKorgMultisampleZip(zipBuffer: ArrayBuffer): {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
       sampleNames.push(name);
-      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+      audioBuffers.set(name, toArrayBuffer(data));
     }
   }
 
@@ -204,7 +205,7 @@ export function importKorgMultisampleZip(zipBuffer: ArrayBuffer): {
 
   const kBytes = extractZipEntry(zipBytes, korgEntry);
   const parsed = parseKorgMultisample(
-    kBytes.buffer.slice(kBytes.byteOffset, kBytes.byteOffset + kBytes.byteLength),
+    toArrayBuffer(kBytes),
     sampleNames
   );
 

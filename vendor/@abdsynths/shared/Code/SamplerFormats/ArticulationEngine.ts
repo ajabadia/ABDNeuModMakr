@@ -64,7 +64,7 @@ export class SamplerArticulationEngine {
   public selectRegionForNote(
     candidateRegions: ExtendedRegion[],
     note: MidiNote,
-    velocity: number,
+    _velocity: number,
     triggerType: TriggerMode = 'attack'
   ): ExtendedRegion | undefined {
     // 1. Filter by trigger mode

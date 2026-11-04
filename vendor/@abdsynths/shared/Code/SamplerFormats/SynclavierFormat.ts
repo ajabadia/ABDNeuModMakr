@@ -2,7 +2,6 @@
 // @abdsynths/shared — Synclavier II / Synclavier V / Synclavier Regen Parser
 // ─────────────────────────────────────────────────────────
 
-import type { LoopMode } from './SamplerTypes.ts';
 import type { ParsedImportRegion, ParsedSamplerPreset } from './rawSamplerParsers.ts';
 
 export interface SynclavierPartial {

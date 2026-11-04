@@ -1,3 +1,4 @@
+import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Image-Line FL Studio DirectWave Importer & Exporter
 //
@@ -20,18 +21,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { decodeFlac } from '../NeuronFormats/UniversalAudioDecoder.ts';
-import { decodeWav, encodeWavPcm16 } from '../NeuronFormats/WavAiffDecoder.ts';
-import { pcm16ToWavBuffer } from './PcmWavHelper.ts';
-import type { LoopMode } from './SamplerTypes.ts';
+import { encodeWavPcm16 } from '../NeuronFormats/WavAiffDecoder.ts';
 import type {
-  ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
+import { toArrayBuffer } from './BytesUtil.ts';
 
 const DWP_MAGIC = 'DwPr';
 const TAG_INSTRUMENT_NAME = 0x0066;
-const TAG_INSTRUMENT_PATH = 0x0067;
 const TAG_PARAMETER_SLOT = 0x006e;
 const TAG_SAMPLE_CONTAINER = 0x0003;
 const TAG_TERMINATOR = 0x0002;
@@ -80,8 +78,7 @@ function parseDwpChunks(bytes: Uint8Array, startOffset = 0): DirectWaveSubChunk[
   while (pos + 12 <= bytes.length) {
     const tag = view.getUint32(pos, true);
     const length = view.getUint32(pos + 4, true);
-    const reserved = view.getUint32(pos + 8, true);
-    pos += 12;
+        pos += 12;
 
     if (pos + length > bytes.length) break;
     const payload = bytes.subarray(pos, pos + length);
@@ -207,13 +204,13 @@ export function convertDirectWaveToPreset(
       const magic = String.fromCharCode(...z.audioData.subarray(0, 4));
       if (magic === 'fLaC') {
         try {
-          const dec = decodeFlac(z.audioData.buffer.slice(z.audioData.byteOffset, z.audioData.byteOffset + z.audioData.byteLength));
+          const dec = decodeFlac(toArrayBuffer(z.audioData));
           wavBuffer = encodeWavPcm16(dec.channels, dec.sampleRate);
         } catch {
           // Fall through
         }
       } else if (magic === 'RIFF') {
-        wavBuffer = z.audioData.buffer.slice(z.audioData.byteOffset, z.audioData.byteOffset + z.audioData.byteLength);
+        wavBuffer = toArrayBuffer(z.audioData);
       }
     }
 
@@ -229,18 +226,20 @@ export function convertDirectWaveToPreset(
     }
 
     regions.push({
+      id: `directwave_${regions.length + 1}`,
+      samplePath: cleanSampleName,
       sampleName: cleanSampleName,
       rootKey: z.rootKey,
       lowKey: z.lowKey,
       highKey: z.highKey,
-      lowVelocity: z.lowVelocity,
-      highVelocity: z.highVelocity,
-      fineTuneCents: z.fineTuneCents,
-      gainDb: z.gainDb,
+      lowVel: z.lowVelocity,
+      highVel: z.highVelocity,
+      detuneCents: z.fineTuneCents,
+      volumeDb: z.gainDb,
       pan: z.pan,
-      loopMode: z.loopMode === 1 ? 'loop_continuous' : z.loopMode === 2 ? 'loop_bidirectional' : 'no_loop',
-      loopStart: z.loopStart,
-      loopEnd: z.loopEnd,
+      loopMode: z.loopMode === 1 ? 'loop_continuous' : z.loopMode === 2 ? 'ping_pong' : 'no_loop',
+      loopStart: z.loopStart ?? 0,
+      loopEnd: z.loopEnd ?? 0,
     });
   }
 
@@ -251,6 +250,7 @@ export function convertDirectWaveToPreset(
     audioBuffers,
     isMultiLayer: regions.length > 1,
     sourceFormat: 'directwave',
+    ...presetIdentity('directwave', 'FL Studio DirectWave', dwProg.name),
   };
 }
 
@@ -288,12 +288,12 @@ export function writeDirectWavePatch(
     const pView = new DataView(paramBytes.buffer);
     pView.setUint8(0, r.lowKey);
     pView.setUint8(1, r.highKey);
-    pView.setUint8(2, r.lowVelocity);
-    pView.setUint8(3, r.highVelocity);
+    pView.setUint8(2, r.lowVel);
+    pView.setUint8(3, r.highVel);
     pView.setUint8(4, r.rootKey);
-    pView.setInt16(6, r.fineTuneCents || 0, true);
+    pView.setInt16(6, r.detuneCents || 0, true);
     pView.setInt8(8, Math.round((r.pan || 0) * 64));
-    pView.setInt16(10, Math.round((r.gainDb || 0) * 100), true);
+    pView.setInt16(10, Math.round((r.volumeDb || 0) * 100), true);
     pView.setUint8(12, r.loopMode === 'loop_continuous' ? 1 : 0);
     pView.setUint32(16, r.loopStart || 0, true);
     pView.setUint32(20, r.loopEnd || 0, true);

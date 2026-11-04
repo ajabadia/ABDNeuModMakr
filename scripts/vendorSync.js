@@ -118,10 +118,11 @@ export function syncVendor() {
     copyRecursiveSync(s, d);
   }
 
-  // Clean shared package.json if needed
+  // Clean shared package.json if needed (strip workspace:* dependencies for standalone Vercel npm install)
   const sharedPkgPath = path.join(targetShared, 'package.json');
   if (fs.existsSync(sharedPkgPath)) {
     const pkg = JSON.parse(fs.readFileSync(sharedPkgPath, 'utf8'));
+    delete pkg.dependencies;
     delete pkg.devDependencies;
     delete pkg.scripts;
     fs.writeFileSync(sharedPkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');

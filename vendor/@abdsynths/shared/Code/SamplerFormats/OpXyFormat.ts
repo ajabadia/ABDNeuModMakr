@@ -45,6 +45,7 @@
 import type { ExtendedRegion, SynthArticulationConfig, SampleLoopDescriptor } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
+import { toArrayBuffer } from './BytesUtil.ts';
 
 export interface OpXyPatchJson {
   type: string;
@@ -102,7 +103,7 @@ export function isOpXyPatchJson(text: string): boolean {
 
 export function parseOpXyPatch(
   jsonText: string,
-  audioPool?: Map<string, ArrayBuffer>
+  _audioPool?: Map<string, ArrayBuffer>
 ): {
   presetName: string;
   regions: ExtendedRegion[];
@@ -173,6 +174,8 @@ export function parseOpXyPatch(
   if (patch.envelope?.amp) {
     const amp = patch.envelope.amp;
     articulation.ampEnv = {
+      delaySec: 0,
+      holdSec: 0,
       attackSec: (amp.attack ?? 0) / 127.0 * 5.0,
       decaySec: (amp.decay ?? 64) / 127.0 * 5.0,
       sustainLevel: (amp.sustain ?? 127) / 127.0,
@@ -257,7 +260,7 @@ export function importOpXyZip(zipBuffer: ArrayBuffer): {
   articulation: SynthArticulationConfig;
   audioBuffers: Map<string, ArrayBuffer>;
 } {
-  const central = indexZipArchive(zipBuffer);
+  const central = indexZipArchive(new Uint8Array(zipBuffer));
   const audioBuffers = new Map<string, ArrayBuffer>();
   let patchEntry: (typeof central)[0] | undefined;
 
@@ -266,9 +269,9 @@ export function importOpXyZip(zipBuffer: ArrayBuffer): {
     if (low.endsWith('patch.json')) {
       patchEntry = entry;
     } else if (low.endsWith('.wav') || low.endsWith('.flac')) {
-      const data = extractZipEntry(zipBuffer, entry);
+      const data = extractZipEntry(new Uint8Array(zipBuffer), entry);
       const name = entry.path.split('/').pop() || entry.path;
-      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+      audioBuffers.set(name, toArrayBuffer(data));
     }
   }
 
@@ -276,7 +279,7 @@ export function importOpXyZip(zipBuffer: ArrayBuffer): {
     throw new Error('No patch.json found in OP-XY package');
   }
 
-  const patchBytes = extractZipEntry(zipBuffer, patchEntry);
+  const patchBytes = extractZipEntry(new Uint8Array(zipBuffer), patchEntry);
   const jsonText = new TextDecoder('utf-8').decode(patchBytes);
   const parsed = parseOpXyPatch(jsonText, audioBuffers);
 

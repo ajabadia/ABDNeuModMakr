@@ -1,3 +1,4 @@
+import { classifyPresetCategory } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Raw Multi-Format Sampler Parsers (Fase 18.8 + Fase 32.3/32.4)
 //
@@ -73,52 +74,15 @@ import {
   listYamahaDiskPrograms,
   parseYamahaDiskProgram,
 } from './YamahaDiskFormat.ts';
-import {
-  isWaldorfQpatBuffer,
-  listWaldorfQpatLayers,
-  parseWaldorfQpat,
-  importWaldorfQpatZip,
-} from './WaldorfQpatFormat.ts';
-import {
-  isOpXyPatchJson,
-  parseOpXyPatch,
-  importOpXyZip,
-} from './OpXyFormat.ts';
-import {
-  isTonverkPstText,
-  parseTonverkPst,
-  importTonverkZip,
-} from './TonverkFormat.ts';
-import {
-  isDistingExBuffer,
-  parseDistingExPreset,
-  importDistingExZip,
-} from './DistingExFormat.ts';
-import {
-  isProphetXGroupText,
-  parseProphetXGroupText,
-  importProphetXZip,
-} from './ProphetXFormat.ts';
-import {
-  isS2400KitBuffer,
-  parseS2400Kit,
-  importS2400Zip,
-} from './IslaS2400Format.ts';
-import {
-  isKorgMultisampleBuffer,
-  parseKorgMultisample,
-  importKorgMultisampleZip,
-} from './KorgMultisampleModernFormat.ts';
-import {
-  isThirdWaveBuffer,
-  parseThirdWaveProgram,
-  importThirdWaveZip,
-} from './ThirdWaveFormat.ts';
-import {
-  isZenCoreSvzBuffer,
-  parseZenCoreSvz,
-  importZenCoreZip,
-} from './ZenCoreSvzFormat.ts';
+import { parseWaldorfQpat } from './WaldorfQpatFormat.ts';
+import { parseOpXyPatch } from './OpXyFormat.ts';
+import { parseTonverkPst } from './TonverkFormat.ts';
+import { parseDistingExPreset } from './DistingExFormat.ts';
+import { parseProphetXGroupText } from './ProphetXFormat.ts';
+import { parseS2400Kit } from './IslaS2400Format.ts';
+import { parseKorgMultisample } from './KorgMultisampleModernFormat.ts';
+import { parseThirdWaveProgram } from './ThirdWaveFormat.ts';
+import { parseZenCoreSvz } from './ZenCoreSvzFormat.ts';
 import {
   isAkpData,
   parseAkpProgram,
@@ -173,33 +137,22 @@ import {
   isSxtPatch,
   parseSxtPatch,
   convertSxtToPreset,
-  writeSxtPatch,
 } from './ReasonNnxtFormat.ts';
 import {
   isDirectWavePatch,
   parseDirectWavePatch,
   convertDirectWaveToPreset,
-  writeDirectWavePatch,
 } from './DirectWaveFormat.ts';
-import {
-  isSoundboxBuffer,
-  listSoundboxPackPresets,
-  parseSoundboxPack,
-  convertSoundboxToPreset,
-  generateSoundboxXml,
-} from './SoundboxFormat.ts';
+import { isSoundboxBuffer, parseSoundboxPack } from './SoundboxFormat.ts';
 import {
   isOmnisphereFile,
   parseOmnisphereZmap,
   convertOmnisphereToPreset,
-  generateOmnisphereZmap,
 } from './OmnisphereFormat.ts';
 import {
   isMaschineOrNicnt,
   parseMaschineSound,
   convertMaschineToPreset,
-  parseNicnt,
-  generateMaschineSoundXml,
 } from './MaschineNicntFormat.ts';
 import { identifyDiskImageFormat, extractIso9660Entries } from './IsoFormatIdentifier.ts';
 
@@ -284,6 +237,13 @@ export interface ParsedImportRegion {
   keyswitchNote?: MidiNote;
   velToVolumeDepth?: number;
   velToPitchCents?: number;
+  // Per-region envelopes/filter as parsed from SFZ/EXS/NN-XT style formats
+  attackTimeSec?: number;
+  decayTimeSec?: number;
+  sustainLevel?: number;
+  releaseTimeSec?: number;
+  filterCutoffHz?: number;
+  filterResonance?: number;
 }
 
 export interface ParsedSamplerPreset {
@@ -310,6 +270,10 @@ export interface ParsedSamplerPreset {
   sliceMarkers?: ParsedSliceMarker[];
   /** Number of programs found in a multi-program container (e.g. Akai .xpn, .dls). */
   programCount?: number;
+  /** True when the source format defines more than one velocity/key layer. */
+  isMultiLayer?: boolean;
+  /** Origin format tag used for provenance/diagnostics. */
+  sourceFormat?: RawSamplerFormat;
 }
 
 /**
@@ -350,18 +314,6 @@ function cleanBasename(filename: string): string {
   const last = parts[parts.length - 1] || filename;
   const colonIdx = last.lastIndexOf(':');
   return colonIdx >= 0 ? last.slice(colonIdx + 1) : last;
-}
-
-function classifyPresetCategory(name: string): { category: string; parameterSet: number } {
-  const lower = name.toLowerCase();
-  if (/violin|viola|cello|string|strad|bow/i.test(lower)) return { category: 'Strings', parameterSet: 1 };
-  if (/piano|rhodes|wurlitzer|clav|keys|organ/i.test(lower)) return { category: 'Piano & Keys', parameterSet: 2 };
-  if (/guitar|bass|fret|pluck|slap/i.test(lower)) return { category: 'Guitar & Bass', parameterSet: 4 };
-  if (/flute|sax|reed|wind|pipe|duduk|horn|trumpet|brass/i.test(lower)) return { category: 'Winds & Brass', parameterSet: 5 };
-  if (/choir|vocal|voice|chant|choral/i.test(lower)) return { category: 'Vocal & Choir', parameterSet: 6 };
-  if (/drum|snare|kick|perc|808|timpani|marimba/i.test(lower)) return { category: 'Drums & Percussion', parameterSet: 7 };
-  if (/pad|ambient|drone|sweep|atmos/i.test(lower)) return { category: 'Pads & Atmospheres', parameterSet: 8 };
-  return { category: 'Synthesizer', parameterSet: 0 };
 }
 
 // ─────────────────────────────────────────────────────────
@@ -771,13 +723,164 @@ export function parseKontaktNki(
 }
 
 // ─────────────────────────────────────────────────────────
-// 3. Steinberg HALion Parser (.vstpreset) — Upgraded Fase 32.3
+// 3. Steinberg HALion Parser (.vstpreset & .fxp) — Upgraded Fase 32.3
 // ─────────────────────────────────────────────────────────
+
+export function isHalionFxpBuffer(data: ArrayBuffer | Uint8Array): boolean {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (bytes.byteLength < 68) return false;
+  // "CcnK" at +0 and ("FPCh" | "FBCh" | "FxCk") at +8, with "HaPa" or "HaSm" inside
+  if (bytes[0] !== 0x43 || bytes[1] !== 0x63 || bytes[2] !== 0x6e || bytes[3] !== 0x4b) {
+    return false;
+  }
+  const magic60 = String.fromCharCode(bytes[60], bytes[61], bytes[62], bytes[63]);
+  if (magic60 === 'HaPa' || magic60 === 'HaPr' || magic60 === 'HaBa') return true;
+  const previewLen = Math.min(bytes.byteLength, 512);
+  for (let i = 28; i + 4 <= previewLen; i++) {
+    if (bytes[i] === 0x48 && bytes[i + 1] === 0x61 && bytes[i + 2] === 0x50 && bytes[i + 3] === 0x61) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function parseHalionFxpPreset(
+  buffer: ArrayBuffer | Uint8Array,
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'HALionPatch',
+  rawEntries?: Map<string, Uint8Array>
+): ParsedSamplerPreset {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+  // Extract patch name at +28 (28-byte null-terminated ASCII in VST2 FXP header)
+  let headerName = '';
+  for (let i = 28; i < Math.min(56, bytes.byteLength); i++) {
+    const c = bytes[i];
+    if (c === 0) break;
+    if (c >= 32 && c < 127) headerName += String.fromCharCode(c);
+  }
+  const presetName = headerName.trim() || fallbackName;
+  const regions: ParsedImportRegion[] = [];
+
+  // Scan for "HaSm" (0x48 0x61 0x53 0x6D) sample zone chunks
+  let pos = 60;
+  let zoneIdx = 0;
+  while (pos + 32 <= bytes.byteLength) {
+    if (
+      bytes[pos] === 0x48 &&
+      bytes[pos + 1] === 0x61 &&
+      bytes[pos + 2] === 0x53 &&
+      bytes[pos + 3] === 0x6d
+    ) {
+      const chunkSize = view.getUint32(pos + 4, false);
+      const chunkEnd = pos + 8 + chunkSize;
+      if (chunkSize < 64 || chunkEnd > bytes.byteLength) {
+        pos += 4;
+        continue;
+      }
+
+      const fnLen = bytes[pos + 22];
+      let sampleName = '';
+      for (let i = 0; i < fnLen && pos + 23 + i < chunkEnd; i++) {
+        const c = bytes[pos + 23 + i];
+        if (c === 0) break;
+        if (c >= 32 && c < 127) sampleName += String.fromCharCode(c);
+      }
+      sampleName = cleanBasename(sampleName.trim());
+
+      // Full path is located 60 bytes after the filename string (1-byte length + ASCII path)
+      let samplePath = sampleName;
+      const pathLenOff = pos + 23 + fnLen + 60;
+      if (pathLenOff + 2 < chunkEnd) {
+        const pathLen = bytes[pathLenOff];
+        if (pathLen > 0 && pathLenOff + 1 + pathLen <= chunkEnd) {
+          let pStr = '';
+          for (let i = 0; i < pathLen; i++) {
+            const c = bytes[pathLenOff + 1 + i];
+            if (c === 0) break;
+            if (c >= 32 && c < 127) pStr += String.fromCharCode(c);
+          }
+          if (pStr.trim()) samplePath = pStr.trim();
+        }
+      }
+
+      // Zone key/velocity range parameters sit at chunkEnd - 0x278 (632 bytes from end of HaSm)
+      let lowKey = 36 + zoneIdx;
+      let highKey = lowKey;
+      let lowVel = 1;
+      let highVel = 127;
+      let rootKey = lowKey;
+
+      const paramBase = chunkEnd - 0x278;
+      if (paramBase >= pos + 23 + fnLen && paramBase + 36 <= chunkEnd) {
+        const lk = view.getUint32(paramBase + 0, false);
+        const hk = view.getUint32(paramBase + 4, false);
+        const lv = view.getUint32(paramBase + 8, false);
+        const hv = view.getUint32(paramBase + 12, false);
+        const rk = view.getUint32(paramBase + 28, false);
+        if (lk <= 127 && hk <= 127 && lk <= hk) {
+          lowKey = lk;
+          highKey = hk;
+          lowVel = Math.max(1, Math.min(127, lv || 1));
+          highVel = Math.max(lowVel, Math.min(127, hv || 127));
+          rootKey = lowKey === highKey ? lowKey : rk >= lowKey && rk <= highKey ? rk : lowKey;
+        }
+      }
+
+      if (sampleName) {
+        zoneIdx++;
+        regions.push({
+          id: `fxp_zone_${String(zoneIdx).padStart(3, '0')}`,
+          sampleName,
+          samplePath,
+          rootKey,
+          lowKey,
+          highKey,
+          lowVel,
+          highVel,
+          detuneCents: 0,
+          volumeDb: 0,
+          pan: 0,
+          loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
+        });
+      }
+
+      pos = chunkEnd;
+      continue;
+    }
+    pos++;
+  }
+
+  const audioBuffers = resolvePresetAudioBuffers(regions, rawEntries, audioFiles);
+  const { category, parameterSet } = classifyPresetCategory(
+    presetName,
+    regions.map((r) => r.sampleName)
+  );
+
+  return {
+    format: 'vstpreset',
+    formatLabel: 'Steinberg HALion (.fxp)',
+    presetName,
+    modelName: presetName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 11),
+    detectedCategory: category,
+    suggestedParameterSet: parameterSet,
+    regions,
+    audioBuffers,
+  };
+}
 
 export function parseHalionVstPreset(
   content: string | ArrayBuffer,
-  audioFiles: Map<string, ArrayBuffer> = new Map()
+  audioFiles: Map<string, ArrayBuffer> = new Map(),
+  fallbackName = 'HALionProgram',
+  rawEntries?: Map<string, Uint8Array>
 ): ParsedSamplerPreset {
+  if (typeof content !== 'string' && isHalionFxpBuffer(content)) {
+    return parseHalionFxpPreset(content, audioFiles, fallbackName, rawEntries);
+  }
   let xmlText = '';
 
   if (typeof content === 'string') {
@@ -927,6 +1030,8 @@ export function parseHalionVstPreset(
     });
   }
 
+  const resolvedAudio = resolvePresetAudioBuffers(regions, rawEntries, audioFiles);
+
   return {
     format: 'vstpreset',
     formatLabel: 'Steinberg HALion (.vstpreset)',
@@ -935,7 +1040,7 @@ export function parseHalionVstPreset(
     detectedCategory: category,
     suggestedParameterSet: parameterSet,
     regions,
-    audioBuffers: mapAudioBuffers(audioFiles),
+    audioBuffers: resolvedAudio,
     envelope,
     filter,
   };
@@ -1365,7 +1470,8 @@ export function parseAbletonAdvPreset(
 export function parseExs24Preset(
   buffer: ArrayBuffer,
   audioFiles: Map<string, ArrayBuffer> = new Map(),
-  fallbackName = 'EXS24Instrument'
+  fallbackName = 'EXS24Instrument',
+  rawEntries?: Map<string, Uint8Array>
 ): ParsedSamplerPreset {
   const parsed = parseExs24(buffer, fallbackName);
   const { category, parameterSet } = classifyPresetCategory(parsed.presetName);
@@ -1413,6 +1519,8 @@ export function parseExs24Preset(
     };
   });
 
+  const resolvedAudio = resolvePresetAudioBuffers(regions, rawEntries, audioFiles);
+
   return {
     format: 'exs24',
     formatLabel: 'Apple Logic EXS24 (.exs)',
@@ -1421,7 +1529,7 @@ export function parseExs24Preset(
     detectedCategory: category,
     suggestedParameterSet: parameterSet,
     regions,
-    audioBuffers: mapAudioBuffers(audioFiles),
+    audioBuffers: resolvedAudio,
     envelope: {
       attack: parsed.ampEnv.attackSec,
       hold: parsed.ampEnv.holdSec,
@@ -1982,26 +2090,14 @@ export interface ArchiveSamplerProgramInfo {
   id: string;
   index: number;
   name: string;
-  format:
-    | 'xpm'
-    | 'dspreset'
-    | 'nki'
-    | 'vstpreset'
-    | 'multisample'
-    | 'sfz'
-    | 'ableton_adv'
-    | 'exs24'
-    | 'tal_sampler'
-    | 'tx16wx'
-    | 'korg_kmp'
-    | 'dls'
-    | 'akai_disk'
-    | 'emu_disk'
-    | 'roland_disk'
-    | 'ensoniq_disk'
-    | 'yamaha_disk';
+  /** Every importer emits one of the known sampler formats. */
+  format: RawSamplerFormat;
   regionCount?: number;
   detail?: string;
+  /** Path of the program inside its container archive, when applicable. */
+  entryPath?: string;
+  /** Number of samples referenced by the program. */
+  sampleCount?: number;
 }
 
 /**
@@ -2122,58 +2218,106 @@ export async function listZipSamplerPrograms(
       const isoEntries = extractIso9660Entries(data);
       const isoPrograms: ArchiveSamplerProgramInfo[] = [];
       const audioFolders = new Map<string, number>();
+      const programFolders = new Set<string>();
+      const nestedContainers: Array<{ norm: string; base: string; fileBytes: Uint8Array }> = [];
+
+      const mapIsoExtFormat = (ext: string): RawSamplerFormat => {
+        if (ext === 'exs') return 'exs24';
+        if (ext === 'fxp' || ext === 'vstpreset') return 'vstpreset';
+        if (ext === 'nki') return 'nki';
+        if (ext === 'sfz') return 'sfz';
+        if (ext === 'dspreset') return 'dspreset';
+        if (ext === 'adv') return 'ableton_adv';
+        if (ext === 'talsmpl') return 'tal_sampler';
+        if (ext === 'txprog') return 'tx16wx';
+        if (ext === 'kmp') return 'korg_kmp';
+        if (ext === 'dls') return 'dls';
+        if (ext === 'akp') return 'akai_akp';
+        if (ext === 'pgm' || ext === 'set') return 'mpc_classic';
+        if (ext === 's3p') return 'akai_mesa';
+        if (ext === 'sxt') return 'reason_nnxt';
+        if (ext === 'dwp') return 'directwave';
+        if (ext === 'exb') return 'emu_disk';
+        if (ext === 'krz' || ext === 'k25' || ext === 'k26') return 'kurzweil';
+        if (ext === 'x7u' || ext === 'x8u' || ext === 'x3a') return 'yamaha_ysfc';
+        if (ext === 'fzv' || ext === 'fzf') return 'casio_fz';
+        return 'xpm';
+      };
 
       for (const [norm, fileBytes] of isoEntries.entries()) {
         const nLower = norm.toLowerCase();
         const base = cleanBasename(norm);
         if (base.startsWith('.') || base.startsWith('._')) continue;
 
-        if (/\.(akp|pgm|set|xpm|xty|xtd|e4b|esi|x7u|x8u|x3a|krz|k25|k26|kmp|dls|exs|dspreset|nki|vstpreset|sfz|adv|talsmpl|txprog|fzv|fzf|s3p|sxt|dwp)$/.test(nLower)) {
+        if (/\.(zip|xpn|e4b|esi|iso|img|dsk|bin|hda|out|efe|ede|gkh)$/.test(nLower)) {
+          nestedContainers.push({ norm, base, fileBytes });
+        } else if (/\.(akp|pgm|set|xpm|xty|xtd|exb|x7u|x8u|x3a|krz|k25|k26|kmp|dls|exs|fxp|dspreset|nki|vstpreset|sfz|adv|talsmpl|txprog|fzv|fzf|s3p|sxt|dwp)$/.test(nLower)) {
           const ext = base.split('.').pop()?.toLowerCase() || '';
           const stem = base.replace(/\.[^.]+$/, '');
-          if (/\.(e4b|esi|iso|img|dsk|bin|hda|out|efe|ede|gkh)$/.test(nLower)) {
-            const subBuf = fileBytes.buffer.slice(fileBytes.byteOffset, fileBytes.byteOffset + fileBytes.byteLength) as ArrayBuffer;
-            const subProgs = await listZipSamplerPrograms(base, subBuf);
-            for (const sp of subProgs) {
-              isoPrograms.push({
-                id: `${norm}::${sp.id}`,
-                index: isoPrograms.length,
-                name: sp.name,
-                format: sp.format,
-                regionCount: sp.regionCount,
-                detail: `${base} — ${sp.detail || 'Program'}`,
-              });
-            }
-          } else {
-            isoPrograms.push({
-              id: norm,
-              index: isoPrograms.length,
-              name: stem,
-              format: (ext === 'akp' || ext === 'pgm' || ext === 'set' || ext === 's3p' ? 'akai_disk' : ext === 'x7u' || ext === 'x8u' || ext === 'x3a' ? 'yamaha_disk' : 'xpm') as any,
-              detail: `ISO-9660 (${ext.toUpperCase()})`,
-            });
-          }
+          const folder = norm.includes('/') ? norm.slice(0, norm.lastIndexOf('/')) : 'Root';
+          programFolders.add(folder);
+          isoPrograms.push({
+            id: norm,
+            index: isoPrograms.length,
+            name: stem,
+            format: mapIsoExtFormat(ext),
+            detail: ext === 'fxp' ? 'ISO-9660 (HALion FXP)' : ext === 'exs' ? 'ISO-9660 (Logic EXS24)' : `ISO-9660 (${ext.toUpperCase()})`,
+            entryPath: norm,
+          });
         } else if (isSupportedAudioFileName(nLower)) {
           const folder = norm.includes('/') ? norm.slice(0, norm.lastIndexOf('/')) : 'Root';
           audioFolders.set(folder, (audioFolders.get(folder) ?? 0) + 1);
         }
       }
 
-      if (isoPrograms.length > 0) return isoPrograms;
+      // Inspect nested archives/disk images (.zip, .e4b, .iso, etc.) inside the ISO, deduplicating unpacked copies
+      const seenFormatName = new Set(isoPrograms.map((p) => `${p.format}::${p.name.toLowerCase()}`));
+      for (const nc of nestedContainers) {
+        try {
+          const subBuf = nc.fileBytes.buffer.slice(
+            nc.fileBytes.byteOffset,
+            nc.fileBytes.byteOffset + nc.fileBytes.byteLength
+          ) as ArrayBuffer;
+          const subProgs = await listZipSamplerPrograms(nc.base, subBuf);
+          for (const sp of subProgs) {
+            const key = `${sp.format}::${sp.name.toLowerCase()}`;
+            if (nc.norm.toLowerCase().endsWith('.zip') && seenFormatName.has(key)) continue;
+            seenFormatName.add(key);
+            isoPrograms.push({
+              id: `${nc.norm}::${sp.id}`,
+              index: isoPrograms.length,
+              name: sp.name,
+              format: sp.format,
+              regionCount: sp.regionCount,
+              detail: `${nc.base} — ${sp.detail || 'Program'}`,
+              entryPath: `${nc.norm}/${sp.entryPath || sp.id}`,
+            });
+          }
+        } catch {
+          // Ignore unreadable container entry
+        }
+      }
+
+      // Also expose standalone WAV / AIFF sample folders on multiformat or audio-only CDs
       if (audioFolders.size > 0) {
-        let idx = 0;
         for (const [folder, count] of audioFolders.entries()) {
+          if (programFolders.has(folder)) continue;
+          const lowerFolder = folder.toLowerCase();
+          const isAiffFolder = lowerFolder.includes('aiff') || lowerFolder.includes('aif');
+          const folderLabel = folder === 'Root' ? cleanBasename(filename).replace(/\.[^.]+$/, '') : cleanBasename(folder);
           isoPrograms.push({
             id: `ISO_AUDIO_DIR::${folder}`,
-            index: idx++,
-            name: folder === 'Root' ? cleanBasename(filename).replace(/\.[^.]+$/, '') : cleanBasename(folder),
-            format: 'akai_disk',
+            index: isoPrograms.length,
+            name: folderLabel,
+            format: 'samplechain',
             regionCount: count,
-            detail: `ISO-9660 Audio Folder (${count} samples)`,
+            detail: `ISO-9660 ${isAiffFolder ? 'AIFF' : 'WAV'} Folder (${count} samples)`,
+            entryPath: folder,
           });
         }
-        return isoPrograms;
       }
+
+      if (isoPrograms.length > 0) return isoPrograms;
     }
   }
 
@@ -2230,13 +2374,13 @@ export async function listZipSamplerPrograms(
         format: 'nki',
         detail: 'Kontakt Instrument',
       });
-    } else if (nLower.endsWith('.vstpreset') || nLower.endsWith('.vstpreset.xml')) {
+    } else if (nLower.endsWith('.vstpreset') || nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.fxp')) {
       programs.push({
         id: norm,
         index: programs.length,
-        name: base.replace(/\.vstpreset(\.xml)?$/i, ''),
+        name: base.replace(/\.(vstpreset|fxp)(\.xml)?$/i, ''),
         format: 'vstpreset',
-        detail: 'HALion VST Preset',
+        detail: nLower.endsWith('.fxp') ? 'HALion FXP Patch' : 'HALion VST Preset',
       });
     } else if (nLower.endsWith('multisample.xml') || nLower.endsWith('.multisample')) {
       programs.push({
@@ -2382,6 +2526,14 @@ export async function listZipSamplerPrograms(
         format: 'akai_akp',
         detail: 'Akai S5000 / S6000 / Z4 / Z8 Program',
       });
+    } else if (nLower.endsWith('.exb')) {
+      programs.push({
+        id: norm,
+        index: programs.length,
+        name: base.replace(/\.exb$/i, ''),
+        format: 'emu_disk',
+        detail: 'E-mu Emulator X / Proteus X Bank (.exb)',
+      });
     } else if (nLower.endsWith('.pgm') || nLower.endsWith('.set')) {
       programs.push({
         id: norm,
@@ -2478,7 +2630,7 @@ export async function listZipSamplerPrograms(
         format: 'ni_maschine',
         detail: 'Native Instruments Maschine / NICNT',
       });
-    } else if (/\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi)$/.test(nLower)) {
+    } else if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi)$/.test(nLower)) {
       try {
         const entryBytes = extractZipEntry(zipBytes, entry);
         const entryBuf = entryBytes.buffer.slice(
@@ -2494,11 +2646,18 @@ export async function listZipSamplerPrograms(
             format: ip.format,
             regionCount: ip.regionCount,
             detail: ip.detail ? `${base} — ${ip.detail}` : base,
+            entryPath: `${norm}/${ip.entryPath || ip.id}`,
           });
         }
       } catch {
-        // Ignore non-sampler disk image inside zip
+        // Ignore non-sampler disk image or archive inside zip
       }
+    }
+  }
+
+  for (const p of programs) {
+    if (!p.entryPath) {
+      p.entryPath = p.id.replace(/^(ISO_AUDIO_DIR|ZIP_AUDIO_DIR)::/, '');
     }
   }
 
@@ -2544,13 +2703,14 @@ export async function parseUniversalSampler(
       const s5xx = parseRolandS5xxDisk(data);
       const patchIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
       const converted = convertRolandS5xxToPreset(s5xx, patchIdx);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'roland_disk',
         formatLabel: 'Roland S-5xx Disk Image',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: converted.audioBuffers,
       };
@@ -2559,13 +2719,14 @@ export async function parseUniversalSampler(
       const fz = parseCasioFz(data, targetProgramPath || filename);
       const voiceIdx = targetProgramPath ? parseInt(targetProgramPath, 10) || 0 : 0;
       const converted = convertCasioFzToPreset(fz, voiceIdx);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'casio_fz',
         formatLabel: 'Casio FZ Disk / Dump',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: converted.audioBuffers,
       };
@@ -2574,7 +2735,7 @@ export async function parseUniversalSampler(
       return parseAkaiDiskProgram(data, targetProgramPath);
     }
     if (isEmuDiskImage(data)) {
-      return parseEmuDiskProgram(data, targetProgramPath);
+      return parseEmuDiskProgram(data, targetProgramPath, zipEntries);
     }
     if (isRolandDiskImage(data)) {
       return parseRolandDiskProgram(data, targetProgramPath);
@@ -2625,13 +2786,14 @@ export async function parseUniversalSampler(
             });
           }
           const presetName = targetDir === 'Root' ? cleanBasename(filename).replace(/\.[^.]+$/, '') : cleanBasename(targetDir);
+          const cls = classifyPresetCategory(presetName, regions.map((r) => r.sampleName));
           return {
             format: 'akai_disk',
             formatLabel: 'ISO-9660 Sample CD-ROM',
             presetName,
             modelName: presetName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 11),
-            detectedCategory: 'Synthesizers & Keyboards',
-            suggestedParameterSet: 0,
+            detectedCategory: cls.category,
+            suggestedParameterSet: cls.parameterSet,
             regions,
             audioBuffers,
           };
@@ -2646,7 +2808,7 @@ export async function parseUniversalSampler(
         }
         if (!targetIsoFile || !isoEntries.has(targetIsoFile)) {
           for (const k of isoEntries.keys()) {
-            if (/\.(akp|pgm|set|xpm|xty|xtd|e4b|esi|x7u|x8u|x3a|krz|k25|k26|kmp|dls|exs|dspreset|nki|vstpreset|sfz|adv|talsmpl|txprog|fzv|fzf|s3p|sxt|dwp)$/i.test(k)) {
+            if (/\.(akp|pgm|set|xpm|xty|xtd|e4b|esi|exb|x7u|x8u|x3a|krz|k25|k26|kmp|dls|exs|fxp|dspreset|nki|vstpreset|sfz|adv|talsmpl|txprog|fzv|fzf|s3p|sxt|dwp)$/i.test(k)) {
               targetIsoFile = k;
               break;
             }
@@ -2729,7 +2891,7 @@ export async function parseUniversalSampler(
       const nLower = name.toLowerCase();
       if (nLower.endsWith('.dspreset')) dspresetEntry = name;
       else if (nLower.endsWith('.nki.xml') || nLower.endsWith('.nki')) nkiEntry = name;
-      else if (nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.vstpreset')) vstpresetEntry = name;
+      else if (nLower.endsWith('.vstpreset.xml') || nLower.endsWith('.vstpreset') || nLower.endsWith('.fxp')) vstpresetEntry = name;
       else if (nLower.endsWith('multisample.xml')) multisampleEntry = name;
       else if (nLower.endsWith('.adv')) advEntry = name;
       else if (nLower.endsWith('.exs')) exsEntry = name;
@@ -2759,14 +2921,21 @@ export async function parseUniversalSampler(
       else if (nLower.endsWith('.sbpack') || (nLower.endsWith('.xml') && name.toLowerCase().includes('soundbox'))) soundboxEntry = name;
       else if (nLower.endsWith('.zmap') || nLower.endsWith('.prt_omn')) omnisphereEntry = name;
       else if (nLower.endsWith('.mxsnd') || nLower.endsWith('.mxgrp') || nLower.endsWith('.nicnt')) maschineEntry = name;
-      else if (/\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi)$/.test(nLower)) diskImageEntry = name;
+      else if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb)$/.test(nLower)) diskImageEntry = name;
       else if (/\.(xpm|xty|xtd)$/.test(nLower) && !nLower.includes('[previews]')) xpmEntries.push(name);
     }
 
     if (diskImageEntry) {
       const dBytes = extractZipEntry(rawZipBytes, indexMap.get(diskImageEntry)!);
       const dBuf = dBytes.buffer.slice(dBytes.byteOffset, dBytes.byteOffset + dBytes.byteLength) as ArrayBuffer;
-      return parseUniversalSampler(diskImageEntry, dBuf, undefined, innerDiskProgramId);
+      if (/\.(zip|xpn)$/i.test(diskImageEntry)) {
+        return parseUniversalSampler(diskImageEntry, dBuf, undefined, innerDiskProgramId);
+      }
+      const siblingBytesMap = new Map<string, Uint8Array>();
+      for (const ae of audioEntries) {
+        siblingBytesMap.set(ae.path, extractZipEntry(rawZipBytes, ae));
+      }
+      return parseUniversalSampler(diskImageEntry, dBuf, siblingBytesMap.size > 0 ? siblingBytesMap : undefined, innerDiskProgramId);
     }
 
     const extractAudioBuffers = async (onlyStems?: Set<string>): Promise<Map<string, ArrayBuffer>> => {
@@ -3031,6 +3200,8 @@ export async function parseUniversalSampler(
           volumeDb: r.volume ?? 0,
           pan: r.pan ?? 0,
           loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
         })),
         audioBuffers: audioMap,
       };
@@ -3061,6 +3232,8 @@ export async function parseUniversalSampler(
           volumeDb: r.volume ?? 0,
           pan: r.pan ?? 0,
           loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
         })),
         audioBuffers: audioMap,
       };
@@ -3091,6 +3264,8 @@ export async function parseUniversalSampler(
           volumeDb: r.volume ?? 0,
           pan: r.pan ?? 0,
           loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
         })),
         audioBuffers: audioMap,
       };
@@ -3121,6 +3296,8 @@ export async function parseUniversalSampler(
           volumeDb: r.volume ?? 0,
           pan: r.pan ?? 0,
           loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
         })),
         audioBuffers: audioMap,
       };
@@ -3130,13 +3307,15 @@ export async function parseUniversalSampler(
       const audioMap = await extractAudioBuffers();
       const parsedAkp = parseAkpProgram(akpBytes, cleanBasename(akpEntry));
       const converted = convertAkpToPreset(parsedAkp);
+      resolveAkpAudioBuffers(converted.regions, audioMap);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'akai_disk',
-        formatLabel: 'Akai S5000/Z4 Program (.akp)',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 'warm_pad',
+        formatLabel: 'Akai S5000/S6000/Z4/Z8 Program (.akp)',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3156,10 +3335,10 @@ export async function parseUniversalSampler(
       return {
         format: 'akai_disk',
         formatLabel: 'Akai MPC Classic Program',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
         detectedCategory: 'drums',
-        suggestedParameterSet: 'punchy_kick',
+        suggestedParameterSet: classifyPresetCategory(converted.presetName).parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3168,13 +3347,14 @@ export async function parseUniversalSampler(
       const krzBytes = extractZipEntry(rawZipBytes, indexMap.get(krzEntry)!);
       const krz = parseKurzweilFile(krzBytes);
       const converted = convertKurzweilToPreset(krz);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'kurzweil',
         formatLabel: 'Kurzweil K2xxx / PC3 (.krz)',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 'warm_pad',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: krz.sampleAudioMap,
       };
@@ -3183,13 +3363,14 @@ export async function parseUniversalSampler(
       const ysfcBytes = extractZipEntry(rawZipBytes, indexMap.get(ysfcEntry)!);
       const ysfc = parseYamahaYsfc(ysfcBytes);
       const converted = convertYamahaYsfcToPreset(ysfc);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'yamaha_ysfc',
         formatLabel: 'Yamaha Motif / Montage (.x7u)',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'workstation',
-        suggestedParameterSet: 'ambient_lead',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: ysfc.audioSamples,
       };
@@ -3198,13 +3379,14 @@ export async function parseUniversalSampler(
       const fzBytes = extractZipEntry(rawZipBytes, indexMap.get(fzEntry)!);
       const fz = parseCasioFz(fzBytes, cleanBasename(fzEntry));
       const converted = convertCasioFzToPreset(fz);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'casio_fz',
         formatLabel: 'Casio FZ Dump / Voice (.fzv)',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 'warm_pad',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: fz.sampleAudioMap,
       };
@@ -3215,13 +3397,14 @@ export async function parseUniversalSampler(
       const audioMap = await extractAudioBuffers();
       const timbre = parseSynclavierTimbre(sText, cleanBasename(synxEntry));
       const converted = convertSynclavierToPreset(timbre);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'synclavier',
         formatLabel: 'Synclavier Timbre / SYNX',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 'warm_pad',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3230,13 +3413,14 @@ export async function parseUniversalSampler(
       const cmiBytes = extractZipEntry(rawZipBytes, indexMap.get(cmiEntry)!);
       const cmi = parseFairlightCmiVoice(cmiBytes, cleanBasename(cmiEntry));
       const converted = convertFairlightCmiToPreset(cmi);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'fairlight_cmi',
         formatLabel: 'Fairlight CMI Series III Voice',
-        presetName: converted.name,
-        modelName: converted.name.slice(0, 11),
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 'warm_pad',
+        presetName: converted.presetName,
+        modelName: converted.presetName.slice(0, 11),
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: cmi.sampleAudioMap,
       };
@@ -3246,13 +3430,14 @@ export async function parseUniversalSampler(
       const audioMap = await extractAudioBuffers();
       const mesa = parseAkaiMesaS3p(sBytes);
       const converted = convertAkaiMesaToPreset(mesa, audioMap);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'akai_disk',
         formatLabel: 'Akai MESA Program (.s3p)',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3262,13 +3447,14 @@ export async function parseUniversalSampler(
       const audioMap = await extractAudioBuffers();
       const sxt = parseSxtPatch(sBytes);
       const converted = convertSxtToPreset(sxt, audioMap);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'vstpreset',
         formatLabel: 'Reason NN-XT Patch (.sxt)',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'vintage',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3278,13 +3464,14 @@ export async function parseUniversalSampler(
       const audioMap = await extractAudioBuffers();
       const dwp = parseDirectWavePatch(dBytes);
       const converted = convertDirectWaveToPreset(dwp, audioMap);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'vstpreset',
         formatLabel: 'FL Studio DirectWave (.dwp)',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'synth',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: converted.audioBuffers.size > 0 ? converted.audioBuffers : audioMap,
       };
@@ -3292,15 +3479,15 @@ export async function parseUniversalSampler(
     if (soundboxEntry) {
       const sBytes = extractZipEntry(rawZipBytes, indexMap.get(soundboxEntry)!);
       const audioMap = await extractAudioBuffers();
-      const sText = new TextDecoder('utf-8').decode(sBytes);
       const sbPreset = parseSoundboxPack(sBytes, soundboxEntry);
+      const cls = classifyPresetCategory(sbPreset.presetName, sbPreset.regions.map((r) => r.sampleName));
       return {
         format: 'multisample',
         formatLabel: 'Audiomodern Soundbox Pack',
         presetName: sbPreset.presetName,
         modelName: sbPreset.modelName,
-        detectedCategory: 'synth',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: sbPreset.regions,
         audioBuffers: sbPreset.audioBuffers.size > 0 ? sbPreset.audioBuffers : audioMap,
       };
@@ -3311,13 +3498,14 @@ export async function parseUniversalSampler(
       const oText = new TextDecoder('utf-8').decode(oBytes);
       const zmap = parseOmnisphereZmap(oText);
       const converted = convertOmnisphereToPreset(zmap, audioMap);
+      const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
       return {
         format: 'multisample',
         formatLabel: 'Spectrasonics Omnisphere Multisample',
         presetName: converted.presetName,
         modelName: converted.modelName,
-        detectedCategory: 'synth',
-        suggestedParameterSet: 1,
+        detectedCategory: cls.category,
+        suggestedParameterSet: cls.parameterSet,
         regions: converted.regions,
         audioBuffers: audioMap,
       };
@@ -3391,6 +3579,9 @@ export async function parseUniversalSampler(
     if (zipEntries) {
       for (const [name, b] of zipEntries.entries()) {
         const cleanKey = cleanBasename(name);
+        if (!isSupportedAudioFileName(cleanKey.toLowerCase()) && !cleanKey.toLowerCase().endsWith('.ksf')) {
+          continue;
+        }
         let rawBuf = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
         if (!/\.(wav|aif|aiff|ksf)$/i.test(cleanKey)) {
           try {
@@ -3420,7 +3611,12 @@ export async function parseUniversalSampler(
   // Apple Logic EXS24 (.exs)
   if (lower.endsWith('.exs') || (typeof data !== 'string' && isExs24Buffer(data))) {
     const buf = typeof data === 'string' ? new TextEncoder().encode(data).buffer : data;
-    return parseExs24Preset(buf as ArrayBuffer, await siblingAudioBuffers(), cleanBasename(filename).replace(/\.exs$/i, ''));
+    return parseExs24Preset(
+      buf as ArrayBuffer,
+      new Map(),
+      cleanBasename(filename).replace(/\.exs$/i, ''),
+      zipEntries
+    );
   }
 
   // TAL-Sampler (.talsmpl)
@@ -3484,19 +3680,27 @@ export async function parseUniversalSampler(
   }
 
   // Direct vintage file formats (standalone files)
+  if (lower.endsWith('.exb') || lower.endsWith('.e4b') || lower.endsWith('.esi')) {
+    const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+    return parseEmuDiskProgram(bytes, targetProgramPath || cleanBasename(filename), zipEntries);
+  }
+
   if (lower.endsWith('.akp') || (typeof data !== 'string' && isAkpData(data))) {
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const parsedAkp = parseAkpProgram(bytes, cleanBasename(filename));
     const converted = convertAkpToPreset(parsedAkp);
+    const audioMap = await siblingAudioBuffers();
+    resolveAkpAudioBuffers(converted.regions, audioMap);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'akai_disk',
-      formatLabel: 'Akai S5000/Z4 Program (.akp)',
+      formatLabel: 'Akai S5000/S6000/Z4/Z8 Program (.akp)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
-      audioBuffers: await siblingAudioBuffers(),
+      audioBuffers: audioMap,
     };
   }
 
@@ -3531,13 +3735,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const krz = parseKurzweilFile(bytes);
     const converted = convertKurzweilToPreset(krz);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'kurzweil',
       formatLabel: 'Kurzweil K2xxx / PC3 (.krz)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3547,13 +3752,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const ysfc = parseYamahaYsfc(bytes);
     const converted = convertYamahaYsfcToPreset(ysfc);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'yamaha_ysfc',
       formatLabel: 'Yamaha Motif / Montage (.x7u)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'workstation',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3563,13 +3769,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const fz = parseCasioFz(bytes, cleanBasename(filename));
     const converted = convertCasioFzToPreset(fz);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'casio_fz',
       formatLabel: 'Casio FZ Dump / Voice (.fzv)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3579,13 +3786,14 @@ export async function parseUniversalSampler(
     const text = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
     const timbre = parseSynclavierTimbre(text, cleanBasename(filename));
     const converted = convertSynclavierToPreset(timbre);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'synclavier',
       formatLabel: 'Synclavier Timbre / SYNX',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: await siblingAudioBuffers(),
     };
@@ -3595,13 +3803,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const cmi = parseFairlightCmiVoice(bytes, cleanBasename(filename));
     const converted = convertFairlightCmiToPreset(cmi);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'fairlight_cmi',
       formatLabel: 'Fairlight CMI Series III Voice',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3612,13 +3821,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const mesa = parseAkaiMesaS3p(bytes);
     const converted = convertAkaiMesaToPreset(mesa, await siblingAudioBuffers());
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'akai_disk',
       formatLabel: 'Akai MESA Program (.s3p)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3629,13 +3839,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const sxt = parseSxtPatch(bytes, cleanBasename(filename).replace(/\.sxt$/i, ''));
     const converted = convertSxtToPreset(sxt, await siblingAudioBuffers());
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'vstpreset',
       formatLabel: 'Reason NN-XT Patch (.sxt)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'vintage',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3646,13 +3857,14 @@ export async function parseUniversalSampler(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const dwp = parseDirectWavePatch(bytes);
     const converted = convertDirectWaveToPreset(dwp, await siblingAudioBuffers());
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'vstpreset',
       formatLabel: 'FL Studio DirectWave (.dwp)',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'synth',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3662,13 +3874,14 @@ export async function parseUniversalSampler(
   if (lower.endsWith('.sbpack') || lower.endsWith('.sbx') || (typeof data !== 'string' && isSoundboxBuffer(data, filename))) {
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
     const converted = parseSoundboxPack(bytes);
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'multisample',
       formatLabel: 'Audiomodern Soundbox',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'synth',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3679,13 +3892,14 @@ export async function parseUniversalSampler(
     const xml = typeof data === 'string' ? data : new TextDecoder('utf-8').decode(data);
     const zmap = parseOmnisphereZmap(xml);
     const converted = convertOmnisphereToPreset(zmap, await siblingAudioBuffers());
+    const cls = classifyPresetCategory(converted.presetName, converted.regions.map((r) => r.sampleName));
     return {
       format: 'multisample',
       formatLabel: 'Spectrasonics Omnisphere',
       presetName: converted.presetName,
       modelName: converted.modelName,
-      detectedCategory: 'synth',
-      suggestedParameterSet: 1,
+      detectedCategory: cls.category,
+      suggestedParameterSet: cls.parameterSet,
       regions: converted.regions,
       audioBuffers: converted.audioBuffers,
     };
@@ -3723,8 +3937,18 @@ export async function parseUniversalSampler(
     return parseKontaktNki(data, await siblingAudioBuffers());
   }
 
-  if (lower.endsWith('.vstpreset') || lower.endsWith('.vstpreset.xml')) {
-    return parseHalionVstPreset(data, await siblingAudioBuffers());
+  if (
+    lower.endsWith('.vstpreset') ||
+    lower.endsWith('.vstpreset.xml') ||
+    lower.endsWith('.fxp') ||
+    (typeof data !== 'string' && isHalionFxpBuffer(data))
+  ) {
+    return parseHalionVstPreset(
+      data,
+      new Map(),
+      cleanBasename(filename).replace(/\.(vstpreset|fxp)(\.xml)?$/i, ''),
+      zipEntries
+    );
   }
 
   if (lower.endsWith('.multisample') || lower.endsWith('multisample.xml')) {
@@ -3762,4 +3986,76 @@ function mapAudioBuffers(source: Map<string, ArrayBuffer>): Map<string, ArrayBuf
     out.set(cleanBasename(k), v);
   }
   return out;
+}
+
+/**
+ * Builds the audio map handed to a parsed preset: caller-provided audio files plus
+ * any archive entries matching region sample stems, without copying unrelated files
+ * from large multi-hundred-MB ISO-9660 images.
+ */
+function resolvePresetAudioBuffers(
+  regions: ParsedImportRegion[],
+  rawEntries: Map<string, Uint8Array> | undefined,
+  audioFiles: Map<string, ArrayBuffer>,
+): Map<string, ArrayBuffer> {
+  const merged = new Map<string, ArrayBuffer>(audioFiles);
+  if (rawEntries && rawEntries.size > 0 && regions.length > 0) {
+    const needed = new Set<string>();
+    for (const r of regions) {
+      const base = cleanBasename(r.sampleName).toLowerCase();
+      const stem = base.replace(/\.(wav|aif|aiff|aifc|flac|mp3|ogg|caf)$/i, '').trim();
+      needed.add(base);
+      needed.add(stem);
+      needed.add(stem.replace(/[\s_-]+/g, ''));
+    }
+    for (const [name, data] of rawEntries.entries()) {
+      const base = cleanBasename(name);
+      const lowerBase = base.toLowerCase();
+      if (!isSupportedAudioFileName(lowerBase)) continue;
+      const stem = lowerBase.replace(/\.(wav|aif|aiff|aifc|flac|mp3|ogg|caf)$/i, '').trim();
+      const normStem = stem.replace(/[\s_-]+/g, '');
+      if (!needed.has(lowerBase) && !needed.has(stem) && !needed.has(normStem)) continue;
+      // Prefer .wav over .aif/.aiff when a multiformat ISO contains both
+      if (merged.has(base) && !lowerBase.endsWith('.wav')) continue;
+      const sliceBuf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+      merged.set(base, sliceBuf);
+    }
+  }
+  const resolved = mapAudioBuffers(merged);
+  resolveAkpAudioBuffers(regions, resolved);
+  return resolved;
+}
+
+function resolveAkpAudioBuffers(
+  regions: ParsedImportRegion[],
+  audioMap: Map<string, ArrayBuffer>,
+): void {
+  const lowerLookup = new Map<string, { key: string; buf: ArrayBuffer }>();
+  for (const [k, buf] of audioMap.entries()) {
+    const base = cleanBasename(k);
+    const stem = base.replace(/\.(wav|aif|aiff|aifc|flac|mp3|ogg|caf)$/i, '');
+    const prev = lowerLookup.get(stem.toLowerCase());
+    // Prefer .wav when both .wav and .aif exist for the same stem
+    if (!prev || base.toLowerCase().endsWith('.wav')) {
+      lowerLookup.set(stem.toLowerCase(), { key: k, buf });
+      lowerLookup.set(stem.toLowerCase().replace(/[\s_-]+/g, ''), { key: k, buf });
+    }
+    lowerLookup.set(base.toLowerCase(), { key: k, buf });
+  }
+  for (const reg of regions) {
+    const exact = lowerLookup.get(reg.sampleName.toLowerCase());
+    if (exact) {
+      audioMap.set(reg.sampleName, exact.buf);
+      continue;
+    }
+    const rawStem = cleanBasename(reg.sampleName).replace(/\.(wav|aif|aiff|aifc|flac|mp3|ogg|caf)$/i, '').trim();
+    const match =
+      lowerLookup.get(`${rawStem.toLowerCase()}.wav`) ??
+      lowerLookup.get(rawStem.toLowerCase()) ??
+      lowerLookup.get(rawStem.toLowerCase().replace(/[\s_-]+/g, ''));
+    if (match) {
+      audioMap.set(reg.sampleName, match.buf);
+      audioMap.set(match.key, match.buf);
+    }
+  }
 }
