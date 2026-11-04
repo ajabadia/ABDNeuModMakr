@@ -9,28 +9,18 @@ import type { CoreService, Session, SoundPreset, Zone } from '../core';
 import { PARAMETER_SETS } from '../core';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { NeuronDbModal } from '../ui/NeuronDbModal';
-import {
-  isSupportedAudioFileName,
-  parseMName,
-  parseMapScript,
-  parseModelNamesCache,
-  parseSoundNamesCache,
-  parseSoundScript,
-  parseZipArchive,
-  SUPPORTED_AUDIO_ACCEPT,
-  transcodeAnyAudioToWavBuffer,
-} from '@abdsynths/shared/formats/neuron';
+import { isSupportedAudioFileName, parseMName, parseMapScript, parseSoundNamesCache, parseSoundScript, parseZipArchive, SUPPORTED_AUDIO_ACCEPT, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { MAX_SFZ_TEXT_BYTES } from '../formats/SfzParser.ts';
 import { toast, confirmDialog } from '../ui/notify';
-import { loadingModal, withLoading } from '../ui/LoadingModal';
-import { yieldToUI } from '../core/asyncUtils.ts';
-import { MultiInstrumentModal, type MultiInstrumentItem } from '../ui/MultiInstrumentModal';
 import {
-  extractFolderFilesToCandidates,
-  extractFolderFilesToCandidatesWithAi,
-  type FolderFileInput,
-} from '../core/batch/FolderBatchExtractor';
+  importDeducedAudioDirectoryOrPrompt,
+  importFromDirectoryHandle,
+} from './import/directoryImport.ts';
+import type { DirectoryImportContext } from './import/types.ts';
+import { withLoading } from '../ui/LoadingModal';
+import { MultiInstrumentModal } from '../ui/MultiInstrumentModal';
+import { extractFolderFilesToCandidates, type FolderFileInput } from '../core/batch/FolderBatchExtractor';
 import { extractSf2PresetsToCandidates } from '../core/batch/Sf2BatchExtractor';
 import type { BatchModelCandidate } from '../core/batch/types';
 import { MultiAssetTriageModal } from '../ui/MultiAssetTriageModal';
@@ -498,279 +488,7 @@ export class ImportHandlers {
     preferredKind: 'audio' | 'model',
     opts?: { openModal?: boolean; applyToSession?: boolean }
   ): Promise<void> {
-    type IterDir = FileSystemDirectoryHandle & {
-      values(): AsyncIterableIterator<FileSystemDirectoryHandle | FileSystemFileHandle>;
-    };
-
-    // 1. Check if rootHandle itself is a `<NNN>.model` directory or contains MName / map.script / .scape
-    const directFiles: FileSystemFileHandle[] = [];
-    const subDirs = new Map<string, FileSystemDirectoryHandle>();
-    for await (const entry of (rootHandle as IterDir).values()) {
-      if (entry.name.startsWith('.') || entry.name.startsWith('._') || entry.name === '__MACOSX') {
-        continue;
-      }
-      if (entry.kind === 'file') {
-        directFiles.push(entry as FileSystemFileHandle);
-      } else if (entry.kind === 'directory') {
-        subDirs.set(entry.name, entry as FileSystemDirectoryHandle);
-      }
-    }
-
-    const hasDirectModelFiles = directFiles.some((f) => {
-      const lower = f.name.toLowerCase();
-      return (
-        lower === 'mname' ||
-        lower === 'map.script' ||
-        lower.endsWith('.scape') ||
-        lower.endsWith('.sphere') ||
-        lower.endsWith('.nmmodel') ||
-        lower.endsWith('.neuronikmodel')
-      );
-    });
-
-    if (hasDirectModelFiles) {
-      // Refresh never replaces the editor session.
-      if (opts?.applyToSession === false) return;
-      const loaded = await this.readModelDirFiles(rootHandle, rootHandle.name);
-      const model = await this.ctx.core.importModelFiles(loaded);
-      this.ctx.session = this.ctx.core.getSession()!;
-      this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
-      this.ctx.log(
-        `Imported model folder #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
-      );
-      this.ctx.refresh();
-      return;
-    }
-
-    // 2. Check if user selected `NeuronDB` or `Models` containing multiple `<NNN>.model` subfolders
-    let modelsContainer: FileSystemDirectoryHandle | null = null;
-    const modelSubDirs = new Map<number, FileSystemDirectoryHandle>();
-
-    for (const [name, dir] of subDirs.entries()) {
-      const m = /^(\d{3})\.model$/i.exec(name);
-      if (m) {
-        modelSubDirs.set(parseInt(m[1], 10), dir);
-      } else if (name.toLowerCase() === 'models') {
-        modelsContainer = dir;
-      }
-    }
-
-    if (modelSubDirs.size === 0 && modelsContainer) {
-      for await (const entry of (modelsContainer as IterDir).values()) {
-        if (entry.kind === 'directory') {
-          const m = /^(\d{3})\.model$/i.exec(entry.name);
-          if (m) {
-            modelSubDirs.set(parseInt(m[1], 10), entry as FileSystemDirectoryHandle);
-          }
-        }
-      }
-    }
-
-    if (modelSubDirs.size > 0) {
-      await this.scanSoundPresets(rootHandle, subDirs, directFiles);
-      const availableSlots = Array.from(modelSubDirs.keys()).sort((a, b) => a - b);
-      if (availableSlots.length === 1) {
-        // A single model folder loads straight into the session on
-        // configure; refresh skips it (nothing library-like to rescan).
-        if (opts?.applyToSession === false) return;
-        const targetDir = modelSubDirs.get(availableSlots[0])!;
-        const loaded = await this.readModelDirFiles(targetDir, targetDir.name);
-        const model = await this.ctx.core.importModelFiles(loaded);
-        this.ctx.session = this.ctx.core.getSession()!;
-        this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
-        this.ctx.log(
-          `Imported model #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
-        );
-        this.ctx.refresh();
-        return;
-      }
-
-      // Check if rootHandle has a `ModelNames` cache file for instant names
-      let cachedNames = new Map<number, string>();
-      const modelNamesHandle = directFiles.find((f) => f.name.toLowerCase() === 'modelnames');
-      if (modelNamesHandle) {
-        try {
-          const mnFile = await modelNamesHandle.getFile();
-          const mnText = await mnFile.text();
-          cachedNames = parseModelNamesCache(mnText);
-        } catch {
-          // ignore
-        }
-      }
-
-      const initialEntries: NeuronDbModelEntry[] = availableSlots.map((slot) => {
-        const dir = modelSubDirs.get(slot)!;
-        const cached = cachedNames.get(slot);
-        return {
-          slot,
-          folderName: dir.name,
-          name: cached && cached !== '--<empty>--' ? cached : '',
-          zoneCount: null,
-          sourceCount: null,
-          lowKey: null,
-          highKey: null,
-          parameterSet: null,
-          stickModes: null,
-          complexity: null,
-          loadedMeta: false,
-        };
-      });
-
-      if (opts?.openModal !== false) {
-        this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
-          void this.loadModelDirSlot(modelSubDirs, chosenSlot);
-        });
-      }
-      this.setLibrarySource(initialEntries, (slot) => {
-        void this.loadModelDirSlot(modelSubDirs, slot);
-      });
-
-      // Progressively scan lightweight headers in batches of 20 without blocking UI
-      void (async () => {
-        const total = initialEntries.length;
-        let done = 0;
-        const batchSize = 20;
-        for (let i = 0; i < total; i += batchSize) {
-          if (this.ctx.neuronDb.isAborted()) return;
-          const slice = initialEntries.slice(i, i + batchSize);
-          await Promise.all(
-            slice.map(async (item) => {
-              if (this.ctx.neuronDb.isAborted()) return;
-              const dir = modelSubDirs.get(item.slot)!;
-              try {
-                let scapeCount = 0;
-                let firstSphereHandle: FileSystemFileHandle | null = null;
-                let mnameHandle: FileSystemFileHandle | null = null;
-                let mapScriptHandle: FileSystemFileHandle | null = null;
-
-                for await (const entry of (dir as IterDir).values()) {
-                  if (entry.kind !== 'file') continue;
-                  const low = entry.name.toLowerCase();
-                  if (low === 'mname') mnameHandle = entry as FileSystemFileHandle;
-                  else if (low === 'map.script') mapScriptHandle = entry as FileSystemFileHandle;
-                  else if (low.endsWith('.scape')) scapeCount++;
-                  else if (low.endsWith('.sphere') && (!firstSphereHandle || low === '000001.sphere')) {
-                    firstSphereHandle = entry as FileSystemFileHandle;
-                  }
-                }
-
-                if (mnameHandle) {
-                  const f = await mnameHandle.getFile();
-                  const ab = await f.slice(0, 32).arrayBuffer();
-                  const parsedName = parseMName(new Uint8Array(ab));
-                  if (parsedName) item.name = parsedName;
-                }
-                if (!item.name) {
-                  item.name = `Model${String(item.slot).padStart(3, '0')}`;
-                }
-
-                item.sourceCount = scapeCount;
-
-                if (mapScriptHandle) {
-                  const f = await mapScriptHandle.getFile();
-                  const txt = await f.text();
-                  const ms = parseMapScript(txt);
-                  item.zoneCount = ms.activeZones.length || Math.max(1, scapeCount);
-                  if (ms.activeZones.length > 0) {
-                    item.lowKey = ms.activeZones[0].lowKey;
-                    item.highKey = ms.activeZones[ms.activeZones.length - 1].highKey;
-                  }
-                } else {
-                  item.zoneCount = Math.max(1, scapeCount);
-                }
-
-                if (firstSphereHandle) {
-                  const f = await firstSphereHandle.getFile();
-                  if (f.size >= 0x20) {
-                    const hdrBuf = await f.slice(0, 0x24).arrayBuffer();
-                    const view = new DataView(hdrBuf);
-                    const tag = String.fromCharCode(
-                      view.getUint8(0),
-                      view.getUint8(1),
-                      view.getUint8(2),
-                      view.getUint8(3)
-                    );
-                    if (tag === 'psAN') {
-                      const paramSet = view.getInt32(0x10, true);
-                      const stickModes = view.getInt32(0x1c, true);
-                      if (paramSet >= 0 && paramSet <= 9) item.parameterSet = paramSet;
-                      if (stickModes >= 1 && stickModes <= 64) {
-                        item.stickModes = stickModes;
-                        item.complexity = stickModesToComplexity(stickModes);
-                      }
-                    }
-                  }
-                }
-
-                item.loadedMeta = true;
-                this.ctx.neuronDb.updateEntry(item);
-              } catch {
-                // ignore individual corrupt folder
-              }
-            })
-          );
-          done = Math.min(total, i + batchSize);
-          this.ctx.neuronDb.setScanProgress(done, total);
-        }
-      })();
-      return;
-    }
-
-    // 3. Otherwise collect `.wav` / `.aif` / `.aiff` audio files (recursively up to 1 level)
-    // Refresh never replaces the editor session with audio imports.
-    if (opts?.applyToSession === false) return;
-
-    // Fase 35 — DirectoryHandle triage gate (`showDirectoryPicker`):
-    // Mixed folders carrying preset containers + audio/models open the triage gate.
-    const mixedDirFiles = await this.readMixedDirectoryHandleForTriage(rootHandle);
-    if (
-      mixedDirFiles &&
-      (await this.maybeOpenTriageGate(
-        mixedDirFiles,
-        rootHandle.name || 'Selected Folder',
-        'samples',
-        preferredKind
-      ))
-    ) {
-      return;
-    }
-
-    const folderInputs: FolderFileInput[] = [];
-    const collectAudio = async (dir: FileSystemDirectoryHandle, relPrefix: string, depth: number): Promise<void> => {
-      for await (const entry of (dir as IterDir).values()) {
-        if (entry.name.startsWith('.') || entry.name.startsWith('._') || entry.name === '__MACOSX') {
-          continue;
-        }
-        const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
-        if (entry.kind === 'file') {
-          if (isSupportedAudioFileName(entry.name)) {
-            const file = await (entry as FileSystemFileHandle).getFile();
-            const buffer = await file.arrayBuffer();
-            folderInputs.push({ path: relPath, name: entry.name, buffer });
-          }
-        } else if (entry.kind === 'directory' && depth < 8) {
-          await collectAudio(entry as FileSystemDirectoryHandle, relPath, depth + 1);
-        }
-      }
-    };
-
-    await collectAudio(rootHandle, '', 0);
-    if (folderInputs.length === 0) {
-      const msg =
-        preferredKind === 'model'
-          ? 'No valid .model files (MName, map.script, .scape, .sphere) found in selected folder.'
-          : 'No valid .wav / .aif / .aiff audio files found in selected folder.';
-      this.ctx.log(`Folder import: ${msg}`);
-      toast(msg, 'warning');
-      return;
-    }
-
-    await this.importDeducedAudioDirectoryOrPrompt(
-      folderInputs,
-      rootHandle.name || 'Sample Folder',
-      'samples',
-      'Import Folder'
-    );
+    await importFromDirectoryHandle(this.dirImportCtx(), rootHandle, preferredKind, opts);
   }
 
   private async importDeducedAudioDirectoryOrPrompt(
@@ -779,95 +497,29 @@ export class ImportHandlers {
     audioMode: 'samples' | 'by-name',
     sourceLabel: string
   ): Promise<void> {
-    let candidates = extractFolderFilesToCandidates(folderInputs, {
-      defaultOriginName: containerName,
-    });
-
-    const loadSingleAudioGroup = async (
-      files: { name: string; buffer: ArrayBuffer }[],
-      instrumentName?: string
-    ) => {
-      await withLoading(
-        'LOADING AUDIO SAMPLES...',
-        `Mapping and decoding ${files.length} audio file(s)${instrumentName ? ` for "${instrumentName}"` : ''}...`,
-        async () => {
-          const normalizedFiles: { name: string; buffer: ArrayBuffer }[] = [];
-          for (let idx = 0; idx < files.length; idx++) {
-            const f = files[idx];
-            if (idx > 0 && idx % 4 === 0) {
-              loadingModal.setMessage(
-                `Decoding audio sample ${idx + 1} / ${files.length}${instrumentName ? ` ("${instrumentName}")` : ''}...`
-              );
-              await yieldToUI(0);
-            }
-            const normBuf = await transcodeAnyAudioToWavBuffer(f.buffer, f.name);
-            normalizedFiles.push({ name: f.name, buffer: normBuf });
-          }
-          loadingModal.setMessage(
-            `Mapping ${normalizedFiles.length} sample(s) to MIDI key zones...`
-          );
-          await yieldToUI(0);
-          const zones = await this.ctx.core.importAudioFiles(normalizedFiles, audioMode);
-          this.ctx.session = this.ctx.core.getSession()!;
-          if (instrumentName && this.ctx.session) {
-            this.ctx.session.name = instrumentName;
-            this.ctx.session.processConfig.modelName = instrumentName.slice(0, 11);
-          }
-          this.ctx.selectedZoneId = zones[0]?.id || null;
-          this.ctx.log(
-            `${sourceLabel}: mapped ${files.length} audio file(s)${instrumentName ? ` ("${instrumentName}")` : ''} into ${zones.length} contiguous zone(s).`
-          );
-          this.ctx.refresh();
-        }
-      );
-    };
-
-    if (candidates.length > 1) {
-      const toModalItems = (list: typeof candidates): MultiInstrumentItem[] =>
-        list.map((c, idx) => ({
-          id: c.id,
-          index: idx,
-          name: c.name,
-          regionCount: c.zoneCount,
-          detail: `${c.detectedCategory} (Set #${c.suggestedParameterSet})`,
-        }));
-
-      const multiModal = new MultiInstrumentModal();
-      multiModal.open({
-        fileName: containerName,
-        format: 'folder',
-        items: toModalItems(candidates),
-        onSelect: (item) => {
-          const chosen = candidates[item.index] || candidates[0];
-          if (chosen) {
-            void loadSingleAudioGroup(chosen.files, chosen.name);
-          }
-        },
-        onProcessBatch: () => {
-          if (this.ctx.onOpenBatchProcessorWithCandidates) {
-            this.ctx.onOpenBatchProcessorWithCandidates(candidates, containerName);
-          } else {
-            this.ctx.onOpenBatchProcessor?.();
-          }
-        },
-        onDeduceWithAi: async () => {
-          const aiCandidates = await extractFolderFilesToCandidatesWithAi(folderInputs, {
-            defaultOriginName: containerName,
-          });
-          if (aiCandidates.length > 0) {
-            candidates = aiCandidates;
-            return toModalItems(candidates);
-          }
-          return null;
-        },
-      });
-      return;
-    }
-
-    await loadSingleAudioGroup(
-      folderInputs.map((f) => ({ name: f.name, buffer: f.buffer })),
-      candidates[0]?.name !== 'Instrument' ? candidates[0]?.name : undefined
+    await importDeducedAudioDirectoryOrPrompt(
+      this.dirImportCtx(),
+      folderInputs,
+      containerName,
+      audioMode,
+      sourceLabel
     );
+  }
+
+  private dirImportCtx(): DirectoryImportContext {
+    const host = this;
+    return {
+      ctx: host.ctx,
+      readModelDirFiles: (modelDir, folderPrefix) => host.readModelDirFiles(modelDir, folderPrefix),
+      scanSoundPresets: (rootHandle, subDirs, directFiles) =>
+        host.scanSoundPresets(rootHandle, subDirs, directFiles),
+      loadModelDirSlot: (modelSubDirs, chosenSlot) => host.loadModelDirSlot(modelSubDirs, chosenSlot),
+      setLibrarySource: (entries, pick) => host.setLibrarySource(entries, pick),
+      readMixedDirectoryHandleForTriage: (rootHandle) =>
+        host.readMixedDirectoryHandleForTriage(rootHandle),
+      maybeOpenTriageGate: (expanded, sourceLabel, audioMode, preferredKind) =>
+        host.maybeOpenTriageGate(expanded, sourceLabel, audioMode, preferredKind),
+    };
   }
 
   async importFromWebkitFileList(
