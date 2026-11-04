@@ -3,8 +3,11 @@ import type { NeuronDbModelEntry } from '../../ui/NeuronDbModal';
 import type { TriageExpandedFile } from '../triageGate.ts';
 
 /** Host services the directory import flows need from ImportHandlers. */
-export interface DirectoryImportContext {
+export interface ImportCtxHost {
   ctx: ImportContext;
+}
+
+export interface DirectoryImportContext extends ImportCtxHost {
   readModelDirFiles: (
     modelDir: FileSystemDirectoryHandle,
     folderPrefix: string
@@ -18,14 +21,33 @@ export interface DirectoryImportContext {
     modelSubDirs: Map<number, FileSystemDirectoryHandle>,
     chosenSlot: number
   ) => Promise<void>;
-  setLibrarySource: (entries: NeuronDbModelEntry[], pick: (slot: number) => void) => void;
+  setLibrarySource: SetLibrarySourceFn;
   readMixedDirectoryHandleForTriage: (
     rootHandle: FileSystemDirectoryHandle
   ) => Promise<TriageExpandedFile[] | null>;
-  maybeOpenTriageGate: (
-    expanded: TriageExpandedFile[],
-    sourceLabel: string,
-    audioMode: 'samples' | 'by-name',
-    preferredKind: 'audio' | 'model'
-  ) => Promise<boolean>;
+  maybeOpenTriageGate: TriageGateFn;
+}
+
+export type TriageGateFn = (
+  expanded: TriageExpandedFile[],
+  sourceLabel: string,
+  audioMode: 'samples' | 'by-name',
+  preferredKind: 'audio' | 'model'
+) => Promise<boolean>;
+
+export type SetLibrarySourceFn = (
+  entries: NeuronDbModelEntry[],
+  pick: (slot: number) => void
+) => void;
+
+/** Host services the WebKit folder/file-list import needs from ImportHandlers. */
+export interface WebkitImportContext extends ImportCtxHost {
+  setLibrarySource: SetLibrarySourceFn;
+  maybeOpenTriageGate: TriageGateFn;
+  expandNestedZipBuffer: (
+    bytes: Uint8Array,
+    prefix: string,
+    out: { name: string; buffer: ArrayBuffer }[],
+    depth?: number
+  ) => void;
 }

@@ -17,7 +17,8 @@ import {
   importDeducedAudioDirectoryOrPrompt,
   importFromDirectoryHandle,
 } from './import/directoryImport.ts';
-import type { DirectoryImportContext } from './import/types.ts';
+import type { DirectoryImportContext, WebkitImportContext } from './import/types.ts';
+import { importFromWebkitFileList } from './import/webkitImport.ts';
 import { withLoading } from '../ui/LoadingModal';
 import { MultiInstrumentModal } from '../ui/MultiInstrumentModal';
 import { extractFolderFilesToCandidates, type FolderFileInput } from '../core/batch/FolderBatchExtractor';
@@ -527,208 +528,19 @@ export class ImportHandlers {
     preferredKind: 'audio' | 'model',
     opts?: { openModal?: boolean; applyToSession?: boolean }
   ): Promise<void> {
-    try {
-      // Group model files by `<NNN>.model` folder first WITHOUT reading all 4,527 buffers into RAM
-      const modelFolders = new Map<number, File[]>();
-      const looseModelFiles: File[] = [];
-      const audioFileEntries: File[] = [];
+    await importFromWebkitFileList(this.webkitImportCtx(), fileList, preferredKind, opts);
+  }
 
-      for (let i = 0; i < fileList.length; i++) {
-        const f = fileList[i];
-        const relPath = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
-        if (relPath.includes('__MACOSX/')) continue;
-        const base = relPath.split('/').pop() ?? f.name;
-        if (base.startsWith('.') || base.startsWith('._')) continue;
-
-        const lower = base.toLowerCase();
-        if (isSupportedAudioFileName(lower)) {
-          audioFileEntries.push(f);
-        } else if (
-          lower.endsWith('.scape') ||
-          lower.endsWith('.sphere') ||
-          lower === 'map.script' ||
-          lower === 'mname' ||
-          lower.endsWith('.nmmodel') ||
-          lower.endsWith('.neuronikmodel')
-        ) {
-          const slotMatch = /(\d{3})\.model\//i.exec(relPath);
-          if (slotMatch) {
-            const slot = parseInt(slotMatch[1], 10);
-            const list = modelFolders.get(slot) ?? [];
-            list.push(f);
-            modelFolders.set(slot, list);
-          } else {
-            looseModelFiles.push(f);
-          }
-        }
-      }
-
-      // Fase 35 — folder triage gate: mixed folders carrying preset containers
-      // are ignored by the single-format folder flows below, so they get the gate.
-      const mixedFolder = await this.readMixedWebkitFilesForTriage(fileList);
-      if (mixedFolder && (await this.maybeOpenTriageGate(mixedFolder, 'Dropped Folder', 'samples', preferredKind))) {
-        return;
-      }
-
-      if ((preferredKind === 'model' || audioFileEntries.length === 0) && (modelFolders.size > 0 || looseModelFiles.length > 0)) {
-        const loadSlotFiles = async (targetFiles: File[]) => {
-          const loaded: { name: string; buffer: ArrayBuffer }[] = [];
-          for (const f of targetFiles) {
-            const relPath = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
-            const buffer = await f.arrayBuffer();
-            loaded.push({ name: relPath, buffer });
-          }
-          const model = await this.ctx.core.importModelFiles(loaded);
-          this.ctx.session = this.ctx.core.getSession()!;
-          this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
-          this.ctx.log(
-            `Imported model folder #${String(model.slot).padStart(3, '0')} "${model.name}" (${model.zoneCount} zone(s))`
-          );
-          this.ctx.refresh();
-        };
-
-        if (modelFolders.size <= 1) {
-          // A single model folder loads straight into the session on
-          // configure; refresh skips it (nothing library-like to rescan).
-          if (opts?.applyToSession === false) return;
-          const targetFiles =
-            modelFolders.size === 1
-              ? Array.from(modelFolders.values())[0]
-              : looseModelFiles;
-          await loadSlotFiles(targetFiles);
-          return;
-        }
-
-        const slots = Array.from(modelFolders.keys()).sort((a, b) => a - b);
-        const initialEntries: NeuronDbModelEntry[] = slots.map((slot) => ({
-          slot,
-          folderName: `${String(slot).padStart(3, '0')}.model`,
-          name: '',
-          zoneCount: null,
-          sourceCount: null,
-          lowKey: null,
-          highKey: null,
-          parameterSet: null,
-          stickModes: null,
-          complexity: null,
-          loadedMeta: false,
-        }));
-
-        if (opts?.openModal !== false) {
-          this.ctx.neuronDb.open(initialEntries, (chosenSlot) => {
-            const files = modelFolders.get(chosenSlot);
-            if (files) {
-              void loadSlotFiles(files);
-            }
-          });
-        }
-        this.setLibrarySource(initialEntries, (slot) => {
-          const files = modelFolders.get(slot);
-          if (files) {
-            void loadSlotFiles(files);
-          }
-        });
-
-        // Progressively inspect headers from File slices
-        void (async () => {
-          const total = initialEntries.length;
-          const batchSize = 20;
-          for (let i = 0; i < total; i += batchSize) {
-            if (this.ctx.neuronDb.isAborted()) return;
-            const slice = initialEntries.slice(i, i + batchSize);
-            await Promise.all(
-              slice.map(async (item) => {
-                if (this.ctx.neuronDb.isAborted()) return;
-                const files = modelFolders.get(item.slot) ?? [];
-                let scapeCount = 0;
-                let firstSphere: File | null = null;
-                let mnameFile: File | null = null;
-                let mapScriptFile: File | null = null;
-
-                for (const f of files) {
-                  const low = f.name.toLowerCase();
-                  if (low === 'mname') mnameFile = f;
-                  else if (low === 'map.script') mapScriptFile = f;
-                  else if (low.endsWith('.scape')) scapeCount++;
-                  else if (low.endsWith('.sphere') && (!firstSphere || low === '000001.sphere')) {
-                    firstSphere = f;
-                  }
-                }
-
-                if (mnameFile) {
-                  const ab = await mnameFile.slice(0, 32).arrayBuffer();
-                  item.name = parseMName(new Uint8Array(ab));
-                }
-                if (!item.name) item.name = `Model${String(item.slot).padStart(3, '0')}`;
-                item.sourceCount = scapeCount;
-
-                if (mapScriptFile) {
-                  const txt = await mapScriptFile.text();
-                  const ms = parseMapScript(txt);
-                  item.zoneCount = ms.activeZones.length || Math.max(1, scapeCount);
-                  if (ms.activeZones.length > 0) {
-                    item.lowKey = ms.activeZones[0].lowKey;
-                    item.highKey = ms.activeZones[ms.activeZones.length - 1].highKey;
-                  }
-                } else {
-                  item.zoneCount = Math.max(1, scapeCount);
-                }
-
-                if (firstSphere && firstSphere.size >= 0x20) {
-                  const hdrBuf = await firstSphere.slice(0, 0x24).arrayBuffer();
-                  const view = new DataView(hdrBuf);
-                  const tag = String.fromCharCode(
-                    view.getUint8(0),
-                    view.getUint8(1),
-                    view.getUint8(2),
-                    view.getUint8(3)
-                  );
-                  if (tag === 'psAN') {
-                    const paramSet = view.getInt32(0x10, true);
-                    const stickModes = view.getInt32(0x1c, true);
-                    if (paramSet >= 0 && paramSet <= 9) item.parameterSet = paramSet;
-                    if (stickModes >= 1 && stickModes <= 64) {
-                      item.stickModes = stickModes;
-                      item.complexity = stickModesToComplexity(stickModes);
-                    }
-                  }
-                }
-
-                item.loadedMeta = true;
-                this.ctx.neuronDb.updateEntry(item);
-              })
-            );
-            this.ctx.neuronDb.setScanProgress(Math.min(total, i + batchSize), total);
-          }
-        })();
-        return;
-      }
-
-      if (audioFileEntries.length === 0) {
-        toast('No valid audio or .model files found in the selected folder.', 'warning');
-        return;
-      }
-
-      const folderInputs: FolderFileInput[] = [];
-      let rootFolderName = 'Sample Folder';
-      for (const f of audioFileEntries) {
-        const relPath = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
-        const firstSeg = relPath.split('/')[0];
-        if (firstSeg && relPath.includes('/')) rootFolderName = firstSeg;
-        const buffer = await f.arrayBuffer();
-        folderInputs.push({ path: relPath, name: f.name, buffer });
-      }
-      await this.importDeducedAudioDirectoryOrPrompt(
-        folderInputs,
-        rootFolderName,
-        'samples',
-        'Import Folder'
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.ctx.log(`Folder import error: ${msg}`);
-      toast(`Failed to import folder: ${msg}`, 'error');
-    }
+  private webkitImportCtx(): WebkitImportContext {
+    const host = this;
+    return {
+      ctx: host.ctx,
+      setLibrarySource: (entries, pick) => host.setLibrarySource(entries, pick),
+      maybeOpenTriageGate: (expanded, sourceLabel, audioMode, preferredKind) =>
+        host.maybeOpenTriageGate(expanded, sourceLabel, audioMode, preferredKind),
+      expandNestedZipBuffer: (bytes, prefix, out, depth) =>
+        host.expandNestedZipBuffer(bytes, prefix, out, depth),
+    };
   }
 
   // ─────────────────────────────────────────────────────────
@@ -1055,49 +867,6 @@ export class ImportHandlers {
    * single-format folder flows, so a mixed folder is read into memory and
    * offered to the gate. Pure folders return null and keep the fast path.
    */
-  private async readMixedWebkitFilesForTriage(
-    fileList: FileList
-  ): Promise<TriageExpandedFile[] | null> {
-    const kept: { rel: string; file: File }[] = [];
-    let hasContainer = false;
-    let hasOther = false;
-    for (let i = 0; i < fileList.length; i++) {
-      const f = fileList[i];
-      const rel = (f.webkitRelativePath || f.name).replace(/\\/g, '/');
-      if (rel.includes('__MACOSX/')) continue;
-      const base = rel.split('/').pop() ?? f.name;
-      if (base.startsWith('.') || base.startsWith('._')) continue;
-      if (isTriageContainerFileName(base)) {
-        hasContainer = true;
-      } else {
-        hasOther = true;
-      }
-      kept.push({ rel, file: f });
-    }
-    if (!hasContainer || (!hasOther && kept.length < 1)) return null;
-    const expanded: TriageExpandedFile[] = [];
-    for (const k of kept) {
-      try {
-        const buf = await k.file.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        const isPkZip =
-          k.rel.toLowerCase().endsWith('.zip') &&
-          bytes.byteLength >= 4 &&
-          bytes[0] === 0x50 &&
-          bytes[1] === 0x4b &&
-          (bytes[2] === 0x03 || bytes[2] === 0x05);
-        if (isPkZip) {
-          this.expandNestedZipBuffer(bytes, k.rel.replace(/\.zip$/i, ''), expanded, 1);
-        } else {
-          expanded.push({ name: k.rel, buffer: buf });
-        }
-      } catch {
-        // Unreadable entries are left to the legacy flows below.
-      }
-    }
-    return expanded.length >= 2 ? expanded : null;
-  }
-
   async importMixedFilesOrZip(
     fileList: FileList,
     preferredKind: 'audio' | 'model',

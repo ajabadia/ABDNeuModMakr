@@ -1,4 +1,4 @@
-import type { DirectoryImportContext } from './types.ts';
+import type { DirectoryImportContext, ImportCtxHost } from './types.ts';
 import {
   isSupportedAudioFileName,
   parseMName,
@@ -299,7 +299,7 @@ export async function importFromDirectoryHandle(
 }
 
 export async function importDeducedAudioDirectoryOrPrompt(
-  ui: DirectoryImportContext,
+  ui: ImportCtxHost,
   folderInputs: FolderFileInput[],
   containerName: string,
   audioMode: 'samples' | 'by-name',
