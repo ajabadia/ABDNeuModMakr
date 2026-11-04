@@ -66,9 +66,7 @@ import {
   buildUnifiedSpectralSurface,
   evaluateUnifiedSpectralSurface,
 } from './dsp/UnifiedSpectralSurface.ts';
-import type { SpectralModelData } from './dsp/GridIndicator.ts';
 
-import { parseSessionJson } from './sessionSchema.ts';
 import { DEFAULT_AI_ASSISTANCE_CONFIG } from './types.ts';
 import type {
   RawExportOptions,
@@ -137,6 +135,21 @@ import {
   type BankLoadPlan,
 } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
+import type { PipelineContext, SpectralCacheEntry } from './pipeline/types.ts';
+import {
+  clearHistory,
+  exportSessionJson,
+  getHistoryState,
+  getSession,
+  loadSession,
+  loadSessionFromJson,
+  newSession,
+  pruneOrphanBuffers,
+  pushHistory,
+  redo,
+  saveSession,
+  undo,
+} from './pipeline/sessionHistoryOps.ts';
 import { basename } from './pathUtils.ts';
 import { yieldToUI } from './asyncUtils.ts';
 import { createInitialSession, createZone } from './sessionFactory.ts';
@@ -224,20 +237,7 @@ export class WebAudioPipeline implements CoreService {
       this.inspectZoneSpectrum(zoneId);
     },
   });
-  private readonly spectralCache: Map<
-    string,
-    {
-      key: string;
-      inspection: ZoneSpectralInspection;
-      resynthMono: Float32Array;
-      enhancedMono: Float32Array;
-      enhancedModel: SpectralModelData;
-      decodedMono: Float32Array;
-      decodedSampleRate: number;
-      detectedF0Hz: number;
-      durationSec: number;
-    }
-  > = new Map();
+  private readonly spectralCache: Map<string, SpectralCacheEntry> = new Map();
   private readonly ribbonEnvelopeCache: Map<string, number[]> = new Map();
 
   // Phase 5: Undo / Redo — delegated to SessionHistory (P1.1a).
@@ -306,68 +306,58 @@ export class WebAudioPipeline implements CoreService {
     }
   }
 
+  /**
+   * Context handed to the extracted pipeline modules. `state` exposes the
+   * engine's live fields through getters so modules mutate the same objects
+   * instead of copies.
+   */
+  private pipelineCtx(): PipelineContext {
+    const self: WebAudioPipeline = this;
+    return {
+      state: {
+        get session(): Session | null {
+          return self.session;
+        },
+        set session(value: Session | null) {
+          self.session = value;
+        },
+        history: this.history,
+        sampleBuffers: this.sampleBuffers,
+        importedSourceBinaries: this.importedSourceBinaries,
+        assetStore: this.assetStore,
+        spectralCache: this.spectralCache,
+        ribbonEnvelopeCache: this.ribbonEnvelopeCache,
+      },
+      emit: (event) => this.emit(event),
+      persistToLocalStorage: () => this.persistToLocalStorage(),
+      ensureZoneDemoBuffers: (zones) => this.ensureZoneDemoBuffers(zones),
+    };
+  }
+
   // ── Session ─────────────────────────────────────────────
 
   public async newSession(name = 'Untitled'): Promise<Session> {
-    this.sampleBuffers.clear();
-    this.importedSourceBinaries.clear();
-    this.assetStore.clearSessionAudioLayers();
-    this.ribbonEnvelopeCache.clear();
-    this.spectralCache.clear();
-    this.session = createInitialSession(name);
-    this.clearHistory();
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: this.session });
-    return this.session;
+    return newSession(this.pipelineCtx(), name);
   }
+
 
   public async loadSession(idOrJson: string): Promise<Session> {
-    if (idOrJson.trim().startsWith('{')) {
-      return this.loadSessionFromJson(idOrJson);
-    }
-    this.session = createInitialSession('Hartmann MultiSession');
-    this.clearHistory();
-    this.session.zones = [
-      createZone(0, 24, 35, 'Bass_24_C1.wav'),
-      createZone(36, 48, 59, 'Piano_48_C3.wav'),
-      createZone(60, 72, 83, 'Strings_72_C5.wav'),
-      createZone(84, 96, 107, 'Pad_96_C7.wav'),
-      createZone(108, 115, 127, 'Bell_115_G8.wav'),
-    ];
-    this.session.zones[2].sampleHigh = 'Strings_72_C5_v2.wav';
-    this.ensureZoneDemoBuffers(this.session.zones);
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: this.session });
-    return this.session;
+    return loadSession(this.pipelineCtx(), idOrJson);
   }
 
+
   public async saveSession(_session: Session): Promise<void> {
-    if (this.session) {
-      this.session.dirty = false;
-      this.session.modifiedAt = new Date().toISOString();
-      this.persistToLocalStorage();
-      this.emit({ type: 'session-changed', session: this.session });
-    }
+    return saveSession(this.pipelineCtx(), _session);
   }
+
 
   /**
    * Serializes the active session into a portable `.nmsession.json` string.
    */
   public exportSessionJson(): string {
-    if (!this.session) {
-      throw new Error('No active session to export');
-    }
-    return JSON.stringify(
-      {
-        magic: 'NEURONMM_SESSION',
-        version: '1.2.0',
-        exportedAt: new Date().toISOString(),
-        session: this.session,
-      },
-      null,
-      2
-    );
+    return exportSessionJson(this.pipelineCtx());
   }
+
 
   /**
    * Restores a session from a `.nmsession.json` string and ensures playable demo buffers
@@ -378,15 +368,9 @@ export class WebAudioPipeline implements CoreService {
    * producing a broken live session.
    */
   public async loadSessionFromJson(jsonText: string): Promise<Session> {
-    const newSession = parseSessionJson(jsonText);
-    this.session = newSession;
-    this.clearHistory();
-    this.pruneOrphanBuffers();
-    this.ensureZoneDemoBuffers(newSession.zones);
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: newSession });
-    return newSession;
+    return loadSessionFromJson(this.pipelineCtx(), jsonText);
   }
+
 
   /**
    * Discards audio buffers, ribbon envelopes and spectral analyses that are no longer
@@ -394,140 +378,41 @@ export class WebAudioPipeline implements CoreService {
    * Prevents memory leaks and unbound buffer accumulation during long editing sessions.
    */
   public pruneOrphanBuffers(): { removedCount: number; freedBytesEstimate: number } {
-    const activeNames = new Set<string>();
-
-    if (this.session) {
-      for (const z of this.session.zones) {
-        if (z.sampleLow) activeNames.add(z.sampleLow);
-        if (z.sampleHigh) activeNames.add(z.sampleHigh);
-      }
-      if (this.session.extendedRegions) {
-        for (const r of this.session.extendedRegions) {
-          if (r.sampleName) activeNames.add(r.sampleName);
-        }
-      }
-    }
-
-    const historyNames = this.history.getReferencedSampleNames();
-    for (const name of historyNames) {
-      activeNames.add(name);
-    }
-
-    let removedCount = 0;
-    let freedBytesEstimate = 0;
-
-    for (const [key, buffer] of this.sampleBuffers.entries()) {
-      if (!activeNames.has(key)) {
-        freedBytesEstimate += buffer.byteLength;
-        this.sampleBuffers.delete(key);
-        this.ribbonEnvelopeCache.delete(key);
-        removedCount++;
-      }
-    }
-
-    if (this.session) {
-      const activeZoneIds = new Set(this.session.zones.map((z) => z.id));
-      for (const zoneId of this.spectralCache.keys()) {
-        if (!activeZoneIds.has(zoneId)) {
-          this.spectralCache.delete(zoneId);
-        }
-      }
-    }
-
-    return { removedCount, freedBytesEstimate };
+    return pruneOrphanBuffers(this.pipelineCtx());
   }
+
 
   public getSession(): Session | null {
-    return this.session;
+    return getSession(this.pipelineCtx());
   }
+
 
   // ── Phase 5: Undo / Redo & Config / Coverage Repair ─────
 
   private clearHistory(): void {
-    this.history.clear();
-    this.emit({ type: 'history-changed', history: this.getHistoryState() });
+    clearHistory(this.pipelineCtx());
   }
+
 
   private pushHistory(label: string, coalesceKey?: string): void {
-    if (!this.session) return;
-    const recorded = this.history.push(
-      {
-        sessionName: this.session.name,
-        zones: this.session.zones,
-        extendedRegions: this.session.extendedRegions,
-        articulation: this.session.articulation,
-        detectedInstrumentCategory: this.session.detectedInstrumentCategory,
-        processConfig: this.session.processConfig,
-      },
-      label,
-      coalesceKey
-    );
-    if (recorded) {
-      this.pruneOrphanBuffers();
-    }
-    this.emit({ type: 'history-changed', history: this.getHistoryState() });
+    pushHistory(this.pipelineCtx(), label, coalesceKey);
   }
+
 
   public getHistoryState(): HistoryState {
-    return this.history.getState();
+    return getHistoryState(this.pipelineCtx());
   }
 
-  private applyHistoryDocument(doc: {
-    sessionName?: string;
-    zones: Zone[];
-    extendedRegions?: ExtendedRegion[];
-    articulation?: SynthArticulationConfig;
-    detectedInstrumentCategory?: string;
-    processConfig: ProcessConfig;
-  }): void {
-    if (!this.session) return;
-    if (doc.sessionName !== undefined) this.session.name = doc.sessionName;
-    this.session.zones = structuredClone(doc.zones);
-    this.session.extendedRegions = doc.extendedRegions
-      ? structuredClone(doc.extendedRegions)
-      : undefined;
-    this.session.articulation = doc.articulation
-      ? structuredClone(doc.articulation)
-      : undefined;
-    this.session.detectedInstrumentCategory = doc.detectedInstrumentCategory;
-    this.session.processConfig = structuredClone(doc.processConfig);
-    this.session.dirty = true;
-    this.session.modifiedAt = new Date().toISOString();
-    this.ensureZoneDemoBuffers(this.session.zones);
-    this.persistToLocalStorage();
-    this.emit({ type: 'session-changed', session: this.session });
-    this.emit({ type: 'history-changed', history: this.getHistoryState() });
-  }
 
   public undo(): Session | null {
-    if (!this.session) return null;
-    const restored = this.history.undo({
-      sessionName: this.session.name,
-      zones: this.session.zones,
-      extendedRegions: this.session.extendedRegions,
-      articulation: this.session.articulation,
-      detectedInstrumentCategory: this.session.detectedInstrumentCategory,
-      processConfig: this.session.processConfig,
-    });
-    if (!restored) return null;
-    this.applyHistoryDocument(restored);
-    return this.session;
+    return undo(this.pipelineCtx());
   }
 
+
   public redo(): Session | null {
-    if (!this.session) return null;
-    const restored = this.history.redo({
-      sessionName: this.session.name,
-      zones: this.session.zones,
-      extendedRegions: this.session.extendedRegions,
-      articulation: this.session.articulation,
-      detectedInstrumentCategory: this.session.detectedInstrumentCategory,
-      processConfig: this.session.processConfig,
-    });
-    if (!restored) return null;
-    this.applyHistoryDocument(restored);
-    return this.session;
+    return redo(this.pipelineCtx());
   }
+
 
   public updateProcessConfig(changes: Partial<ProcessConfig>): Session {
     if (!this.session) throw new Error('No active session');
