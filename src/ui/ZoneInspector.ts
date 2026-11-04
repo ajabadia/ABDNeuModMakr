@@ -25,20 +25,12 @@ import type {
   Zone,
   ZoneLoopEditorData,
 } from '../core/types';
-import {
-  analyzeClassicZoneOverlaps,
-  analyzeExtendedIntersections,
-  createDefaultCommonPlayback,
-} from '../core/extendedAdapter';
-import {
-  formatGmDrumLabel,
-  analyzeDrumCollisions,
-} from '../core/gmDrumMap';
+import { createDefaultCommonPlayback } from '../core/extendedAdapter';
+import { formatGmDrumLabel } from '../core/gmDrumMap';
 import { DEFAULT_MASTER_WAVE_CONFIG } from '../core/dsp/MasterWaveEnhancer';
-import { computeZoomedWaveformEnvelope } from '../core/dsp/LoopEditorTools';
 import { Knob } from '@abdsynths/shared/components';
 
-function getThemeColor(tokenName: string, fallback: string): string {
+export function getThemeColor(tokenName: string, fallback: string): string {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return fallback;
   }
@@ -56,15 +48,12 @@ import {
 } from './ZoneRibbon';
 import { ICONS } from './icons';
 import { confirmDialog } from './notify';
-import { escAttr, escHtml } from './escape';
-import { formatBytes } from '../core/pathUtils.ts';
-import {
-  basenameOf,
-  formatRegionModeBadge,
-  renderExtendedRegionTableRows as tplRenderExtendedRegionTableRows,
-  renderGmDrumOptions as tplRenderGmDrumOptions,
-  renderZoneTableRows as tplRenderZoneTableRows,
-} from './zoneInspector/zoneTemplates.ts';
+import { onAppLocaleChange } from '../core/i18n';
+import { renderExtendedRegionTableRows as tplRenderExtendedRegionTableRows, renderGmDrumOptions as tplRenderGmDrumOptions, renderZoneTableRows as tplRenderZoneTableRows } from './zoneInspector/zoneTemplates.ts';
+import type { InspectorContext } from './zoneInspector/types.ts';
+import { renderDrawer } from './zoneInspector/drawerRenderOps.ts';
+import { applyNoteHighlights, syncActiveDom } from './zoneInspector/drawerStateOps.ts';
+import { renderTable } from './zoneInspector/tableRenderOps.ts';
 
 export interface ZoneInspectorHandlers {
   onSelectZone?: (zoneId: string) => void;
@@ -186,6 +175,118 @@ export class ZoneInspector {
   /** Fase 18 / GM Drum Map: 'chromatic' (default) vs 'drum' (GM Drum Map piece naming & collision detection) */
   private keyMappingMode: KeyMappingMode = 'chromatic';
 
+  private inspectorCtx(): InspectorContext {
+    const host = this;
+    return {
+      state: {
+      get drawerElement() {
+        return host.drawerElement;
+      },
+      set drawerElement(v) {
+        host.drawerElement = v;
+      },
+      get currentZone() {
+        return host.currentZone;
+      },
+      set currentZone(v) {
+        host.currentZone = v;
+      },
+      get allZones() {
+        return host.allZones;
+      },
+      set allZones(v) {
+        host.allZones = v;
+      },
+      get zoneIndex() {
+        return host.zoneIndex;
+      },
+      set zoneIndex(v) {
+        host.zoneIndex = v;
+      },
+      get workingMode() {
+        return host.workingMode;
+      },
+      set workingMode(v) {
+        host.workingMode = v;
+      },
+      get handlers() {
+        return host.handlers;
+      },
+      set handlers(v) {
+        host.handlers = v;
+      },
+      get keyMappingMode() {
+        return host.keyMappingMode;
+      },
+      set keyMappingMode(v) {
+        host.keyMappingMode = v;
+      },
+      get container() {
+        return host.container;
+      },
+      set container(v) {
+        host.container = v;
+      },
+      get isDraggingKnob() {
+        return host.isDraggingKnob;
+      },
+      set isDraggingKnob(v) {
+        host.isDraggingKnob = v;
+      },
+      get detuneKnob() {
+        return host.detuneKnob;
+      },
+      set detuneKnob(v) {
+        host.detuneKnob = v;
+      },
+      get volumeKnob() {
+        return host.volumeKnob;
+      },
+      set volumeKnob(v) {
+        host.volumeKnob = v;
+      },
+      get panKnob() {
+        return host.panKnob;
+      },
+      set panKnob(v) {
+        host.panKnob = v;
+      },
+      get activeNoteHits() {
+        return host.activeNoteHits;
+      },
+      set activeNoteHits(v) {
+        host.activeNoteHits = v;
+      },
+      get isPlayingSequence() {
+        return host.isPlayingSequence;
+      },
+      set isPlayingSequence(v) {
+        host.isPlayingSequence = v;
+      },
+      get isSpectralVisible() {
+        return host.isSpectralVisible;
+      },
+      set isSpectralVisible(v) {
+        host.isSpectralVisible = v;
+      },
+      get totalZones() {
+        return host.totalZones;
+      },
+      set totalZones(v) {
+        host.totalZones = v;
+      },
+      },
+      destroyZoneKnobs: () => host.destroyZoneKnobs(),
+      getExtendedContext: () => host.getExtendedContext(),
+      renderGmDrumOptions: (currentKey, currentId) => host.renderGmDrumOptions(currentKey, currentId),
+      bindDrawerEvents: () => host.bindDrawerEvents(),
+      getEffectiveBpm: () => host.getEffectiveBpm(),
+      bindTableEvents: () => host.bindTableEvents(),
+      renderZoneTableRows: (zones, activeId) => host.renderZoneTableRows(zones, activeId),
+      renderExtendedRegionTableRows: (regions, activeRegionId) => host.renderExtendedRegionTableRows(regions, activeRegionId),
+    };
+  }
+
   constructor(
     container: HTMLElement,
     handlers: ZoneInspectorHandlers,
@@ -201,6 +302,12 @@ export class ZoneInspector {
       document.querySelector<HTMLElement>('#drawers-container') ||
       document.body;
     this.initDrawer();
+    onAppLocaleChange(() => {
+      this.renderTable();
+      if (this.isDrawerOpen) {
+        this.renderDrawer();
+      }
+    });
   }
 
   private initDrawer(): void {
@@ -434,121 +541,7 @@ export class ZoneInspector {
   }
 
   private syncActiveDom(): void {
-    if (!this.currentZone) return;
-    if (this.workingMode === 'extended') {
-      const { activeRegion } = this.getExtendedContext();
-      if (activeRegion) {
-        if (this.drawerElement) {
-          const dispLow = this.drawerElement.querySelector('#disp-low-note');
-          const dispRoot = this.drawerElement.querySelector('#disp-root-note');
-          const dispHigh = this.drawerElement.querySelector('#disp-high-note');
-          const dispVelSpan = this.drawerElement.querySelector('#disp-vel-span');
-          if (dispLow) dispLow.textContent = midiToNoteName(activeRegion.lowKey);
-          if (dispRoot) dispRoot.textContent = midiToNoteName(activeRegion.rootKey);
-          if (dispHigh) dispHigh.textContent = midiToNoteName(activeRegion.highKey);
-          if (dispVelSpan) {
-            const spanSteps = Math.max(1, activeRegion.highVel - activeRegion.lowVel + 1);
-            dispVelSpan.textContent = `Vel ${activeRegion.lowVel}..${activeRegion.highVel} (${spanSteps})`;
-          }
-
-          const valDetune = this.drawerElement.querySelector('#val-detune');
-          const valVolume = this.drawerElement.querySelector('#val-volume');
-          const valPan = this.drawerElement.querySelector('#val-pan');
-          if (valDetune) valDetune.textContent = detuneToString(activeRegion.detune);
-          if (valVolume) valVolume.textContent = volumeToLongString(activeRegion.volume);
-          if (valPan) valPan.textContent = panToString(activeRegion.pan);
-
-          if (!this.isDraggingKnob) {
-            this.detuneKnob?.setValue((Math.round(activeRegion.detune) + 99) / 198);
-            this.volumeKnob?.setValue((Math.round(activeRegion.volume) + 32) / 44);
-            this.panKnob?.setValue((Math.round(activeRegion.pan) + 50) / 100);
-          }
-        }
-
-        const activeRow = this.container.querySelector(
-          `tr.zone-table-row[data-region-id="${activeRegion.id}"]`
-        );
-        if (activeRow) {
-          const cells = activeRow.querySelectorAll('td');
-          if (cells.length >= 11) {
-            const sampleBase = basenameOf(activeRegion.sampleName);
-            cells[1].textContent = midiNoteToString(activeRegion.lowKey);
-            cells[2].className =
-              'col-key is-root' + (this.keyMappingMode === 'drum' ? ' is-drum-piece' : '');
-            cells[2].innerHTML =
-              this.keyMappingMode === 'drum'
-                ? `<span class="drum-piece-text">${escHtml(formatGmDrumLabel(activeRegion.rootKey))}</span>`
-                : midiNoteToString(activeRegion.rootKey);
-            cells[3].textContent = midiNoteToString(activeRegion.highKey);
-            cells[4].textContent = '';
-            cells[4].innerHTML = `<span class="cell-vel-tag">${activeRegion.lowVel}</span>`;
-            cells[5].innerHTML = `<span class="cell-vel-tag">${activeRegion.highVel}</span>`;
-            cells[6].innerHTML = sampleBase
-              ? `<span class="cell-sample-name">${escHtml(sampleBase)}</span>`
-              : `<span class="cell-empty-dash">—</span>`;
-            cells[7].innerHTML = `<span class="cell-vel-tag">${formatRegionModeBadge(activeRegion)}</span>`;
-            cells[8].textContent = detuneToString(activeRegion.detune);
-            cells[9].textContent = volumeToLongString(activeRegion.volume);
-            cells[10].textContent = panToString(activeRegion.pan);
-          }
-        }
-        return;
-      }
-    }
-
-    const z = this.currentZone;
-    if (this.drawerElement) {
-      const dispLow = this.drawerElement.querySelector('#disp-low-note');
-      const dispRoot = this.drawerElement.querySelector('#disp-root-note');
-      const dispHigh = this.drawerElement.querySelector('#disp-high-note');
-      if (dispLow) dispLow.textContent = midiToNoteName(z.lowKey);
-      if (dispRoot) dispRoot.textContent = midiToNoteName(z.rootKey);
-      if (dispHigh) dispHigh.textContent = midiToNoteName(z.highKey);
-
-      const valDetune = this.drawerElement.querySelector('#val-detune');
-      const valVolume = this.drawerElement.querySelector('#val-volume');
-      const valPan = this.drawerElement.querySelector('#val-pan');
-      if (valDetune) valDetune.textContent = detuneToString(z.detune);
-      if (valVolume) valVolume.textContent = volumeToLongString(z.volume);
-      if (valPan) valPan.textContent = panToString(z.pan);
-
-      if (!this.isDraggingKnob) {
-        this.detuneKnob?.setValue((Math.round(z.detune) + 99) / 198);
-        this.volumeKnob?.setValue((Math.round(z.volume) + 32) / 44);
-        this.panKnob?.setValue((Math.round(z.pan) + 50) / 100);
-      }
-    }
-
-    // Update the active row cells in the canonical Zone Table
-    const activeRow = this.container.querySelector(
-      `tr.zone-table-row[data-zone-id="${z.id}"]`
-    );
-    if (activeRow) {
-      const cells = activeRow.querySelectorAll('td');
-      if (cells.length >= 9) {
-        const hasHigh = Boolean(z.sampleHigh);
-        const rowSplit = Math.max(2, Math.min(127, z.velSplit ?? 64));
-        const lowVelName = basenameOf(z.sampleLow);
-        const highVelName = basenameOf(z.sampleHigh);
-        cells[1].textContent = midiNoteToString(z.lowKey);
-        cells[2].className =
-          'col-key is-root' + (this.keyMappingMode === 'drum' ? ' is-drum-piece' : '');
-        cells[2].innerHTML =
-          this.keyMappingMode === 'drum'
-            ? `<span class="drum-piece-text">${escHtml(formatGmDrumLabel(z.rootKey))}</span>`
-            : midiNoteToString(z.rootKey);
-        cells[3].textContent = midiNoteToString(z.highKey);
-        cells[4].innerHTML = lowVelName
-          ? `<span class="cell-vel-tag">1–${hasHigh ? rowSplit - 1 : 127}</span> <span class="cell-sample-name">${escHtml(lowVelName)}</span>`
-          : `<span class="cell-empty-dash">—</span>`;
-        cells[5].innerHTML = highVelName
-          ? `<span class="cell-vel-tag">${rowSplit}–127</span> <span class="cell-sample-name">${escHtml(highVelName)}</span>`
-          : `<span class="cell-empty-dash">—</span>`;
-        cells[6].textContent = detuneToString(z.detune);
-        cells[7].textContent = volumeToLongString(z.volume);
-        cells[8].textContent = panToString(z.pan);
-      }
-    }
+    syncActiveDom(this.inspectorCtx());
   }
 
   private renderZoneTableRows(zones: Zone[], activeId: string): string {
@@ -569,259 +562,7 @@ export class ZoneInspector {
   }
 
   private renderTable(): void {
-    if (!this.currentZone) {
-      this.container.innerHTML = `
-        <div class="zone-inspector-empty">
-          <div class="empty-icon">${ICONS.layers}</div>
-          <div class="empty-text">No zone selected</div>
-        </div>
-      `;
-      return;
-    }
-
-    const z = this.currentZone;
-    const isExtended = this.workingMode === 'extended';
-
-    if (isExtended) {
-      const { regions, activeRegion, activeIndex } = this.getExtendedContext();
-      if (regions.length > 0 && activeRegion) {
-        const canDeleteReg = regions.length > 1;
-        const sampleTitle = basenameOf(activeRegion.sampleName);
-        const extReport = analyzeExtendedIntersections(regions);
-        const intersectCount = extReport.totalIntersectingPairs;
-        const intersectBadgeHtml =
-          intersectCount > 0
-            ? `<span class="panel-badge is-overlap-badge" title="${intersectCount} Key &amp; Velocity intersection(s) detected across regions">${ICONS.alert} ${intersectCount} INTERSECTION${intersectCount > 1 ? 'S' : ''}</span>`
-            : '';
-
-        const isDrumMode = this.keyMappingMode === 'drum';
-        const drumCollisionReport = isDrumMode
-          ? analyzeDrumCollisions(
-              regions.map((r) => ({
-                id: r.id,
-                lowKey: r.lowKey,
-                highKey: r.highKey,
-                rootKey: r.rootKey,
-                lowVel: r.lowVel,
-                highVel: r.highVel,
-              }))
-            )
-          : null;
-        const drumCollisionBadgeHtml =
-          drumCollisionReport && drumCollisionReport.totalCollisions > 0
-            ? `<span class="panel-badge is-collision-badge" title="${drumCollisionReport.totalCollisions} GM Drum collision(s) detected across regions">${ICONS.alert} ${drumCollisionReport.totalCollisions} DRUM COLLISION${drumCollisionReport.totalCollisions > 1 ? 'S' : ''}</span>`
-            : '';
-
-        this.container.innerHTML = `
-          <div class="zone-inspector-panel">
-            <!-- Extended Mode 2D Multi-Region Sampler Table (1 Row per Sampler Region) -->
-            <div class="zone-table-card">
-              <div class="zone-table-toolbar">
-                <div class="key-mapping-mode-group">
-                  <span class="toolbar-mode-label">KEY MAP:</span>
-                  <button type="button" class="btn btn-xs ${!isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-chromatic" title="Standard Chromatic Keyboard Mapping (Piano / Synth pitch scale C-2..G8)">
-                    ${ICONS.piano} Chromatic
-                  </button>
-                  <button type="button" class="btn btn-xs ${isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-drum" title="General MIDI Drum Map (Percussion piece names, auto-placement &amp; collision detection)">
-                    ${ICONS.drum} GM Drum Map
-                  </button>
-                  <div class="keymap-bpm-group" style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--border-subtle);">
-                    <label for="input-keymap-bpm" class="toolbar-mode-label" title="Tempo (BPM) para audición Resinator v2, bucles REX y secuencias cromáticas">BPM:</label>
-                    <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-dec" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Bajar BPM (-1, Shift: -5)" aria-label="Bajar BPM">${ICONS.caretLeft}</button>
-                    <input type="text" inputmode="numeric" id="input-keymap-bpm" class="form-control" value="${this.getEffectiveBpm()}" style="width: 44px; height: 24px; padding: 2px 4px; text-align: center; font-size: var(--text-xs); font-variant-numeric: tabular-nums;" title="Velocidad en BPM (30..300) para sincronizar Resinator v2 y reproducir secuencias REX / cromáticas" />
-                    <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-inc" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Subir BPM (+1, Shift: +5)" aria-label="Subir BPM">${ICONS.caretRight}</button>
-                    <button type="button" class="btn btn-xs ${this.isPlayingSequence ? 'btn-accent is-active' : 'btn-outline'}" id="btn-keymap-play-seq" title="${this.isPlayingSequence ? 'Detener secuencia' : 'Reproducir secuencia cromática / slices REX al BPM indicado'}">
-                      ${this.isPlayingSequence ? ICONS.stop : ICONS.play} Seq
-                    </button>
-                  </div>
-                </div>
-                <div class="panel-actions">
-                  <div class="keymap-tools-dropdown" id="keymap-tools-dropdown">
-                    <button type="button" class="btn btn-xs btn-outline keymap-tools-toggle" id="btn-keymap-tools-toggle" aria-haspopup="true" aria-expanded="false" title="Audio &amp; Zone Tools (Record, Loop Editor, AutoLoop en todas las zonas, AutoSlicer)">
-                      ${ICONS.repair} Tools
-                    </button>
-                    <div class="keymap-tools-popover" id="keymap-tools-popover" role="menu">
-                      <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="Record (Audio Recorder &amp; MIDI AutoSampler)">
-                        ${ICONS.mic} <span>Record</span>
-                      </button>
-                      <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="Loop Editor (Waveform &amp; Zero-Crossing) for Region #${activeIndex + 1}">
-                        ${ICONS.wave} <span>Loop Editor</span>
-                      </button>
-                      <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las regiones">
-                        ${ICONS.refresh} <span>AutoLoop en todas las zonas</span>
-                      </button>
-                      <button type="button" class="keymap-tools-item" id="btn-open-autoslicer" role="menuitem" title="AutoSlicer (Audio Chopper)">
-                        ${ICONS.scissors} <span>AutoSlicer</span>
-                      </button>
-                    </div>
-                  </div>
-                  <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B/C Resynthesis Inspector (Shortcut: Ctrl+E)">
-                    ${ICONS.wave} Spectral / A-B
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Edit Selected Region #${activeIndex + 1} (Particular Sample, Keys, Velocity, Loop Points &amp; Region Exceptions)">
-                    ${ICONS.settings} Edit Region #${activeIndex + 1}
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-open-model-common-drawer" title="Open Model Configuration &amp; Global Properties">
-                    ${ICONS.sliders} Model Settings
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" title="Create a new empty Sampler Region at the next available Key/Velocity range">
-                    ${ICONS.plus} New Region
-                  </button>
-                  <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDeleteReg ? 'disabled' : ''} title="Remove selected Sampler Region">
-                    ${ICONS.trash} Remove Region
-                  </button>
-                </div>
-              </div>
-              <div class="zone-table-scroll" tabindex="0" role="region" aria-label="Extended 2D Sampler Regions Table">
-                <table class="canonical-zone-table is-extended-table" aria-label="Extended 2D Sampler Regions Table">
-                  <thead>
-                    <tr>
-                      <th class="col-zone" title="Sampler Region Index">Region</th>
-                      <th class="col-key" title="Region Start MIDI Note (0..127)">Low Key</th>
-                      <th class="col-key ${isDrumMode ? 'col-drum-piece' : ''}" title="${isDrumMode ? 'General MIDI Drum Piece and Root Note' : 'Sample Root / Unity Pitch MIDI Note (0..127)'}">${isDrumMode ? 'Drum Piece (Root)' : 'Root Key'}</th>
-                      <th class="col-key" title="Region End MIDI Note (0..127)">High Key</th>
-                      <th class="col-vel" title="Start Velocity (1..127)">Low Vel</th>
-                      <th class="col-vel" title="End Velocity (1..127)">High Vel</th>
-                      <th class="col-sample" title="Assigned Audio Sample for this Region">Sample</th>
-                      <th class="col-mode" title="Click any cell to open the Interactive Waveform Loop Editor">Mode / Loop</th>
-                      <th class="col-num" title="Fine Pitch Detune (-99..+99 cents)">Detune</th>
-                      <th class="col-num" title="Region Gain (-32..+12 dB)">Volume</th>
-                      <th class="col-num" title="Stereo Pan (-50..+50)">Pan</th>
-                      <th class="col-edit" title="Audition / Edit Region Metadata &amp; Exceptions Drawer">Act</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${this.renderExtendedRegionTableRows(regions, activeRegion.id)}
-                  </tbody>
-                </table>
-              </div>
-              <div class="zone-table-footer">
-                <div class="zone-table-status">
-                  <span class="panel-badge ${isDrumMode ? 'is-drum-mode-badge' : ''}">${isDrumMode ? `${ICONS.drum} GM DRUM MAP` : `REGION #${activeIndex + 1} (${regions.length} REGIONS)`}</span>
-                  ${isDrumMode ? drumCollisionBadgeHtml : intersectBadgeHtml}
-                  <span class="panel-caption">${isDrumMode ? `Drum: ${escHtml(formatGmDrumLabel(activeRegion.rootKey))} | Key: ${activeRegion.rootKey} (${midiToNoteName(activeRegion.rootKey)}) | Vel: ${activeRegion.lowVel}..${activeRegion.highVel}${sampleTitle ? ` | ${escHtml(sampleTitle)}` : ''}` : `${midiNoteToString(activeRegion.lowKey)} .. ${midiNoteToString(activeRegion.highKey)} | Root: ${midiNoteToString(activeRegion.rootKey)} | Vel: ${activeRegion.lowVel}..${activeRegion.highVel}${sampleTitle ? ` | ${escHtml(sampleTitle)}` : ' | Empty Sample'}${this.handlers.getDetectedCategory?.() ? ` • ${escHtml(this.handlers.getDetectedCategory?.())}` : ''}`}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-        this.bindTableEvents();
-        return;
-      }
-    }
-
-    const zonesList = this.allZones.length > 0 ? this.allZones : [z];
-    const canDelete = this.totalZones > 1;
-    const canSplit = this.totalZones < 128 && z.highKey > z.lowKey;
-
-    const isDrumMode = this.keyMappingMode === 'drum';
-    const drumCollisionReport = isDrumMode
-      ? analyzeDrumCollisions(
-          zonesList.map((zn) => ({
-            id: zn.id,
-            lowKey: zn.lowKey,
-            highKey: zn.highKey,
-            rootKey: zn.rootKey,
-            lowVel: 1,
-            highVel: 127,
-          }))
-        )
-      : null;
-    const drumCollisionBadgeHtml =
-      drumCollisionReport && drumCollisionReport.totalCollisions > 0
-        ? `<span class="panel-badge is-collision-badge" title="${drumCollisionReport.totalCollisions} GM Drum collision(s) detected across zones">${ICONS.alert} ${drumCollisionReport.totalCollisions} DRUM COLLISION${drumCollisionReport.totalCollisions > 1 ? 'S' : ''}</span>`
-        : '';
-
-    this.container.innerHTML = `
-      <div class="zone-inspector-panel">
-        <!-- Canonical Hartmann MODELmaker v1.2 Zone Table (1..128 Zones Max) -->
-        <div class="zone-table-card">
-          <div class="zone-table-toolbar">
-            <div class="key-mapping-mode-group">
-              <span class="toolbar-mode-label">KEY MAP:</span>
-              <button type="button" class="btn btn-xs ${!isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-chromatic" title="Standard Chromatic Keyboard Mapping (Piano / Synth pitch scale C-2..G8)">
-                ${ICONS.piano} Chromatic
-              </button>
-              <button type="button" class="btn btn-xs ${isDrumMode ? 'btn-accent is-active' : 'btn-outline'}" id="btn-map-mode-drum" title="General MIDI Drum Map (Percussion piece names, auto-placement &amp; collision detection)">
-                ${ICONS.drum} GM Drum Map
-              </button>
-              <div class="keymap-bpm-group" style="display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--border-subtle);">
-                <label for="input-keymap-bpm" class="toolbar-mode-label" title="Tempo (BPM) para audición Resinator v2, bucles REX y secuencias cromáticas">BPM:</label>
-                <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-dec" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Bajar BPM (-1, Shift: -5)" aria-label="Bajar BPM">${ICONS.caretLeft}</button>
-                <input type="text" inputmode="numeric" id="input-keymap-bpm" class="form-control" value="${this.getEffectiveBpm()}" style="width: 44px; height: 24px; padding: 2px 4px; text-align: center; font-size: var(--text-xs); font-variant-numeric: tabular-nums;" title="Velocidad en BPM (30..300) para sincronizar Resinator v2 y reproducir secuencias REX / cromáticas" />
-                <button type="button" class="btn btn-xs btn-outline" id="btn-keymap-bpm-inc" style="padding: 2px 5px; min-width: 22px; height: 24px;" title="Subir BPM (+1, Shift: +5)" aria-label="Subir BPM">${ICONS.caretRight}</button>
-                <button type="button" class="btn btn-xs ${this.isPlayingSequence ? 'btn-accent is-active' : 'btn-outline'}" id="btn-keymap-play-seq" title="${this.isPlayingSequence ? 'Detener secuencia' : 'Reproducir secuencia cromática / slices REX al BPM indicado'}">
-                  ${this.isPlayingSequence ? ICONS.stop : ICONS.play} Seq
-                </button>
-              </div>
-            </div>
-            <div class="panel-actions">
-              <div class="keymap-tools-dropdown" id="keymap-tools-dropdown">
-                <button type="button" class="btn btn-xs btn-outline keymap-tools-toggle" id="btn-keymap-tools-toggle" aria-haspopup="true" aria-expanded="false" title="Audio &amp; Zone Tools (Record, Loop Editor, AutoLoop en todas las zonas, AutoSlicer)">
-                  ${ICONS.repair} Tools
-                </button>
-                <div class="keymap-tools-popover" id="keymap-tools-popover" role="menu">
-                  <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="Record (Audio Recorder &amp; MIDI AutoSampler)">
-                    ${ICONS.mic} <span>Record</span>
-                  </button>
-                  <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="Loop Editor (Waveform &amp; Zero-Crossing) for Zone #${this.zoneIndex + 1}">
-                    ${ICONS.wave} <span>Loop Editor</span>
-                  </button>
-                  <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="AutoLoop en todas las zonas (zc-snap): calcula y aplica puntos de bucle por cruce por cero en todas las zonas">
-                    ${ICONS.refresh} <span>AutoLoop en todas las zonas</span>
-                  </button>
-                  <button type="button" class="keymap-tools-item" id="btn-open-autoslicer" role="menuitem" title="AutoSlicer (Audio Chopper)">
-                    ${ICONS.scissors} <span>AutoSlicer</span>
-                  </button>
-                </div>
-              </div>
-              <button type="button" class="btn btn-xs btn-outline ${this.isSpectralVisible ? 'is-active' : ''}" id="btn-toggle-spectral" title="Toggle Spectral &amp; A/B Resynthesis Inspector (Shortcut: Ctrl+E)">
-                ${ICONS.wave} Spectral / A-B
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-open-zone-drawer" title="Open Right Drawer to Edit Zone #${this.zoneIndex + 1} Metadata">
-                ${ICONS.settings} Edit Zone #${this.zoneIndex + 1}
-              </button>
-              <button type="button" class="btn btn-xs btn-outline" id="btn-split-zone" ${!canSplit ? 'disabled' : ''} title="New Zone / Split at Root Key (Max 128 zones, 1 per MIDI key)">
-                ${ICONS.plus} New Zone
-              </button>
-              <button type="button" class="btn btn-xs btn-danger" id="btn-delete-zone" ${!canDelete ? 'disabled' : ''} title="Remove Zone and merge boundaries (Shortcut: Delete)">
-                ${ICONS.trash} Remove Zone
-              </button>
-            </div>
-          </div>
-          <div class="zone-table-scroll" tabindex="0" role="region" aria-label="Canonical Hartmann Key Zone Table">
-            <table class="canonical-zone-table" aria-label="Canonical Hartmann Key Zone Table">
-              <thead>
-                <tr>
-                  <th class="col-zone">Zone</th>
-                  <th class="col-key">Low Key</th>
-                  <th class="col-key ${isDrumMode ? 'col-drum-piece' : ''}">${isDrumMode ? 'Drum Piece (Root)' : 'Root Key'}</th>
-                  <th class="col-key">High Key</th>
-                  <th class="col-sample">Low Vel</th>
-                  <th class="col-sample">High Vel</th>
-                  <th class="col-num">Detune</th>
-                  <th class="col-num">Volume</th>
-                  <th class="col-num">Pan</th>
-                  <th class="col-edit" title="Audition / Edit Zone Metadata Drawer">Act</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${this.renderZoneTableRows(zonesList, z.id)}
-              </tbody>
-            </table>
-          </div>
-          <div class="zone-table-footer">
-            <div class="zone-table-status">
-              <span class="panel-badge ${isDrumMode ? 'is-drum-mode-badge' : ''}">${isDrumMode ? `${ICONS.drum} GM DRUM MAP` : `ZONE #${this.zoneIndex + 1} (${this.totalZones} / 128 MAX)`}</span>
-              ${isDrumMode ? drumCollisionBadgeHtml : ''}
-              <span class="panel-caption">${isDrumMode ? `Drum: ${escHtml(formatGmDrumLabel(z.rootKey))} | Key: ${z.rootKey} (${midiToNoteName(z.rootKey)})` : `${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)} | Root: ${midiNoteToString(z.rootKey)}`}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    this.bindTableEvents();
+    renderTable(this.inspectorCtx());
   }
 
   private renderGmDrumOptions(currentKey: number, currentId: string): string {
@@ -833,463 +574,8 @@ export class ZoneInspector {
   }
 
   private renderDrawer(): void {
-    this.destroyZoneKnobs();
-    if (!this.drawerElement || !this.currentZone) return;
-    const z = this.currentZone;
-    const zonesList = this.allZones.length > 0 ? this.allZones : [z];
-    const prevZone = this.zoneIndex > 0 ? zonesList[this.zoneIndex - 1] : null;
-    const nextZone = this.zoneIndex < zonesList.length - 1 ? zonesList[this.zoneIndex + 1] : null;
-    const minLowKey = prevZone ? prevZone.lowKey + 1 : 0;
-    const maxLowKey = prevZone ? z.highKey : 0;
-    const minHighKey = nextZone ? z.lowKey : 127;
-    const maxHighKey = nextZone ? nextZone.highKey - 1 : 127;
-    const hasHighVel = Boolean(z.sampleHigh);
-    const split = Math.max(2, Math.min(127, z.velSplit ?? 64));
-    const isExtended = this.workingMode === 'extended';
-    const loadedSamples = this.handlers.getLoadedSamples?.() ?? [];
-
-    const extCtx = isExtended ? this.getExtendedContext() : null;
-    const extRegions = extCtx?.regions ?? [];
-    const activeReg = extCtx?.activeRegion ?? null;
-    const activeRegIdx = extCtx?.activeIndex ?? 0;
-
-    // Overlap analysis for active region / zone
-    const extOverlaps = isExtended ? analyzeExtendedIntersections(extRegions) : null;
-    const regOverlapInfo =
-      isExtended && activeReg && extOverlaps
-        ? extOverlaps.byRegionId[activeReg.id]
-        : undefined;
-    const classicOverlaps = !isExtended ? analyzeClassicZoneOverlaps(zonesList) : null;
-    const zoneOverlapPeers =
-      !isExtended && classicOverlaps
-        ? classicOverlaps[z.id]?.overlappingZones ?? []
-        : [];
-
-    let drumCollisionDrawerAlertHtml = '';
-    if (this.keyMappingMode === 'drum') {
-      const itemsForColl = isExtended
-        ? extRegions.map((r) => ({
-            id: r.id,
-            lowKey: r.lowKey,
-            highKey: r.highKey,
-            rootKey: r.rootKey,
-            lowVel: r.lowVel,
-            highVel: r.highVel,
-          }))
-        : zonesList.map((zn) => ({
-            id: zn.id,
-            lowKey: zn.lowKey,
-            highKey: zn.highKey,
-            rootKey: zn.rootKey,
-            lowVel: 1,
-            highVel: 127,
-          }));
-      const collReport = analyzeDrumCollisions(itemsForColl);
-      const activeItemId = isExtended && activeReg ? activeReg.id : z.id;
-      const cInfo = collReport.collisionMap[activeItemId];
-      if (cInfo) {
-        drumCollisionDrawerAlertHtml = `
-          <div class="drum-collision-alert">
-            <span class="alert-icon">${ICONS.alert}</span>
-            <div class="alert-content">
-              <strong>GM Drum Collision Detected!</strong>
-              <div>Drum piece <strong>${escHtml(cInfo.drumLabel)}</strong> is also mapped to ${cInfo.peerIndices.map((i) => `${isExtended ? 'Region' : 'Zone'} #${i}`).join(', ')} with overlapping velocity. Change drum piece or adjust velocity layers to avoid playback conflict.</div>
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    const currentPrimarySample =
-      isExtended && activeReg ? activeReg.sampleName : z.sampleLow;
-    const lowOptionsHtml = [
-      `<option value="">-- Select Loaded Sample --</option>`,
-      ...loadedSamples.map(
-        (s) =>
-          `<option value="${escAttr(s)}" ${currentPrimarySample === s ? 'selected' : ''}>${escHtml(basenameOf(s))}</option>`
-      ),
-    ].join('');
-    const highOptionsHtml = [
-      `<option value="">-- None (Low Vel covers 1..127) --</option>`,
-      ...loadedSamples.map(
-        (s) =>
-          `<option value="${escAttr(s)}" ${z.sampleHigh === s ? 'selected' : ''}>${escHtml(basenameOf(s))}</option>`
-      ),
-    ].join('');
-
-    const effLowKey = isExtended && activeReg ? activeReg.lowKey : z.lowKey;
-    const effRootKey = isExtended && activeReg ? activeReg.rootKey : z.rootKey;
-    const effHighKey = isExtended && activeReg ? activeReg.highKey : z.highKey;
-    const effDetune = isExtended && activeReg ? activeReg.detune : z.detune;
-    const effVolume = isExtended && activeReg ? activeReg.volume : z.volume;
-    const effPan = isExtended && activeReg ? activeReg.pan : z.pan;
-
-    const effFmtInfo = this.handlers.getZoneSampleFormatInfo?.(z.id, activeReg?.id) ?? null;
-
-    const formatByteSize = (bytes?: number): string => {
-      if (!bytes || bytes <= 0) return '—';
-      return formatBytes(bytes);
-    };
-
-    const renderTechSpecsBox = (info: NonNullable<ReturnType<NonNullable<ZoneInspectorHandlers['getZoneSampleFormatInfo']>>>) => {
-      if (!info) return '';
-      const chLabel =
-        info.numChannels === 4
-          ? '4.0 Quad'
-          : info.numChannels === 2
-            ? '2.0 Stereo'
-            : info.numChannels === 1
-              ? '1.0 Mono'
-              : `${info.numChannels} ch`;
-      const resLabel = `${info.bitsPerSample}-bit PCM`;
-      const rateLabel = `${(info.sampleRate / 1000).toFixed(1)} kHz`;
-      const sizeLabel = formatByteSize(info.byteSize);
-      const framesCount = info.totalFrames ?? Math.round(info.durationSec * info.sampleRate);
-      const durLabel = `${info.durationSec.toFixed(3)}s (${framesCount.toLocaleString()} f)`;
-      const hasLoop = info.loopEnd > info.loopStart;
-      const loopLabel = hasLoop
-        ? `${info.loopStart.toLocaleString()}..${info.loopEnd.toLocaleString()}`
-        : 'No Loop';
-
-      return `
-        <div class="sample-tech-spec-box" title="Sample Technical Specifications">
-          <div class="spec-cell">
-            <span class="spec-label">FILE SIZE</span>
-            <span class="spec-value is-highlight">${sizeLabel}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">CHANNELS</span>
-            <span class="spec-value">${chLabel}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">RESOLUTION</span>
-            <span class="spec-value">${resLabel}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">SAMPLE RATE</span>
-            <span class="spec-value">${rateLabel}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">DURATION</span>
-            <span class="spec-value">${durLabel}</span>
-          </div>
-          <div class="spec-cell">
-            <span class="spec-label">LOOP RANGE</span>
-            <span class="spec-value ${hasLoop ? 'is-loop' : 'is-muted'}">${loopLabel}</span>
-          </div>
-        </div>
-      `;
-    };
-
-    const regSampleLabel =
-      isExtended && activeReg
-        ? activeReg.sampleName
-          ? basenameOf(activeReg.sampleName)
-          : 'Empty Sample'
-        : '';
-
-    const drawerTitleText =
-      isExtended && activeReg
-        ? `REGION #${activeRegIdx + 1}: ${regSampleLabel} (${midiNoteToString(activeReg.lowKey)}..${midiNoteToString(activeReg.highKey)} • VEL ${activeReg.lowVel}..${activeReg.highVel})`
-        : `ZONE #${this.zoneIndex + 1} METADATA (${midiNoteToString(z.lowKey)} .. ${midiNoteToString(z.highKey)})`;
-
-    let overlapAlertHtml = '';
-    if (isExtended && regOverlapInfo && regOverlapInfo.fullIntersections.length > 0) {
-      const peerText = regOverlapInfo.fullIntersections
-        .map((p) => `Region #${p.index}`)
-        .join(', ');
-      overlapAlertHtml = `
-        <div class="overlap-alert-banner is-warning">
-          <span class="overlap-alert-icon">${ICONS.alert}</span>
-          <div class="overlap-alert-body">
-            <strong>2D Key &amp; Velocity Intersection Detected</strong>
-            <span>This region overlaps in both key range and velocity with <strong>${peerText}</strong>. Both samples will trigger simultaneously in the intersecting range unless crossfaded or adjusted.</span>
-          </div>
-        </div>
-      `;
-    } else if (!isExtended && zoneOverlapPeers.length > 0) {
-      const peerText = zoneOverlapPeers.map((p) => `Zone #${p.index}`).join(', ');
-      overlapAlertHtml = `
-        <div class="overlap-alert-banner is-warning">
-          <span class="overlap-alert-icon">${ICONS.alert}</span>
-          <div class="overlap-alert-body">
-            <strong>Key Range Overlap Detected</strong>
-            <span>This zone overlaps with <strong>${peerText}</strong>.</span>
-          </div>
-        </div>
-      `;
-    }
-
-    this.drawerElement.innerHTML = `
-      <div class="drawer-header">
-        <div class="drawer-title">
-          <span class="drawer-icon">${ICONS.layers}</span>
-          <span>${escHtml(drawerTitleText)}</span>
-        </div>
-        <div class="drawer-header-actions">
-          <button type="button" class="btn btn-xs btn-outline" id="btn-drawer-open-model-config" title="Open Model Configuration Modal (Mode, Engine, Articulation, Metadata, Artwork)">
-            ${ICONS.sliders} Model Settings
-          </button>
-          <button type="button" class="btn btn-close-drawer" id="btn-close-zone-drawer" title="Close Metadata Drawer">${ICONS.close}</button>
-        </div>
-      </div>
-
-      <div class="drawer-body zone-drawer-body">
-        ${overlapAlertHtml}
-
-        <!-- 1. Key Range, Root & (in Extended Mode) Start/End Velocity -->
-        <div class="inspector-section section-keys">
-              <div class="section-header-row">
-                <div class="section-title">${isExtended ? 'KEY &amp; VELOCITY BOUNDARIES (FREE 2D REGION)' : 'KEY ZONE BOUNDARIES (MIDI 0 C-2 .. 127 G8)'}</div>
-                ${
-                  this.handlers.onAutoDetectZone
-                    ? `<button type="button" class="btn btn-xs btn-outline" id="btn-auto-detect-zone-general" title="Auto-detect root note (YIN/MPM + HPS) and optimal Parameter Set (0..9) from audio signal">
-                        ${ICONS.cpu} Auto-Detect Pitch &amp; Set
-                      </button>`
-                    : ''
-                }
-              </div>
-              ${
-                this.keyMappingMode === 'drum'
-                  ? `
-              <div class="card card--tight card--accent-left gm-drum-assignment-card">
-                <div class="drum-selector-header">
-                  <label for="sel-gm-drum" class="drum-selector-label">${ICONS.drum} GM DRUM INSTRUMENT / PIECE ASSIGNMENT</label>
-                  <span class="drum-assigned-tag">${formatGmDrumLabel(effRootKey)}</span>
-                </div>
-                <select id="sel-gm-drum" class="form-control select-gm-drum" title="Assign drum piece to this ${isExtended ? 'region' : 'zone'} (automatically aligns position to its designated MIDI note)">
-                  ${this.renderGmDrumOptions(effRootKey, isExtended && activeReg ? activeReg.id : z.id)}
-                </select>
-                ${drumCollisionDrawerAlertHtml}
-              </div>
-              `
-                  : ''
-              }
-              <div class="keys-inputs-row">
-                <div class="form-group ${!isExtended && !prevZone ? 'is-conditioned-disabled' : ''}">
-                  <label for="inp-low-key">
-                    LOW KEY
-                    ${!isExtended && !prevZone ? '<span class="cond-reason-badge is-classic-only">FIJO EN CLASSIC (0)</span>' : ''}
-                  </label>
-                  <div class="input-with-note">
-                    <input type="number" id="inp-low-key" min="${isExtended ? 0 : minLowKey}" max="${isExtended ? 127 : maxLowKey}" value="${effLowKey}" ${!isExtended && !prevZone ? 'disabled title="First zone always starts at 0 C-2 in Classic Mode"' : ''} />
-                    <span class="note-display" id="disp-low-note">${midiToNoteName(effLowKey)}</span>
-                  </div>
-                </div>
-
-                <div class="form-group is-highlight">
-                  <label for="inp-root-key">${this.keyMappingMode === 'drum' ? 'DRUM KEY' : 'ROOT KEY'}</label>
-                  <div class="input-with-note">
-                    <input type="number" id="inp-root-key" min="0" max="127" value="${effRootKey}" />
-                    <span class="note-display" id="disp-root-note">${this.keyMappingMode === 'drum' ? formatGmDrumLabel(effRootKey) : midiToNoteName(effRootKey)}</span>
-                  </div>
-                </div>
-
-                <div class="form-group ${!isExtended && !nextZone ? 'is-conditioned-disabled' : ''}">
-                  <label for="inp-high-key">
-                    HIGH KEY
-                    ${!isExtended && !nextZone ? '<span class="cond-reason-badge is-classic-only">FIJO EN CLASSIC (127)</span>' : ''}
-                  </label>
-                  <div class="input-with-note">
-                    <input type="number" id="inp-high-key" min="${isExtended ? 0 : minHighKey}" max="${isExtended ? 127 : maxHighKey}" value="${effHighKey}" ${!isExtended && !nextZone ? 'disabled title="Last zone always ends at 127 G8 in Classic Mode"' : ''} />
-                    <span class="note-display" id="disp-high-note">${midiToNoteName(effHighKey)}</span>
-                  </div>
-                </div>
-              </div>
-              <fieldset class="conditioned-fieldset" ${!isExtended || !activeReg ? 'disabled' : ''}>
-                <div class="keys-inputs-row ${!isExtended ? 'is-conditioned-disabled' : ''}" style="margin-top: 8px;">
-                  <div class="form-group">
-                    <label for="inp-ext-low-vel">
-                      LOW VEL (START 1..127)
-                      ${!isExtended ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
-                    </label>
-                    <div class="input-with-note">
-                      <input type="number" id="inp-ext-low-vel" min="1" max="127" value="${isExtended && activeReg ? activeReg.lowVel : 1}" title="${!isExtended ? 'Solo disponible en Modo Extended' : 'Region Start Velocity (1..127)'}" />
-                      <span class="note-display">Start</span>
-                    </div>
-                  </div>
-
-                  <div class="form-group">
-                    <label for="inp-ext-high-vel">
-                      HIGH VEL (END 1..127)
-                      ${!isExtended ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
-                    </label>
-                    <div class="input-with-note">
-                      <input type="number" id="inp-ext-high-vel" min="1" max="127" value="${isExtended && activeReg ? activeReg.highVel : (hasHighVel ? split - 1 : 127)}" title="${!isExtended ? 'Solo disponible en Modo Extended' : 'Region End Velocity (1..127)'}" />
-                      <span class="note-display">End</span>
-                    </div>
-                  </div>
-
-                  <div class="form-group is-highlight">
-                    <label>VELOCITY SPAN</label>
-                    <div class="input-with-note">
-                      <span class="note-display" id="disp-vel-span" style="width: 100%; text-align: center;">
-                        ${isExtended && activeReg ? `Vel ${activeReg.lowVel}..${activeReg.highVel} (${Math.max(1, activeReg.highVel - activeReg.lowVel + 1)})` : (hasHighVel ? 'Fijo 1..63 / 64..127' : 'Vel 1..127 (127)')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </fieldset>
-            </div>
-
-            <!-- 2. Sample Assignment -->
-            ${
-              isExtended && activeReg
-                ? `
-            <div class="inspector-section section-samples">
-              <div class="section-title">REGION SAMPLE ASSIGNMENT (1 SAMPLE PER 2D REGION)</div>
-              <div class="samples-slots-stack">
-                <div class="sample-slot-card ${activeReg.sampleName ? 'has-file' : 'is-empty'}" id="card-sample-low">
-                  <div class="sample-slot-header">
-                    <span class="sample-slot-tag" id="tag-vel-low">REGION SAMPLE (KEYS ${midiNoteToString(activeReg.lowKey)}..${midiNoteToString(activeReg.highKey)} • VEL ${activeReg.lowVel}..${activeReg.highVel})</span>
-                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <button type="button" class="btn btn-xs btn-primary" id="btn-sample-card-wizard" title="Rescatar muestra multi-nota en el Asistente (Paso 2: Limpiar huella de ruido, cortar por cruce por cero y remapear)">${ICONS.sparkle} Limpiar y mapear</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
-                      ${activeReg.sampleName ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Region Sample">${ICONS.play} Audition</button>` : ''}
-                    </div>
-                  </div>
-                  <div class="sample-slot-body">
-                    <select class="sample-reuse-select" id="sel-reuse-low" title="Select an already-loaded sample from session memory">
-                      ${lowOptionsHtml}
-                    </select>
-                    <div class="sample-actions">
-                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" multiple class="is-hidden-file" />
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk into this region">${ICONS.folder} Browse...</button>
-                      ${activeReg.sampleName ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Region Sample">${ICONS.close}</button>` : ''}
-                    </div>
-                  </div>
-                  ${activeReg.sampleName && effFmtInfo ? renderTechSpecsBox(effFmtInfo) : ''}
-                </div>
-              </div>
-            </div>
-            `
-                : `
-            <div class="inspector-section section-samples">
-              <div class="section-title">VELOCITY SAMPLE LAYERS (CANONICAL 1..63 / 64..127)</div>
-              <div class="samples-slots-stack">
-                <div class="sample-slot-card ${z.sampleLow ? 'has-file' : 'is-empty'}" id="card-sample-low">
-                  <div class="sample-slot-header">
-                    <span class="sample-slot-tag" id="tag-vel-low">LOW VEL SAMPLE (VEL 1..${hasHighVel ? split - 1 : 127})</span>
-                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <button type="button" class="btn btn-xs btn-primary" id="btn-sample-card-wizard" title="Rescatar muestra multi-nota en el Asistente (Paso 2: Limpiar huella de ruido, cortar por cruce por cero y remapear)">${ICONS.sparkle} Limpiar y mapear</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-slicer" title="Open AutoSlicer for this sample">${ICONS.scissors} Slicer</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-loop" title="Open Interactive Waveform Loop Editor for this sample">${ICONS.wave} Loop Editor</button>
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-sample-card-recorder" title="Open Audio Recorder &amp; Noise Print Capture">${ICONS.mic} Record</button>
-                      ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-low" title="Audition Low Vel Audio">${ICONS.play} Audition</button>` : ''}
-                    </div>
-                  </div>
-                  <div class="sample-slot-body">
-                    <select class="sample-reuse-select" id="sel-reuse-low" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
-                      ${lowOptionsHtml}
-                    </select>
-                    <div class="sample-actions">
-                      <input type="file" id="file-input-low" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" multiple class="is-hidden-file" />
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-browse-low" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
-                      ${z.sampleLow ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-low" title="Clear Low Vel Sample">${ICONS.close}</button>` : ''}
-                    </div>
-                  </div>
-                  ${z.sampleLow && effFmtInfo ? renderTechSpecsBox(effFmtInfo) : ''}
-                </div>
-
-                <div class="sample-slot-card ${z.sampleHigh ? 'has-file' : 'is-empty'}" id="card-sample-high">
-                  <div class="sample-slot-header">
-                    <span class="sample-slot-tag" id="tag-vel-high">HIGH VEL SAMPLE (${hasHighVel ? `VEL ${split}..127` : 'OPTIONAL 64..127'})</span>
-                    ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-accent" id="btn-play-high" title="Audition High Vel Audio">${ICONS.play} Audition</button>` : ''}
-                  </div>
-                  <div class="sample-slot-body">
-                    <select class="sample-reuse-select" id="sel-reuse-high" title="Select an already-loaded sample from session memory (reused without re-analyzing)">
-                      ${highOptionsHtml}
-                    </select>
-                    <div class="sample-actions">
-                      <input type="file" id="file-input-high" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" class="is-hidden-file" />
-                      <button type="button" class="btn btn-xs btn-outline" id="btn-browse-high" title="Load new WAV/AIFF from disk">${ICONS.folder} Browse...</button>
-                      ${z.sampleHigh ? `<button type="button" class="btn btn-xs btn-ghost" id="btn-clear-high" title="Clear High Vel Sample">${ICONS.close}</button>` : ''}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="sample-vel-split-control is-disabled is-conditioned-disabled">
-                  <label for="slider-vel-split" class="sample-vel-split-label">
-                    <span>VELOCITY SPLIT POINT <span class="cond-reason-badge is-extended-only">SOLO MODO EXTENDED</span></span>
-                    <span class="val-display" id="val-vel-split">64 (Fixed: 1–63 / 64–127)</span>
-                  </label>
-                  <input type="range" id="slider-vel-split" min="64" max="64" value="64" disabled title="Classic Mode strictly uses the Hartmann MODELmaker v1.2 fixed velocity split (Low Vel 1..63 / High Vel 64..127). Switch WORKING MODE → Extended for free per-region start/end velocities." />
-                  <div class="sample-vel-split-hint">
-                    Classic Mode: Fixed at 64 (Low: 1–63, High: 64–127). Switch to Extended Mode for free per-region velocity ranges.
-                  </div>
-                </div>
-              </div>
-            </div>
-            `
-            }
-
-            <!-- 3. Canonical Tuning, Volume & Pan Controls (Rotary Knobs from @abdsynths/shared) -->
-            <div class="inspector-section section-trims">
-              <div class="section-title">${isExtended ? 'REGION PARAMETERS (DETUNE / VOLUME / PAN)' : 'ZONE PARAMETERS (DETUNE / VOLUME / PAN)'}</div>
-              <div class="zone-knobs-row">
-                <div class="synth-knob-cell" title="Fine Detune (-99 .. +99 cents). Double-click knob to reset to 0.">
-                  <div id="knob-zone-detune"></div>
-                  <span class="synth-knob-num stat-num" id="val-detune">${detuneToString(effDetune)}</span>
-                  <span class="synth-knob-title">DETUNE (-99..+99)</span>
-                </div>
-
-                <div class="synth-knob-cell" title="Volume (-32dB .. +12dB). Double-click knob to reset to 0dB.">
-                  <div id="knob-zone-volume"></div>
-                  <span class="synth-knob-num stat-num" id="val-volume">${volumeToLongString(effVolume)}</span>
-                  <span class="synth-knob-title">VOLUME (-32..+12dB)</span>
-                </div>
-
-                <div class="synth-knob-cell" title="Pan (-50 .. +50). Double-click knob to reset to Center (0).">
-                  <div id="knob-zone-pan"></div>
-                  <span class="synth-knob-num stat-num" id="val-pan">${panToString(effPan)}</span>
-                  <span class="synth-knob-title">PAN (-50..+50)</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 5. Interactive Audio Tools & Modals Bar -->
-            <div class="inspector-section section-tools">
-              <div class="section-title">INTERACTIVE AUDIO EDITORS</div>
-              <div class="drawer-tools-row">
-                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-loop" title="Open Interactive Waveform Loop Editor &amp; Zero-Crossing Seam Magnifier Modal">
-                  ${ICONS.wave} AutoLoop Editor...
-                </button>
-                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-slicer" title="Open Audio Chopper &amp; Multi-Layer Auto-Slicer Modal">
-                  ${ICONS.scissors} AutoSlicer...
-                </button>
-                <button type="button" class="btn btn-sm btn-outline flex-1" id="btn-drawer-invoke-recorder" title="Open Audio Recorder &amp; Noise Print Capture Modal">
-                  ${ICONS.mic} Record...
-                </button>
-              </div>
-            </div>
-
-            <!-- 6. Fase 8 / 35.6: Master Wave Promotion (24-bit / 96 kHz) -->
-            <div class="inspector-section section-master-wave">
-              <div class="section-title">MEJORAR A MASTER WAVE (24-BIT / 96 KHZ)</div>
-              <div class="drawer-tools-row" style="gap: 8px; flex-wrap: wrap;">
-                ${
-                  isExtended && activeReg
-                    ? `<button type="button" class="btn btn-sm btn-outline flex-1" id="btn-promote-zone-mw-reg" title="Promover la muestra de esta región a 24-bit / 96 kHz Master Wave con expansión de bucle por cruce por cero">
-                        ${ICONS.cpu} Mejorar esta región (24b/96k)
-                      </button>`
-                    : `<button type="button" class="btn btn-sm btn-outline flex-1" id="btn-promote-zone-mw" title="Promover la muestra de esta zona a 24-bit / 96 kHz Master Wave con expansión de bucle por cruce por cero">
-                        ${ICONS.cpu} Mejorar esta zona (24b/96k)
-                      </button>`
-                }
-                <button type="button" class="btn btn-sm btn-primary flex-1" id="btn-promote-all-mw" title="Promover todas las zonas con muestra a 24-bit / 96 kHz Master Wave (sobre las notas ya partidas y mapeadas)">
-                  ${ICONS.sparkle} Mejorar todas las zonas a Master Wave (24b/96k)
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      this.bindDrawerEvents();
-      requestAnimationFrame(() => this.drawDrawerPreviewWaveform());
-    }
+    renderDrawer(this.inspectorCtx());
+  }
 
   private bindTableEvents(): void {
     if (!this.currentZone) return;
@@ -1527,50 +813,7 @@ export class ZoneInspector {
   }
 
   private applyNoteHighlights(scrollIntoView: boolean): void {
-    const isExtended = this.workingMode === 'extended';
-    this.container
-      .querySelectorAll('.is-note-active, .is-note-layer-active')
-      .forEach((el) => el.classList.remove('is-note-active', 'is-note-layer-active'));
-    if (this.activeNoteHits.size === 0) return;
-
-    let firstRow: HTMLElement | null = null;
-    for (const hit of this.activeNoteHits.values()) {
-      if (isExtended) {
-        for (const regId of hit.regionIds) {
-          const row = this.container.querySelector<HTMLElement>(
-            `tr.zone-table-row[data-region-id="${CSS.escape(regId)}"]`
-          );
-          if (!row) continue;
-          row.classList.add('is-note-active');
-          row.querySelector('.col-sample')?.classList.add('is-note-layer-active');
-          firstRow ??= row;
-        }
-      } else if (hit.zoneId) {
-        const row = this.container.querySelector<HTMLElement>(
-          `tr.zone-table-row[data-zone-id="${CSS.escape(hit.zoneId)}"]:not([data-region-id])`
-        );
-        if (!row) continue;
-        row.classList.add('is-note-active');
-        row
-          .querySelector(`td[data-vel-layer="${hit.layer ?? 'low'}"]`)
-          ?.classList.add('is-note-layer-active');
-        firstRow ??= row;
-      }
-    }
-
-    if (scrollIntoView && firstRow) {
-      const scroller = firstRow.closest<HTMLElement>('.zone-table-scroll');
-      if (scroller) {
-        const sRect = scroller.getBoundingClientRect();
-        const rRect = firstRow.getBoundingClientRect();
-        const head = scroller.querySelector('thead')?.getBoundingClientRect().height ?? 0;
-        if (rRect.top < sRect.top + head) {
-          scroller.scrollTop -= sRect.top + head - rRect.top;
-        } else if (rRect.bottom > sRect.bottom) {
-          scroller.scrollTop += rRect.bottom - sRect.bottom;
-        }
-      }
-    }
+    applyNoteHighlights(this.inspectorCtx(), scrollIntoView);
   }
 
   private handleRowPlayClick(zoneId: string | null, regionId: string | null): void {
@@ -2615,107 +1858,5 @@ export class ZoneInspector {
     });
   }
 
-  private drawDrawerPreviewWaveform(): void {
-    if (!this.drawerElement) return;
-    const canvas = this.drawerElement.querySelector('#drawer-preview-waveform-canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const isExtended = this.workingMode === 'extended';
-    const activeReg = isExtended ? this.getExtendedContext().activeRegion : null;
-    const d =
-      this.handlers.getLoopEditorData?.(this.currentZone?.id, activeReg?.id) ??
-      null;
-
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(300, Math.floor(rect.width || 560));
-    const height = Math.max(50, Math.floor(rect.height || 64));
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    const themeBg = getThemeColor('--color-panel-surface', '#151f2e');
-    const themeMuted = getThemeColor('--color-text-muted', '#7e9bb5');
-    const themeAccent = getThemeColor('--color-accent', '#00c3ff');
-    const themeWarning = getThemeColor('--color-warning', '#ffaa00');
-    const themeAccentRgb = getThemeColor('--color-accent-rgb', '0, 195, 255');
-    const themeMono = getThemeColor('--font-mono', 'monospace');
-
-    // Background
-    ctx.fillStyle = themeBg;
-    ctx.fillRect(0, 0, width, height);
-
-    if (!d || !d.monoPcm || d.monoPcm.length === 0) {
-      ctx.fillStyle = themeMuted;
-      ctx.font = `11px ${themeMono}`;
-      ctx.fillText('No sample audio buffer loaded', 14, height * 0.55);
-      ctx.restore();
-      return;
-    }
-
-    // Grid center line
-    const centerY = height * 0.5;
-    ctx.strokeStyle = `rgba(${themeAccentRgb}, 0.15)`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
-
-    // Loop region highlight if loop exists
-    if (d.loopEnd > d.loopStart && d.totalFrames > 0) {
-      const loopStartX = (d.loopStart / d.totalFrames) * width;
-      const loopEndX = (d.loopEnd / d.totalFrames) * width;
-      ctx.fillStyle = `rgba(${themeAccentRgb}, 0.14)`;
-      ctx.fillRect(loopStartX, 0, loopEndX - loopStartX, height);
-
-      // Loop start line
-      ctx.strokeStyle = themeAccent;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(loopStartX, 0);
-      ctx.lineTo(loopStartX, height);
-      ctx.stroke();
-
-      // Loop end line
-      ctx.strokeStyle = themeWarning;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(loopEndX, 0);
-      ctx.lineTo(loopEndX, height);
-      ctx.stroke();
-    }
-
-    // Waveform envelope
-    const numPoints = Math.min(width, 400);
-    const env = computeZoomedWaveformEnvelope(d.monoPcm, 0, d.totalFrames, numPoints);
-    const ampScale = height * 0.44;
-
-    // Draw gradient waveform bars / fill
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, `rgba(${themeAccentRgb}, 0.45)`);
-    grad.addColorStop(0.5, `rgba(${themeAccentRgb}, 0.8)`);
-    grad.addColorStop(1, `rgba(${themeAccentRgb}, 1)`);
-
-    ctx.fillStyle = grad;
-    const stepX = width / numPoints;
-    for (let i = 0; i < numPoints; i++) {
-      const x = i * stepX;
-      const maxVal = env.max[i] ?? 0;
-      const minVal = env.min[i] ?? 0;
-      const topY = centerY - maxVal * ampScale;
-      const botY = centerY - minVal * ampScale;
-      const barH = Math.max(1.5, botY - topY);
-      ctx.fillRect(x, topY, Math.max(1, stepX - 0.5), barH);
-    }
-
-    ctx.restore();
-  }
 
 }
