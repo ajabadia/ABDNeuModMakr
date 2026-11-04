@@ -13,6 +13,7 @@ import {
   STORAGE_KEY_CONFIG_HEALTH_ON_BOOT,
   type ConfigHealthReport,
 } from '../core/configHealth.ts';
+import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import type { SettingsModalTab } from './SettingsModal.ts';
 import { escHtml, escAttr } from './escape.ts';
 import { ICONS } from './icons.ts';
@@ -30,6 +31,11 @@ export class ConfigHealthModal {
 
   constructor(context: ConfigHealthModalContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl && this.report) {
+        this.render();
+      }
+    });
   }
 
   public open(): void {
@@ -78,54 +84,67 @@ export class ConfigHealthModal {
 
     const statusBadgeClass =
       this.report.overallStatus === 'error'
-        ? 'badge-health-error'
+        ? 'nmm-status-pill is-err'
         : this.report.overallStatus === 'warning'
-          ? 'badge-health-warn'
-          : 'badge-health-ok';
+          ? 'nmm-status-pill is-warn'
+          : 'nmm-status-pill is-ok';
 
+    const isEs = getAppLocale() === 'es';
     const statusTitle =
       this.report.overallStatus === 'error'
-        ? 'MANDATORY SETUP NEEDED'
+        ? isEs
+          ? 'CONFIGURACIÓN OBLIGATORIA PENDIENTE'
+          : 'MANDATORY SETUP NEEDED'
         : this.report.overallStatus === 'warning'
-          ? 'SETUP RECOMMENDED'
-          : 'ALL SYSTEMS OPERATIONAL';
+          ? isEs
+            ? 'CONFIGURACIÓN RECOMENDADA'
+            : 'SETUP RECOMMENDED'
+          : isEs
+            ? 'TODOS LOS SISTEMAS OPERATIVOS'
+            : 'ALL SYSTEMS OPERATIONAL';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-modal-l config-health-modal-window" role="dialog" aria-modal="true" aria-labelledby="health-modal-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.cpu}</span>
-            <h2 id="health-modal-title">System Configuration &amp; Readiness Diagnostic</h2>
+            <h2 id="health-modal-title">${isEs ? 'Diagnóstico de Configuración y Preparación del Sistema' : 'System Configuration & Readiness Diagnostic'}</h2>
             <span class="panel-badge ${statusBadgeClass}">FASE 21 — ${statusTitle}</span>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-health-close" aria-label="Close">
+          <button type="button" class="nmm-modal-close" id="btn-health-close" aria-label="${isEs ? 'Cerrar' : 'Close'}">
             ${ICONS.close}
           </button>
         </header>
 
         <div class="nmm-modal-body nmm-modal-scroll-body">
           <!-- Overview Banner -->
-          <div class="health-overview-strip">
-            <div class="health-metric">
-              <span class="metric-val ${this.report.hasMissingMandatory ? 'val-err' : 'val-ok'}">
+          <div class="nmm-metric-strip nmm-metric-strip--boxed">
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-lg ${this.report.hasMissingMandatory ? 'val-err' : 'val-ok'}">
                 ${this.report.mandatoryConfigured} / ${this.report.mandatoryCount}
               </span>
-              <span class="metric-lbl">Mandatory Essentials</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Esenciales Obligatorios' : 'Mandatory Essentials'}</span>
             </div>
-            <div class="health-metric">
-              <span class="metric-val ${this.report.hasMissingOptional ? 'val-warn' : 'val-ok'}">
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-lg ${this.report.hasMissingOptional ? 'val-warn' : 'val-ok'}">
                 ${this.report.optionalConfigured} / ${this.report.optionalCount}
               </span>
-              <span class="metric-lbl">Optional &amp; AI Accelerators</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Opcionales y Aceleradores IA' : 'Optional & AI Accelerators'}</span>
             </div>
             <div class="health-metric-desc">
               <p>
                 ${
                   this.report.hasMissingMandatory
-                    ? 'Some core services require configuration before full audio model processing can proceed.'
+                    ? isEs
+                      ? 'Algunos servicios principales requieren configuración antes de poder procesar modelos completos.'
+                      : 'Some core services require configuration before full audio model processing can proceed.'
                     : this.report.hasMissingOptional
-                      ? 'Core engine is 100% operational in Pure DSP mode. Connect Companion Bridge or Cloud BYOK to unlock AI features.'
-                      : 'All mandatory and optional accelerators are fully configured and ready.'
+                      ? isEs
+                        ? 'El motor principal está 100 % operativo en modo DSP Puro. Conecta Companion Bridge o Cloud BYOK para desbloquear funciones IA.'
+                        : 'Core engine is 100% operational in Pure DSP mode. Connect Companion Bridge or Cloud BYOK to unlock AI features.'
+                      : isEs
+                        ? 'Todos los aceleradores obligatorios y opcionales están completamente configurados y listos.'
+                        : 'All mandatory and optional accelerators are fully configured and ready.'
                 }
               </p>
             </div>
@@ -135,7 +154,7 @@ export class ConfigHealthModal {
           <div class="health-section">
             <h3 class="health-section-heading">
               <span class="health-sec-icon">${ICONS.check}</span>
-              Configuración Obligatoria (Core System)
+              ${isEs ? 'Configuración Obligatoria (Core System)' : 'Mandatory Configuration (Core System)'}
             </h3>
             <div class="health-card-list">
               ${mandatoryItems
@@ -148,16 +167,16 @@ export class ConfigHealthModal {
                   <div class="nmm-item-main">
                     <div class="health-item-head">
                       <strong>${escHtml(item.name)}</strong>
-                      <span class="health-pill ${item.isConfigured ? 'pill-ok' : 'pill-err'}">${escHtml(item.statusBadge)}</span>
+                      <span class="nmm-status-pill ${item.isConfigured ? 'is-ok' : 'is-err'}">${escHtml(item.statusBadge)}</span>
                     </div>
                     <p class="health-item-desc">${escHtml(item.description)}</p>
                     <div class="health-item-impact">
-                      <em>Impact:</em> ${escHtml(item.impactSummary)}
+                      <em>${isEs ? 'Impacto:' : 'Impact:'}</em> ${escHtml(item.impactSummary)}
                     </div>
                   </div>
                   <div class="health-item-action">
                     <button type="button" class="btn btn-outline btn-health-config" data-tab="${escAttr(item.targetTab)}">
-                      ${item.isConfigured ? 'Edit...' : 'Configure...'}
+                      ${item.isConfigured ? (isEs ? 'Editar...' : 'Edit...') : isEs ? 'Configurar...' : 'Configure...'}
                     </button>
                   </div>
                 </div>
@@ -171,7 +190,7 @@ export class ConfigHealthModal {
           <div class="health-section">
             <h3 class="health-section-heading">
               <span class="health-sec-icon">${ICONS.sparkle}</span>
-              Configuración Opcional &amp; Aceleración IA (Recomendado)
+              ${isEs ? 'Configuración Opcional & Aceleración IA (Recomendado)' : 'Optional Configuration & AI Acceleration (Recommended)'}
             </h3>
             <div class="health-card-list">
               ${optionalItems
@@ -184,16 +203,16 @@ export class ConfigHealthModal {
                   <div class="nmm-item-main">
                     <div class="health-item-head">
                       <strong>${escHtml(item.name)}</strong>
-                      <span class="health-pill ${item.isConfigured ? 'pill-ok' : 'pill-warn'}">${escHtml(item.statusBadge)}</span>
+                      <span class="nmm-status-pill ${item.isConfigured ? 'is-ok' : 'is-warn'}">${escHtml(item.statusBadge)}</span>
                     </div>
                     <p class="health-item-desc">${escHtml(item.description)}</p>
                     <div class="health-item-impact">
-                      <em>Unlocks:</em> ${escHtml(item.impactSummary)}
+                      <em>${isEs ? 'Desbloquea:' : 'Unlocks:'}</em> ${escHtml(item.impactSummary)}
                     </div>
                   </div>
                   <div class="health-item-action">
                     <button type="button" class="btn btn-outline btn-health-config" data-tab="${escAttr(item.targetTab)}">
-                      ${item.isConfigured ? 'Manage...' : 'Set Up...'}
+                      ${item.isConfigured ? (isEs ? 'Gestionar...' : 'Manage...') : isEs ? 'Configurar...' : 'Set Up...'}
                     </button>
                   </div>
                 </div>
@@ -207,14 +226,14 @@ export class ConfigHealthModal {
         <footer class="nmm-modal-footer">
           <label class="health-boot-chk">
             <input type="checkbox" id="chk-health-boot" ${showOnBoot ? 'checked' : ''} />
-            <span>Show diagnostic on startup when components are unconfigured</span>
+            <span>${isEs ? 'Mostrar diagnóstico al iniciar cuando falten componentes por configurar' : 'Show diagnostic on startup when components are unconfigured'}</span>
           </label>
           <div class="footer-right">
             <button type="button" class="btn btn-outline" id="btn-health-open-settings">
-              ${ICONS.settings} Open Full Preferences
+              ${ICONS.settings} ${isEs ? 'Abrir Preferencias Completas' : 'Open Full Preferences'}
             </button>
             <button type="button" class="btn btn-primary" id="btn-health-continue">
-              Continue to MODELmaker
+              ${isEs ? 'Continuar a MODELmaker' : 'Continue to MODELmaker'}
             </button>
           </div>
         </footer>

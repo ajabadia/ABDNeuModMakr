@@ -75,7 +75,7 @@ export {
 // repo, y un panel tiene que poder ENSENAR eso en vez de inventar un 0.
 export { buildS950Calibration, s950AxisFor, s950Coverage, S950_UNITS } from './s950Calibration.js';
 export { enhanceRangeInputs, destroyEnhancedRangeInputs } from '../Utils/index.js';
-export { WAVE_ICONS, FILTER_ICONS, CONTROL_ICONS } from './icons.js';
+export { WAVE_ICONS, FILTER_ICONS, CONTROL_ICONS, FLAG_ICONS } from './icons.js';
 export { SevenSegmentDisplay } from './sevenSegmentDisplay.js';
 export { SilverFilmstripKnob } from './silverFilmstripKnob.js';
 export { EffectLEDButton } from './effectLEDButton.js';

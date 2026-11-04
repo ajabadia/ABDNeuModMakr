@@ -2,6 +2,7 @@
 // ABDNeuModMakr — Phase 12: Batch Processor Modal Dialog
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale } from '../core/i18n.ts';
 import { ICONS } from './icons.ts';
 import { browseFilesystemFolder } from './folderPicker.ts';
 import { escHtml, escAttr } from './escape.ts';
@@ -306,9 +307,14 @@ export class BatchProcessorModal {
       bodyHtml = this.renderDoneStep();
     }
 
+    const isEs = getAppLocale() === 'es';
     const modalTitle = this.isSingleSessionMode
-      ? 'Generate Neuron Model — Pre-Flight & Pipeline Checklist'
-      : 'Batch Processor & Unified Pipeline Checklist';
+      ? isEs
+        ? 'Generar Modelo Neuron — Pre-Flight y Checklist de Pipeline'
+        : 'Generate Neuron Model — Pre-Flight & Pipeline Checklist'
+      : isEs
+        ? 'Procesador por Lotes y Checklist Unificado de Pipeline'
+        : 'Batch Processor & Unified Pipeline Checklist';
 
     this.backdropEl.innerHTML = `
       <div class="nmm-modal-window nmm-modal-xl nmm-batch-window" role="dialog" aria-modal="true" aria-labelledby="batch-modal-title">
@@ -317,18 +323,18 @@ export class BatchProcessorModal {
             <span class="modal-icon">${this.isSingleSessionMode ? ICONS.cpu : ICONS.layers}</span>
             <h2 id="batch-modal-title">${escHtml(modalTitle)}</h2>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-batch-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" aria-label="${isEs ? 'Cerrar' : 'Close'}" id="btn-batch-close">${ICONS.close}</button>
         </header>
 
-        <nav class="nmm-batch-steps-nav" aria-label="Batch progress stages">
+        <nav class="nmm-batch-steps-nav" aria-label="${isEs ? 'Etapas del progreso del lote' : 'Batch progress stages'}">
           ${
             this.isSingleSessionMode
-              ? `<div class="nmm-batch-step-indicator is-active">1. Pre-Flight &amp; Pipeline Checklist (15 Pasos · Motor DSP / IA / Resinator 2)</div>`
+              ? `<div class="nmm-batch-step-indicator is-active">${isEs ? '1. Pre-Flight y Checklist de Pipeline (15 Pasos · Motor DSP / IA / Resinator 2)' : '1. Pre-Flight & Pipeline Checklist (15 Steps · DSP Engine / AI / Resinator 2)'}</div>`
               : `
-          <div class="nmm-batch-step-indicator ${this.currentStep === 'discover' ? 'is-active' : ''}">1. Discovery</div>
+          <div class="nmm-batch-step-indicator ${this.currentStep === 'discover' ? 'is-active' : ''}">${isEs ? '1. Descubrimiento' : '1. Discovery'}</div>
           <div class="nmm-batch-step-indicator ${this.currentStep === 'preflight' ? 'is-active' : ''}">2. ${escHtml(MUSICIAN_TERMS.preflightBatch)} &amp; Pipeline</div>
-          <div class="nmm-batch-step-indicator ${this.currentStep === 'running' ? 'is-active' : ''}">3. Execution</div>
-          <div class="nmm-batch-step-indicator ${this.currentStep === 'done' ? 'is-active' : ''}">4. Report</div>
+          <div class="nmm-batch-step-indicator ${this.currentStep === 'running' ? 'is-active' : ''}">${isEs ? '3. Ejecución' : '3. Execution'}</div>
+          <div class="nmm-batch-step-indicator ${this.currentStep === 'done' ? 'is-active' : ''}">${isEs ? '4. Informe' : '4. Report'}</div>
           `
           }
         </nav>
@@ -353,6 +359,7 @@ export class BatchProcessorModal {
   // ── Step 1: Discovery ──────────────────────────────────
 
   private renderDiscoverStep(): string {
+    const isEs = getAppLocale() === 'es';
     const isBridgeOnline = bridgeClient.isConnected();
     const defaultScanPath = this.localScanPath;
     const isSlicer = this.activeConfig.ingestionMode === 'slicer';
@@ -363,17 +370,17 @@ export class BatchProcessorModal {
         <div class="nmm-batch-card batch-pane-head">
           <div class="triage-toolbar">
             <div class="triage-toolbar-left">
-              <strong class="batch-pane-title">Ingestion Strategy:</strong>
+              <strong class="batch-pane-title">${isEs ? 'Estrategia de Ingesta:' : 'Ingestion Strategy:'}</strong>
               <span class="nmm-batch-hint batch-pane-hint">
-                ${isSlicer ? 'Treat each audio loop as an individual kit/model, auto-detect slices and bundle groove MIDI.' : 'Group multiple sample files into multi-zone instrument models.'}
+                ${isSlicer ? (isEs ? 'Tratar cada bucle de audio como un kit/modelo individual, autodetectar cortes e incluir patrón MIDI.' : 'Treat each audio loop as an individual kit/model, auto-detect slices and bundle groove MIDI.') : isEs ? 'Agrupar múltiples archivos de muestras en modelos de instrumentos multizona.' : 'Group multiple sample files into multi-zone instrument models.'}
               </span>
             </div>
             <div class="footer-right">
               <button type="button" class="btn ${!isSlicer ? 'btn-primary' : 'btn-outline'}" id="btn-batch-mode-multisample">
-                Multisample Instruments
+                ${isEs ? 'Instrumentos Multimuestra' : 'Multisample Instruments'}
               </button>
               <button type="button" class="btn ${isSlicer ? 'btn-primary' : 'btn-outline'}" id="btn-batch-mode-slicer">
-                ${ICONS.scissors} Batch AutoSlicer (Loops & Beats)
+                ${ICONS.scissors} ${isEs ? 'AutoSlicer por Lotes (Bucles y Ritmos)' : 'Batch AutoSlicer (Loops & Beats)'}
               </button>
             </div>
           </div>
@@ -381,41 +388,45 @@ export class BatchProcessorModal {
           <div class="batch-slicer-row">
             <div class="batch-field ${!isSlicer ? 'is-conditioned-disabled' : ''}">
               <label for="sel-batch-slicer-profile">
-                Slicing Profile:
-                ${!isSlicer ? '<span class="cond-reason-badge">SOLO AUTOSLICER</span>' : ''}
+                ${isEs ? 'Perfil de Corte:' : 'Slicing Profile:'}
+                ${!isSlicer ? `<span class="cond-reason-badge">${isEs ? 'SOLO AUTOSLICER' : 'AUTOSLICER ONLY'}</span>` : ''}
               </label>
-              <select id="sel-batch-slicer-profile" class="form-control" ${!isSlicer ? 'disabled title="Solo disponible en modo Batch AutoSlicer"' : ''}>
-                <option value="drums" ${this.activeConfig.slicerProfile === 'drums' ? 'selected' : ''}>Drums (General MIDI C1..B2 Map)</option>
-                <option value="chromatic" ${this.activeConfig.slicerProfile === 'chromatic' ? 'selected' : ''}>Chromatic (F0 Pitch + Equidistant 0..127)</option>
-                <option value="vocals" ${this.activeConfig.slicerProfile === 'vocals' ? 'selected' : ''}>Vocals & Phrases (Silence Valleys)</option>
-                <option value="grid" ${this.activeConfig.slicerProfile === 'grid' ? 'selected' : ''}>Musical Grid (1/16 Beat Division)</option>
+              <select id="sel-batch-slicer-profile" class="form-control" ${!isSlicer ? `disabled title="${isEs ? 'Solo disponible en modo Batch AutoSlicer' : 'Only available in Batch AutoSlicer mode'}"` : ''}>
+                <option value="drums" ${this.activeConfig.slicerProfile === 'drums' ? 'selected' : ''}>${isEs ? 'Batería (Mapa General MIDI C1..B2)' : 'Drums (General MIDI C1..B2 Map)'}</option>
+                <option value="chromatic" ${this.activeConfig.slicerProfile === 'chromatic' ? 'selected' : ''}>${isEs ? 'Cromático (Tono F0 + Equidistante 0..127)' : 'Chromatic (F0 Pitch + Equidistant 0..127)'}</option>
+                <option value="vocals" ${this.activeConfig.slicerProfile === 'vocals' ? 'selected' : ''}>${isEs ? 'Voces y Frases (Valles de Silencio)' : 'Vocals & Phrases (Silence Valleys)'}</option>
+                <option value="grid" ${this.activeConfig.slicerProfile === 'grid' ? 'selected' : ''}>${isEs ? 'Rejilla Musical (División 1/16)' : 'Musical Grid (1/16 Beat Division)'}</option>
               </select>
             </div>
 
             <label class="batch-check ${!isSlicer ? 'is-conditioned-disabled' : ''}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-batch-export-midi" ${this.activeConfig.exportMidiPattern !== false ? 'checked' : ''} ${!isSlicer ? 'disabled' : ''} />
-              <span>Generate &amp; Bundle Groove MIDI Pattern (.mid) ${!isSlicer ? '<span class="cond-reason-badge">SOLO AUTOSLICER</span>' : ''}</span>
+              <span>${isEs ? 'Generar e Incluir Patrón Groove MIDI (.mid)' : 'Generate & Bundle Groove MIDI Pattern (.mid)'} ${!isSlicer ? `<span class="cond-reason-badge">${isEs ? 'SOLO AUTOSLICER' : 'AUTOSLICER ONLY'}</span>` : ''}</span>
             </label>
 
-            <label class="batch-check" title="Agrupa el trabajo por etapas (1. Ingesta -> 2. Separación -> 3. Denoise -> 4. Super-Resolución/Clasificación -> 5. Síntesis Espectral) sobre todo el lote de una vez para no cargar y descargar modelos IA/DSP en cada archivo">
+            <label class="batch-check" title="${isEs ? 'Agrupa el trabajo por etapas (1. Ingesta -> 2. Separación -> 3. Denoise -> 4. Super-Resolución/Clasificación -> 5. Síntesis Espectral) sobre todo el lote de una vez para no cargar y descargar modelos IA/DSP en cada archivo' : 'Groups work by stage across the entire batch so AI/DSP models stay warm in memory instead of loading/unloading per file'}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-batch-stage-grouped" ${this.activeConfig.executionOrder !== 'per-job' ? 'checked' : ''} />
-              <span>Cola por Fases (Modelo IA/DSP caliente en memoria)</span>
+              <span>${isEs ? 'Cola por Fases (Modelo IA/DSP caliente en memoria)' : 'Stage-Grouped Queue (Keep AI/DSP model warm in memory)'}</span>
             </label>
 
             <label class="batch-check ${this.activeConfig.executionOrder === 'per-job' ? 'is-conditioned-disabled' : ''}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-batch-vram-safety" ${this.activeConfig.stagePipelineVramSafety !== false ? 'checked' : ''} ${this.activeConfig.executionOrder === 'per-job' ? 'disabled' : ''} />
-              <span title="Flushes CUDA memory between pipeline stages to prevent GPU OOM on 6/8 GB cards">VRAM Stage Safety Flush ${this.activeConfig.executionOrder === 'per-job' ? '<span class="cond-reason-badge">REQUIERE COLA POR FASES</span>' : ''}</span>
+              <span title="${isEs ? 'Libera memoria CUDA entre etapas del pipeline para evitar falta de VRAM en gráficas de 6/8 GB' : 'Flushes CUDA memory between pipeline stages to prevent GPU OOM on 6/8 GB cards'}">${isEs ? 'Vaciado Seguro de VRAM por Etapa' : 'VRAM Stage Safety Flush'} ${this.activeConfig.executionOrder === 'per-job' ? `<span class="cond-reason-badge">${isEs ? 'REQUIERE COLA POR FASES' : 'REQUIRES STAGE QUEUE'}</span>` : ''}</span>
             </label>
           </div>
         </div>
 
         <div class="nmm-batch-card">
-          <h3>Select Source Material</h3>
+          <h3>${isEs ? 'Seleccionar Material de Origen' : 'Select Source Material'}</h3>
           <p class="nmm-batch-hint">
             ${
               isSlicer
-                ? 'Batch convert drum loops, vocal tracks, or ReCycle (.rx2/.rex/.rcy) files into independent sliced model kits.'
-                : 'Convert multi-format sampler banks (.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .dls, .xpm), hardware disk images (.iso, .img, .dsk, .efe), Hartmann Neuron models (.model, .neuronikmodel, .scape/.sphere), .zip archives, or multi-folder audio packs in a single unattended pass.'
+                ? isEs
+                  ? 'Convierte en lote bucles de batería, pistas vocales o archivos ReCycle (.rx2/.rex/.rcy) en kits de modelos troceados independientes.'
+                  : 'Batch convert drum loops, vocal tracks, or ReCycle (.rx2/.rex/.rcy) files into independent sliced model kits.'
+                : isEs
+                  ? 'Convierte bancos de samplers multiformato (.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .dls, .xpm), imágenes de disco hardware (.iso, .img, .dsk, .efe), modelos Hartmann Neuron (.model, .neuronikmodel, .scape/.sphere), archivos .zip o carpetas de audio en una sola pasada desatendida.'
+                  : 'Convert multi-format sampler banks (.sf2, .sfz, .dspreset, .nki, .vstpreset, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .dls, .xpm), hardware disk images (.iso, .img, .dsk, .efe), Hartmann Neuron models (.model, .neuronikmodel, .scape/.sphere), .zip archives, or multi-folder audio packs in a single unattended pass.'
             }
           </p>
 
@@ -424,31 +435,35 @@ export class BatchProcessorModal {
             <div class="nmm-batch-dropzone-text">
               ${
                 isSlicer
-                  ? 'Drag &amp; drop <strong>audio loops (.wav, .aif, .flac, .mp3, .ogg, .rx2, .rex, .zip)</strong> or loop folders here'
-                  : 'Drag &amp; drop <strong>.sf2, .sfz, .dspreset, .nki, .exs, .xpm, .adv, .vstpreset, .multisample, .kmp, .dls, .model, .iso/.img/.dsk, .zip</strong>, or audio folders here'
+                  ? isEs
+                    ? 'Arrastra y suelta <strong>bucles de audio (.wav, .aif, .flac, .mp3, .ogg, .rx2, .rex, .zip)</strong> o carpetas de bucles aquí'
+                    : 'Drag & drop <strong>audio loops (.wav, .aif, .flac, .mp3, .ogg, .rx2, .rex, .zip)</strong> or loop folders here'
+                  : isEs
+                    ? 'Arrastra y suelta <strong>.sf2, .sfz, .dspreset, .nki, .exs, .xpm, .adv, .vstpreset, .multisample, .kmp, .dls, .model, .iso/.img/.dsk, .zip</strong> o carpetas de audio aquí'
+                    : 'Drag & drop <strong>.sf2, .sfz, .dspreset, .nki, .exs, .xpm, .adv, .vstpreset, .multisample, .kmp, .dls, .model, .iso/.img/.dsk, .zip</strong>, or audio folders here'
               }
             </div>
-            <div class="nmm-batch-dropzone-sub">or use the buttons below</div>
+            <div class="nmm-batch-dropzone-sub">${isEs ? 'o usa los botones inferiores' : 'or use the buttons below'}</div>
             
             <div class="nmm-batch-dropzone-actions">
               ${
                 !isSlicer
                   ? `
               <label class="btn btn-primary">
-                ${ICONS.folder} Select Banks, Presets, Disks or ZIP (.sf2, .sfz, .nki, .exs, .xpm, .model, .iso, .zip...)
+                ${ICONS.folder} ${isEs ? 'Elegir Bancos, Presets, Discos o ZIP (.sf2, .sfz, .nki, .exs, .xpm, .model, .iso, .zip...)' : 'Select Banks, Presets, Disks or ZIP (.sf2, .sfz, .nki, .exs, .xpm, .model, .iso, .zip...)'}
                 <input type="file" id="input-batch-sf2" accept=".model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.script,.sf2,.sfz,.nki,.vstpreset,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.xpm,.xty,.xtd,.xpn,.pgm,.akp,.s3p,.sxt,.dwp,.krz,.k25,.k26,.x7u,.x8u,.x3a,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.zip" multiple class="is-hidden-file" />
               </label>
               `
                   : `
               <label class="btn btn-primary">
-                ${ICONS.scissors} Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex, .zip)
+                ${ICONS.scissors} ${isEs ? 'Elegir Bucles (.wav, .flac, .mp3, .ogg, .rx2, .rex, .zip)' : 'Select Loops (.wav, .flac, .mp3, .ogg, .rx2, .rex, .zip)'}
                 <input type="file" id="input-batch-loops" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.cue,.zip" multiple class="is-hidden-file" />
               </label>
               `
               }
 
               <label class="btn btn-outline">
-                Select ${isSlicer ? 'Loops Folder' : 'Multi-Format / Audio Folder'}
+                ${isEs ? `Seleccionar Carpeta ${isSlicer ? 'de Bucles' : 'Multiformato / Audio'}` : `Select ${isSlicer ? 'Loops Folder' : 'Multi-Format / Audio Folder'}`}
                 <input type="file" id="input-batch-folder" webkitdirectory directory multiple class="is-hidden-file" />
               </label>
             </div>
@@ -456,20 +471,20 @@ export class BatchProcessorModal {
         </div>
 
         <div class="nmm-batch-card ${!isBridgeOnline ? 'is-conditioned-disabled' : ''}">
-          <h3>Companion Bridge Local Disk Scanner ${!isBridgeOnline ? '<span class="cond-reason-badge">BRIDGE OFFLINE (7860)</span>' : ''}</h3>
+          <h3>${isEs ? 'Escáner de Disco Local Companion Bridge' : 'Companion Bridge Local Disk Scanner'} ${!isBridgeOnline ? `<span class="cond-reason-badge">${isEs ? 'BRIDGE DESCONECTADO (7860)' : 'BRIDGE OFFLINE (7860)'}</span>` : ''}</h3>
           <p class="nmm-batch-hint">
-            Scan high-capacity local disk folders without loading gigabytes of raw audio into browser memory.
+            ${isEs ? 'Escanea carpetas locales de gran capacidad sin cargar gigabytes de audio crudo en la memoria del navegador.' : 'Scan high-capacity local disk folders without loading gigabytes of raw audio into browser memory.'}
           </p>
           <div class="nmm-batch-scan-row">
             <input type="text" id="input-batch-scan-path" class="form-control" value="${escAttr(defaultScanPath)}" placeholder="C:\\path\\to\\soundfonts" />
-            <button type="button" class="btn btn-outline" id="btn-batch-browse-disk" title="Navegar por el sistema de archivos para seleccionar la carpeta a escanear">
-              ${ICONS.folder} Browse...
+            <button type="button" class="btn btn-outline" id="btn-batch-browse-disk" title="${isEs ? 'Navegar por el sistema de archivos para seleccionar la carpeta a escanear' : 'Browse filesystem to select the folder to scan'}">
+              ${ICONS.folder} ${isEs ? 'Examinar...' : 'Browse...'}
             </button>
             <button type="button" class="btn btn-primary" id="btn-batch-scan-disk" ${!isBridgeOnline ? 'disabled' : ''}>
-              ${ICONS.search} ${this.isScanningLocal ? 'Scanning...' : 'Scan Folder'}
+              ${ICONS.search} ${this.isScanningLocal ? (isEs ? 'Escaneando...' : 'Scanning...') : isEs ? 'Escanear Carpeta' : 'Scan Folder'}
             </button>
           </div>
-          ${!isBridgeOnline ? `<div class="nmm-alert-subtle">Companion Bridge is offline. Start the bridge daemon on <code>127.0.0.1:7860</code> to scan local disk paths directly.</div>` : ''}
+          ${!isBridgeOnline ? `<div class="nmm-alert-subtle">${isEs ? 'Companion Bridge está desconectado. Inicia el servicio bridge en <code>127.0.0.1:7860</code> para escanear rutas de disco local directamente.' : 'Companion Bridge is offline. Start the bridge daemon on <code>127.0.0.1:7860</code> to scan local disk paths directly.'}</div>` : ''}
         </div>
       </div>
     `;
@@ -638,26 +653,27 @@ export class BatchProcessorModal {
       })
       .join('');
 
+    const isEs = getAppLocale() === 'es';
     const isDrum = keyMode === 'drum';
 
     return `
       <div class="nmm-batch-card pipeline-checklist-card">
         <div class="pipeline-checklist-top">
           <div>
-            <h3>Pipeline de Procesos y Motores de Ejecución (15 Pasos en Orden Canónico)</h3>
+            <h3>${isEs ? 'Pipeline de Procesos y Motores de Ejecución (15 Pasos en Orden Canónico)' : 'Process Pipeline & Execution Engines (15 Steps in Canonical Order)'}</h3>
             <p class="nmm-batch-hint">
-              Selecciona los procesos a ejecutar. Los pasos con candado (${ICONS.lock}) son obligatorios para el modo activo (<strong>${this.context.getCurrentWorkingMode().toUpperCase()} · ${isDrum ? 'DRUM MAP' : 'CHROMATIC'}</strong>). Cada etiqueta muestra si el paso correrá con <strong>DSP Determinista</strong>, <strong>IA Local GPU</strong>, <strong>IA Cloud BYOK</strong> o <strong>Resinator 2 HD</strong>.
+              ${isEs ? `Selecciona los procesos a ejecutar. Los pasos con candado (${ICONS.lock}) son obligatorios para el modo activo (<strong>${this.context.getCurrentWorkingMode().toUpperCase()} · ${isDrum ? 'DRUM MAP' : 'CHROMATIC'}</strong>). Cada etiqueta muestra si el paso correrá con <strong>DSP Determinista</strong>, <strong>IA Local GPU</strong>, <strong>IA Cloud BYOK</strong> o <strong>Resinator 2 HD</strong>.` : `Select the processes to execute. Locked steps (${ICONS.lock}) are mandatory for the active mode (<strong>${this.context.getCurrentWorkingMode().toUpperCase()} · ${isDrum ? 'DRUM MAP' : 'CHROMATIC'}</strong>). Each badge shows whether the step runs with <strong>Deterministic DSP</strong>, <strong>Local GPU AI</strong>, <strong>Cloud BYOK AI</strong>, or <strong>Resinator 2 HD</strong>.`}
             </p>
           </div>
           <div class="pipeline-checklist-actions">
             <button type="button" class="btn btn-outline btn--sm" id="btn-checklist-recommended">
-              Recomendados
+              ${isEs ? 'Recomendados' : 'Recommended'}
             </button>
             <button type="button" class="btn btn-outline btn--sm" id="btn-checklist-all-audio">
-              Activar Todo Audio Pre-DSP
+              ${isEs ? 'Activar Todo Audio Pre-DSP' : 'Enable All Pre-DSP Audio'}
             </button>
             <button type="button" class="btn btn-ghost btn--sm" id="btn-checklist-open-ai-settings">
-              ${ICONS.sparkle} Configurar IA (8 Etapas)
+              ${ICONS.sparkle} ${isEs ? 'Configurar IA (8 Etapas)' : 'Configure AI (8 Stages)'}
             </button>
           </div>
         </div>
@@ -665,14 +681,14 @@ export class BatchProcessorModal {
         <div class="pipeline-checklist-options-bar">
           <label class="batch-check">
             <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-skip-already-processed" ${this.checklistSelection.skipAlreadyProcessedSamples !== false ? 'checked' : ''} />
-            <span>Omitir procesos en muestras que ya tengan esa marca aplicada (Sample Processing Ledger)</span>
+            <span>${isEs ? 'Omitir procesos en muestras que ya tengan esa marca aplicada (Sample Processing Ledger)' : 'Skip processes on samples that already have that ledger flag applied (Sample Processing Ledger)'}</span>
           </label>
           ${
             isDrum
               ? `
           <label class="batch-check">
             <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-normalize-group-drums" ${this.checklistSelection.normalizeGroupRelativeForDrums !== false ? 'checked' : ''} />
-            <span>Normalización relativa de grupo en Drum Maps (conservar mezcla entre bombo, caja y charles)</span>
+            <span>${isEs ? 'Normalización relativa de grupo en Drum Maps (conservar mezcla entre bombo, caja y charles)' : 'Group-relative normalization in Drum Maps (preserve mix balance across kick, snare, and hi-hats)'}</span>
           </label>
           `
               : ''
@@ -687,6 +703,7 @@ export class BatchProcessorModal {
   }
 
   private renderPreflightStep(): string {
+    const isEs = getAppLocale() === 'es';
     const summary = buildBatchPreflightSummary(this.candidates, this.activeConfig, {
       workingMode: this.context.getCurrentWorkingMode(),
       aiEngineLabel: this.context.getAiEngineStatusLabel(),
@@ -702,11 +719,15 @@ export class BatchProcessorModal {
     const classicCoverageNotice =
       this.isSingleSessionMode && coverageErrors.length > 0
         ? `<div class="nmm-alert-subtle pipeline-coverage-notice">
-            <strong>Nota de Cobertura MIDI:</strong> Se detectaron ${coverageErrors.length} hueco(s)/solapamiento(s) en 0..127.
+            <strong>${isEs ? 'Nota de Cobertura MIDI:' : 'MIDI Coverage Note:'}</strong> ${isEs ? `Se detectaron ${coverageErrors.length} hueco(s)/solapamiento(s) en 0..127.` : `Detected ${coverageErrors.length} gap(s)/overlap(s) in 0..127.`}
             ${
               this.checklistSelection.steps.coverageMidi
-                ? 'El Paso #1 (Cobertura MIDI) reparará automáticamente los rangos antes de sintetizar.'
-                : 'En modo Extended (especialmente Drum Maps) se permiten teclas sin asignar.'
+                ? isEs
+                  ? 'El Paso #1 (Cobertura MIDI) reparará automáticamente los rangos antes de sintetizar.'
+                  : 'Step #1 (MIDI Coverage) will automatically repair ranges before synthesizing.'
+                : isEs
+                  ? 'En modo Extended (especialmente Drum Maps) se permiten teclas sin asignar.'
+                  : 'In Extended mode (especially Drum Maps) unassigned keys are allowed.'
             }
           </div>`
         : '';
@@ -724,21 +745,23 @@ export class BatchProcessorModal {
           </td>
           <td class="col-name">
             <strong>${escHtml(fullExpandedName)}</strong>
-            <span class="nmm-badge-slug" title="Classic MName (11 caracteres máx.) · Extended sin límite">Classic: ${escHtml(classicMName)}</span>
+            <span class="nmm-badge-slug" title="${isEs ? 'Classic MName (11 caracteres máx.) · Extended sin límite' : 'Classic MName (11 chars max) · Unlimited Extended'}">Classic: ${escHtml(classicMName)}</span>
             <span class="nmm-badge-slug">${escHtml(m.slug)}</span>
             ${m.isSlicer ? `<span class="issue-tag is-success">Slicer (${m.slicerProfile || 'drums'})</span>` : ''}
           </td>
           <td class="col-origin">${escHtml(m.sourceOrigin)}</td>
-          <td class="col-zones">${m.zoneCount} ${m.isSlicer ? 'slice(s) · MIDI' : 'zone(s)'} · ${m.fileCount} file(s)</td>
+          <td class="col-zones">${m.zoneCount} ${m.isSlicer ? (isEs ? 'corte(s) · MIDI' : 'slice(s) · MIDI') : isEs ? 'zona(s)' : 'zone(s)'} · ${m.fileCount} ${isEs ? 'archivo(s)' : 'file(s)'}</td>
           <td class="col-cat">
-            <span class="nmm-badge-cat" title="Clasificación Dual: Categoría Extended + Parameter Set Classic (0..9)">Ext: ${escHtml(m.detectedCategory)} · Classic Set ${m.suggestedParameterSet}</span>
+            <span class="nmm-badge-cat" title="${isEs ? 'Clasificación Dual: Categoría Extended + Parameter Set Classic (0..9)' : 'Dual Classification: Extended Category + Classic Parameter Set (0..9)'}">Ext: ${escHtml(m.detectedCategory)} · Classic Set ${m.suggestedParameterSet}</span>
           </td>
         </tr>
       `;
     }).join('');
 
     const primaryActionLabel = this.isSingleSessionMode
-      ? 'Ejecutar Pipeline y Generar Modelo Neuron'
+      ? isEs
+        ? 'Ejecutar Pipeline y Generar Modelo Neuron'
+        : 'Execute Pipeline & Generate Neuron Model'
       : gateModel.continueLabel;
 
     return `
@@ -752,58 +775,58 @@ export class BatchProcessorModal {
 
         <!-- Execution Profile -->
         <div class="nmm-batch-card nmm-preflight-profile">
-          <h3>Execution Profile (Inherited from Active Session)</h3>
-          <div class="nmm-preflight-grid">
-            <div class="profile-item">
-              <span class="profile-label">DSP Algorithm:</span>
-              <strong class="profile-val">${escHtml(summary.executionProfile.dspAlgorithmLabel)}</strong>
+          <h3>${isEs ? 'Perfil de Ejecución (Heredado de la Sesión Activa)' : 'Execution Profile (Inherited from Active Session)'}</h3>
+          <div class="nmm-metric-grid">
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Algoritmo DSP:' : 'DSP Algorithm:'}</span>
+              <strong class="nmm-metric-val">${escHtml(summary.executionProfile.dspAlgorithmLabel)}</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Working Mode:</span>
-              <strong class="profile-val">${escHtml(summary.executionProfile.workingModeLabel)} (${(this.activeConfig.keyMappingMode ?? 'chromatic') === 'drum' ? 'DRUM MAP' : 'CHROMATIC'})</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Modo de Trabajo:' : 'Working Mode:'}</span>
+              <strong class="nmm-metric-val">${escHtml(summary.executionProfile.workingModeLabel)} (${(this.activeConfig.keyMappingMode ?? 'chromatic') === 'drum' ? 'DRUM MAP' : 'CHROMATIC'})</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">AI Engine:</span>
-              <strong class="profile-val">${escHtml(summary.executionProfile.aiEngineLabel)}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Motor IA:' : 'AI Engine:'}</span>
+              <strong class="nmm-metric-val">${escHtml(summary.executionProfile.aiEngineLabel)}</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Complexity:</span>
-              <strong class="profile-val">${escHtml(summary.executionProfile.complexityLabel)}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Complejidad:' : 'Complexity:'}</span>
+              <strong class="nmm-metric-val">${escHtml(summary.executionProfile.complexityLabel)}</strong>
             </div>
-            <div class="profile-item profile-item--full">
-              <span class="profile-label">Destination (${escHtml(summary.executionProfile.destinationLabel)}):</span>
+            <div class="nmm-metric-card nmm-metric-card--full">
+              <span class="nmm-metric-lbl">${isEs ? 'Destino' : 'Destination'} (${escHtml(summary.executionProfile.destinationLabel)}):</span>
               ${
                 this.activeConfig.destination === 'axionikdb'
                   ? `
               <div class="bank-path-input-wrap">
                 <input type="text" id="inp-batch-axionikdb-path" class="form-control" value="${escAttr(this.activeConfig.axionikDbPath || 'd:\\desarrollos\\ABDSynths\\AxionikDB')}" placeholder="d:\\desarrollos\\ABDSynths\\AxionikDB" />
-                <button type="button" class="btn btn-outline btn--sm" id="btn-batch-browse-dest" title="Navegar por el sistema de archivos para seleccionar la carpeta de destino AxionikDB">
-                  ${ICONS.folder} Browse...
+                <button type="button" class="btn btn-outline btn--sm" id="btn-batch-browse-dest" title="${isEs ? 'Navegar por el sistema de archivos para seleccionar la carpeta de destino AxionikDB' : 'Browse filesystem to select destination AxionikDB folder'}">
+                  ${ICONS.folder} ${isEs ? 'Examinar...' : 'Browse...'}
                 </button>
               </div>
               `
-                  : `<strong class="profile-val"><code>${escHtml(summary.executionProfile.destinationPathOrName)}</code></strong>`
+                  : `<strong class="nmm-metric-val"><code>${escHtml(summary.executionProfile.destinationPathOrName)}</code></strong>`
               }
             </div>
-            <div class="profile-item ${this.context.getCurrentWorkingMode() === 'classic' ? 'is-conditioned-disabled' : ''}">
-              <span class="profile-label">
-                Destination Sub-library:
-                ${this.context.getCurrentWorkingMode() === 'classic' ? '<span class="cond-reason-badge is-extended-only">SOLO EXTENDED</span>' : ''}
+            <div class="nmm-metric-card ${this.context.getCurrentWorkingMode() === 'classic' ? 'is-conditioned-disabled' : ''}">
+              <span class="nmm-metric-lbl">
+                ${isEs ? 'Sub-librería de Destino:' : 'Destination Sub-library:'}
+                ${this.context.getCurrentWorkingMode() === 'classic' ? `<span class="cond-reason-badge is-extended-only">${isEs ? 'SOLO EXTENDED' : 'EXTENDED ONLY'}</span>` : ''}
               </span>
               <div class="batch-field">
-                <input type="text" id="inp-batch-target-sublib" class="form-control batch-sublib-input" value="${escAttr(this.activeConfig.destinationSublibrary || 'Default')}" placeholder="Default" ${this.context.getCurrentWorkingMode() === 'classic' ? 'disabled title="Sub-libraries en AxionikDB son exclusivas del Modo Extended"' : ''} />
+                <input type="text" id="inp-batch-target-sublib" class="form-control batch-sublib-input" value="${escAttr(this.activeConfig.destinationSublibrary || 'Default')}" placeholder="Default" ${this.context.getCurrentWorkingMode() === 'classic' ? `disabled title="${isEs ? 'Sub-libraries en AxionikDB son exclusivas del Modo Extended' : 'Sub-libraries in AxionikDB are exclusive to Extended Mode'}"` : ''} />
               </div>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Estimated Duration:</span>
-              <strong class="profile-val">~${summary.estimatedDurationSec} seconds</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Duración Estimada:' : 'Estimated Duration:'}</span>
+              <strong class="nmm-metric-val">~${summary.estimatedDurationSec} ${isEs ? 'segundos' : 'seconds'}</strong>
             </div>
             ${
               summary.executionProfile.slicerProfileLabel
                 ? `
-            <div class="profile-item">
-              <span class="profile-label">AutoSlicer Pipeline:</span>
-              <strong class="profile-val batch-val-success">${escHtml(summary.executionProfile.slicerProfileLabel)}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">AutoSlicer Pipeline:</span>
+              <strong class="nmm-metric-val batch-val-success">${escHtml(summary.executionProfile.slicerProfileLabel)}</strong>
             </div>
             `
                 : ''
@@ -817,10 +840,10 @@ export class BatchProcessorModal {
             ? `
         <div class="nmm-batch-card nmm-preflight-table-card">
           <div class="nmm-preflight-table-header">
-            <h3>Discovered Models & Files (${summary.selectedCount} of ${summary.totalDiscovered} selected)</h3>
+            <h3>${isEs ? `Modelos y Archivos Descubiertos (${summary.selectedCount} de ${summary.totalDiscovered} seleccionados)` : `Discovered Models & Files (${summary.selectedCount} of ${summary.totalDiscovered} selected)`}</h3>
             <div class="nmm-preflight-table-actions">
               <button type="button" class="btn btn-ghost" id="btn-toggle-all-candidates">
-                ${isAllSelected ? 'Deselect All' : 'Select All'}
+                ${isAllSelected ? (isEs ? 'Deseleccionar Todos' : 'Deselect All') : isEs ? 'Seleccionar Todos' : 'Select All'}
               </button>
             </div>
           </div>
@@ -830,10 +853,10 @@ export class BatchProcessorModal {
               <thead>
                 <tr>
                   <th class="col-check"></th>
-                  <th class="col-name">Model Name & Slug</th>
-                  <th class="col-origin">Source Origin</th>
-                  <th class="col-zones">Coverage</th>
-                  <th class="col-cat">Classification</th>
+                  <th class="col-name">${isEs ? 'Nombre del Modelo y Slug' : 'Model Name & Slug'}</th>
+                  <th class="col-origin">${isEs ? 'Origen' : 'Source Origin'}</th>
+                  <th class="col-zones">${isEs ? 'Cobertura' : 'Coverage'}</th>
+                  <th class="col-cat">${isEs ? 'Clasificación' : 'Classification'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -848,11 +871,11 @@ export class BatchProcessorModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <span class="triage-count">${this.isSingleSessionMode ? `Modelo activo: ${escHtml(this.candidates[0]?.name || 'Session')}` : `${summary.selectedCount} of ${summary.totalDiscovered} selected`}</span>
+            <span class="triage-count">${this.isSingleSessionMode ? `${isEs ? 'Modelo activo:' : 'Active model:'} ${escHtml(this.candidates[0]?.name || 'Session')}` : isEs ? `${summary.selectedCount} de ${summary.totalDiscovered} seleccionados` : `${summary.selectedCount} of ${summary.totalDiscovered} selected`}</span>
           </div>
           <div class="footer-right">
             <button type="button" class="btn btn-outline" id="btn-preflight-back">
-              ${this.isSingleSessionMode ? 'Cancelar' : gateModel.adjustLabel}
+              ${this.isSingleSessionMode ? (isEs ? 'Cancelar' : 'Cancel') : gateModel.adjustLabel}
             </button>
             <button type="button" class="btn btn-primary" id="btn-preflight-start" ${!gateModel.canContinue ? 'disabled' : ''}>
               ${escHtml(primaryActionLabel)}
@@ -866,21 +889,22 @@ export class BatchProcessorModal {
   // ── Step 3: Execution ──────────────────────────────────
 
   private renderRunningStep(): string {
+    const isEs = getAppLocale() === 'es';
     const s = this.progressState || this.queue.getProgressState();
     const isPaused = s.status === 'paused';
 
     const jobRows = this.candidates
       .filter((c) => this.selectedCandidateIds.has(c.id))
       .map((j) => {
-        let statusBadge = '<span class="status-pending">Pending</span>';
+        let statusBadge = `<span class="status-pending">${isEs ? 'Pendiente' : 'Pending'}</span>`;
         if (j.status === 'processing') {
-          statusBadge = `<span class="status-processing"><span class="nmm-spinner"></span> Processing (${j.progressPct}%)</span>`;
+          statusBadge = `<span class="status-processing"><span class="nmm-spinner"></span> ${isEs ? 'Procesando' : 'Processing'} (${j.progressPct}%)</span>`;
         } else if (j.status === 'completed') {
-          statusBadge = '<span class="status-completed">Completed</span>';
+          statusBadge = `<span class="status-completed">${isEs ? 'Completado' : 'Completed'}</span>`;
         } else if (j.status === 'failed') {
-          statusBadge = `<span class="status-failed" title="${escAttr(j.error || '')}">Failed</span>`;
+          statusBadge = `<span class="status-failed" title="${escAttr(j.error || '')}">${isEs ? 'Fallido' : 'Failed'}</span>`;
         } else if (j.status === 'skipped') {
-          statusBadge = '<span class="status-skipped">Skipped</span>';
+          statusBadge = `<span class="status-skipped">${isEs ? 'Omitido' : 'Skipped'}</span>`;
         }
 
         return `
@@ -897,7 +921,7 @@ export class BatchProcessorModal {
       <div class="nmm-batch-running-pane">
         <div class="nmm-batch-card">
           <div class="nmm-batch-progress-header">
-            <h3>Processing Batch: ${s.completedJobs + s.failedJobs} of ${s.totalJobs} models</h3>
+            <h3>${isEs ? `Procesando Lote: ${s.completedJobs + s.failedJobs} de ${s.totalJobs} modelos` : `Processing Batch: ${s.completedJobs + s.failedJobs} of ${s.totalJobs} models`}</h3>
             <span class="nmm-batch-overall-pct">${s.overallPct}%</span>
           </div>
 
@@ -906,9 +930,9 @@ export class BatchProcessorModal {
           </div>
 
           <div class="nmm-batch-progress-stats">
-            <span>Stage: <strong>${escHtml(s.currentStageLabel || `Stage ${s.currentStageIndex || 1}/${s.totalStages || 5}`)}</strong></span>
-            <span>Current: <strong>${escHtml(s.currentJobName || 'Preparing...')}</strong></span>
-            <span>Elapsed: ${(s.elapsedMs / 1000).toFixed(0)}s</span>
+            <span>${isEs ? 'Etapa:' : 'Stage:'} <strong>${escHtml(s.currentStageLabel || `${isEs ? 'Etapa' : 'Stage'} ${s.currentStageIndex || 1}/${s.totalStages || 5}`)}</strong></span>
+            <span>${isEs ? 'Actual:' : 'Current:'} <strong>${escHtml(s.currentJobName || (isEs ? 'Preparando...' : 'Preparing...'))}</strong></span>
+            <span>${isEs ? 'Transcurrido:' : 'Elapsed:'} ${(s.elapsedMs / 1000).toFixed(0)}s</span>
             <span>ETA: ${(s.estimatedRemainingMs / 1000).toFixed(0)}s</span>
           </div>
         </div>
@@ -918,10 +942,10 @@ export class BatchProcessorModal {
             <table class="nmm-batch-table">
               <thead>
                 <tr>
-                  <th class="col-name">Model</th>
+                  <th class="col-name">${isEs ? 'Modelo' : 'Model'}</th>
                   <th class="col-slug">Slug</th>
-                  <th class="col-status">Status</th>
-                  <th class="col-duration">Time</th>
+                  <th class="col-status">${isEs ? 'Estado' : 'Status'}</th>
+                  <th class="col-duration">${isEs ? 'Tiempo' : 'Time'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -933,13 +957,13 @@ export class BatchProcessorModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <span class="triage-count">${s.completedJobs + s.failedJobs} of ${s.totalJobs} · ETA ${(s.estimatedRemainingMs / 1000).toFixed(0)}s</span>
+            <span class="triage-count">${isEs ? `${s.completedJobs + s.failedJobs} de ${s.totalJobs}` : `${s.completedJobs + s.failedJobs} of ${s.totalJobs}`} · ETA ${(s.estimatedRemainingMs / 1000).toFixed(0)}s</span>
           </div>
           <div class="footer-right">
             <button type="button" class="btn btn-outline" id="btn-batch-pause">
-              ${isPaused ? 'Resume' : 'Pause'}
+              ${isPaused ? (isEs ? 'Reanudar' : 'Resume') : isEs ? 'Pausar' : 'Pause'}
             </button>
-            <button type="button" class="btn btn-danger-solid" id="btn-batch-cancel">Cancel Batch</button>
+            <button type="button" class="btn btn-danger-solid" id="btn-batch-cancel">${isEs ? 'Cancelar Lote' : 'Cancel Batch'}</button>
           </div>
         </footer>
       </div>
@@ -949,6 +973,7 @@ export class BatchProcessorModal {
   // ── Step 4: Completion Summary ─────────────────────────
 
   private renderDoneStep(): string {
+    const isEs = getAppLocale() === 'es';
     const sum = this.finalSummary;
     if (!sum) return '';
 
@@ -958,33 +983,33 @@ export class BatchProcessorModal {
     return `
       <div class="nmm-batch-done-pane">
         <div class="nmm-batch-card nmm-batch-summary-card">
-          <h3>Batch Processing Finished</h3>
-          <p class="nmm-batch-hint">Completed in ${(sum.totalDurationMs / 1000).toFixed(1)} seconds.</p>
+          <h3>${isEs ? 'Procesamiento por Lotes Finalizado' : 'Batch Processing Finished'}</h3>
+          <p class="nmm-batch-hint">${isEs ? `Completado en ${(sum.totalDurationMs / 1000).toFixed(1)} segundos.` : `Completed in ${(sum.totalDurationMs / 1000).toFixed(1)} seconds.`}</p>
 
           <div class="nmm-batch-summary-stats">
             <div class="stat-box success">
               <span class="stat-num">${sum.succeeded}</span>
-              <span class="stat-lbl">Succeeded</span>
+              <span class="stat-lbl">${isEs ? 'Exitosos' : 'Succeeded'}</span>
             </div>
             <div class="stat-box danger">
               <span class="stat-num">${sum.failed}</span>
-              <span class="stat-lbl">Failed</span>
+              <span class="stat-lbl">${isEs ? 'Fallidos' : 'Failed'}</span>
             </div>
             <div class="stat-box neutral">
               <span class="stat-num">${sum.skipped}</span>
-              <span class="stat-lbl">Skipped</span>
+              <span class="stat-lbl">${isEs ? 'Omitidos' : 'Skipped'}</span>
             </div>
           </div>
         </div>
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <span class="triage-count">${sum.succeeded} ok · ${sum.failed} failed · ${sum.skipped} skipped</span>
+            <span class="triage-count">${sum.succeeded} ok · ${sum.failed} ${isEs ? 'fallidos' : 'failed'} · ${sum.skipped} ${isEs ? 'omitidos' : 'skipped'}</span>
           </div>
           <div class="footer-right">
-            ${hasZip ? `<button type="button" class="btn btn-primary" id="btn-download-master-zip">Download Master ZIP (${zipSizeMb} MB)</button>` : ''}
-            <button type="button" class="btn btn-outline" id="btn-batch-export-json">Export Log (JSON)</button>
-            <button type="button" class="btn btn-ghost" id="btn-batch-finish-close">Close</button>
+            ${hasZip ? `<button type="button" class="btn btn-primary" id="btn-download-master-zip">${isEs ? `Descargar ZIP Maestro (${zipSizeMb} MB)` : `Download Master ZIP (${zipSizeMb} MB)`}</button>` : ''}
+            <button type="button" class="btn btn-outline" id="btn-batch-export-json">${isEs ? 'Exportar Registro (JSON)' : 'Export Log (JSON)'}</button>
+            <button type="button" class="btn btn-ghost" id="btn-batch-finish-close">${isEs ? 'Cerrar' : 'Close'}</button>
           </div>
         </footer>
       </div>

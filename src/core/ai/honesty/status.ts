@@ -4,6 +4,7 @@
 
 import type { AiAssistanceConfig } from '../../types.ts';
 import type { AiConnectionMode, AiSystemStatus, AiSystemStatusInput } from './types';
+import { tApp } from '../../i18n';
 
 export function countActiveAiStages(aiConfig?: AiAssistanceConfig): number {
   if (!aiConfig?.enabled) return 0;
@@ -39,12 +40,11 @@ export function resolveAiSystemStatus(input: AiSystemStatusInput): AiSystemStatu
   if (!enabled) {
     return {
       mode: 'offline',
-      badgeText: 'IA: DESACTIVADA (DSP)',
+      badgeText: tApp('aiStatus.disabledBadge'),
       pillClass: 'is-ai-off',
-      cardBadgeText: 'DESACTIVADA · 100% DSP',
-      cardSubtitle: 'Asistencia IA desactivada (motor matemático determinista)',
-      tooltip:
-        'Estado IA: Desactivada por configuración (100 % DSP determinista). Haz clic para configurar motores IA (Local, Bridge o Nube).',
+      cardBadgeText: tApp('aiStatus.disabledCardBadge'),
+      cardSubtitle: tApp('aiStatus.disabledSubtitle'),
+      tooltip: tApp('aiStatus.disabledTooltip'),
       activeStageCount: 0,
       totalStageCount,
     };
@@ -54,15 +54,19 @@ export function resolveAiSystemStatus(input: AiSystemStatusInput): AiSystemStatu
     const anyRemoteReady = input.isBridgeConnected || input.isCloudReady;
     return {
       mode: 'offline',
-      badgeText: anyRemoteReady ? `IA: 0/${totalStageCount} ETAPAS (DSP)` : 'IA: SIN CONEXIÓN (DSP)',
+      badgeText: anyRemoteReady
+        ? tApp('aiStatus.zeroStagesBadge', { total: totalStageCount })
+        : tApp('aiStatus.offlineBadge'),
       pillClass: 'is-ai-off',
-      cardBadgeText: anyRemoteReady ? `0/${totalStageCount} ETAPAS · 100% DSP` : 'SIN CONEXIÓN · 100% DSP',
+      cardBadgeText: anyRemoteReady
+        ? tApp('aiStatus.zeroStagesCardBadge', { total: totalStageCount })
+        : tApp('aiStatus.offlineCardBadge'),
       cardSubtitle: anyRemoteReady
-        ? 'Todas las etapas están configuradas en modo DSP determinista'
-        : 'Sin conexión a motores externos y 0 etapas IA activas (100% DSP)',
+        ? tApp('aiStatus.zeroStagesSubtitle')
+        : tApp('aiStatus.offlineSubtitle'),
       tooltip: anyRemoteReady
-        ? `Estado IA: Las ${totalStageCount} etapas del pipeline están en modo DSP determinista (0/${totalStageCount} etapas IA). Haz clic para activar etapas IA.`
-        : `Estado IA: Sin conexión a Bridge/Nube y 0/${totalStageCount} etapas IA activas (100 % DSP determinista). Haz clic para configurar motores IA.`,
+        ? tApp('aiStatus.zeroStagesTooltip', { total: totalStageCount })
+        : tApp('aiStatus.offlineTooltip', { total: totalStageCount }),
       activeStageCount: 0,
       totalStageCount,
     };
@@ -74,32 +78,45 @@ export function resolveAiSystemStatus(input: AiSystemStatusInput): AiSystemStatu
 
   if (input.isBridgeConnected) {
     mode = 'bridge';
-    modeLabel = 'BRIDGE';
-    detailEngine = 'Companion Bridge Local (Python GPU/CPU :7860)';
+    modeLabel = tApp('aiStatus.modeBridge');
+    detailEngine = tApp('aiStatus.engineBridge');
   } else if (input.isCloudReady) {
     mode = 'cloud';
-    modeLabel = 'NUBE';
-    detailEngine = 'Cloud BYOK API (Clave privada en navegador)';
+    modeLabel = tApp('aiStatus.modeCloud');
+    detailEngine = tApp('aiStatus.engineCloud');
   } else {
     mode = 'local';
-    modeLabel = 'LOCAL';
+    modeLabel = tApp('aiStatus.modeLocal');
     detailEngine =
       localKind === 'webgpu'
-        ? 'Navegador Local (WebGPU / WASM)'
+        ? tApp('aiStatus.engineWebGpu')
         : localKind === 'wasm'
-          ? 'Navegador Local (WASM SIMD)'
-          : 'Navegador Local (DSP Determinista)';
+          ? tApp('aiStatus.engineWasm')
+          : tApp('aiStatus.engineDsp');
   }
 
   const pillClass = activeStageCount === totalStageCount ? 'is-ai-active' : 'is-ai-hybrid';
 
   return {
     mode,
-    badgeText: `IA: ${modeLabel} (${activeStageCount}/${totalStageCount})`,
+    badgeText: tApp('aiStatus.activeBadge', {
+      mode: modeLabel,
+      active: activeStageCount,
+      total: totalStageCount,
+    }),
     pillClass,
-    cardBadgeText: `IA: ${modeLabel} (${activeStageCount}/${totalStageCount})`,
+    cardBadgeText: tApp('aiStatus.activeBadge', {
+      mode: modeLabel,
+      active: activeStageCount,
+      total: totalStageCount,
+    }),
     cardSubtitle: detailEngine,
-    tooltip: `Estado IA: ${modeLabel} — ${detailEngine}. Etapas activas: ${activeStageCount}/${totalStageCount}. Ninguna acción IA hace fallback silencioso.`,
+    tooltip: tApp('aiStatus.activeTooltip', {
+      mode: modeLabel,
+      engine: detailEngine,
+      active: activeStageCount,
+      total: totalStageCount,
+    }),
     activeStageCount,
     totalStageCount,
   };

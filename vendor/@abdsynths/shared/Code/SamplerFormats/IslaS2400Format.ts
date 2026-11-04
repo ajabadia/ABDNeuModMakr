@@ -21,7 +21,6 @@
 import type { ExtendedRegion, SynthArticulationConfig } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export const S2400_FIELD_VERSION = 1;
 export const S2400_FIELD_TRACK_COUNT = 2;
@@ -192,7 +191,7 @@ export function importS2400Zip(zipBuffer: ArrayBuffer): {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
       sampleNames.push(name);
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 
@@ -202,7 +201,7 @@ export function importS2400Zip(zipBuffer: ArrayBuffer): {
 
   const kitBytes = extractZipEntry(zipBytes, kitEntry);
   const parsed = parseS2400Kit(
-    toArrayBuffer(kitBytes),
+    kitBytes.buffer.slice(kitBytes.byteOffset, kitBytes.byteOffset + kitBytes.byteLength),
     sampleNames
   );
 

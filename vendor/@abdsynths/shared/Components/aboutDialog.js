@@ -1,26 +1,52 @@
 /**
  * @file aboutDialog.js
- * @brief Modal de diálogo "About..." universal para la suite ABDSynths.
+ * @brief Modal de diálogo "About..." universal para la suite ABDSynths (bilingüe EN / ES).
  * 
  * Proporciona:
  * - Identidad del sintetizador (nombre, subtítulo, descripción, build).
  * - Integración reactiva con el backend C++ ABDShared::AutoUpdater (vía WebView2).
  * - Fallback automático para modo Web/WASM (consulta a GitHub Releases API).
  * - Accesibilidad completa con contrato de foco e inert (overlayFocus.js).
+ * - Internacionalización reactiva (EN / ES) sincronizada con `abdsynths.locale` y `abd:locale-change`.
  */
 
 import { createOverlayFocus } from './overlayFocus.js';
+import { SHARED_EN } from './I18n/locales/en.js';
+import { SHARED_ES } from './I18n/locales/es.js';
+
+function resolveAboutLocale(explicitLocale) {
+  if (explicitLocale === 'es' || explicitLocale === 'en') return explicitLocale;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved =
+        localStorage.getItem('abdsynths.locale') ||
+        localStorage.getItem('abd_locale') ||
+        localStorage.getItem('neumodmakr.locale');
+      if (saved === 'es' || saved === 'en') return saved;
+    }
+    if (typeof document !== 'undefined' && document.documentElement?.lang) {
+      const docLang = document.documentElement.lang.slice(0, 2).toLowerCase();
+      if (docLang === 'es' || docLang === 'en') return docLang;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return 'en';
+}
 
 /**
  * @typedef {Object} AboutDialogOptions
  * @property {string} [id='abd-about-dialog'] ID del elemento modal en el DOM.
  * @property {string} appName Nombre del sintetizador (ej. 'ABD CZ-101', 'ABD MS2000').
  * @property {string} [subtitle='Phase Distortion Synthesizer — Native / Web']
+ * @property {string} [subtitleEs] Subtítulo opcional en español.
  * @property {string} [description='Authentic DSP hardware emulator and modern expanded engine.']
+ * @property {string} [descriptionEs] Descripción opcional en español.
  * @property {string} [version='1.0.0']
  * @property {string|number} [buildNumber]
  * @property {string} [repo='ajabadia/ABDSynths'] Repositorio de GitHub para release checks.
  * @property {string} [manualUrl] URL del manual o repositorio.
+ * @property {string} [locale] Idioma inicial opcional ('en' | 'es').
  * @property {Function} [getJuceBackend] Función que devuelve el backend JUCE si existe.
  * @property {Function} [onClose] Callback ejecutado al cerrar el modal.
  */
@@ -31,7 +57,9 @@ export class AboutDialog {
       id: 'abd-about-dialog',
       appName: 'ABDSynth',
       subtitle: 'Virtual Instrument Synthesizer',
+      subtitleEs: 'Sintetizador de Instrumento Virtual',
       description: 'Audio DSP Synthesizer Suite by ABD.',
+      descriptionEs: 'Suite de Sintetizadores DSP de Audio por ABD.',
       version: '1.0.0',
       buildNumber: '',
       repo: 'ajabadia/ABDSynths',
@@ -53,9 +81,23 @@ export class AboutDialog {
     this.versionTextEl = null;
     this.focusContract = null;
     this.isChecking = false;
+    this.lastUpdateData = null;
+    this._boundOnLocaleChange = (e) => {
+      const nextLocale = e?.detail?.locale;
+      this.setLocale(nextLocale);
+    };
 
     this._mount();
     this._wireListeners();
+  }
+
+  _getDict() {
+    const lang = resolveAboutLocale(this.options.locale);
+    return lang === 'es' ? SHARED_ES.aboutDialog : SHARED_EN.aboutDialog;
+  }
+
+  _isEs() {
+    return resolveAboutLocale(this.options.locale) === 'es';
   }
 
   _mount() {
@@ -73,29 +115,33 @@ export class AboutDialog {
       document.body.appendChild(this.rootEl);
     }
 
-    const buildStr = this.options.buildNumber ? `Build #${this.options.buildNumber}` : '';
+    const dict = this._getDict();
+    const isEs = this._isEs();
+    const subtitle = isEs && this.options.subtitleEs ? this.options.subtitleEs : this.options.subtitle;
+    const description = isEs && this.options.descriptionEs ? this.options.descriptionEs : this.options.description;
+    const buildStr = this.options.buildNumber ? `${dict.buildPrefix}${this.options.buildNumber}` : '';
     const fullVer = this.options.version.startsWith('v') ? this.options.version : `v${this.options.version}`;
 
     this.rootEl.innerHTML = `
       <div class="modal-box abd-about-box">
         <h3 class="abd-about-title">${this._escape(this.options.appName)}</h3>
-        <p class="modal-sub abd-about-sub">${this._escape(this.options.subtitle)}</p>
-        <p class="abd-about-desc">${this._escape(this.options.description)}</p>
-        <p class="abd-about-build">${buildStr}</p>
+        <p class="modal-sub abd-about-sub">${this._escape(subtitle)}</p>
+        <p class="abd-about-desc">${this._escape(description)}</p>
+        <p class="abd-about-build">${this._escape(buildStr)}</p>
         
         <div class="about-update-section abd-about-update-section">
           <div class="about-update-row">
-            <span class="about-update-label">Version:</span>
+            <span class="about-update-label">${this._escape(dict.versionLabel)}</span>
             <span class="about-update-val abd-about-version">${fullVer}</span>
-            <button type="button" class="btn-glow btn-sm abd-btn-check-updates">CHECK FOR UPDATES</button>
+            <button type="button" class="btn-glow btn-sm abd-btn-check-updates">${this._escape(dict.checkForUpdates)}</button>
           </div>
           <div class="about-update-status abd-about-status"></div>
           <div class="about-update-action abd-about-action" hidden>
-            <a class="btn-glow btn-sm btn-update-avail abd-btn-download-update" href="#" target="_blank" rel="noopener noreferrer">DOWNLOAD UPDATE</a>
+            <a class="btn-glow btn-sm btn-update-avail abd-btn-download-update" href="#" target="_blank" rel="noopener noreferrer">${this._escape(dict.downloadUpdate)}</a>
           </div>
         </div>
 
-        <button type="button" class="btn-glow abd-btn-about-close">CLOSE</button>
+        <button type="button" class="btn-glow abd-btn-about-close">${this._escape(dict.close)}</button>
       </div>
     `;
 
@@ -113,6 +159,36 @@ export class AboutDialog {
     });
     this.focusContract.attach();
     this.focusContract.setInert();
+  }
+
+  setLocale(locale) {
+    if (locale === 'es' || locale === 'en') {
+      this.options.locale = locale;
+    } else {
+      delete this.options.locale;
+    }
+    if (!this.rootEl) return;
+    const dict = this._getDict();
+    const isEs = this._isEs();
+    const subEl = this.rootEl.querySelector('.abd-about-sub');
+    const descEl = this.rootEl.querySelector('.abd-about-desc');
+    const buildEl = this.rootEl.querySelector('.abd-about-build');
+    const verLabelEl = this.rootEl.querySelector('.about-update-label');
+    const checkBtn = this.rootEl.querySelector('.abd-btn-check-updates');
+    const closeBtn = this.rootEl.querySelector('.abd-btn-about-close');
+
+    if (subEl) subEl.textContent = isEs && this.options.subtitleEs ? this.options.subtitleEs : this.options.subtitle;
+    if (descEl) descEl.textContent = isEs && this.options.descriptionEs ? this.options.descriptionEs : this.options.description;
+    if (buildEl) buildEl.textContent = this.options.buildNumber ? `${dict.buildPrefix}${this.options.buildNumber}` : '';
+    if (verLabelEl) verLabelEl.textContent = dict.versionLabel;
+    if (checkBtn) checkBtn.textContent = dict.checkForUpdates;
+    if (closeBtn) closeBtn.textContent = dict.close;
+
+    if (this.isChecking && this.statusEl) {
+      this.statusEl.textContent = dict.checkingUpdates;
+    } else if (this.lastUpdateData) {
+      this.renderUpdateResult(this.lastUpdateData);
+    }
   }
 
   _wireListeners() {
@@ -137,10 +213,12 @@ export class AboutDialog {
       window.addEventListener('updateCheckResult', (e) => {
         if (e.detail) this.renderUpdateResult(e.detail);
       });
+      window.addEventListener('abd:locale-change', this._boundOnLocaleChange);
     }
   }
 
   open(triggerEl = null) {
+    this.setLocale(this.options.locale);
     if (triggerEl && this.focusContract) {
       this.focusContract.rememberTrigger(triggerEl);
     }
@@ -178,10 +256,11 @@ export class AboutDialog {
   checkForUpdates() {
     if (this.isChecking) return;
     this.isChecking = true;
+    const dict = this._getDict();
 
     if (this.statusEl) {
       this.statusEl.className = 'about-update-status abd-about-status warning';
-      this.statusEl.textContent = 'Checking for updates...';
+      this.statusEl.textContent = dict.checkingUpdates;
     }
     if (this.actionEl) this.actionEl.hidden = true;
 
@@ -221,18 +300,21 @@ export class AboutDialog {
   }
 
   renderUpdateResult(data) {
+    this.lastUpdateData = data;
     if (!this.statusEl) return;
+    const dict = this._getDict();
     const curVer = (data && data.currentVersion) || this.options.version;
     if (this.versionTextEl) {
       this.versionTextEl.textContent = curVer.startsWith('v') ? curVer : `v${curVer}`;
     }
 
     if (data && data.isUpdateAvailable) {
+      const latestVer = data.latestVersion || 'latest';
       this.statusEl.className = 'about-update-status abd-about-status success';
-      this.statusEl.textContent = `New version available: ${data.latestVersion || 'latest'}`;
+      this.statusEl.textContent = dict.newVersionAvailable.replace('{version}', latestVer);
       if (this.actionEl && this.downloadBtn) {
         this.actionEl.hidden = false;
-        this.downloadBtn.textContent = `DOWNLOAD ${data.latestVersion || 'UPDATE'}`;
+        this.downloadBtn.textContent = dict.downloadVersion.replace('{version}', latestVer);
         this.downloadBtn.href = data.downloadUrl || `https://github.com/${this.options.repo}/releases/latest`;
         this.downloadBtn.onclick = (e) => {
           const backend = this.options.getJuceBackend?.();
@@ -246,7 +328,7 @@ export class AboutDialog {
       }
     } else {
       this.statusEl.className = 'about-update-status abd-about-status';
-      this.statusEl.textContent = 'You are running the latest version.';
+      this.statusEl.textContent = dict.upToDate;
       if (this.actionEl) this.actionEl.hidden = true;
     }
   }
@@ -273,6 +355,9 @@ export class AboutDialog {
   }
 
   destroy() {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('abd:locale-change', this._boundOnLocaleChange);
+    }
     if (this.focusContract) {
       this.focusContract.detach();
     }

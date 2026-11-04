@@ -328,37 +328,6 @@
   border-color: var(--color-ai-bright);
 }
 
-/* AI Settings Modal Local Model Status Pills */
-.ai-model-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.ai-model-status-pill.is-ready {
-  color: var(--color-success);
-  background: rgba(var(--color-success-rgb), 0.14);
-  border: 1px solid rgba(var(--color-success-rgb), 0.38);
-}
-
-.ai-model-status-pill.is-warning {
-  color: var(--color-warning);
-  background: rgba(var(--color-warning-rgb), 0.14);
-  border: 1px solid rgba(var(--color-warning-rgb), 0.38);
-}
-
-.ai-model-status-pill.is-offline {
-  color: var(--color-text-muted);
-  background: rgba(var(--color-text-muted-rgb), 0.12);
-  border: 1px solid rgba(var(--color-text-muted-rgb), 0.3);
-}
-
 /* Batch Local Disk Scanner & Destination Path Row (Full-width path visibility) */
 .nmm-batch-scan-row {
   display: flex;
@@ -381,19 +350,6 @@
   white-space: nowrap;
 }
 
-.nmm-preflight-grid .profile-item.profile-item--full {
-  grid-column: 1 / -1;
-}
-
-.nmm-preflight-grid .bank-path-input-wrap {
-  width: 100%;
-}
-
-.nmm-preflight-grid .bank-path-input-wrap input[type="text"] {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
-}
 
 
 

@@ -159,15 +159,15 @@
 .settings-mode-reassurance-box {
   display: flex;
   gap: 12px;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  border-radius: var(--radius-sm, 6px);
+  background: var(--color-success-dim);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
-  margin-top: var(--space-2, 8px);
+  margin-top: var(--space-2);
 }
 
 .reassurance-icon {
-  color: #22c55e;
+  color: var(--color-success);
   display: flex;
   align-items: flex-start;
   margin-top: 2px;
@@ -181,12 +181,12 @@
 .reassurance-text {
   font-size: 12px;
   line-height: 1.4;
-  color: var(--color-text-main, #ffffff);
+  color: var(--color-text-main);
 }
 
 .reassurance-text p {
   margin: 4px 0 0 0;
-  color: var(--color-text-muted, #aaaaaa);
+  color: var(--color-text-muted);
 }
 
 .settings-bank-path-form {
@@ -373,26 +373,15 @@ textarea.form-control::placeholder {
   padding: 4px 8px;
 }
 
-.model-custom-url-badge {
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(234, 179, 8, 0.15);
-  color: #eab308;
-  border: 1px solid rgba(234, 179, 8, 0.4);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
 .btn-delete-model {
-  color: #ef4444 !important;
-  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
 }
 
 .btn-delete-model:hover {
-  background: rgba(239, 68, 68, 0.15) !important;
-  border-color: #ef4444 !important;
-  color: #f87171 !important;
+  background: var(--color-danger-dim) !important;
+  border-color: var(--color-danger) !important;
+  color: var(--color-danger) !important;
 }
 
 .btn-settings-toggle {
@@ -556,36 +545,6 @@ textarea.form-control::placeholder {
   margin-top: var(--space-2);
 }
 
-
-.nmm-preflight-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.nmm-preflight-grid .profile-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--color-panel-surface-elevated);
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-panel-border-dim);
-}
-
-.profile-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
-}
-
-.profile-val {
-  font-size: var(--text-label, 11px);
-  color: var(--color-text-main);
-  font-weight: 600;
-}
 
 .nmm-preflight-table-header {
   display: flex;

@@ -7,6 +7,7 @@
 // and high-contrast informative selection footer.
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale } from '../core/i18n.ts';
 import { ICONS } from './icons';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
 import { midiToNoteName } from './ZoneRibbon';
@@ -67,6 +68,7 @@ export class NeuronDbModal {
     this.selectedSlot = this.entries[0]?.slot ?? null;
     this.onPickSlot = onPick;
 
+    const isEs = getAppLocale() === 'es';
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
       this.backdropEl.className = 'nmm-modal-backdrop is-hidden';
@@ -74,15 +76,15 @@ export class NeuronDbModal {
     }
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-modal-xl neurondb-modal-card" role="dialog" aria-modal="true" aria-label="NeuronDB Model Browser">
+      <div class="nmm-modal-window nmm-modal-xl neurondb-modal-card" role="dialog" aria-modal="true" aria-label="${isEs ? 'Explorador de Modelos NeuronDB' : 'NeuronDB Model Browser'}">
         <!-- Header -->
         <div class="nmm-modal-header ndb-modal-header">
           <div class="nmm-modal-header-title ndb-header-title">
             <span class="modal-icon">${ICONS.database}</span>
-            <h2 class="ndb-title-text">NEURONDB MODEL BROWSER</h2>
-            <span class="panel-badge ndb-badge" id="ndb-count-badge">${this.entries.length} MODELS</span>
+            <h2 class="ndb-title-text">${isEs ? 'EXPLORADOR DE MODELOS NEURONDB' : 'NEURONDB MODEL BROWSER'}</h2>
+            <span class="panel-badge ndb-badge" id="ndb-count-badge">${this.entries.length} ${isEs ? 'MODELOS' : 'MODELS'}</span>
           </div>
-          <button type="button" class="nmm-modal-close ndb-close-btn" id="btn-close-ndb-modal" title="Close (Esc)">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close ndb-close-btn" id="btn-close-ndb-modal" title="${isEs ? 'Cerrar (Esc)' : 'Close (Esc)'}">${ICONS.close}</button>
         </div>
 
         <!-- Integrated Search Row (ABDMS2000 style) -->
@@ -92,16 +94,16 @@ export class NeuronDbModal {
             type="text"
             id="inp-ndb-search"
             class="ndb-search-input"
-            placeholder="Search models by name, slot (#338), or parameter set..."
+            placeholder="${isEs ? 'Buscar modelos por nombre, slot (#338) o conjunto de parámetros...' : 'Search models by name, slot (#338), or parameter set...'}"
             autocomplete="off"
             spellcheck="false"
-            aria-label="Search models"
+            aria-label="${isEs ? 'Buscar modelos' : 'Search models'}"
           />
           <div class="ndb-view-toggle">
-            <button type="button" class="ndb-view-btn ${this.viewMode === 'grid' ? 'active' : ''}" id="btn-view-grid" title="Grid View">
+            <button type="button" class="ndb-view-btn ${this.viewMode === 'grid' ? 'active' : ''}" id="btn-view-grid" title="${isEs ? 'Vista en Cuadrícula' : 'Grid View'}">
               ${ICONS.grid}
             </button>
-            <button type="button" class="ndb-view-btn ${this.viewMode === 'table' ? 'active' : ''}" id="btn-view-table" title="Table View">
+            <button type="button" class="ndb-view-btn ${this.viewMode === 'table' ? 'active' : ''}" id="btn-view-table" title="${isEs ? 'Vista en Tabla' : 'Table View'}">
               ${ICONS.list}
             </button>
           </div>
@@ -113,13 +115,13 @@ export class NeuronDbModal {
         <!-- Secondary Filter Toolbar (Complexity + Status) -->
         <div class="neurondb-toolbar">
           <div class="neurondb-filter-group">
-            <label class="neurondb-filter-label" for="sel-ndb-comp">COMPLEXITY:</label>
-            <select id="sel-ndb-comp" class="neurondb-select-filter" title="Filter by Analysis Complexity (1..10)">
-              <option value="all">All (1..10)</option>
-              ${STICK_TABLE.map((m, idx) => `<option value="${idx + 1}">Lvl ${idx + 1} (${m}m)</option>`).join('')}
+            <label class="neurondb-filter-label" for="sel-ndb-comp">${isEs ? 'COMPLEJIDAD:' : 'COMPLEXITY:'}</label>
+            <select id="sel-ndb-comp" class="neurondb-select-filter" title="${isEs ? 'Filtrar por Complejidad de Análisis (1..10)' : 'Filter by Analysis Complexity (1..10)'}">
+              <option value="all">${isEs ? 'Todas (1..10)' : 'All (1..10)'}</option>
+              ${STICK_TABLE.map((m, idx) => `<option value="${idx + 1}">${isEs ? 'Niv' : 'Lvl'} ${idx + 1} (${m}m)</option>`).join('')}
             </select>
           </div>
-          <span class="neurondb-scan-status" id="ndb-scan-status">Scanning model headers...</span>
+          <span class="neurondb-scan-status" id="ndb-scan-status">${isEs ? 'Escaneando cabeceras de modelos...' : 'Scanning model headers...'}</span>
         </div>
 
         <!-- Main Content Area: Grid or Table -->
@@ -148,10 +150,10 @@ export class NeuronDbModal {
             <span class="ndb-footer-details" id="ndb-foot-details"></span>
           </div>
           <div class="footer-right neurondb-footer-actions">
-            <button type="button" class="btn" id="btn-cancel-ndb-modal">Cancel</button>
+            <button type="button" class="btn" id="btn-cancel-ndb-modal">${isEs ? 'Cancelar' : 'Cancel'}</button>
             <button type="button" class="btn btn-primary ndb-select-btn" id="btn-load-ndb-modal">
               <span class="btn-icon">${ICONS.folder}</span>
-              <span>LOAD MODEL</span>
+              <span>${isEs ? 'CARGAR MODELO' : 'LOAD MODEL'}</span>
             </button>
           </div>
         </div>
@@ -302,10 +304,11 @@ export class NeuronDbModal {
   public setScanProgress(done: number, total: number): void {
     const statusEl = this.backdropEl?.querySelector('#ndb-scan-status');
     if (!statusEl) return;
+    const isEs = getAppLocale() === 'es';
     if (done >= total) {
-      statusEl.textContent = `All ${total} model headers ready`;
+      statusEl.textContent = isEs ? `Las ${total} cabeceras de modelos están listas` : `All ${total} model headers ready`;
     } else {
-      statusEl.textContent = `Inspecting headers: ${done} / ${total}...`;
+      statusEl.textContent = isEs ? `Inspeccionando cabeceras: ${done} / ${total}...` : `Inspecting headers: ${done} / ${total}...`;
     }
     this.renderCategoryChips();
   }
@@ -339,9 +342,10 @@ export class NeuronDbModal {
       }
     }
 
+    const isEs = getAppLocale() === 'es';
     let html = `
       <button type="button" class="ndb-chip ${this.filterParamSet === 'all' ? 'active' : ''}" data-param="all">
-        <span class="ndb-chip-name">ALL</span>
+        <span class="ndb-chip-name">${isEs ? 'TODOS' : 'ALL'}</span>
         <span class="ndb-chip-count">${this.entries.length}</span>
       </button>
     `;
@@ -374,13 +378,14 @@ export class NeuronDbModal {
 
   // ── Sorting ──────────────────────────────────────────────────────────
   private buildTheadHtml(): string {
+    const isEs = getAppLocale() === 'es';
     const cols: Array<{ id: NeuronDbSortColumn; label: string; cls: string }> = [
       { id: 'slot', label: 'SLOT', cls: 'col-ndb-slot' },
-      { id: 'name', label: 'MODEL NAME', cls: 'col-ndb-name' },
-      { id: 'zones', label: 'ZONES', cls: 'col-ndb-zones' },
-      { id: 'sources', label: 'SOURCES', cls: 'col-ndb-sources' },
-      { id: 'param', label: 'PARAMETER SET', cls: 'col-ndb-param' },
-      { id: 'comp', label: 'COMPLEXITY', cls: 'col-ndb-comp' },
+      { id: 'name', label: isEs ? 'NOMBRE DEL MODELO' : 'MODEL NAME', cls: 'col-ndb-name' },
+      { id: 'zones', label: isEs ? 'ZONAS' : 'ZONES', cls: 'col-ndb-zones' },
+      { id: 'sources', label: isEs ? 'FUENTES' : 'SOURCES', cls: 'col-ndb-sources' },
+      { id: 'param', label: isEs ? 'CONJUNTO PARÁM.' : 'PARAMETER SET', cls: 'col-ndb-param' },
+      { id: 'comp', label: isEs ? 'COMPLEJIDAD' : 'COMPLEXITY', cls: 'col-ndb-comp' },
     ];
 
     return `
@@ -389,13 +394,13 @@ export class NeuronDbModal {
           const isSorted = this.sortColumn === c.id;
           const arrow = isSorted ? (this.sortAsc ? '▲' : '▼') : '';
           return `
-            <th class="${c.cls} is-sortable ${isSorted ? 'is-sorted' : ''}" data-sort="${c.id}" title="Sort by ${c.label}">
+            <th class="${c.cls} is-sortable ${isSorted ? 'is-sorted' : ''}" data-sort="${c.id}" title="${isEs ? `Ordenar por ${c.label}` : `Sort by ${c.label}`}">
               ${c.label} <span class="sort-indicator">${arrow}</span>
             </th>
           `;
         })
         .join('')}
-      <th class="col-ndb-action">ACTION</th>
+      <th class="col-ndb-action">${isEs ? 'ACCIÓN' : 'ACTION'}</th>
     `;
   }
 
@@ -510,36 +515,38 @@ export class NeuronDbModal {
 
   private updateFooterSelection(): void {
     if (!this.backdropEl) return;
+    const isEs = getAppLocale() === 'es';
     const sel = this.entries.find((e) => e.slot === this.selectedSlot);
     const slotEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-slot');
     const nameEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-name');
     const detEl = this.backdropEl.querySelector<HTMLElement>('#ndb-foot-details');
     if (!sel) {
       if (slotEl) slotEl.textContent = '---';
-      if (nameEl) nameEl.textContent = 'No selection';
+      if (nameEl) nameEl.textContent = isEs ? 'Sin selección' : 'No selection';
       if (detEl) detEl.textContent = '';
       return;
     }
 
     if (slotEl) slotEl.textContent = `#${String(sel.slot).padStart(3, '0')}`;
-    if (nameEl) nameEl.textContent = sel.name || 'Untitled';
+    if (nameEl) nameEl.textContent = sel.name || (isEs ? 'Sin título' : 'Untitled');
     if (detEl) {
-      const psName = sel.parameterSet !== null ? PARAMETER_SETS[sel.parameterSet]?.name || 'Set ' + sel.parameterSet : 'Unknown Set';
-      const zStr = sel.zoneCount !== null ? `${sel.zoneCount} Zones` : 'Pending zones';
-      const cStr = sel.complexity !== null ? `Lvl ${sel.complexity}` : '';
+      const psName = sel.parameterSet !== null ? PARAMETER_SETS[sel.parameterSet]?.name || 'Set ' + sel.parameterSet : isEs ? 'Set desconocido' : 'Unknown Set';
+      const zStr = sel.zoneCount !== null ? (isEs ? `${sel.zoneCount} Zonas` : `${sel.zoneCount} Zones`) : isEs ? 'Zonas pendientes' : 'Pending zones';
+      const cStr = sel.complexity !== null ? `${isEs ? 'Niv' : 'Lvl'} ${sel.complexity}` : '';
       detEl.textContent = `— ${psName} | ${zStr} ${cStr ? '| ' + cStr : ''}`;
     }
   }
 
   private renderView(): void {
+    const isEs = getAppLocale() === 'es';
     const badge = this.backdropEl?.querySelector<HTMLElement>('#ndb-count-badge');
     const filtered = this.getFilteredEntries();
 
     if (badge) {
       badge.textContent =
         filtered.length === this.entries.length
-          ? `${this.entries.length} MODELS`
-          : `${filtered.length} / ${this.entries.length} MODELS`;
+          ? `${this.entries.length} ${isEs ? 'MODELOS' : 'MODELS'}`
+          : `${filtered.length} / ${this.entries.length} ${isEs ? 'MODELOS' : 'MODELS'}`;
     }
 
     if (filtered.length > 0 && (this.selectedSlot === null || !filtered.some((e) => e.slot === this.selectedSlot))) {
@@ -559,12 +566,13 @@ export class NeuronDbModal {
     const grid = this.backdropEl?.querySelector<HTMLElement>('#ndb-grid-view');
     if (!grid) return;
 
+    const isEs = getAppLocale() === 'es';
     if (filtered.length === 0) {
       grid.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.database}</span>
-          <span class="empty-msg">No models match the filter criteria</span>
-          <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-grid">Reset Filters</button>
+          <span class="empty-msg">${isEs ? 'Ningún modelo coincide con los filtros' : 'No models match the filter criteria'}</span>
+          <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-grid">${isEs ? 'Restablecer Filtros' : 'Reset Filters'}</button>
         </div>
       `;
       grid.querySelector('#btn-ndb-reset-filter-grid')?.addEventListener('click', () => {
@@ -640,14 +648,15 @@ export class NeuronDbModal {
     const tbody = this.backdropEl?.querySelector<HTMLElement>('#ndb-tbody');
     if (!tbody) return;
 
+    const isEs = getAppLocale() === 'es';
     if (filtered.length === 0) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="neurondb-empty-cell">
             <div class="neurondb-empty-state">
               <span class="empty-icon">${ICONS.database}</span>
-              <span class="empty-msg">No models match the filter criteria</span>
-              <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-table">Reset Filters</button>
+              <span class="empty-msg">${isEs ? 'Ningún modelo coincide con los filtros' : 'No models match the filter criteria'}</span>
+              <button type="button" class="btn btn-xs btn-primary" id="btn-ndb-reset-filter-table">${isEs ? 'Restablecer Filtros' : 'Reset Filters'}</button>
             </div>
           </td>
         </tr>
@@ -705,6 +714,7 @@ export class NeuronDbModal {
   }
 
   private buildRowInnerHtml(e: NeuronDbModelEntry): string {
+    const isEs = getAppLocale() === 'es';
     const slotStr = `#${String(e.slot).padStart(3, '0')}`;
     const nameHtml = e.name
       ? `<span class="ndb-model-name">${escHtml(e.name)}</span>`
@@ -716,12 +726,16 @@ export class NeuronDbModal {
         e.lowKey !== null && e.highKey !== null
           ? ` <span class="ndb-key-span">(${midiToNoteName(e.lowKey)}..${midiToNoteName(e.highKey)})</span>`
           : '';
-      zonesHtml = `${e.zoneCount} zone${e.zoneCount === 1 ? '' : 's'}${spanStr}`;
+      zonesHtml = isEs
+        ? `${e.zoneCount} ${e.zoneCount === 1 ? 'zona' : 'zonas'}${spanStr}`
+        : `${e.zoneCount} zone${e.zoneCount === 1 ? '' : 's'}${spanStr}`;
     }
 
     const sourcesHtml =
       e.sourceCount !== null
-        ? `${e.sourceCount} pair${e.sourceCount === 1 ? '' : 's'}`
+        ? isEs
+          ? `${e.sourceCount} ${e.sourceCount === 1 ? 'par' : 'pares'}`
+          : `${e.sourceCount} pair${e.sourceCount === 1 ? '' : 's'}`
         : `<span class="ndb-dim">...</span>`;
 
     let paramHtml = `<span class="ndb-dim">...</span>`;
@@ -735,7 +749,7 @@ export class NeuronDbModal {
 
     let compHtml = `<span class="ndb-dim">...</span>`;
     if (e.complexity !== null && e.stickModes !== null) {
-      compHtml = `Lvl ${e.complexity} <span class="ndb-key-span">(${e.stickModes}m)</span>`;
+      compHtml = `${isEs ? 'Niv' : 'Lvl'} ${e.complexity} <span class="ndb-key-span">(${e.stickModes}m)</span>`;
     }
 
     return `
@@ -746,7 +760,7 @@ export class NeuronDbModal {
       <td class="col-ndb-param">${paramHtml}</td>
       <td class="col-ndb-comp">${compHtml}</td>
       <td class="col-ndb-action">
-        <button type="button" class="btn btn-xs btn-ndb-load-row" title="Load ${slotStr} ${escAttr(e.name || '')}">Load</button>
+        <button type="button" class="btn btn-xs btn-ndb-load-row" title="${isEs ? `Cargar ${slotStr}` : `Load ${slotStr}`} ${escAttr(e.name || '')}">${isEs ? 'Cargar' : 'Load'}</button>
       </td>
     `;
   }

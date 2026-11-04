@@ -172,10 +172,8 @@ export function parseExs24(buffer: ArrayBuffer, fallbackName = 'EXS24Instrument'
     }
 
     if (blockType === 0) {
-      // Instrument Header — preserve meaningful filename if header has generic Logic default ("Instrument #2")
-      if (blockName && !/^(instrument\s*#?\d*|untitled|default|exs24instrument)$/i.test(blockName.trim())) {
-        presetName = blockName;
-      }
+      // Instrument Header
+      if (blockName) presetName = blockName;
     } else if (blockType === 1 && payloadSize >= 96) {
       // Zone Block
       const zoneOpts = bytes[payloadOffset + 0];
@@ -293,7 +291,7 @@ export function parseExs24(buffer: ArrayBuffer, fallbackName = 'EXS24Instrument'
       const fileName =
         payloadSize >= 592
           ? readAsciiFixed(bytes, payloadOffset + 336, 256) || blockName
-          : blockName || filePath.split(/[\\/:]/).filter(Boolean).pop() || `Sample_${samples.length + 1}.wav`;
+          : blockName || filePath.split(/[\\/]/).pop() || `Sample_${samples.length + 1}.wav`;
 
       samples.push({
         id: blockIndex,

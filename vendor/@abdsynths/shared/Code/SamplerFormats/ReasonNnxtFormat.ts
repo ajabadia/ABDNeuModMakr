@@ -1,4 +1,3 @@
-import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Propellerhead / Reason NN-XT Sampler Importer & Exporter
 //
@@ -21,6 +20,7 @@ import { presetIdentity } from './PresetIdentity.ts';
 
 import type { LoopMode } from './SamplerTypes.ts';
 import type {
+  ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
@@ -236,26 +236,24 @@ export function convertSxtToPreset(
       z.playMode === 1
         ? 'loop_continuous'
         : z.playMode === 2
-          ? 'ping_pong'
+          ? 'loop_bidirectional'
           : z.playMode === 3
             ? 'loop_sustain'
             : 'no_loop';
 
     regions.push({
-      id: `nnxt_${regions.length + 1}`,
-      samplePath: cleanName,
       sampleName: cleanName,
       rootKey: z.rootKey,
       lowKey: z.keyRangeStart,
       highKey: z.keyRangeEnd,
-      lowVel: z.velocityRangeStart,
-      highVel: z.velocityRangeEnd,
-      detuneCents: z.sampleTune,
-      volumeDb: patch.masterVolumeDb + z.volumeDb,
+      lowVelocity: z.velocityRangeStart,
+      highVelocity: z.velocityRangeEnd,
+      fineTuneCents: z.sampleTune,
+      gainDb: patch.masterVolumeDb + z.volumeDb,
       pan: z.pan,
       loopMode,
-      loopStart: z.sampleLoopStart ?? 0,
-      loopEnd: z.sampleLoopEnd ?? 0,
+      loopStart: z.sampleLoopStart,
+      loopEnd: z.sampleLoopEnd,
       filterCutoffHz: Math.round(20 * Math.pow(1000, z.filterCutoff / 127)),
       filterResonance: z.filterResonance / 127.0,
       attackTimeSec: z.ampAttackMs / 1000.0,
@@ -272,7 +270,6 @@ export function convertSxtToPreset(
     audioBuffers,
     isMultiLayer: regions.length > 1,
     sourceFormat: 'reason_nnxt',
-    ...presetIdentity('reason_nnxt', 'Propellerhead Reason NN-XT', patch.name),
   };
 }
 
@@ -280,7 +277,7 @@ export function convertSxtToPreset(
  * Builds a valid IFF Reason NN-XT .sxt patch buffer from regions and metadata.
  */
 export function writeSxtPatch(
-  _presetName: string,
+  presetName: string,
   regions: ParsedImportRegion[],
   samplePaths: string[]
 ): Uint8Array {
@@ -353,16 +350,16 @@ export function writeSxtPatch(
     bodyView.setInt16(zPos + 2, sampleIdx, false);
     bodyView.setUint8(zPos + 4, r.lowKey);
     bodyView.setUint8(zPos + 5, r.highKey);
-    bodyView.setUint8(zPos + 6, r.lowVel);
-    bodyView.setUint8(zPos + 7, r.highVel);
+    bodyView.setUint8(zPos + 6, r.lowVelocity);
+    bodyView.setUint8(zPos + 7, r.highVelocity);
     bodyView.setUint8(zPos + 8, r.rootKey);
-    bodyView.setInt16(zPos + 10, r.detuneCents || 0, false);
+    bodyView.setInt16(zPos + 10, r.fineTuneCents || 0, false);
     bodyView.setUint32(zPos + 12, 0, false); // SampleStart
     bodyView.setUint32(zPos + 16, 0, false); // SampleEnd
     bodyView.setUint32(zPos + 20, r.loopStart || 0, false);
     bodyView.setUint32(zPos + 24, r.loopEnd || 0, false);
     bodyView.setUint8(zPos + 28, r.loopMode === 'loop_continuous' ? 1 : 0);
-    bodyView.setInt16(zPos + 30, Math.round((r.volumeDb || 0) * 10), false);
+    bodyView.setInt16(zPos + 30, Math.round((r.gainDb || 0) * 10), false);
     bodyView.setInt8(zPos + 32, Math.round((r.pan || 0) * 64));
     bodyView.setUint8(zPos + 33, 127); // Filter cutoff full open
     bodyView.setUint8(zPos + 34, 0); // Resonance

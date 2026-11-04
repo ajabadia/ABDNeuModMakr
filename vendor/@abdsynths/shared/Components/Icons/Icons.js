@@ -23,3 +23,9 @@ export const FILTER_ICONS = {
   bpf12: `<svg viewBox="0 0 24 16" class="sel-icon"><path d="M2,14 L12,3 L22,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
   hpf12: `<svg viewBox="0 0 24 16" class="sel-icon"><path d="M2,13 L13,4 L22,4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
 };
+
+
+export const FLAG_ICONS = {
+  es: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" class="sel-icon flag-icon" aria-hidden="true" focusable="false"><rect width="24" height="16" fill="#c60b1e"/><rect y="4" width="24" height="8" fill="#ffc400"/></svg>`,
+  en: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" class="sel-icon flag-icon" aria-hidden="true" focusable="false"><rect width="24" height="16" fill="#012169"/><path d="M0 0l24 16M24 0L0 16" stroke="#fff" stroke-width="3.4"/><path d="M0 0l24 16M24 0L0 16" stroke="#c8102e" stroke-width="1.7"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5.4"/><path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="3.2"/></svg>`,
+};

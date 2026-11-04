@@ -101,7 +101,7 @@ function cleanNameFromPath(path: string): string {
  */
 export async function discoverSamplerAssets(
   vfs: VirtualZipFs,
-  _rootOriginName = 'Source'
+  rootOriginName = 'Source'
 ): Promise<MultiAssetDiscoveryReport> {
   const allFiles = vfs.listFiles();
   const items: DiscoveredSamplerItem[] = [];
@@ -170,8 +170,8 @@ export async function discoverSamplerAssets(
     }
   }
 
-  // Helper to find companion samples in the same directory, child directories, or matching stem folder
-  const getCompanionSamplesForDef = (defPath: string): { paths: string[]; exclusive: boolean } => {
+  // Helper to find companion samples in the same directory or child directories
+  const getCompanionSamplesForDef = (defPath: string): string[] => {
     const parts = defPath.split('/');
     const dir = parts.length > 1 ? parts.slice(0, parts.length - 1).join('/') : '';
     const prefix = dir ? `${dir}/` : '';
@@ -181,30 +181,7 @@ export async function discoverSamplerAssets(
         matched.push(af.path);
       }
     }
-    if (matched.length > 0) {
-      return { paths: matched, exclusive: true };
-    }
-    // Multiformat CD/folder fallback: match audio files in folders named after the preset stem (e.g. "Alegrias.exs" -> ".../Alegrias/*.wav")
-    const defBase = parts[parts.length - 1] || defPath;
-    const defStem = defBase.replace(/\.[^.]+$/, '').toLowerCase().trim();
-    if (defStem.length >= 2) {
-      const wavMatches: string[] = [];
-      const anyMatches: string[] = [];
-      for (const af of audioFiles) {
-        const afLower = af.path.toLowerCase();
-        const segs = afLower.split('/');
-        const parentDir = segs.length > 1 ? segs[segs.length - 2].trim() : '';
-        if (parentDir === defStem || parentDir.replace(/[\s_-]+/g, '') === defStem.replace(/[\s_-]+/g, '')) {
-          anyMatches.push(af.path);
-          if (afLower.endsWith('.wav')) wavMatches.push(af.path);
-        }
-      }
-      const chosen = wavMatches.length > 0 ? wavMatches : anyMatches;
-      if (chosen.length > 0) {
-        return { paths: chosen, exclusive: false };
-      }
-    }
-    return { paths: [], exclusive: false };
+    return matched;
   };
 
   // 1b. Hartmann Neuron / Neuronik Banks & Models (.model, .nmpack, .neuronikmodel, .nmmodel, MName, map.script, .scape, .sphere)
@@ -215,10 +192,8 @@ export async function discoverSamplerAssets(
     // Standalone .neuronikmodel / .nmmodel / .model / .nmpack file
     if (/\.(neuronikmodel|nmmodel|model|nmpack)$/i.test(lower)) {
       handledFiles.add(f.path);
-      const { paths: companions, exclusive } = getCompanionSamplesForDef(f.path);
-      if (exclusive) {
-        for (const c of companions) handledFiles.add(c);
-      }
+      const companions = getCompanionSamplesForDef(f.path);
+      for (const c of companions) handledFiles.add(c);
       items.push({
         id: f.path,
         name: cleanNameFromPath(f.path),
@@ -305,7 +280,6 @@ export async function discoverSamplerAssets(
     { extRegex: /\.dspreset$/i, format: 'dspreset', label: 'Decent Sampler' },
     { extRegex: /\.nki(\.xml)?$/i, format: 'nki', label: 'Kontakt Patch' },
     { extRegex: /\.vstpreset(\.xml)?$/i, format: 'vstpreset', label: 'HALion VST Preset' },
-    { extRegex: /\.fxp$/i, format: 'vstpreset', label: 'HALion FXP Patch' },
     { extRegex: /\.(multisample|multisample\.xml)$/i, format: 'multisample', label: 'Bitwig Multisample' },
     { extRegex: /\.adv$/i, format: 'ableton_adv', label: 'Ableton Sampler/Simpler' },
     { extRegex: /\.exs$/i, format: 'exs24', label: 'Logic EXS24' },
@@ -334,10 +308,8 @@ export async function discoverSamplerAssets(
     for (const spec of DEF_SPECS) {
       if (spec.extRegex.test(f.name)) {
         handledFiles.add(f.path);
-        const { paths: companions, exclusive } = getCompanionSamplesForDef(f.path);
-        if (exclusive) {
-          for (const c of companions) handledFiles.add(c);
-        }
+        const companions = getCompanionSamplesForDef(f.path);
+        for (const c of companions) handledFiles.add(c);
         items.push({
           id: f.path,
           name: cleanNameFromPath(f.path),

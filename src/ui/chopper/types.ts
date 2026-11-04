@@ -35,6 +35,7 @@ export interface ChopperState {
   manualSilenceRanges: ManualSilenceRange[];
   manualCutsPolicy: 'prompt' | 'keep' | 'discard';
   sourcePcm: Float32Array | null;
+  _chopperKeyboardHandler?: ((e: Event) => void) | undefined;
 }
 
 export interface ChopperContext {
@@ -72,4 +73,10 @@ export interface ChopperContext {
   runWhisperVocalAlignment: () => Promise<void>;
   showManualCutsConfirmationModal: (descriptionHtml: string, onKeep: () => void, onDiscard: () => void, onCancel: () => void) => void;
   showStemSeparationModal: () => void;
+  syncActiveSliceFromBoundary: () => void;
+  extractBoundaryFrames: (result: SlicerResult | null, length: number) => number[];
+  deleteSlice: (result: SlicerResult, pcm: Float32Array, sampleRate: number, sliceId: string, options: SlicerOptions) => SlicerResult;
+  stopAudition?: () => void;
+  updateMagnifierHeader: () => void;
+  closeContextMenu: () => void;
 }

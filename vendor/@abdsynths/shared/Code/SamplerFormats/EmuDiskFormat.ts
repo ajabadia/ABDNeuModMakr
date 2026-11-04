@@ -21,7 +21,6 @@
 // ─────────────────────────────────────────────────────────
 
 import { encodeWavPcm16 } from '../NeuronFormats/WavAiffDecoder.ts';
-import { classifyPresetCategory } from './PresetIdentity.ts';
 import type {
   ArchiveSamplerProgramInfo,
   ParsedImportRegion,
@@ -428,7 +427,6 @@ function listE3bPresets(bankData: Uint8Array, bankName: string): ArchiveSamplerP
 export function parseEmuDiskProgram(
   data: ArrayBufferView | ArrayBuffer,
   targetPath?: string,
-  siblingFiles?: Map<string, Uint8Array>,
 ): ParsedSamplerPreset {
   const bytes =
     data instanceof Uint8Array
@@ -497,8 +495,7 @@ export function parseEmuDiskProgram(
     return parseE3bBank(bankData, bankName, targetPresetId);
   }
 
-  // Fallback for E-mu Emulator X / Proteus X (.exb) bank containers
-  return parseEmuExbBank(bankData, bankName, siblingFiles);
+  throw new Error('Unrecognized E-mu bank format.');
 }
 
 function parseE4bBank(
@@ -676,18 +673,13 @@ function parseE4bBank(
     offset += 284 + numZones * 22;
   }
 
-  const cls = classifyPresetCategory(
-    selectedPreset.name,
-    regions.map((r) => r.sampleName),
-  );
-
   return {
     format: 'emu_disk' as any,
     formatLabel: 'E-mu EOS (Emulator IV) Bank',
     presetName: selectedPreset.name,
     modelName: selectedPreset.name.replace(/[^a-zA-Z0-9_-]/g, '_'),
-    detectedCategory: cls.category,
-    suggestedParameterSet: cls.parameterSet,
+    detectedCategory: 'Vintage Hardware Samplers',
+    suggestedParameterSet: 0,
     regions,
     audioBuffers,
     polyphony: 32,
@@ -806,166 +798,15 @@ function parseE3bBank(
     });
   }
 
-  const cls = classifyPresetCategory(
-    presetName,
-    regions.map((r) => r.sampleName),
-  );
-
   return {
     format: 'emu_disk' as any,
     formatLabel: 'E-mu EIII / ESI Bank',
     presetName,
     modelName: `${bankName}_${presetName}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-    detectedCategory: cls.category,
-    suggestedParameterSet: cls.parameterSet,
+    detectedCategory: 'Vintage Hardware Samplers',
+    suggestedParameterSet: 0,
     regions,
     audioBuffers,
     polyphony: 16,
-  };
-}
-
-/**
- * Parses an E-mu Emulator X / Proteus X (.exb) bank file.
- * Supports:
- *   1. Monolithic .exb containers with embedded RIFF/WAVE sample chunks
- *   2. Unpacked .exb bank definitions referencing companion .wav files in siblingFiles
- */
-export function parseEmuExbBank(
-  bankData: Uint8Array,
-  bankName: string,
-  siblingFiles?: Map<string, Uint8Array>,
-): ParsedSamplerPreset {
-  const cleanBankName = bankName.replace(/\.exb$/i, '') || 'EmulatorX_Bank';
-  const audioBuffers = new Map<string, ArrayBuffer>();
-  const sampleNames: string[] = [];
-
-  // 1. Scan for embedded RIFF....WAVE chunks inside the .exb container
-  for (let i = 0; i + 12 < bankData.length; i++) {
-    if (
-      bankData[i] === 0x52 && // 'R'
-      bankData[i + 1] === 0x49 && // 'I'
-      bankData[i + 2] === 0x46 && // 'F'
-      bankData[i + 3] === 0x46 && // 'F'
-      bankData[i + 8] === 0x57 && // 'W'
-      bankData[i + 9] === 0x41 && // 'A'
-      bankData[i + 10] === 0x56 && // 'V'
-      bankData[i + 11] === 0x45 // 'E'
-    ) {
-      const riffSize = getU32LE(bankData, i + 4);
-      const totalChunkBytes = riffSize + 8;
-      if (riffSize > 36 && i + totalChunkBytes <= bankData.length) {
-        const sName = `${cleanBankName}_Sample_${String(sampleNames.length + 1).padStart(3, '0')}.wav`;
-        const wavSlice = bankData.slice(i, i + totalChunkBytes);
-        audioBuffers.set(sName, wavSlice.buffer);
-        sampleNames.push(sName);
-        i += totalChunkBytes - 1;
-      }
-    }
-  }
-
-  // 2. Scan for referenced .wav filenames in the .exb binary & match against siblingFiles
-  if (siblingFiles && siblingFiles.size > 0) {
-    const siblingLower = new Map<string, { name: string; bytes: Uint8Array }>();
-    for (const [k, v] of siblingFiles.entries()) {
-      const base = (k.replace(/\\/g, '/').split('/').pop() ?? k).toLowerCase();
-      if (base.endsWith('.wav') || base.endsWith('.aif') || base.endsWith('.aiff')) {
-        siblingLower.set(base, { name: k.replace(/\\/g, '/').split('/').pop() ?? k, bytes: v });
-      }
-    }
-
-    const asciiText = new TextDecoder('latin1').decode(
-      bankData.subarray(0, Math.min(bankData.length, 2 * 1024 * 1024))
-    );
-    const wavMatches = asciiText.match(/[A-Za-z0-9_.\- /\\]{2,80}\.wav/gi) ?? [];
-    for (const rawMatch of wavMatches) {
-      const base = (rawMatch.replace(/\\/g, '/').split('/').pop() ?? rawMatch).trim();
-      const found = siblingLower.get(base.toLowerCase());
-      if (found && !audioBuffers.has(found.name)) {
-        const copy = new Uint8Array(found.bytes.byteLength);
-        copy.set(found.bytes);
-        audioBuffers.set(found.name, copy.buffer);
-        sampleNames.push(found.name);
-      }
-    }
-
-    // If no explicit .wav string matched, attach all sibling .wav files belonging to the bank folder
-    if (sampleNames.length === 0) {
-      for (const { name, bytes } of siblingLower.values()) {
-        const copy = new Uint8Array(bytes.byteLength);
-        copy.set(bytes);
-        audioBuffers.set(name, copy.buffer);
-        sampleNames.push(name);
-      }
-    }
-  }
-
-  const regions: ParsedImportRegion[] = [];
-  const total = Math.max(1, sampleNames.length);
-  const span = Math.max(1, Math.floor(88 / total));
-
-  for (let idx = 0; idx < sampleNames.length; idx++) {
-    const sName = sampleNames[idx];
-    let rootKey = Math.min(108, 24 + idx * span + Math.floor(span / 2));
-    const noteMatch = sName.match(/[_\-\s]([A-G]#?)(-?\d)/i);
-    if (noteMatch) {
-      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-      const nIdx = noteNames.indexOf(noteMatch[1].toUpperCase());
-      if (nIdx >= 0) {
-        const oct = parseInt(noteMatch[2], 10);
-        rootKey = Math.max(0, Math.min(127, (oct + 2) * 12 + nIdx));
-      }
-    }
-    const lowKey = idx === 0 ? 0 : Math.min(127, 24 + idx * span);
-    const highKey = idx === sampleNames.length - 1 ? 127 : Math.min(127, lowKey + span - 1);
-
-    regions.push({
-      id: `exb_reg_${idx + 1}`,
-      sampleName: sName,
-      samplePath: sName,
-      rootKey,
-      lowKey,
-      highKey,
-      lowVel: 1,
-      highVel: 127,
-      detuneCents: 0,
-      volumeDb: 0,
-      pan: 0,
-      loopMode: 'no_loop',
-      loopStart: 0,
-      loopEnd: 0,
-    });
-  }
-
-  if (regions.length === 0) {
-    regions.push({
-      id: 'exb_reg_1',
-      sampleName: `${cleanBankName}.wav`,
-      samplePath: `${cleanBankName}.wav`,
-      rootKey: 60,
-      lowKey: 0,
-      highKey: 127,
-      lowVel: 1,
-      highVel: 127,
-      detuneCents: 0,
-      volumeDb: 0,
-      pan: 0,
-      loopMode: 'no_loop',
-      loopStart: 0,
-      loopEnd: 0,
-    });
-  }
-
-  const cls = classifyPresetCategory(cleanBankName, sampleNames);
-
-  return {
-    format: 'emu_disk' as any,
-    formatLabel: 'E-mu Emulator X / Proteus X (.exb)',
-    presetName: cleanBankName,
-    modelName: cleanBankName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 11) || 'EmuExb',
-    detectedCategory: cls.category,
-    suggestedParameterSet: cls.parameterSet,
-    regions,
-    audioBuffers,
-    polyphony: 32,
   };
 }

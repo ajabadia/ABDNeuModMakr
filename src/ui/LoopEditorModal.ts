@@ -9,6 +9,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { isEs, onAppLocaleChange } from '../core/i18n.ts';
 import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { toast } from './notify.ts';
 import { clamp } from '../core/dsp/DspMath.ts';
@@ -75,6 +76,11 @@ export class LoopEditorModal {
 
   constructor(context: LoopEditorModalContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public open(target?: { zoneId?: string; regionId?: string }): void {
@@ -218,32 +224,33 @@ export class LoopEditorModal {
 
     const d = this.loopData;
     const hasAudio = Boolean(d && d.monoPcm && d.monoPcm.length > 0);
+    const es = isEs();
 
-    let formatBadge = 'No Sample Loaded';
+    let formatBadge = es ? 'Sin muestra cargada' : 'No Sample Loaded';
     if (d && hasAudio) {
       const sec = (d.totalFrames / d.sampleRate).toFixed(2);
-      formatBadge = `${d.sampleName || 'Sample'} • ${(d.sampleRate / 1000).toFixed(1)} kHz • ${sec}s`;
+      formatBadge = `${d.sampleName || (es ? 'Muestra' : 'Sample')} • ${(d.sampleRate / 1000).toFixed(1)} kHz • ${sec}s`;
     }
 
     const seamAnalysis = hasAudio && d ? computeLoopSeamAnalysis(d.monoPcm, d.loopStart, d.loopEnd, 128) : null;
     const seamScore = seamAnalysis ? seamAnalysis.seamQualityPercent.toFixed(0) : '0';
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-loop-window" role="dialog" aria-modal="true" aria-labelledby="loop-modal-title">
+      <div class="nmm-modal-window nmm-audio-modal-window" role="dialog" aria-modal="true" aria-labelledby="loop-modal-title">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.wave}</span>
-            <h2 id="loop-modal-title">Loop Editor — Waveform &amp; Zero-Crossing Seam Magnifier</h2>
+            <h2 id="loop-modal-title">${es ? 'Editor de Bucle — Forma de Onda y Lupa de Costura Paso por Cero' : 'Loop Editor — Waveform &amp; Zero-Crossing Seam Magnifier'}</h2>
             <span class="panel-badge ${hasAudio ? 'badge-ai-on' : 'badge-muted'}">
               ${escHtml(formatBadge)}
             </span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-loop-modal-close">
+          <button type="button" class="nmm-modal-close" aria-label="${es ? 'Cerrar' : 'Close'}" id="btn-loop-modal-close">
             ${ICONS.close}
           </button>
         </header>
 
-        <div class="nmm-modal-body nmm-loop-body">
+        <div class="nmm-modal-body nmm-audio-modal-body">
           <input type="file" id="inp-loop-file-picker" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,audio/*" class="is-hidden-file" />
 
           ${
@@ -254,66 +261,74 @@ export class LoopEditorModal {
               <div class="dropzone-icon-ring">
                 <span class="dropzone-icon">${ICONS.wave}</span>
               </div>
-              <h3 class="dropzone-title">NO AUDIO SAMPLE LOADED IN AUTOLOOP EDITOR</h3>
+              <h3 class="dropzone-title">${es ? 'NINGUNA MUESTRA DE AUDIO CARGADA EN EL EDITOR AUTOLOOP' : 'NO AUDIO SAMPLE LOADED IN AUTOLOOP EDITOR'}</h3>
               <p class="dropzone-subtitle">
-                Drag &amp; drop an audio sample here (.wav, .aif, .flac) or load demo audio to test seamless loop detection and zero-crossing alignment.
+                ${es ? 'Arrastra y suelta aquí una muestra de audio (.wav, .aif, .flac) o carga un audio de demostración para probar la detección de bucles sin clics y la alineación en paso por cero.' : 'Drag &amp; drop an audio sample here (.wav, .aif, .flac) or load demo audio to test seamless loop detection and zero-crossing alignment.'}
               </p>
               <div class="dropzone-actions">
                 <button type="button" class="btn btn-primary" id="btn-loop-browse-file">
-                  ${ICONS.folder} Browse Audio File...
+                  ${ICONS.folder} ${es ? 'Examinar Archivo de Audio...' : 'Browse Audio File...'}
                 </button>
                 <button type="button" class="btn btn-outline" id="btn-loop-demo-audio">
-                  ${ICONS.wave} Load Demo Sustained Loop
+                  ${ICONS.wave} ${es ? 'Cargar Bucle Sostenido Demo' : 'Load Demo Sustained Loop'}
                 </button>
               </div>
               <div class="dropzone-hint">
-                AutoLoop analyzes pitch periodicity, cross-correlation (NCC), and zero-crossing seams to eliminate clicks during sustained playback.
+                ${es ? 'AutoLoop analiza periodicidad tonal, correlación cruzada (NCC) y costuras de paso por cero para eliminar clics durante la reproducción sostenida.' : 'AutoLoop analyzes pitch periodicity, cross-correlation (NCC), and zero-crossing seams to eliminate clicks during sustained playback.'}
               </div>
             </div>
           `
               : `
             <!-- Waveform Viewport Panel -->
-            <div class="loop-viewport-panel">
+            <div class="nmm-audio-viewport-panel">
               <div class="loop-viewport-toolbar">
-                <div class="loop-zoom-group">
+                <div class="nmm-audio-zoom-group">
                   <span class="toolbar-label">ZOOM:</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-out" title="Zoom Out Waveform">-</button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-out" title="${es ? 'Alejar forma de onda' : 'Zoom Out Waveform'}">-</button>
                   <span class="val-pill" id="lbl-loop-zoom">${this.zoomFactor.toFixed(1)}x</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-in" title="Zoom In Waveform">+</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-fit" title="Fit Entire Waveform">Fit</button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-in" title="${es ? 'Acercar forma de onda' : 'Zoom In Waveform'}">+</button>
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-zoom-fit" title="${es ? 'Encajar forma de onda completa' : 'Fit Entire Waveform'}">${es ? 'Encajar' : 'Fit'}</button>
                 </div>
                 <div class="loop-toolbar-right">
-                  <span class="loop-seam-quality-badge" id="badge-seam-score" title="Click-free splice continuity score">
-                    Seam Match: <strong>${seamScore}%</strong>
+                  <span class="loop-seam-quality-badge" id="badge-seam-score" title="${es ? 'Puntuación de continuidad de empalme sin clics' : 'Click-free splice continuity score'}">
+                    ${es ? 'Calidad Costura:' : 'Seam Match:'} <strong>${seamScore}%</strong>
                   </span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-change-file" title="Open another audio file">
-                    ${ICONS.folder} Replace File...
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-loop-change-file" title="${es ? 'Abrir otro archivo de audio' : 'Open another audio file'}">
+                    ${ICONS.folder} ${es ? 'Reemplazar Archivo...' : 'Replace File...'}
                   </button>
                 </div>
               </div>
 
-              <div class="loop-canvas-wrapper" id="loop-canvas-wrapper">
-                <canvas id="loop-editor-canvas" height="160"></canvas>
+              <div class="nmm-audio-canvas-wrap" id="loop-canvas-wrapper">
+                <canvas
+                  id="loop-editor-canvas"
+                  height="160"
+                  tabindex="0"
+                  role="application"
+                  aria-label="${es ? 'Editor de forma de onda y puntos de bucle' : 'Waveform and loop points editor'}"
+                  title="${es ? 'Atajos de teclado: ←/→ mover L-START ±1 frame (Shift ±100) · Alt+←/→ mover L-END ±1 frame (Alt+Shift ±100) · Espacio reproducir/detener bucle · +/- zoom' : 'Keyboard shortcuts: ←/→ move L-START ±1 frame (Shift ±100) · Alt+←/→ move L-END ±1 frame (Alt+Shift ±100) · Space play/stop loop · +/- zoom'}"
+                ></canvas>
               </div>
 
-              <div class="loop-canvas-legend">
-                <span>Drag <strong>L-START</strong> (Green) or <strong>L-END</strong> (Cyan) markers</span>
-                <span>• Shaded amber = Crossfade</span>
-                <span>• Right pane = Zero-Crossing Seam Magnifier (&plusmn;64 smp)</span>
+              <div class="nmm-audio-canvas-legend">
+                <span>${es ? 'Arrastra los marcadores <strong>L-START</strong> (Verde) o <strong>L-END</strong> (Cian)' : 'Drag <strong>L-START</strong> (Green) or <strong>L-END</strong> (Cyan) markers'}</span>
+                <span>• ${es ? 'Sombreado ámbar = Fundido cruzado (Crossfade)' : 'Shaded amber = Crossfade'}</span>
+                <span>• ${es ? 'Panel derecho = Lupa de Costura Paso por Cero (&plusmn;64 smp)' : 'Right pane = Zero-Crossing Seam Magnifier (&plusmn;64 smp)'}</span>
+                <span>• ${es ? 'Teclado: ←/→ L-START · Alt+←/→ L-END · Espacio reproducir' : 'Keys: ←/→ L-START · Alt+←/→ L-END · Space play'}</span>
               </div>
             </div>
 
             <!-- Parameters Card -->
-            <div class="loop-controls-card">
+            <div class="nmm-audio-controls-card">
               <div class="loop-controls-grid">
                 <!-- 1. Loop Mode -->
                 <div class="form-group">
-                  <label for="sel-loop-modal-mode">LOOP MODE</label>
+                  <label for="sel-loop-modal-mode">${es ? 'MODO DE BUCLE' : 'LOOP MODE'}</label>
                   <select id="sel-loop-modal-mode" class="form-control">
-                    <option value="no_loop" ${d?.loopMode === 'no_loop' ? 'selected' : ''}>One-Shot (No Loop)</option>
-                    <option value="loop_continuous" ${d?.loopMode === 'loop_continuous' ? 'selected' : ''}>Continuous Forward Loop</option>
-                    <option value="ping_pong" ${d?.loopMode === 'ping_pong' ? 'selected' : ''}>Ping-Pong (⇄ Alternate)</option>
-                    <option value="loop_sustain" ${d?.loopMode === 'loop_sustain' ? 'selected' : ''}>Sustain Loop</option>
+                    <option value="no_loop" ${d?.loopMode === 'no_loop' ? 'selected' : ''}>${es ? 'One-Shot (Sin bucle)' : 'One-Shot (No Loop)'}</option>
+                    <option value="loop_continuous" ${d?.loopMode === 'loop_continuous' ? 'selected' : ''}>${es ? 'Bucle Continuo Adelante' : 'Continuous Forward Loop'}</option>
+                    <option value="ping_pong" ${d?.loopMode === 'ping_pong' ? 'selected' : ''}>${es ? 'Ping-Pong (⇄ Alterno)' : 'Ping-Pong (⇄ Alternate)'}</option>
+                    <option value="loop_sustain" ${d?.loopMode === 'loop_sustain' ? 'selected' : ''}>${es ? 'Bucle de Sostenido' : 'Sustain Loop'}</option>
                   </select>
                 </div>
 
@@ -321,24 +336,24 @@ export class LoopEditorModal {
                 <div class="form-group ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
                   <div class="label-with-val">
                     <label for="inp-loop-modal-start">
-                      LOOP START (FRAMES)
+                      ${es ? 'INICIO DE BUCLE (FRAMES)' : 'LOOP START (FRAMES)'}
                       ${d?.loopMode === 'no_loop' ? '<span class="cond-reason-badge">ONE-SHOT</span>' : ''}
                     </label>
                     <span class="val-pill" id="lbl-loop-start-sec">${((d?.loopStart ?? 0) / (d?.sampleRate ?? 44100)).toFixed(3)}s</span>
                   </div>
-                  <input type="number" id="inp-loop-modal-start" class="form-control font-mono" min="0" max="${Math.max(0, (d?.totalFrames ?? 1) - 2)}" value="${d?.loopStart ?? 0}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar puntos de bucle"' : ''} />
+                  <input type="number" id="inp-loop-modal-start" class="form-control font-mono" min="0" max="${Math.max(0, (d?.totalFrames ?? 1) - 2)}" value="${d?.loopStart ?? 0}" ${d?.loopMode === 'no_loop' ? `disabled title="${es ? 'Selecciona un modo de bucle activo para editar puntos de bucle' : 'Select an active Loop Mode to edit loop points'}"` : ''} />
                 </div>
 
                 <!-- 3. Loop End -->
                 <div class="form-group ${d?.loopMode === 'no_loop' ? 'is-conditioned-disabled' : ''}">
                   <div class="label-with-val">
                     <label for="inp-loop-modal-end">
-                      LOOP END (FRAMES)
+                      ${es ? 'FIN DE BUCLE (FRAMES)' : 'LOOP END (FRAMES)'}
                       ${d?.loopMode === 'no_loop' ? '<span class="cond-reason-badge">ONE-SHOT</span>' : ''}
                     </label>
                     <span class="val-pill" id="lbl-loop-end-sec">${((d?.loopEnd ?? 0) / (d?.sampleRate ?? 44100)).toFixed(3)}s</span>
                   </div>
-                  <input type="number" id="inp-loop-modal-end" class="form-control font-mono" min="1" max="${d?.totalFrames ?? 1}" value="${d?.loopEnd ?? 1}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar puntos de bucle"' : ''} />
+                  <input type="number" id="inp-loop-modal-end" class="form-control font-mono" min="1" max="${d?.totalFrames ?? 1}" value="${d?.loopEnd ?? 1}" ${d?.loopMode === 'no_loop' ? `disabled title="${es ? 'Selecciona un modo de bucle activo para editar puntos de bucle' : 'Select an active Loop Mode to edit loop points'}"` : ''} />
                 </div>
 
                 <!-- 4. Crossfade Duration -->
@@ -350,7 +365,7 @@ export class LoopEditorModal {
                     </label>
                     <span class="val-pill" id="lbl-loop-xfade-val">${d?.loopCrossfadeMs ?? 20} ms</span>
                   </div>
-                  <input type="range" id="inp-loop-modal-xfade" class="form-range" min="0" max="500" value="${d?.loopCrossfadeMs ?? 20}" ${d?.loopMode === 'no_loop' ? 'disabled title="Selecciona un Loop Mode activo para editar el crossfade"' : ''} />
+                  <input type="range" id="inp-loop-modal-xfade" class="form-range" min="0" max="500" value="${d?.loopCrossfadeMs ?? 20}" ${d?.loopMode === 'no_loop' ? `disabled title="${es ? 'Selecciona un modo de bucle activo para editar el crossfade' : 'Select an active Loop Mode to edit crossfade'}"` : ''} />
                 </div>
               </div>
 
@@ -363,23 +378,23 @@ export class LoopEditorModal {
                     </button>
 
                     <div class="loop-algo-group">
-                      <label for="sel-loop-algo-picker">ALGORITHM:</label>
+                      <label for="sel-loop-algo-picker">${es ? 'ALGORITMO:' : 'ALGORITHM:'}</label>
                       <select id="sel-loop-algo-picker" class="form-control form-control-sm">
-                        <option value="pitch_periodic" ${this.selectedAlgo === 'pitch_periodic' ? 'selected' : ''}>F0 Period-Lock (Autocorr)</option>
-                        <option value="ncc_zc" ${this.selectedAlgo === 'ncc_zc' ? 'selected' : ''}>Normalized Cross-Correlation (NCC)</option>
-                        <option value="min_seam_energy" ${this.selectedAlgo === 'min_seam_energy' ? 'selected' : ''}>Minimum Seam Discontinuity</option>
-                        <option value="equal_power_xfade" ${this.selectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>Equal-Power Crossfade</option>
+                        <option value="pitch_periodic" ${this.selectedAlgo === 'pitch_periodic' ? 'selected' : ''}>${es ? 'Bloqueo de Período F0 (Autocorr)' : 'F0 Period-Lock (Autocorr)'}</option>
+                        <option value="ncc_zc" ${this.selectedAlgo === 'ncc_zc' ? 'selected' : ''}>${es ? 'Correlación Cruzada Normalizada (NCC)' : 'Normalized Cross-Correlation (NCC)'}</option>
+                        <option value="min_seam_energy" ${this.selectedAlgo === 'min_seam_energy' ? 'selected' : ''}>${es ? 'Mínima Discontinuidad de Costura' : 'Minimum Seam Discontinuity'}</option>
+                        <option value="equal_power_xfade" ${this.selectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>${es ? 'Crossfade de Igual Potencia' : 'Equal-Power Crossfade'}</option>
                       </select>
-                      <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" title="Automatically find optimal click-free loop points">
-                        ${ICONS.cpu} Run Auto-Loop
+                      <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" title="${es ? 'Buscar automáticamente puntos de bucle óptimos sin clics' : 'Automatically find optimal click-free loop points'}">
+                        ${ICONS.cpu} ${es ? 'Ejecutar Auto-Loop' : 'Run Auto-Loop'}
                       </button>
                     </div>
                   </div>
                 </fieldset>
 
                 <div class="loop-action-bar-right">
-                  <button type="button" class="btn btn-sm btn-accent" id="btn-loop-audition-play" title="Audition sample in continuous hardware loop">
-                    ${this.context.isAuditionPlaying?.() ? `■ Stop Audition` : `${ICONS.play} Play Loop`}
+                  <button type="button" class="btn btn-sm btn-accent" id="btn-loop-audition-play" title="${es ? 'Escuchar muestra en bucle continuo' : 'Audition sample in continuous hardware loop'}">
+                    ${this.context.isAuditionPlaying?.() ? (es ? `■ Detener Audición` : `■ Stop Audition`) : `${ICONS.play} ${es ? 'Reproducir Bucle' : 'Play Loop'}`}
                   </button>
                 </div>
               </div>
@@ -390,13 +405,13 @@ export class LoopEditorModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <button type="button" class="btn btn-ghost" id="btn-loop-modal-discard">Discard &amp; Close</button>
+            <button type="button" class="btn btn-ghost" id="btn-loop-modal-discard">${es ? 'Descartar y Cerrar' : 'Discard &amp; Close'}</button>
           </div>
           <div class="footer-right">
             ${
               hasAudio
                 ? `<button type="button" class="btn btn-primary" id="btn-loop-modal-apply">
-                    ${ICONS.check} Apply Loop Points
+                    ${ICONS.check} ${es ? 'Aplicar Puntos de Bucle' : 'Apply Loop Points'}
                   </button>`
                 : ''
             }
@@ -732,6 +747,41 @@ export class LoopEditorModal {
       },
       { passive: false }
     );
+
+    // Keyboard navigation on Loop Editor canvas
+    canvas.addEventListener('keydown', (e: KeyboardEvent) => {
+      const minGap = Math.max(16, Math.round(d.sampleRate * 0.005));
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const step = (e.shiftKey ? 100 : 1) * dir;
+        if (e.altKey) {
+          let f = clamp(d.loopEnd + step, d.loopStart + minGap, d.totalFrames);
+          if (this.snapZeroCrossing && Math.abs(step) >= 10) {
+            f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), d.loopStart + minGap, d.totalFrames);
+          }
+          d.loopEnd = f;
+        } else {
+          let f = clamp(d.loopStart + step, 0, Math.max(0, d.loopEnd - minGap));
+          if (this.snapZeroCrossing && Math.abs(step) >= 10) {
+            f = clamp(snapFrameToRisingZeroCrossing(d.monoPcm, f, 256), 0, Math.max(0, d.loopEnd - minGap));
+          }
+          d.loopStart = f;
+        }
+        this.syncInputs();
+        this.notifyLiveUpdate();
+        this.drawCanvas();
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        this.backdropEl?.querySelector<HTMLButtonElement>('#btn-loop-audition-play')?.click();
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        this.backdropEl?.querySelector<HTMLButtonElement>('#btn-loop-zoom-in')?.click();
+      } else if (e.key === '-') {
+        e.preventDefault();
+        this.backdropEl?.querySelector<HTMLButtonElement>('#btn-loop-zoom-out')?.click();
+      }
+    });
   }
 
   private syncInputs(): void {

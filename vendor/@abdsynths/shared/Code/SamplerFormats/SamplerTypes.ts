@@ -237,8 +237,6 @@ export interface CustomMetadataTag {
 /** Comprehensive metadata specification for Extended Mode & ABDAxionikVS */
 export interface ExtendedModelMetadata {
   category?: string;
-  /** Broad instrument family used for catalog grouping ("Strings", "Drums & Percussion", ...). */
-  instrumentFamily?: string;
   author?: string;
   vendor?: string;
   version?: string;

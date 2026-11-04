@@ -126,9 +126,8 @@
   background: var(--color-panel-surface);
 }
 
-.badge-ai-on,
-.byok-status-pill.is-active {
-  background: rgba(46, 204, 113, 0.15);
+.badge-ai-on {
+  background: var(--color-success-dim);
   color: var(--color-success);
   border: 1px solid var(--color-success);
 }
@@ -702,20 +701,6 @@
   justify-content: space-between;
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--color-panel-border);
-}
-
-.byok-status-pill {
-  font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-}
-
-
-.byok-status-pill.is-inactive {
-  background: var(--color-panel-surface);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-panel-border);
 }
 
 .byok-field-group,

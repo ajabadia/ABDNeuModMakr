@@ -157,6 +157,7 @@ export function autoMapSampleFilename(
   let highVel = config?.defaultHighVel ?? 127;
 
   // Check explicit velocity range (e.g. 1-64, vel01-vel64, v1-v64)
+  const velRangeMatch = cleanBase.match(/(?:vel|v)?(\d{1,3})[-_](\d{1,3})/i);
   let handledVel = false;
 
   // Check dynamic tokens: pp, p, mp, mf, f, ff

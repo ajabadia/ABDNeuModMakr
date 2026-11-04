@@ -69,7 +69,6 @@ export * from './VirtualZipFs.ts';
 export * from './MultiAssetDiscovery.ts';
 export * from './rawSamplerTypes.ts';
 export * from './rawSamplerPreflight.ts';
-export * from './PresetIdentity.ts';
 export * from './soundfont2Writer.ts';
 export * from './sampleChainWriter.ts';
 export * from './RawSamplerExporter.ts';

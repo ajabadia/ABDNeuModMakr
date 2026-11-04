@@ -294,4 +294,83 @@ fieldset.conditioned-fieldset:disabled {
   color: var(--color-accent);
 }
 
+/* ── Fase 38: Accesibilidad (a11y) — Lector de pantalla, Foco Visible y Movimiento Reducido ── */
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+.ndb-card:focus-visible,
+.ribbon-zone-block:focus-visible,
+.nmm-as-cell:focus-visible,
+.raw-format-btn:focus-visible,
+.drawer-tab-pill:focus-visible,
+.drawer-subtab-pill:focus-visible,
+.model-tab-btn:focus-visible,
+.primary-tab-btn:focus-visible,
+.nmm-dropzone:focus-visible,
+.nmm-batch-dropzone:focus-visible,
+.uimport-dropzone:focus-visible,
+.hud-coverage-pill:focus-visible,
+.hud-ai-pill:focus-visible,
+.hud-card:focus-visible,
+.stage-opt:focus-visible,
+.settings-skin-opt:focus-visible,
+.settings-mode-opt:focus-visible,
+.btn-style-pill:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px;
+}
+
+.input-with-note:focus-within,
+.input-with-prefix:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-dim);
+}
+
+.input-with-note input:focus-visible,
+.input-with-prefix input:focus-visible {
+  outline: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .hud-ai-pill.is-ready svg,
+  .hud-card-ai.is-ready .hud-icon svg,
+  .ai-pill.is-ready,
+  .neural-pulse-spinner,
+  .nmm-dropzone.is-drag-over,
+  .uimport-dropzone.is-drag-over,
+  .nmm-recorder-rec-dot.is-recording {
+    animation: none !important;
+  }
+}
+
+
 

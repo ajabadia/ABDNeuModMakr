@@ -23,14 +23,42 @@ function ensureStack(): HTMLElement {
   return stack;
 }
 
+/**
+ * Announces asynchronous operation status (batch progress, stem separation, BWE, errors)
+ * to screen readers via a persistent visually-hidden live region.
+ */
+export function announceToScreenReader(
+  message: string,
+  priority: 'polite' | 'assertive' = 'polite'
+): void {
+  if (typeof document === 'undefined' || !message.trim()) return;
+  const regionId = `a11y-live-${priority}`;
+  let region = document.getElementById(regionId);
+  if (!region) {
+    region = document.createElement('div');
+    region.id = regionId;
+    region.className = 'sr-only';
+    region.setAttribute('aria-live', priority);
+    region.setAttribute('aria-atomic', 'true');
+    region.setAttribute('role', priority === 'assertive' ? 'alert' : 'status');
+    document.body.appendChild(region);
+  }
+  region.textContent = '';
+  window.setTimeout(() => {
+    if (region) region.textContent = message;
+  }, 20);
+}
+
 export function toast(message: string, kind: ToastKind = 'info'): void {
   if (typeof document === 'undefined') return;
   const stack = ensureStack();
   const el = document.createElement('div');
   el.className = `toast toast-${kind}`;
+  el.setAttribute('role', kind === 'error' || kind === 'warning' ? 'alert' : 'status');
   el.textContent = message;
   el.addEventListener('click', () => el.remove());
   stack.appendChild(el);
+  announceToScreenReader(message, kind === 'error' || kind === 'warning' ? 'assertive' : 'polite');
   window.setTimeout(() => el.remove(), TOAST_TTL_MS);
 }
 
@@ -52,14 +80,14 @@ export function confirmDialog(message: string, opts: ConfirmOptions = {}): Promi
     const backdrop = document.createElement('div');
     backdrop.className = 'confirm-backdrop';
     backdrop.innerHTML = `
-      <div class="confirm-box nmm-modal-m" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="confirm-box nmm-modal-m" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.alert}</span>
-            <h2 class="confirm-title-text"></h2>
+            <h2 id="confirm-title" class="confirm-title-text"></h2>
           </div>
         </div>
-        <p class="confirm-msg"></p>
+        <p id="confirm-desc" class="confirm-msg"></p>
         <footer class="nmm-modal-footer">
           <div class="footer-left"></div>
           <div class="footer-right">
@@ -114,16 +142,16 @@ export function promptDialog(message: string, defaultValue = '', opts: PromptOpt
     const backdrop = document.createElement('div');
     backdrop.className = 'confirm-backdrop';
     backdrop.innerHTML = `
-      <div class="confirm-box nmm-modal-m" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+      <div class="confirm-box nmm-modal-m" role="dialog" aria-modal="true" aria-labelledby="prompt-title" aria-describedby="prompt-desc">
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.edit ?? ''}</span>
-            <h2 class="prompt-title-text"></h2>
+            <h2 id="prompt-title" class="prompt-title-text"></h2>
           </div>
         </div>
         <div class="prompt-body">
-          <p class="prompt-msg"></p>
-          <input type="text" class="form-control prompt-input" />
+          <p id="prompt-desc" class="prompt-msg"></p>
+          <input type="text" class="form-control prompt-input" aria-labelledby="prompt-title" aria-describedby="prompt-desc" />
         </div>
         <footer class="nmm-modal-footer">
           <div class="footer-left"></div>

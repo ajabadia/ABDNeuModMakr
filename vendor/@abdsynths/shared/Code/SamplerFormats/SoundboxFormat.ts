@@ -1,4 +1,3 @@
-import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Audiomodern Soundbox Importer & Exporter
 //
@@ -23,13 +22,13 @@ import { presetIdentity } from './PresetIdentity.ts';
 //       - samples/*.wav or *.flac : Sample audio pool
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { parseZipArchive } from '../NeuronFormats/ZipArchive.ts';
+import { parseZipArchive, createZipArchive } from '../NeuronFormats/ZipArchive.ts';
+import type { LoopMode } from './SamplerTypes.ts';
 import type {
   ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export interface SoundboxSound {
   file: string;
@@ -156,7 +155,7 @@ export function parseSoundboxXml(xmlText: string): SoundboxPreset {
  * Lists all presets in a Soundbox .sbpack ZIP package.
  */
 export function listSoundboxPackPresets(buffer: ArrayBuffer | Uint8Array): ArchiveSamplerProgramInfo[] {
-  const entries = parseZipArchive(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer));
+  const entries = parseZipArchive(buffer);
   const results: ArchiveSamplerProgramInfo[] = [];
 
   for (const entry of entries) {
@@ -166,9 +165,8 @@ export function listSoundboxPackPresets(buffer: ArrayBuffer | Uint8Array): Archi
         const parsed = parseSoundboxXml(xmlText);
         results.push({
           id: entry.path,
-          index: results.length,
           name: parsed.name,
-          format: 'soundbox',
+          format: 'soundbox' as any,
           entryPath: entry.path,
           sampleCount: parsed.layers.reduce((acc, l) => acc + l.sounds.length, 0),
         });
@@ -199,15 +197,17 @@ export function parseSoundboxPack(
   const entries = parseZipArchive(bytes);
   const audioMap = new Map<string, ArrayBuffer>();
   let chosenXml: string | null = null;
+  let chosenXmlPath = '';
 
   for (const entry of entries) {
     const pLower = entry.path.toLowerCase();
     if (pLower.endsWith('.wav') || pLower.endsWith('.flac')) {
       const baseName = entry.path.split('/').pop() || entry.path;
-      audioMap.set(baseName, toArrayBuffer(entry.data));
+      audioMap.set(baseName, entry.data.buffer.slice(entry.data.byteOffset, entry.data.byteOffset + entry.data.byteLength));
     } else if (pLower.endsWith('.xml') && !entry.path.startsWith('__MACOSX')) {
       if (!chosenXml || (targetPresetPath && entry.path === targetPresetPath)) {
         chosenXml = new TextDecoder('utf-8', { fatal: false }).decode(entry.data);
+        chosenXmlPath = entry.path;
       }
     }
   }
@@ -241,20 +241,18 @@ export function convertSoundboxToPreset(
       }
 
       regions.push({
-        id: `soundbox_${regions.length + 1}`,
-        samplePath: cleanFileName,
         sampleName: cleanFileName,
         rootKey: snd.rootKey,
         lowKey: snd.lowKey,
         highKey: snd.highKey,
-        lowVel: snd.lowVelocity,
-        highVel: snd.highVelocity,
-        detuneCents: layer.tuningCents + snd.fineTuneCents,
-        volumeDb: layer.volumeDb + snd.volumeDb,
+        lowVelocity: snd.lowVelocity,
+        highVelocity: snd.highVelocity,
+        fineTuneCents: layer.tuningCents + snd.fineTuneCents,
+        gainDb: layer.volumeDb + snd.volumeDb,
         pan: (layer.pan + snd.pan) / 100.0,
-        loopMode: snd.loopMode === 1 ? 'loop_continuous' : snd.loopMode === 2 ? 'ping_pong' : 'no_loop',
-        loopStart: snd.loopStart ?? 0,
-        loopEnd: snd.loopEnd ?? 0,
+        loopMode: snd.loopMode === 1 ? 'loop_continuous' : snd.loopMode === 2 ? 'loop_bidirectional' : 'no_loop',
+        loopStart: snd.loopStart,
+        loopEnd: snd.loopEnd,
       });
     }
   }
@@ -266,7 +264,6 @@ export function convertSoundboxToPreset(
     audioBuffers,
     isMultiLayer: sbPreset.layers.length > 1,
     sourceFormat: 'soundbox',
-    ...presetIdentity('soundbox', 'Audiomodern Soundbox', sbPreset.name),
   };
 }
 
@@ -286,8 +283,8 @@ export function generateSoundboxXml(
   xml += `        <sounds>\n`;
 
   for (const r of regions) {
-    const loopVal = r.loopMode === 'loop_continuous' ? 1 : r.loopMode === 'ping_pong' ? 2 : 0;
-    xml += `          <sound file="${r.sampleName}" root="${r.rootKey}" lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVel}" highVel="${r.highVel}" loop="${loopVal}" loopStart="${r.loopStart || 0}" loopEnd="${r.loopEnd || 0}" volume="${r.volumeDb || 0}" pan="${Math.round((r.pan || 0) * 100)}" />\n`;
+    const loopVal = r.loopMode === 'loop_continuous' ? 1 : r.loopMode === 'loop_bidirectional' ? 2 : 0;
+    xml += `          <sound file="${r.sampleName}" root="${r.rootKey}" lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVelocity}" highVel="${r.highVelocity}" loop="${loopVal}" loopStart="${r.loopStart || 0}" loopEnd="${r.loopEnd || 0}" volume="${r.gainDb || 0}" pan="${Math.round((r.pan || 0) * 100)}" />\n`;
   }
 
   xml += `        </sounds>\n`;

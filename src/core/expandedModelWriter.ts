@@ -15,16 +15,19 @@
 
 import {
   AXIONIK_EXPANDED_MODEL_CONTRACT_VERSION,
+  deriveRequiredCaps,
   isAxionikExpandedModel,
   isAxionikEngineCap,
   isAxionikEngineGeneration,
   meetsEngineCaps,
+  preflightExpandedModelForAxionik,
   validateModelFormatForMode,
   type AxionikAiStep,
   type AxionikArticulation,
   type AxionikDahdsr,
   type AxionikEngineCap,
   type AxionikEngineGeneration,
+  type AxionikEngineProfile,
   type AxionikExpandedModel,
   type AxionikFilterBlock,
   type AxionikFxBlock,
@@ -39,7 +42,16 @@ import {
   type AxionikSpectralModel,
   type AxionikSurfaceTopology,
   type AxionikUnifiedSpectralSurface,
+  type ExpandedAxionikPreflightReport,
+  type RequiredCapsSource,
 } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+export {
+  deriveRequiredCaps,
+  preflightExpandedModelForAxionik,
+  type AxionikEngineProfile,
+  type ExpandedAxionikPreflightReport,
+  type RequiredCapsSource,
+};
 import { buildUnifiedSpectralSurface } from './dsp/UnifiedSpectralSurface.ts';
 import type {
   AcousticDescriptors,
@@ -610,34 +622,6 @@ function mapArticulation(
   return out;
 }
 
-export interface RequiredCapsSource {
-  partialCount: number;
-  hasPitchFormantSplit: boolean;
-  morphDims: 0 | 2 | 3;
-  hasLatentRef: boolean;
-  maxChannels: number;
-  hasHybridTransient: boolean;
-  hasNonLegacyFilter: boolean;
-  hasFx: boolean;
-  hasAi: boolean;
-}
-
-/** Derives the minimal `requiredCaps` set from document content. */
-export function deriveRequiredCaps(src: RequiredCapsSource): AxionikEngineCap[] {
-  const caps: AxionikEngineCap[] = [];
-  if (src.partialCount > 64) caps.push('hd-spectral');
-  if (src.hasPitchFormantSplit) caps.push('formant-pitch-split');
-  if (src.morphDims === 2) caps.push('morph-2d');
-  if (src.morphDims === 3) caps.push('morph-3d');
-  if (src.hasLatentRef) caps.push('latent-ref');
-  if (src.maxChannels > 2) caps.push('surround');
-  if (src.hasHybridTransient) caps.push('hybrid-transient');
-  if (src.hasNonLegacyFilter) caps.push('filter-v2');
-  if (src.hasFx) caps.push('fx-v2');
-  if (src.hasAi) caps.push('ai-provenance');
-  return caps;
-}
-
 /**
  * Builds a loadable Axionik Expanded Model v2 document from capsule data.
  * Throws on an empty spectral source; every other section degrades to a
@@ -887,227 +871,4 @@ export function buildAxionikExpandedModel(
 /** Serializes the document exactly as stored in the capsule (`JSON`, 2 spaces). */
 export function serializeExpandedModel(doc: AxionikExpandedModel): string {
   return JSON.stringify(doc, null, 2);
-}
-
-// ── Preflight against an Axionik engine ────────────────────
-
-export interface AxionikEngineProfile {
-  /** Engine generation string; unknown generations fail closed. */
-  generation: string;
-  /** Capability flags the engine announces (discovery, never assumption). */
-  caps: readonly string[];
-  /** Maximum spectral partials the engine renders (HD truncation otherwise). */
-  maxPartials?: number;
-  /** Maximum spectral frames the engine renders. */
-  maxFrames?: number;
-  /**
-   * Runtime spatial output mode (Gate 2026-11-02):
-   * - `discrete-quad`: host opened a multichannel 4.0/5.1 bus
-   * - `pseudo-surround-stereo`: stereo 2.0 host or browser WASM
-   */
-  spatialOutputMode?: AxionikSpatialOutputMode;
-}
-
-export interface ExpandedAxionikPreflightReport {
-  ok: boolean;
-  schemaVersion: string;
-  engineMin: string;
-  requiredCaps: string[];
-  missingCaps: string[];
-  errors: string[];
-  warnings: string[];
-  /** Non-silent degradations the engine MUST apply to load the document. */
-  adaptations: string[];
-}
-
-const ENGINE_GENERATION_RANK: Record<string, number> = {
-  classic: 0,
-  plus: 1,
-  'classic-enhanced': 1,
-  expanded: 2,
-  'expanded-v1': 2,
-};
-
-/**
- * Preflights a v2 document (or its JSON text) against an Axionik engine
- * profile. Fatal (`ok: false`): unparsable JSON, non-v2 document, engine
- * older than `engineMin`, or any missing `requiredCaps` — the load is then
- * blocked, never silently corrupted. Everything else is a warning or an
- * explicit adaptation the engine must apply (bypass unknown filter/FX
- * types, skip unknown resynator models, truncate HD spectra).
- */
-export function preflightExpandedModelForAxionik(
-  doc: AxionikExpandedModel | string,
-  engine: AxionikEngineProfile
-): ExpandedAxionikPreflightReport {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const adaptations: string[] = [];
-  let parsed: unknown = doc;
-  if (typeof doc === 'string') {
-    try {
-      parsed = JSON.parse(doc) as unknown;
-    } catch {
-      return {
-        ok: false,
-        schemaVersion: 'unknown',
-        engineMin: 'unknown',
-        requiredCaps: [],
-        missingCaps: [],
-        errors: ['invalid-json: the document is not parseable JSON'],
-        warnings,
-        adaptations,
-      };
-    }
-  }
-  if (!isAxionikExpandedModel(parsed)) {
-    return {
-      ok: false,
-      schemaVersion: 'unknown',
-      engineMin: 'unknown',
-      requiredCaps: [],
-      missingCaps: [],
-      errors: [
-        'not-expanded-model: document fails the v2 structural guard',
-      ],
-      warnings,
-      adaptations,
-    };
-  }
-  const model = parsed;
-  const requiredCaps = model.identity.requiredCaps.filter(isAxionikEngineCap);
-
-  const needRank = ENGINE_GENERATION_RANK[model.identity.engineMin];
-  const haveRank = ENGINE_GENERATION_RANK[engine.generation];
-  if (needRank === undefined) {
-    errors.push(
-      `unknown-engineMin: '${model.identity.engineMin}' is not a known generation`
-    );
-  } else if (haveRank === undefined) {
-    errors.push(
-      `unknown-engine: generation '${engine.generation}' is not a known Axionik engine`
-    );
-  } else {
-    if (haveRank < needRank) {
-      errors.push(
-        `engine-too-old: document requires '${model.identity.engineMin}' but engine is '${engine.generation}'`
-      );
-    }
-    if (
-      isAxionikEngineGeneration(engine.generation) &&
-      isAxionikEngineGeneration(model.identity.engineMin)
-    ) {
-      const modeCheck = validateModelFormatForMode(
-        engine.generation,
-        model.identity.engineMin
-      );
-      if (!modeCheck.allowed && modeCheck.reason) {
-        errors.push(modeCheck.reason);
-      }
-    }
-  }
-
-  const missingCaps = requiredCaps.filter((c) => !engine.caps.includes(c));
-  if (!meetsEngineCaps(engine.caps, requiredCaps)) {
-    errors.push(
-      `missing-caps: engine lacks [${missingCaps.join(', ')}]`
-    );
-  }
-
-  // Consistency: content that SHOULD have raised a cap but didn't.
-  const implied: AxionikEngineCap[] = deriveRequiredCaps({
-    partialCount: model.spectral.partialCount,
-    hasPitchFormantSplit:
-      (model.spectral.pitchTrackHz?.length ?? 0) > 0 ||
-      (model.spectral.formantProfileSt?.length ?? 0) > 0,
-    morphDims: model.morphSpace?.dims ?? 0,
-    hasLatentRef:
-      model.morphSpace?.latentRef !== undefined,
-    maxChannels: model.regions.reduce(
-      (m, r) => Math.max(m, r.channels ?? 1),
-      1
-    ),
-    hasHybridTransient: requiredCaps.includes('hybrid-transient'),
-    hasNonLegacyFilter: model.articulation.filters.some(
-      (f) => f.type !== 'legacy-neuron'
-    ),
-    hasFx: model.articulation.fxChain.length > 0,
-    hasAi: (model.aiChain?.length ?? 0) > 0,
-  });
-  for (const cap of implied) {
-    if (!requiredCaps.includes(cap)) {
-      warnings.push(
-        `caps-incomplete: document uses '${cap}' content but does not declare it in requiredCaps`
-      );
-    }
-  }
-
-  // Degradable mismatches: explicit adaptations, never silent.
-  for (const res of model.resynators) {
-    if (res.model !== 'resonator-hd' && res.model !== 'resonator-classic') {
-      warnings.push(
-        `unknown-resynator: '${res.id}' model '${res.model}' has no local implementation`
-      );
-      adaptations.push(
-        `skip resynator '${res.id}' (unknown model '${res.model}')`
-      );
-    }
-  }
-  for (const f of model.articulation.filters) {
-    if (f.type !== 'legacy-neuron' && !f.bypass) {
-      adaptations.push(
-        `bypass filter '${f.id}' of unknown type '${f.type}' when the engine cannot render it`
-      );
-    }
-  }
-  for (const fx of model.articulation.fxChain) {
-    adaptations.push(
-      `bypass FX '${fx.id}' of type '${fx.type}' when the engine cannot render it`
-    );
-  }
-  if (
-    typeof engine.maxPartials === 'number' &&
-    model.spectral.partialCount > engine.maxPartials
-  ) {
-    warnings.push(
-      `hd-truncation: document has ${model.spectral.partialCount} partials but engine renders ${engine.maxPartials}`
-    );
-    adaptations.push(
-      `truncate spectrum to ${engine.maxPartials} partials (lossy: keep lowest partials)`
-    );
-  }
-  if (
-    typeof engine.maxFrames === 'number' &&
-    model.spectral.frameCount > engine.maxFrames
-  ) {
-    warnings.push(
-      `frame-truncation: document has ${model.spectral.frameCount} frames but engine renders ${engine.maxFrames}`
-    );
-    adaptations.push(
-      `truncate spectrum to ${engine.maxFrames} frames (lossy: keep earliest frames)`
-    );
-  }
-  const docMaxChannels = model.regions.reduce(
-    (m, r) => Math.max(m, r.channels ?? 1),
-    1
-  );
-  if (
-    docMaxChannels > 2 &&
-    engine.spatialOutputMode === 'pseudo-surround-stereo'
-  ) {
-    adaptations.push(
-      `spatial-downmix: render ${docMaxChannels}.0 Scape/Sphere via stereo Pseudo-Surround downmixer`
-    );
-  }
-
-  return {
-    ok: errors.length === 0,
-    schemaVersion: model.schemaVersion,
-    engineMin: model.identity.engineMin,
-    requiredCaps: [...requiredCaps],
-    missingCaps,
-    errors,
-    warnings,
-    adaptations,
-  };
 }

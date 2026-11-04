@@ -12,6 +12,7 @@ import {
 } from '../core/extendedAdapter';
 import { midiToNoteName } from './ZoneRibbon';
 import { toMidiVelocity, type RowAuditionSpan } from '../core/noteMapping';
+import { onAppLocaleChange, tApp } from '../core/i18n';
 
 export interface KeyboardStripHandlers {
   /** `velocity` is MIDI 1..127 (pointer Y on the key: top = soft, bottom = loud) */
@@ -34,6 +35,14 @@ export class KeyboardStrip {
     this.container = container;
     this.handlers = handlers;
     this.render();
+    onAppLocaleChange(() => {
+      const rangeLbl = this.container.querySelector('#kbd-range-label');
+      if (rangeLbl) rangeLbl.textContent = tApp('keyboardStrip.rangeLabel');
+      const downBtn = this.container.querySelector<HTMLElement>('#btn-oct-down');
+      if (downBtn) downBtn.title = tApp('keyboardStrip.octDownTitle');
+      const upBtn = this.container.querySelector<HTMLElement>('#btn-oct-up');
+      if (upBtn) upBtn.title = tApp('keyboardStrip.octUpTitle');
+    });
   }
 
   public setZones(
@@ -108,13 +117,13 @@ export class KeyboardStrip {
       <div class="keyboard-strip-container">
         <div class="keyboard-toolbar">
           <div class="keyboard-hud">
-            <span class="hud-label">KEYBED RANGE:</span>
+            <span class="hud-label" id="kbd-range-label">${tApp('keyboardStrip.rangeLabel')}</span>
             <span class="hud-value" id="kbd-range-text">${midiToNoteName(startNote)} (${startNote}) — ${midiToNoteName(startNote + keyCount - 1)} (${startNote + keyCount - 1})</span>
           </div>
           <div class="keyboard-octave-controls">
-            <button type="button" class="btn btn-xs" id="btn-oct-down" ${this.baseOctave <= 0 ? 'disabled' : ''}>OCT −</button>
+            <button type="button" class="btn btn-xs" id="btn-oct-down" title="${tApp('keyboardStrip.octDownTitle')}" ${this.baseOctave <= 0 ? 'disabled' : ''}>OCT −</button>
             <span class="octave-indicator" id="kbd-oct-indicator">OCT ${this.baseOctave}</span>
-            <button type="button" class="btn btn-xs" id="btn-oct-up" ${this.baseOctave >= 5 ? 'disabled' : ''}>OCT +</button>
+            <button type="button" class="btn btn-xs" id="btn-oct-up" title="${tApp('keyboardStrip.octUpTitle')}" ${this.baseOctave >= 5 ? 'disabled' : ''}>OCT +</button>
           </div>
         </div>
 

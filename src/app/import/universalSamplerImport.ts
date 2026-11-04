@@ -107,7 +107,7 @@ export async function importUniversalSamplerFiles(
             name: p.name,
             regionCount: p.regionCount,
             detail: p.detail,
-            folderPath: p.entryPath || p.id,
+            folderPath: p.id,
           })),
           onSelect: (chosen) => {
             void loadUniversalProgram(primarySampler, String(chosen.id), chosen.name);
@@ -147,7 +147,7 @@ export async function importUniversalSamplerFiles(
             name: sp.name,
             regionCount: sp.regionCount,
             detail: sp.detail ? `${uf.name} — ${sp.detail}` : uf.name,
-            folderPath: `${prefix}/${sp.entryPath || sp.id}`,
+            folderPath: `${prefix}/${sp.id}`,
           });
         }
       } else {

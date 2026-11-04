@@ -25,7 +25,6 @@
 import type { ExtendedRegion, SynthArticulationConfig, SampleLoopDescriptor } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export const WALDORF_QPAT_MAGIC = 3402932;
 export const WALDORF_HEADER_SIZE = 512;
@@ -45,7 +44,7 @@ export function isWaldorfQpatBuffer(buffer: ArrayBuffer): boolean {
 
 export function parseWaldorfSampleMapText(
   mapText: string,
-  _audioPool?: Map<string, ArrayBuffer>
+  audioPool?: Map<string, ArrayBuffer>
 ): ExtendedRegion[] {
   const regions: ExtendedRegion[] = [];
   const lines = mapText.split(/\r?\n/);
@@ -194,6 +193,8 @@ export function parseWaldorfQpat(
   const u8 = new Uint8Array(buffer);
   const decoder = new TextDecoder('ascii');
 
+  const layers = listWaldorfQpatLayers(buffer);
+  const targetLayer = layers.find((l) => l.layerIndex === selectedLayerIndex) || layers[0];
 
   // Read layer name
   let layerOffset = 0;
@@ -233,8 +234,6 @@ export function parseWaldorfQpat(
   const ampR = params.get('AmpRelease');
   if (ampA !== undefined && ampD !== undefined && ampS !== undefined && ampR !== undefined) {
     articulation.ampEnv = {
-      delaySec: 0,
-      holdSec: 0,
       attackSec: ampA,
       decaySec: ampD,
       sustainLevel: ampS,
@@ -249,10 +248,7 @@ export function parseWaldorfQpat(
       enabled: true,
       type: 'lpf',
       cutoffHz: cut,
-      resonanceDb: res ?? 0.0,
-      envToFilterCents: 0,
-      velToFilterCents: 0,
-      keytrackCents: 0,
+      resonance: res ?? 0.0,
       poles: 2,
     };
   }
@@ -389,7 +385,7 @@ export function importWaldorfQpatZip(
     } else if (low.endsWith('.wav') || low.endsWith('.flac')) {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 
@@ -399,7 +395,7 @@ export function importWaldorfQpatZip(
 
   const qpatBytes = extractZipEntry(zipBytes, qpatEntry);
   const parsed = parseWaldorfQpat(
-    toArrayBuffer(qpatBytes),
+    qpatBytes.buffer.slice(qpatBytes.byteOffset, qpatBytes.byteOffset + qpatBytes.byteLength),
     selectedLayerIndex,
     audioBuffers
   );

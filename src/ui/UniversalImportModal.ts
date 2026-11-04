@@ -12,6 +12,7 @@
 // with live adaptation options before injecting into session.
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import type { WorkingMode, Zone, ExtendedRegion } from '../core/types.ts';
 import {
   listZipSamplerPrograms,
@@ -81,6 +82,11 @@ export class UniversalImportModal {
 
   constructor(context: UniversalImportModalContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public open(): void {
@@ -130,6 +136,7 @@ export class UniversalImportModal {
       });
     }
 
+    const isEs = getAppLocale() === 'es';
     const currentMode = this.context.getCurrentWorkingMode();
     const activeGateModel =
       this.preflightReport && this.parsedPreset
@@ -145,10 +152,10 @@ export class UniversalImportModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.folder}</span>
-            <h2 id="universal-import-title">Universal Smart Import</h2>
+            <h2 id="universal-import-title">${isEs ? 'Importación Universal Inteligente' : 'Universal Smart Import'}</h2>
             <span class="panel-badge badge-ai-on">${escHtml(MUSICIAN_TERMS.preflightImport)}</span>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-uimport-close" aria-label="Close" ${this.isInspecting ? 'disabled' : ''}>
+          <button type="button" class="nmm-modal-close" id="btn-uimport-close" aria-label="${isEs ? 'Cerrar' : 'Close'}" ${this.isInspecting ? 'disabled' : ''}>
             ${ICONS.close}
           </button>
         </header>
@@ -160,7 +167,7 @@ export class UniversalImportModal {
             <div class="uimport-inspecting-state">
               <div class="neural-pulse-spinner">${ICONS.spinner}</div>
               <h3>${escHtml(MUSICIAN_TERMS.preflightImport)}…</h3>
-              <p>Analizando descriptores de zonas, capas de velocidad, cobertura de teclado y muestras de audio.</p>
+              <p>${isEs ? 'Analizando descriptores de zonas, capas de velocidad, cobertura de teclado y muestras de audio.' : 'Analyzing zone descriptors, velocity layers, keybed coverage, and audio samples.'}</p>
             </div>
           `
               : this.preflightReport && this.parsedPreset && activeGateModel
@@ -183,7 +190,7 @@ export class UniversalImportModal {
         <footer class="nmm-modal-footer">
           <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-uimport-cancel" ${this.isInspecting ? 'disabled' : ''}>
-            ${activeGateModel ? escHtml(activeGateModel.adjustLabel) : 'Cancelar'}
+            ${activeGateModel ? escHtml(activeGateModel.adjustLabel) : isEs ? 'Cancelar' : 'Cancel'}
           </button>
           ${
             this.preflightReport && (this.preflightReport.canImport || (this.preflightReport.isSliceChain && this.context.onOpenInAudioChopper))
@@ -192,7 +199,7 @@ export class UniversalImportModal {
               this.preflightReport.isSliceChain && this.context.onOpenInAudioChopper
                 ? `
               <button type="button" class="btn btn-secondary" id="btn-uimport-chopper">
-                ${ICONS.wave} Abrir en Audio Chopper
+                ${ICONS.wave} ${isEs ? 'Abrir en Audio Chopper' : 'Open in Audio Chopper'}
               </button>
             `
                 : ''
@@ -228,30 +235,31 @@ export class UniversalImportModal {
   }
 
   private renderDropZoneView(): string {
+    const isEs = getAppLocale() === 'es';
     return `
       <div class="uimport-dropzone-container">
         <div class="uimport-dropzone" id="uimport-dropzone" tabindex="0">
           <div class="dropzone-icon">${ICONS.folder}</div>
-          <h3 class="dropzone-title">Drag &amp; Drop Audio, Bank, Slice Files or Folders Here</h3>
+          <h3 class="dropzone-title">${isEs ? 'Arrastra y suelta audio, bancos, cortes o carpetas aquí' : 'Drag & Drop Audio, Bank, Slice Files or Folders Here'}</h3>
           <p class="dropzone-sub">
-            Supported formats: <strong>Carpetas completas (.model / librerías / audio)</strong> y archivos <strong>.model, .neuronikmodel, .nmmodel, .scape, .sphere, .sf2, .sfz, .dspreset, .nki, .vstpreset, .fxp, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .akp, .pgm, .set, .exb, .e4b, .esi, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
+            ${isEs ? 'Formatos admitidos: <strong>Carpetas completas (.model / librerías / audio)</strong> y archivos' : 'Supported formats: <strong>Full folders (.model / libraries / audio)</strong> and files'} <strong>.model, .neuronikmodel, .nmmodel, .scape, .sphere, .sf2, .sfz, .dspreset, .nki, .vstpreset, .fxp, .multisample, .adv, .exs, .talsmpl, .txprog, .kmp, .ksf, .dls, .akp, .pgm, .set, .exb, .e4b, .esi, .xpm, .xty, .xtd, .xpn, .iso, .img, .dsk, .out, .hda, .efe, .ede, .rx2, .rex, .rcy, .cue, .wav, .aif, .flac, .mp3, .ogg, .m4a, .opus, .caf, .ncw, .zip</strong>
           </p>
           <div class="dropzone-actions">
             <label class="btn btn-primary btn-browse-files" id="lbl-uimport-browse-files">
-              ${ICONS.folder} Browse File...
+              ${ICONS.folder} ${isEs ? 'Examinar Archivo...' : 'Browse File...'}
               <input type="file" id="uimport-file-input" class="is-hidden-file" accept=".model,.neuronikmodel,.nmmodel,.scape,.sphere,.nmpack,.script,.wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.sf2,.sfz,.nki,.vstpreset,.fxp,.dspreset,.multisample,.adv,.exs,.talsmpl,.txprog,.kmp,.ksf,.dls,.akp,.pgm,.set,.exb,.e4b,.esi,.krz,.k25,.k26,.x7u,.x8u,.x3a,.fzv,.fzf,.s3p,.sxt,.dwp,.xpm,.xty,.xtd,.xpn,.iso,.img,.dsk,.out,.hda,.efe,.ede,.rx2,.rex,.rcy,.cue,.zip" multiple />
             </label>
             <button type="button" class="btn btn-secondary btn-browse-folder" id="btn-uimport-browse-folder">
-              ${ICONS.folder} Browse Folder...
+              ${ICONS.folder} ${isEs ? 'Examinar Carpeta...' : 'Browse Folder...'}
             </button>
             <input type="file" id="uimport-folder-input" class="is-hidden-file" webkitdirectory directory multiple />
           </div>
         </div>
 
         <div class="uimport-supported-formats-strip">
-          <div class="fmt-chip"><strong>Multisample Banks &amp; Disks:</strong> Hartmann Neuron / Neuronik (.model / .neuronikmodel / .nmmodel / .scape / .sphere / NeuronDB .zip), Akai S1000/S3000 &amp; S5000/S6000/Z4/Z8 (.akp/.iso), E-mu (Emulator III / EOS E4 .e4b / Emulator X .exb), Roland (S-7xx / S-5xx / Zen-Core .svz), Ensoniq (EPS/ASR), Yamaha (A-Series / YSFC .x7u/.x8u/.x3a), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion (.vstpreset/.fxp), Bitwig, Akai MPC</div>
-          <div class="fmt-chip"><strong>Loops &amp; Slices:</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
-          <div class="fmt-chip"><strong>Raw Audio:</strong> WAV, AIFF/AIFC, FLAC, MP3, OGG, M4A/AAC, Opus, CAF, NCW (auto-mapped to zones or chopper)</div>
+          <div class="fmt-chip"><strong>${isEs ? 'Bancos Multimuestra y Discos:' : 'Multisample Banks & Disks:'}</strong> Hartmann Neuron / Neuronik (.model / .neuronikmodel / .nmmodel / .scape / .sphere / NeuronDB .zip), Akai S1000/S3000 &amp; S5000/S6000/Z4/Z8 (.akp/.iso), E-mu (Emulator III / EOS E4 .e4b / Emulator X .exb), Roland (S-7xx / S-5xx / Zen-Core .svz), Ensoniq (EPS/ASR), Yamaha (A-Series / YSFC .x7u/.x8u/.x3a), SoundFont 2, SFZ, Decent Sampler, Ableton .adv, Logic .exs, TAL .talsmpl, TX16Wx .txprog, Korg .KMP/.KSF, DLS, Kontakt XML, HALion (.vstpreset/.fxp), Bitwig, Akai MPC</div>
+          <div class="fmt-chip"><strong>${isEs ? 'Bucles y Cortes:' : 'Loops & Slices:'}</strong> ReCycle (REX/RX2), CUE Sheets, Octatrack/SP-404 Sample Chains</div>
+          <div class="fmt-chip"><strong>${isEs ? 'Audio Crudo:' : 'Raw Audio:'}</strong> WAV, AIFF/AIFC, FLAC, MP3, OGG, M4A/AAC, Opus, CAF, NCW (${isEs ? 'auto-mapeado a zonas o chopper' : 'auto-mapped to zones or chopper'})</div>
         </div>
       </div>
     `;
@@ -267,35 +275,36 @@ export class UniversalImportModal {
       switchToExtendedMode: this.optSwitchToExtended,
     })
   ): string {
+    const isEs = getAppLocale() === 'es';
     return `
       <div class="uimport-preflight-layout">
         <!-- Preset Header Summary Card -->
         <div class="uimport-summary-card">
           <div class="uimport-summary-meta">
-            <span class="uimport-fmt-badge">${escHtml(report.formatLabel)}</span>
+            <span class="nmm-status-pill is-accent">${escHtml(report.formatLabel)}</span>
             <h3 class="uimport-preset-title">${escHtml(report.presetName)}</h3>
-            <span class="uimport-model-slug">Target Model: <code>${escHtml(preset.modelName)}</code></span>
+            <span class="uimport-model-slug">${isEs ? 'Modelo Destino:' : 'Target Model:'} <code>${escHtml(preset.modelName)}</code></span>
           </div>
-          <div class="uimport-metrics-strip">
-            <div class="metric-pill">
-              <span class="metric-num">${report.totalRegions}</span>
-              <span class="metric-label">Zones</span>
+          <div class="nmm-metric-strip">
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-mono">${report.totalRegions}</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Zonas' : 'Zones'}</span>
             </div>
-            <div class="metric-pill">
-              <span class="metric-num">${report.keyRange.minKey}–${report.keyRange.maxKey}</span>
-              <span class="metric-label">Key Range</span>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-mono">${report.keyRange.minKey}–${report.keyRange.maxKey}</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Rango Teclas' : 'Key Range'}</span>
             </div>
-            <div class="metric-pill">
-              <span class="metric-num">${report.maxVelocityLayers}</span>
-              <span class="metric-label">Vel Layers</span>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-mono">${report.maxVelocityLayers}</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Capas Vel.' : 'Vel Layers'}</span>
             </div>
-            <div class="metric-pill">
-              <span class="metric-num">${report.totalAudioFiles}</span>
-              <span class="metric-label">Samples</span>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-mono">${report.totalAudioFiles}</span>
+              <span class="nmm-metric-lbl">${isEs ? 'Muestras' : 'Samples'}</span>
             </div>
-            <div class="metric-pill">
-              <span class="metric-num">Set #${preset.suggestedParameterSet}</span>
-              <span class="metric-label">${escHtml(preset.detectedCategory)}</span>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-val is-mono">Set #${preset.suggestedParameterSet}</span>
+              <span class="nmm-metric-lbl">${escHtml(preset.detectedCategory)}</span>
             </div>
           </div>
         </div>
@@ -305,29 +314,29 @@ export class UniversalImportModal {
 
         <!-- Interactive Adaptation Options -->
         <div class="uimport-options-card">
-          <h4 class="section-title">Ajustes de adaptación al importar</h4>
+          <h4 class="section-title">${isEs ? 'Ajustes de adaptación al importar' : 'Import adaptation settings'}</h4>
           <div class="uimport-checkbox-list">
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-auto-extend" ${this.optAutoExtend ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Extender automáticamente las zonas extremas hasta MIDI 0 y 127</strong>
-                <span>Estira los límites de la zona más grave y más aguda para cubrir todo el teclado sin huecos en la resíntesis.</span>
+                <strong>${isEs ? 'Extender automáticamente las zonas extremas hasta MIDI 0 y 127' : 'Automatically extend outer zones to MIDI 0 and 127'}</strong>
+                <span>${isEs ? 'Estira los límites de la zona más grave y más aguda para cubrir todo el teclado sin huecos en la resíntesis.' : 'Stretches lowest and highest zone boundaries to cover the full keyboard without gaps during resynthesis.'}</span>
               </div>
             </label>
 
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-adapt-vel" ${this.optAdaptVelocity ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Proyectar capas de velocidad al modelo Classic de 2 capas (Low 1..63, High 64..127)</strong>
-                <span>Pliega instrumentos multicapa en las muestras más suave y más fuerte con compensación automática de ganancia.</span>
+                <strong>${isEs ? 'Proyectar capas de velocidad al modelo Classic de 2 capas (Low 1..63, High 64..127)' : 'Project velocity layers to 2-layer Classic model (Low 1..63, High 64..127)'}</strong>
+                <span>${isEs ? 'Pliega instrumentos multicapa en las muestras más suave y más fuerte con compensación automática de ganancia.' : 'Folds multi-layer instruments into softest and loudest samples with automatic gain compensation.'}</span>
               </div>
             </label>
 
             <label class="uimport-checkbox-row">
               <input type="checkbox" id="chk-switch-ext" ${this.optSwitchToExtended || currentMode === 'extended' ? 'checked' : ''} />
               <div class="chk-label">
-                <strong>Cambiar la sesión a Modo Extended (Conservar las ${report.maxVelocityLayers} capas de velocidad)</strong>
-                <span>Activa regiones 2D ilimitadas, articulación completa y metadatos extendidos de Cápsula del Tiempo.</span>
+                <strong>${isEs ? `Cambiar la sesión a Modo Extended (Conservar las ${report.maxVelocityLayers} capas de velocidad)` : `Switch session to Extended Mode (Preserve all ${report.maxVelocityLayers} velocity layers)`}</strong>
+                <span>${isEs ? 'Activa regiones 2D ilimitadas, articulación completa y metadatos extendidos de Cápsula del Tiempo.' : 'Enables unlimited 2D regions, full articulation, and extended Time Capsule metadata.'}</span>
               </div>
             </label>
           </div>

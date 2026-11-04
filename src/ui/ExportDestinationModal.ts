@@ -7,11 +7,12 @@
 //   3. Solo audio → WAV / AIFF
 //
 // Uses the canonical DRY modal skeleton (`nmm-modal-backdrop`,
-// `nmm-modal-window nmm-modal-l`, `nmm-modal-header`, `nmm-triage-body`,
+// `nmm-modal-window nmm-modal-l`, `nmm-modal-header`, `nmm-audio-modal-body`,
 // `nmm-modal-footer`). Zero inline styles, zero literal colors.
 // ─────────────────────────────────────────────────────────
 
 import {
+  TIME_CAPSULE_CANONICAL_LABEL,
   TIME_CAPSULE_ES_LABEL,
   buildExportDestinationCards,
   resolveExportDestinationSummary,
@@ -20,6 +21,7 @@ import {
   type ExportDestinationId,
   type ExportSessionContext,
 } from '../app/exportDestinations.ts';
+import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import { ICONS } from './icons.ts';
 import { escAttr, escHtml } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
@@ -36,6 +38,12 @@ export class ExportDestinationModal {
 
   constructor(context: ExportDestinationModalContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.backdropEl.innerHTML = this.render();
+        this.bindEvents();
+      }
+    });
   }
 
   public isOpen(): boolean {
@@ -83,10 +91,12 @@ export class ExportDestinationModal {
   }
 
   private render(): string {
+    const isEs = getAppLocale() === 'es';
     const sessionCtx = this.context.getSessionContext();
     const summary = resolveExportDestinationSummary(sessionCtx);
     const cards = buildExportDestinationCards();
     const activeCard = cards.find((c) => c.id === this.selectedId) ?? cards[0];
+    const capsuleLabel = isEs ? TIME_CAPSULE_ES_LABEL : TIME_CAPSULE_CANONICAL_LABEL;
 
     const cardsHtml = cards
       .map((card) => {
@@ -126,24 +136,24 @@ export class ExportDestinationModal {
       .join('');
 
     return `
-      <div class="nmm-modal-window nmm-modal-l" role="dialog" aria-modal="true" aria-label="Exportar instrumento por destino">
+      <div class="nmm-modal-window nmm-modal-l" role="dialog" aria-modal="true" aria-label="${isEs ? 'Exportar instrumento por destino' : 'Export instrument by destination'}">
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.database}</span>
             <div>
-              <h2>Exportar instrumento: ¿dónde lo vas a tocar?</h2>
-              <p class="nmm-header-sub">Elige el destino para ${escHtml(summary.displayName)} (${escHtml(summary.slotLabel)} · ${escHtml(summary.zonesLabel)})</p>
+              <h2>${isEs ? 'Exportar instrumento: ¿dónde lo vas a tocar?' : 'Export Instrument: Where will you play it?'}</h2>
+              <p class="nmm-header-sub">${isEs ? `Elige el destino para ${escHtml(summary.displayName)} (${escHtml(summary.slotLabel)} · ${escHtml(summary.zonesLabel)})` : `Choose the destination for ${escHtml(summary.displayName)} (${escHtml(summary.slotLabel)} · ${escHtml(summary.zonesLabel)})`}</p>
             </div>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-export-dest-close" title="Cerrar (Esc)" aria-label="Cerrar">${ICONS.close}</button>
+          <button type="button" class="btn btn-close-modal" id="btn-export-dest-close" title="${isEs ? 'Cerrar (Esc)' : 'Close (Esc)'}" aria-label="${isEs ? 'Cerrar' : 'Close'}">${ICONS.close}</button>
         </div>
 
-        <div class="nmm-triage-body">
+        <div class="nmm-audio-modal-body">
           <div class="triage-summary">
             <span>${ICONS.layers}</span>
             <div>
-              <p><strong>${escHtml(summary.displayName)}</strong> (${escHtml(summary.slotLabel)}) está en modo <strong>${escHtml(summary.modeLabel)}</strong> con <strong>${escHtml(summary.zonesLabel)}</strong>.</p>
-              <p>Para conservar las 5 capas sin pérdida generacional usa siempre la <strong>${escHtml(TIME_CAPSULE_ES_LABEL)}</strong> o guárdalo en <strong>AxionikDB</strong>.</p>
+              <p>${isEs ? `<strong>${escHtml(summary.displayName)}</strong> (${escHtml(summary.slotLabel)}) está en modo <strong>${escHtml(summary.modeLabel)}</strong> con <strong>${escHtml(summary.zonesLabel)}</strong>.` : `<strong>${escHtml(summary.displayName)}</strong> (${escHtml(summary.slotLabel)}) is in <strong>${escHtml(summary.modeLabel)}</strong> mode with <strong>${escHtml(summary.zonesLabel)}</strong>.`}</p>
+              <p>${isEs ? `Para conservar las 5 capas sin pérdida generacional usa siempre la <strong>${escHtml(capsuleLabel)}</strong> o guárdalo en <strong>AxionikDB</strong>.` : `To preserve all 5 layers with zero generation loss, always use the <strong>${escHtml(capsuleLabel)}</strong> or save it to <strong>AxionikDB</strong>.`}</p>
             </div>
           </div>
 
@@ -154,10 +164,10 @@ export class ExportDestinationModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <span class="triage-count">Destino activo: <strong>${escHtml(activeCard.badge)}</strong></span>
+            <span class="triage-count">${isEs ? 'Destino activo:' : 'Active destination:'} <strong>${escHtml(activeCard.badge)}</strong></span>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-ghost" id="btn-export-dest-cancel">Cerrar</button>
+            <button type="button" class="btn btn-ghost" id="btn-export-dest-cancel">${isEs ? 'Cerrar' : 'Close'}</button>
             <button type="button" class="btn btn-primary" id="btn-export-dest-run">${escHtml(activeCard.primaryActionLabel)}</button>
           </div>
         </footer>

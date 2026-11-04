@@ -11,6 +11,7 @@
 import { SpectrumPlotter } from '@abdsynths/shared/components';
 import { clamp, linearToDb } from '../core/dsp/DspMath';
 import type { ZoneSpectralInspection } from '../core/types';
+import { onAppLocaleChange, tApp } from '../core/i18n';
 import { ICONS } from './icons';
 import { escAttr, escHtml } from './escape';
 
@@ -79,6 +80,10 @@ export class SpectralView {
   constructor(container: HTMLElement, handlers: SpectralViewHandlers) {
     this.container = container;
     this.handlers = handlers;
+    onAppLocaleChange(() => {
+      this.renderShell();
+      this.drawCanvas();
+    });
   }
 
   public setInspection(inspection: ZoneSpectralInspection | null): void {
@@ -126,7 +131,7 @@ export class SpectralView {
       this.container.innerHTML = `
         <div class="spectral-view-panel is-empty">
           <div class="empty-icon">${ICONS.wave}</div>
-          <div class="empty-text">Select a zone to inspect its 2D spectrogram and neural partial layers</div>
+          <div class="empty-text">${escHtml(tApp('spectralView.emptyPrompt'))}</div>
         </div>
       `;
       return;
@@ -144,21 +149,25 @@ export class SpectralView {
 
     const qScore = this.inspection.qualityScore ?? summary.qualityScore;
     const enhancedPeaks = this.inspection.enhancedResynthPeaks ?? this.inspection.resynthPeaks;
+    const layerWord =
+      summary.layerCount > 1
+        ? tApp('spectralView.layerPlural')
+        : tApp('spectralView.layerSingular');
 
     this.container.innerHTML = `
       <div class="spectral-view-panel">
         <div class="spectral-header">
           <div class="spectral-title-group">
-            <span class="panel-badge">${ICONS.wave} SPECTRAL &amp; A/B/C MONITOR</span>
+            <span class="panel-badge">${ICONS.wave} ${escHtml(tApp('spectralView.headerBadge'))}</span>
             <span class="spectral-sample-title" title="${escAttr(sampleName)}">${escHtml(sampleName)}</span>
             <span class="spectral-meta-pill">${(sampleRate / 1000).toFixed(1)} kHz | ${durationSec.toFixed(2)}s</span>
-            <span class="spectral-grid-pill ${bandClass}" title="${summary.gridNotice}">
-              f0: ${summary.detectedF0Hz.toFixed(2)} Hz (${summary.gridResidualCents.toFixed(1)} ct) | ${summary.activePartials} Partials | ${summary.layerCount} Layer${summary.layerCount > 1 ? 's' : ''}
+            <span class="spectral-grid-pill ${bandClass}" title="${escAttr(summary.gridNotice)}">
+              f0: ${summary.detectedF0Hz.toFixed(2)} Hz (${summary.gridResidualCents.toFixed(1)} ct) | ${summary.activePartials} ${escHtml(tApp('spectralView.partialsWord'))} | ${summary.layerCount} ${escHtml(layerWord)}
             </span>
             ${
               qScore
-                ? `<span class="spectral-meta-pill" title="Objective Resynthesis Quality Score (Cosine Similarity + Envelope Correlation + Residual SNR)">
-                    Quality: Enhanced ${qScore.enhancedScore.toFixed(1)}% | Legacy ${qScore.legacyScore.toFixed(1)}%
+                ? `<span class="spectral-meta-pill" title="${escAttr(tApp('spectralView.qualityTitle'))}">
+                    ${escHtml(tApp('spectralView.qualityPill', { enhanced: qScore.enhancedScore.toFixed(1), legacy: qScore.legacyScore.toFixed(1) }))}
                   </span>`
                 : ''
             }
@@ -166,16 +175,16 @@ export class SpectralView {
 
           <div class="spectral-mode-tabs">
             <button type="button" class="btn-spec-tab ${this.displayMode === 'spectrogram' ? 'is-active' : ''}" data-mode="spectrogram">
-              2D SPECTROGRAM
+              ${escHtml(tApp('spectralView.tabSpectrogram'))}
             </button>
             <button type="button" class="btn-spec-tab ${this.displayMode === 'partials' ? 'is-active' : ''}" data-mode="partials">
-              64 PARTIALS
+              ${escHtml(tApp('spectralView.tabPartials'))}
             </button>
             <button type="button" class="btn-spec-tab ${this.displayMode === 'waveform-ab' ? 'is-active' : ''}" data-mode="waveform-ab">
-              WAVEFORM A/B/C
+              ${escHtml(tApp('spectralView.tabWaveform'))}
             </button>
-            <button type="button" class="btn-spec-tab ${this.displayMode === 'log-curve' ? 'is-active' : ''}" data-mode="log-curve" title="ABDShared SpectrumPlotter (20 Hz..20 kHz Target vs Model vs Residual)">
-              LOG CURVE
+            <button type="button" class="btn-spec-tab ${this.displayMode === 'log-curve' ? 'is-active' : ''}" data-mode="log-curve" title="${escAttr(tApp('spectralView.tabLogCurveTitle'))}">
+              ${escHtml(tApp('spectralView.tabLogCurve'))}
             </button>
           </div>
         </div>
@@ -185,19 +194,19 @@ export class SpectralView {
           <div id="shared-spectrum-plotter" class="shared-plotter-mount" style="display: ${this.displayMode === 'log-curve' ? 'block' : 'none'}"></div>
           <div class="spectral-overlay-bar">
             <div class="layer-legend">
-              <span class="legend-item"><i class="layer-swatch layer-swatch-1"></i>L1 Harmonic</span>
-              <span class="legend-item"><i class="layer-swatch layer-swatch-2"></i>L2 Sub/Crest</span>
-              <span class="legend-item"><i class="layer-swatch layer-swatch-3"></i>L3 Transient</span>
+              <span class="legend-item"><i class="layer-swatch layer-swatch-1"></i>${escHtml(tApp('spectralView.legendL1'))}</span>
+              <span class="legend-item"><i class="layer-swatch layer-swatch-2"></i>${escHtml(tApp('spectralView.legendL2'))}</span>
+              <span class="legend-item"><i class="layer-swatch layer-swatch-3"></i>${escHtml(tApp('spectralView.legendL3'))}</span>
               ${
                 this.displayMode === 'spectrogram'
                   ? `<button type="button" class="btn-overlay-toggle ${this.showPartialsOverlay ? 'is-on' : ''}" id="btn-toggle-overlay">
-                      ${ICONS.layers} Partials Overlay: ${this.showPartialsOverlay ? 'ON' : 'OFF'}
+                      ${ICONS.layers} ${escHtml(tApp('spectralView.overlayToggle', { state: this.showPartialsOverlay ? tApp('spectralView.stateOn') : tApp('spectralView.stateOff') }))}
                     </button>`
                   : ''
               }
             </div>
             <div class="spectral-hover-readout" id="spectral-hover-readout">
-              Hover graph to inspect frequency, partial &amp; layer
+              ${escHtml(tApp('spectralView.hoverDefault'))}
             </div>
           </div>
         </div>
@@ -205,35 +214,35 @@ export class SpectralView {
         <div class="spectral-ab-footer">
           <div class="ab-buttons-group">
             <button type="button" class="btn btn-xs ${this.keyboardMode === 'original' ? 'btn-info' : 'btn-outline'}" id="btn-play-orig" title="Play &amp; Inspect Original Sample (A) [Space]">
-              ${ICONS.play} A: Original (${this.inspection.waveformPeaks.rmsDb} dB)
+              ${ICONS.play} ${escHtml(tApp('spectralView.btnPlayOrig', { rms: this.inspection.waveformPeaks.rmsDb }))}
             </button>
             <button type="button" class="btn btn-xs ${this.keyboardMode === 'resynthesis' ? 'btn-accent' : 'btn-outline'}" id="btn-play-resynth" title="Play &amp; Inspect Legacy Additive Scape/Sphere Resynthesis (B)">
-              ${ICONS.cpu} B: Legacy DSP (${this.inspection.resynthPeaks.rmsDb} dB)
+              ${ICONS.cpu} ${escHtml(tApp('spectralView.btnPlayLegacy', { rms: this.inspection.resynthPeaks.rmsDb }))}
             </button>
             <button type="button" class="btn btn-xs ${this.keyboardMode === 'enhanced' ? 'btn-accent' : 'btn-outline'}" id="btn-play-enhanced" title="Play &amp; Inspect Enhanced DSP Resynthesis (C: HPSS + Trajectory Smoothing + Noise Floor Gate)">
-              ${ICONS.cpu} C: Enhanced DSP (${enhancedPeaks.rmsDb} dB)
+              ${ICONS.cpu} ${escHtml(tApp('spectralView.btnPlayEnhanced', { rms: enhancedPeaks.rmsDb }))}
             </button>
             <button type="button" class="btn btn-xs ${this.keyboardMode === 'resynator_v2' ? 'btn-accent' : 'btn-outline'}" id="btn-play-resv2" title="Play &amp; Inspect ABDShared Resinator v2 (D: Unified Spectral Surface + 24-Bark Formant Lock + Sonic Matter Shapers)">
-              ${ICONS.cpu} D: Resinator v2 (HD)
+              ${ICONS.cpu} ${escHtml(tApp('spectralView.btnPlayResv2'))}
             </button>
             <button type="button" class="btn btn-xs btn-outline" id="btn-stop-audition" title="Stop Playback [Space]">
-              ${ICONS.stop} Stop
+              ${ICONS.stop} ${escHtml(tApp('spectralView.btnStop'))}
             </button>
           </div>
 
           <div class="ab-keyb-toggle" title="Choose active signal for Graph Inspection &amp; MIDI Keyboard Audition: Original (A), Legacy DSP (B), Enhanced DSP (C), or Resinator v2 (D)">
-            <span class="keyb-mode-label">${ICONS.piano} SOURCE / KEYB:</span>
+            <span class="keyb-mode-label">${ICONS.piano} ${escHtml(tApp('spectralView.sourceKeybLabel'))}</span>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'original' ? 'is-active' : ''}" data-keyb="original">
-              A: ORIGINAL
+              ${escHtml(tApp('spectralView.keybOrig'))}
             </button>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'resynthesis' ? 'is-active' : ''}" data-keyb="resynthesis">
-              B: LEGACY
+              ${escHtml(tApp('spectralView.keybLegacy'))}
             </button>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'enhanced' ? 'is-active' : ''}" data-keyb="enhanced">
-              C: ENHANCED
+              ${escHtml(tApp('spectralView.keybEnhanced'))}
             </button>
             <button type="button" class="btn-keyb-mode ${this.keyboardMode === 'resynator_v2' ? 'is-active' : ''}" data-keyb="resynator_v2" title="Tocar el teclado MIDI con el nuevo motor Resinator v2 (ABDShared)">
-              D: RESINATOR V2
+              ${escHtml(tApp('spectralView.keybResv2'))}
             </button>
           </div>
 

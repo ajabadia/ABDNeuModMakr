@@ -10,12 +10,17 @@ declare module '@abdsynths/shared/components' {
     id?: number | string;
     label?: string;
     action?: string;
+    value?: unknown;
+    iconHtml?: string;
     shortcut?: string;
     separator?: boolean;
     checked?: boolean;
     disabled?: boolean;
     items?: SynthNavBarMenuItem[];
+    submenu?: SynthNavBarMenuItem[];
   }
+
+  export const FLAG_ICONS: { es: string; en: string };
 
   export interface SynthNavBarMenu {
     name: string;

@@ -77,6 +77,55 @@ export function bindTableEvents(ui: InspectorContext): void {
       }
       ui.openDrawer();
     });
+
+    row.addEventListener('keydown', (e: KeyboardEvent) => {
+      const targetEl = e.target as HTMLElement | null;
+      const isInnerButton = Boolean(targetEl && targetEl !== row && targetEl.closest('button, input, select'));
+      const rowList = Array.from(rows);
+      const curIdx = rowList.indexOf(row);
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        let nextIdx = curIdx;
+        if (e.key === 'ArrowDown') nextIdx = Math.min(rowList.length - 1, curIdx + 1);
+        else if (e.key === 'ArrowUp') nextIdx = Math.max(0, curIdx - 1);
+        else if (e.key === 'Home') nextIdx = 0;
+        else if (e.key === 'End') nextIdx = rowList.length - 1;
+        const nextRow = rowList[nextIdx];
+        if (nextRow) {
+          nextRow.focus();
+          const nextRegId = nextRow.getAttribute('data-region-id');
+          const nextZoneId = nextRow.getAttribute('data-zone-id');
+          if (isExtended && nextRegId) {
+            ui.state.selectedRegionId = nextRegId;
+          }
+          if (nextZoneId && nextZoneId !== z.id && ui.state.handlers.onSelectZone) {
+            ui.state.handlers.onSelectZone(nextZoneId);
+          }
+        }
+        return;
+      }
+
+      if (isInnerButton) return;
+
+      if (e.key === ' ') {
+        e.preventDefault();
+        const regionId = row.getAttribute('data-region-id');
+        const zoneId = row.getAttribute('data-zone-id');
+        ui.handleRowPlayClick(zoneId || null, isExtended ? (regionId || null) : null);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const regionId = row.getAttribute('data-region-id');
+        const zoneId = row.getAttribute('data-zone-id');
+        if (isExtended && regionId) {
+          ui.state.selectedRegionId = regionId;
+        }
+        if (zoneId && zoneId !== z.id && ui.state.handlers.onSelectZone) {
+          ui.state.handlers.onSelectZone(zoneId);
+        }
+        ui.openDrawer();
+      }
+    });
   });
 
   ui.state.container.querySelector('#btn-map-mode-chromatic')?.addEventListener('click', () => {

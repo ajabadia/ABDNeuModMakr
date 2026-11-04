@@ -28,6 +28,7 @@ import { renderBridgeTab } from './settings/tabBridge';
 import { refreshBridgeModels } from './settings/bridgeModels';
 import { ICONS } from './icons';
 import { toast } from './notify';
+import { getAppLocale, onAppLocaleChange } from '../core/i18n';
 import { updateBridgeBadge, updateHardwareBadge } from './settings/badges';
 import { bindBridgeTabEvents } from './settings/tabBridge';
 import { bindCloudTabEvents } from './settings/tabCloud';
@@ -51,6 +52,11 @@ export class SettingsModal {
 
   constructor(handlers: SettingsModalHandlers) {
     this.handlers = handlers;
+    onAppLocaleChange(() => {
+      if (this.state.backdropEl && !this.state.backdropEl.classList.contains('is-hidden')) {
+        this.render();
+      }
+    });
   }
 
   /** Contexto compartido con las pestañas (estado por referencia). */
@@ -144,19 +150,20 @@ export class SettingsModal {
       if (!this.state.backdropEl) return;
       const cfg = this.state.currentConfig;
       const activeAiCount = countActiveAiStages(this.state);
+      const es = getAppLocale() === 'es';
 
       this.state.backdropEl.innerHTML = `
-        <div class="ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="General Settings and AI Engine Configuration">
+        <div class="ai-engine-modal-card settings-modal-card" role="dialog" aria-modal="true" aria-label="${es ? 'Ajustes Generales y Configuración de Motor IA' : 'General Settings and AI Engine Configuration'}">
           <!-- Header -->
           <div class="nmm-modal-header ai-modal-header">
             <div class="nmm-modal-header-title">
               <span class="modal-icon">${ICONS.settings}</span>
-              <span>SETTINGS &amp; AI ENGINE</span>
+              <span>${es ? 'AJUSTES Y MOTOR IA' : 'SETTINGS &amp; AI ENGINE'}</span>
               <span class="panel-badge ${cfg.enabled ? 'badge-ai-on' : 'badge-muted'}" id="ai-active-badge">
-                ${cfg.enabled ? `AI: ${activeAiCount}/8 STAGES` : 'PURE DSP (AI OFF)'}
+                ${cfg.enabled ? (es ? `IA: ${activeAiCount}/8 ETAPAS` : `AI: ${activeAiCount}/8 STAGES`) : (es ? '100% DSP (IA OFF)' : 'PURE DSP (AI OFF)')}
               </span>
             </div>
-            <button type="button" class="nmm-modal-close" id="btn-close-settings-modal" title="Close (Esc)">
+            <button type="button" class="nmm-modal-close" id="btn-close-settings-modal" title="${es ? 'Cerrar (Esc)' : 'Close (Esc)'}">
               ${ICONS.close}
             </button>
           </div>
@@ -167,14 +174,14 @@ export class SettingsModal {
               <span class="primary-tab-icon">${ICONS.sliders}</span>
               <div class="primary-tab-text">
                 <span class="primary-tab-title">General</span>
-                <span class="primary-tab-tag">Themes, Mode &amp; Paths</span>
+                <span class="primary-tab-tag">${es ? 'Temas, Idioma y Rutas' : 'Themes, Language &amp; Paths'}</span>
               </div>
             </button>
             <button type="button" class="primary-tab-btn ${this.state.activeMainTab === 'ai' ? 'is-active' : ''}" data-main-tab="ai">
               <span class="primary-tab-icon">${ICONS.cpu}</span>
               <div class="primary-tab-text">
-                <span class="primary-tab-title">IA</span>
-                <span class="primary-tab-tag">Web Engine, Cloud BYOK &amp; Local GPU</span>
+                <span class="primary-tab-title">${es ? 'IA' : 'AI'}</span>
+                <span class="primary-tab-tag">${es ? 'Motor Web, Cloud BYOK y GPU Local' : 'Web Engine, Cloud BYOK &amp; Local GPU'}</span>
               </div>
             </button>
           </div>
@@ -187,22 +194,22 @@ export class SettingsModal {
               <button type="button" class="ai-subtab-btn ${this.state.activeAiSubTab === 'web' ? 'is-active' : ''}" data-ai-subtab="web">
                 <span class="subtab-icon">${ICONS.cpu}</span>
                 <div class="subtab-text">
-                  <span class="subtab-title">Built-in Web Engine</span>
-                  <span class="subtab-tag">In-Browser (100% Free)</span>
+                  <span class="subtab-title">${es ? 'Motor Web Integrado' : 'Built-in Web Engine'}</span>
+                  <span class="subtab-tag">${es ? 'En Navegador (100% Gratis)' : 'In-Browser (100% Free)'}</span>
                 </div>
               </button>
               <button type="button" class="ai-subtab-btn ${this.state.activeAiSubTab === 'bridge' ? 'is-active' : ''}" data-ai-subtab="bridge">
                 <span class="subtab-icon">${ICONS.database}</span>
                 <div class="subtab-text">
                   <span class="subtab-title">Companion Bridge</span>
-                  <span class="subtab-tag">Local GPU (VRAM)</span>
+                  <span class="subtab-tag">${es ? 'GPU Local (VRAM)' : 'Local GPU (VRAM)'}</span>
                 </div>
               </button>
               <button type="button" class="ai-subtab-btn ${this.state.activeAiSubTab === 'cloud' ? 'is-active' : ''}" data-ai-subtab="cloud">
                 <span class="subtab-icon">${ICONS.cloud}</span>
                 <div class="subtab-text">
-                  <span class="subtab-title">Cloud AI (BYOK)</span>
-                  <span class="subtab-tag">Private User Keys</span>
+                  <span class="subtab-title">${es ? 'IA en la Nube (BYOK)' : 'Cloud AI (BYOK)'}</span>
+                  <span class="subtab-tag">${es ? 'Claves Privadas del Usuario' : 'Private User Keys'}</span>
                 </div>
               </button>
             </div>
@@ -225,12 +232,12 @@ export class SettingsModal {
           <div class="nmm-modal-footer ai-modal-footer">
             <div class="ai-footer-info">
               <span class="text-muted" id="ai-footer-device-status">
-                ${this.state.webGpuStatus?.statusMessage || 'Processing engine ready and online.'}
+                ${this.state.webGpuStatus?.statusMessage || (es ? 'Motor de procesamiento listo y en línea.' : 'Processing engine ready and online.')}
               </span>
             </div>
             <div class="footer-right ai-footer-actions">
-              <button type="button" class="btn btn-secondary" id="btn-cancel-settings-modal">Close</button>
-              <button type="button" class="btn btn-primary" id="btn-apply-settings-modal">Apply Settings</button>
+              <button type="button" class="btn btn-secondary" id="btn-cancel-settings-modal">${es ? 'Cerrar' : 'Close'}</button>
+              <button type="button" class="btn btn-primary" id="btn-apply-settings-modal">${es ? 'Aplicar Ajustes' : 'Apply Settings'}</button>
             </div>
           </div>
         </div>

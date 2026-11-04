@@ -223,7 +223,7 @@ export function convertRolandS5xxToPreset(
 
     let loopMode: LoopMode = 'no_loop';
     if (tone.loopMode === 0) loopMode = 'loop_continuous';
-    else if (tone.loopMode === 1) loopMode = 'ping_pong';
+    else if (tone.loopMode === 1) loopMode = 'loop_alternating';
     else if (tone.loopMode === 2) loopMode = 'one_shot';
 
     regions.push({

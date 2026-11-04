@@ -24,6 +24,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { isEs, onAppLocaleChange } from '../core/i18n.ts';
 import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { confirmDialog, toast, type ConfirmOptions } from './notify.ts';
 import { resolveAiActionDeclaration } from '../core/ai/aiHonesty.ts';
@@ -237,6 +238,11 @@ export class AudioRecorderModal {
   constructor(context: AudioRecorderContext = {}) {
     this.context = context;
     this.activeSchedule = buildScheduleFromConfig(this.autoSamplerConfig);
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public isOpen(): boolean {
@@ -529,15 +535,24 @@ export class AudioRecorderModal {
       applyEnvelopeAndVelocity: false,
     });
 
-    this.pilotDiagnosticText = `RTL aplicada: ${diag.latencyMs.toFixed(1)} ms (${diag.latencySamples} smp) · Peak: ${diag.peakDbfs.toFixed(1)} dBFS · Floor: ${diag.noiseFloorDbfs.toFixed(1)} dBFS · Jitter: ${jitter.avgJitterMs.toFixed(2)} ms · Rec: Gate ${diag.recommendedGateDurationMs} ms / Release ${diag.recommendedMaxReleaseMs} ms`;
+    this.pilotDiagnosticText = `${isEs() ? 'RTL aplicada' : 'Applied RTL'}: ${diag.latencyMs.toFixed(1)} ms (${diag.latencySamples} smp) · Peak: ${diag.peakDbfs.toFixed(1)} dBFS · Floor: ${diag.noiseFloorDbfs.toFixed(1)} dBFS · Jitter: ${jitter.avgJitterMs.toFixed(2)} ms · Rec: Gate ${diag.recommendedGateDurationMs} ms / Release ${diag.recommendedMaxReleaseMs} ms`;
     this.renderAutoSamplerDeck();
 
+    const rationaleText = isEs() ? diag.rationaleEs : (diag.rationaleEn || diag.rationale || diag.rationaleEs);
     const applyAll = await confirmDialog(
-      `${diag.rationaleEs}\n\nLa compensación de latencia RTL (${diag.latencyMs.toFixed(1)} ms / ${diag.latencySamples} samples) ya quedó activa para el corte automático. ¿Deseas aplicar también la duración de Gate (${diag.recommendedGateDurationMs} ms), Release (${diag.recommendedMaxReleaseMs} ms) y capas de velocidad recomendadas?`,
+      isEs()
+        ? `${rationaleText}\n\nLa compensación de latencia RTL (${diag.latencyMs.toFixed(1)} ms / ${diag.latencySamples} samples) ya quedó activa para el corte automático. ¿Deseas aplicar también la duración de Gate (${diag.recommendedGateDurationMs} ms), Release (${diag.recommendedMaxReleaseMs} ms) y capas de velocidad recomendadas?`
+        : `${rationaleText}\n\nRTL latency compensation (${diag.latencyMs.toFixed(1)} ms / ${diag.latencySamples} samples) is now active for automatic slicing. Would you also like to apply the recommended Gate duration (${diag.recommendedGateDurationMs} ms), Release (${diag.recommendedMaxReleaseMs} ms), and velocity layers?`,
       {
-        title: `Aplicar RTL medida (${diag.latencyMs.toFixed(1)} ms) y parámetros sugeridos`,
-        confirmLabel: `Aplicar RTL (${diag.latencyMs.toFixed(1)} ms) y recomendaciones`,
-        cancelLabel: `Conservar solo RTL (${diag.latencyMs.toFixed(1)} ms)`,
+        title: isEs()
+          ? `Aplicar RTL medida (${diag.latencyMs.toFixed(1)} ms) y parámetros sugeridos`
+          : `Apply Measured RTL (${diag.latencyMs.toFixed(1)} ms) & Recommended Parameters`,
+        confirmLabel: isEs()
+          ? `Aplicar RTL (${diag.latencyMs.toFixed(1)} ms) y recomendaciones`
+          : `Apply RTL (${diag.latencyMs.toFixed(1)} ms) & Recommendations`,
+        cancelLabel: isEs()
+          ? `Conservar solo RTL (${diag.latencyMs.toFixed(1)} ms)`
+          : `Keep Only RTL (${diag.latencyMs.toFixed(1)} ms)`,
       }
     );
 
@@ -1428,51 +1443,52 @@ export class AudioRecorderModal {
   private render(): void {
     if (!this.backdropEl) return;
     const isAutoSampler = this.operatingMode === 'midi_autosampler';
+    const es = isEs();
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-recorder-window" role="dialog" aria-modal="true" aria-labelledby="recorder-title" tabindex="-1">
+      <div class="nmm-modal-window nmm-audio-modal-window" role="dialog" aria-modal="true" aria-labelledby="recorder-title" tabindex="-1">
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${isAutoSampler ? ICONS.piano : ICONS.mic}</span>
             <span class="nmm-recorder-rec-dot" id="rec-state-dot" aria-hidden="true"></span>
-            <h2 id="recorder-title">Record — Audio Recorder &amp; MIDI AutoSampler</h2>
+            <h2 id="recorder-title">${es ? 'Grabar — Grabadora de Audio y AutoSampler MIDI' : 'Record — Audio Recorder &amp; MIDI AutoSampler'}</h2>
             <span class="panel-badge badge-muted" id="rec-state-badge">IDLE</span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-recorder-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" aria-label="${es ? 'Cerrar' : 'Close'}" id="btn-recorder-close">${ICONS.close}</button>
         </header>
 
-        <div class="nmm-modal-body nmm-recorder-body">
+        <div class="nmm-modal-body nmm-audio-modal-body">
           <!-- 1. Studio Input, Mode Selector, LCD, Meters & Transport Deck Card -->
           <div class="nmm-recorder-deck-card">
             <!-- Selector Superior de Modo (Sin islas visuales) -->
             <div class="nmm-recorder-mode-bar">
-              <div class="nmm-recorder-mode-pills" role="tablist" aria-label="Recorder operating mode">
-                <span class="nmm-recorder-device-label">WORKFLOW:</span>
+              <div class="nmm-recorder-mode-pills" role="tablist" aria-label="${es ? 'Modo operativo de grabación' : 'Recorder operating mode'}">
+                <span class="nmm-recorder-device-label">${es ? 'FLUJO:' : 'WORKFLOW:'}</span>
                 <button type="button" class="btn btn-xs ${!isAutoSampler ? 'btn-accent' : 'btn-outline'}" id="btn-mode-free-audio">
-                  ${ICONS.mic} Grabación Directa de Audio
+                  ${ICONS.mic} ${es ? 'Grabación Directa de Audio' : 'Direct Audio Recording'}
                 </button>
                 <button type="button" class="btn btn-xs ${isAutoSampler && this.autoSamplerConfig.mode === 'auto_sweep' ? 'btn-accent' : 'btn-outline'}" id="btn-mode-as-sweep">
-                  ${ICONS.piano} AutoSampler MIDI (Barrido)
+                  ${ICONS.piano} ${es ? 'AutoSampler MIDI (Barrido)' : 'MIDI AutoSampler (Sweep)'}
                 </button>
                 <button type="button" class="btn btn-xs ${isAutoSampler && this.autoSamplerConfig.mode === 'live_midi_capture' ? 'btn-accent' : 'btn-outline'}" id="btn-mode-as-live">
-                  ${ICONS.wave} Captura MIDI en Tiempo Real
+                  ${ICONS.wave} ${es ? 'Captura MIDI en Tiempo Real' : 'Real-Time MIDI Capture'}
                 </button>
                 <button type="button" class="btn btn-xs ${isAutoSampler && this.autoSamplerConfig.mode === 'drum_map' ? 'btn-accent' : 'btn-outline'}" id="btn-mode-as-drum">
-                  ${ICONS.drum} Muestreo de Batería / Percusión
+                  ${ICONS.drum} ${es ? 'Muestreo de Batería / Percusión' : 'Drum / Percussion Sampling'}
                 </button>
               </div>
             </div>
 
             <div class="nmm-recorder-devicebar">
               <div class="nmm-recorder-device-left">
-                <label class="nmm-recorder-device-label" for="rec-device">AUDIO IN:</label>
-                <select id="rec-device" class="form-control form-control-sm nmm-recorder-device-select" aria-label="Input device"></select>
-                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-refresh-devices" title="Refresh input devices">${ICONS.refresh} Rescan</button>
-                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-enable-mic">${ICONS.mic} Enable Audio</button>
+                <label class="nmm-recorder-device-label" for="rec-device">${es ? 'ENTRADA AUDIO:' : 'AUDIO IN:'}</label>
+                <select id="rec-device" class="form-control form-control-sm nmm-recorder-device-select" aria-label="${es ? 'Dispositivo de entrada' : 'Input device'}"></select>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-refresh-devices" title="${es ? 'Actualizar dispositivos de entrada' : 'Refresh input devices'}">${ICONS.refresh} ${es ? 'Reescanear' : 'Rescan'}</button>
+                <button type="button" class="btn btn-xs btn-outline" id="btn-rec-enable-mic">${ICONS.mic} ${es ? 'Activar Audio' : 'Enable Audio'}</button>
               </div>
               <div class="nmm-recorder-device-right">
                 <span class="val-pill font-mono" id="rec-peak-pill">−∞ dBFS</span>
-                <span class="val-pill font-mono" id="rec-class-pill">no take yet</span>
+                <span class="val-pill font-mono" id="rec-class-pill">${es ? 'sin tomas aún' : 'no take yet'}</span>
               </div>
             </div>
 
@@ -1499,13 +1515,13 @@ export class AudioRecorderModal {
           <div class="nmm-recorder-inspector" id="rec-take-inspector"></div>
 
           <!-- 4. Session Takes Table / List Panel -->
-          <div class="nmm-recorder-takes-panel">
+          <div class="nmm-audio-table-panel">
             <div class="nmm-recorder-takes-head">
               <div class="nmm-recorder-takes-head-left">
-                <span>SESSION TAKES</span>
+                <span>${es ? 'TOMAS DE SESIÓN' : 'SESSION TAKES'}</span>
                 <span class="val-pill font-mono" id="rec-takes-count">0</span>
               </div>
-              <span class="nmm-recorder-takes-hint">Select a take to inspect waveform, capture Noise Print, rescue cuts, or send to Chopper / Session</span>
+              <span class="nmm-recorder-takes-hint">${es ? 'Selecciona una toma para inspeccionar forma de onda, capturar Huella de Ruido, rescatar cortes o enviar a Chopper / Sesión' : 'Select a take to inspect waveform, capture Noise Print, rescue cuts, or send to Chopper / Session'}</span>
             </div>
             <div class="nmm-recorder-takes" id="rec-takes"></div>
           </div>
@@ -1513,7 +1529,7 @@ export class AudioRecorderModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <button type="button" class="btn btn-ghost" id="btn-recorder-footer-close">Close</button>
+            <button type="button" class="btn btn-ghost" id="btn-recorder-footer-close">${es ? 'Cerrar' : 'Close'}</button>
           </div>
           <div class="footer-right" id="rec-footer-actions"></div>
         </footer>
@@ -1602,22 +1618,31 @@ export class AudioRecorderModal {
             : velValidation.sanitizedVelocities
           : undefined,
     });
+    const es = isEs();
     const curveSummaryPill =
       cfg.velocityLayers === 1 && cfg.velocityCurve !== 'manual_table'
-        ? `1L · Capa Única (v127)`
+        ? es
+          ? `1L · Capa Única (v127)`
+          : `1L · Single Layer (v127)`
         : `${cfg.velocityLayers}L · ${cfg.velocityCurve}`;
 
     slot.innerHTML = `
-      <div class="nmm-recorder-controls-card" id="as-config-card">
+      <div class="nmm-audio-controls-card" id="as-config-card">
         <div class="nmm-recorder-inspector-head">
           <span class="nmm-recorder-inspector-title">
             ${isDrum ? ICONS.drum : ICONS.piano}
             ${
               isLive
-                ? 'REAL-TIME MIDI PERFORMANCE CAPTURE (AUDIO + MIDI LOG)'
+                ? es
+                  ? 'CAPTURA MIDI EN TIEMPO REAL (AUDIO + REGISTRO MIDI)'
+                  : 'REAL-TIME MIDI PERFORMANCE CAPTURE (AUDIO + MIDI LOG)'
                 : isDrum
-                  ? 'PERCUSSION & DRUM KIT AUTOSAMPLER'
-                  : 'PARAMETRIC MIDI AUTOSAMPLER SWEEP'
+                  ? es
+                    ? 'AUTOSAMPLER DE PERCUSIÓN Y BATERÍA'
+                    : 'PERCUSSION & DRUM KIT AUTOSAMPLER'
+                  : es
+                    ? 'BARRIDO PARAMÉTRICO DE AUTOSAMPLER MIDI'
+                    : 'PARAMETRIC MIDI AUTOSAMPLER SWEEP'
             }
           </span>
           <div class="nmm-recorder-dsp-right">
@@ -1628,16 +1653,16 @@ export class AudioRecorderModal {
             }
             ${
               this.lastPilotRecommendation
-                ? `<button type="button" class="btn btn-xs btn-accent" id="btn-as-apply-pilot-rtl" title="Apply measured RTL (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms) and envelope recommendations">
-                    ${ICONS.check} Aplicar RTL medida (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms)
+                ? `<button type="button" class="btn btn-xs btn-accent" id="btn-as-apply-pilot-rtl" title="${es ? `Aplicar RTL medida (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms) y recomendaciones de envolvente` : `Apply measured RTL (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms) and envelope recommendations`}">
+                    ${ICONS.check} ${es ? `Aplicar RTL medida (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms)` : `Apply measured RTL (${this.lastPilotRecommendation.latencyMs.toFixed(1)} ms)`}
                   </button>`
                 : ''
             }
-            <button type="button" class="btn btn-xs btn-outline" id="btn-as-rescan-midi" title="Rescan WebMIDI ports">
-              ${ICONS.refresh} MIDI Ports
+            <button type="button" class="btn btn-xs btn-outline" id="btn-as-rescan-midi" title="${es ? 'Reescanear puertos WebMIDI' : 'Rescan WebMIDI ports'}">
+              ${ICONS.refresh} ${es ? 'Puertos MIDI' : 'MIDI Ports'}
             </button>
-            <button type="button" class="btn btn-xs btn-outline" id="btn-as-pilot-test" title="Fire 1 pilot note (C4) to measure RTL latency, clipping, and noise floor">
-              ${ICONS.zap} Test 1 Note / Calibrate
+            <button type="button" class="btn btn-xs btn-outline" id="btn-as-pilot-test" title="${es ? 'Disparar 1 nota piloto (C4) para medir latencia RTL, clipping y suelo de ruido' : 'Fire 1 pilot note (C4) to measure RTL latency, clipping, and noise floor'}">
+              ${ICONS.zap} ${es ? 'Probar 1 Nota / Calibrar' : 'Test 1 Note / Calibrate'}
             </button>
           </div>
         </div>
@@ -1649,13 +1674,13 @@ export class AudioRecorderModal {
               <div class="label-with-val">
                 <label for="as-midi-out">
                   MIDI OUT (SYNTH / VST)
-                  ${isLive ? '<span class="cond-reason-badge">SOLO BARRIDO</span>' : ''}
+                  ${isLive ? `<span class="cond-reason-badge">${es ? 'SOLO BARRIDO' : 'SWEEP ONLY'}</span>` : ''}
                 </label>
                 <span class="val-pill font-mono">CH ${cfg.midiChannel}</span>
               </div>
               <div class="cfg-inline-row">
                 <select id="as-midi-out" class="form-control form-control-sm cfg-flex-1"></select>
-                <input type="number" id="as-midi-ch" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="16" value="${cfg.midiChannel}" title="MIDI Channel (1..16)" />
+                <input type="number" id="as-midi-ch" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="16" value="${cfg.midiChannel}" title="${es ? 'Canal MIDI (1..16)' : 'MIDI Channel (1..16)'}" />
               </div>
             </div>
           </fieldset>
@@ -1665,9 +1690,9 @@ export class AudioRecorderModal {
               <div class="label-with-val">
                 <label for="as-midi-in">
                   MIDI IN (KEYBOARD / CONTROLLER)
-                  ${!isLive ? '<span class="cond-reason-badge">SOLO EN VIVO</span>' : ''}
+                  ${!isLive ? `<span class="cond-reason-badge">${es ? 'SOLO EN VIVO' : 'LIVE ONLY'}</span>` : ''}
                 </label>
-                <span class="val-pill font-mono">${isLive ? 'ACTIVE' : 'SOLO LIVE'}</span>
+                <span class="val-pill font-mono">${isLive ? (es ? 'ACTIVO' : 'ACTIVE') : (es ? 'SOLO VIVO' : 'LIVE ONLY')}</span>
               </div>
               <select id="as-midi-in" class="form-control form-control-sm"></select>
             </div>
@@ -1678,7 +1703,7 @@ export class AudioRecorderModal {
               ? `
             <div class="form-group">
               <div class="label-with-val">
-                <label for="as-start-octave">START OCTAVE &amp; COUNT</label>
+                <label for="as-start-octave">${es ? 'OCTAVA INICIAL Y CANTIDAD' : 'START OCTAVE &amp; COUNT'}</label>
                 <span class="val-pill font-mono">C${cfg.startOctave} (${cfg.octaveCount} oct · max ${maxOctaves})</span>
               </div>
               <div class="cfg-inline-row">
@@ -1690,22 +1715,22 @@ export class AudioRecorderModal {
                     )
                     .join('')}
                 </select>
-                <input type="number" id="as-octave-count" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="${maxOctaves}" value="${cfg.octaveCount}" ${maxOctaves <= 1 ? 'disabled title="Desde C6 solo cabe 1 octava dentro del rango MIDI 0..127"' : `title="Number of octaves (1..${maxOctaves} from C${cfg.startOctave})"`} />
+                <input type="number" id="as-octave-count" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="${maxOctaves}" value="${cfg.octaveCount}" ${maxOctaves <= 1 ? `disabled title="${es ? 'Desde C6 solo cabe 1 octava dentro del rango MIDI 0..127' : 'From C6 only 1 octave fits within MIDI range 0..127'}"` : `title="${es ? `Número de octavas (1..${maxOctaves} desde C${cfg.startOctave})` : `Number of octaves (1..${maxOctaves} from C${cfg.startOctave})`}"`} />
               </div>
             </div>
 
             <div class="form-group">
               <div class="label-with-val">
-                <label for="as-notes-per-oct">NOTES PER OCTAVE</label>
+                <label for="as-notes-per-oct">${es ? 'NOTAS POR OCTAVA' : 'NOTES PER OCTAVE'}</label>
                 <span class="val-pill font-mono">${cfg.notesPerOctave}/oct</span>
               </div>
               <select id="as-notes-per-oct" class="form-control form-control-sm">
-                <option value="1" ${cfg.notesPerOctave === 1 ? 'selected' : ''}>1 per octave (Roots C only · 12 st)</option>
-                <option value="2" ${cfg.notesPerOctave === 2 ? 'selected' : ''}>2 per octave (Tritone · every 6 st)</option>
-                <option value="3" ${cfg.notesPerOctave === 3 ? 'selected' : ''}>3 per octave (Major 3rds · every 4 st)</option>
-                <option value="4" ${cfg.notesPerOctave === 4 ? 'selected' : ''}>4 per octave (Minor 3rds · every 3 st)</option>
-                <option value="6" ${cfg.notesPerOctave === 6 ? 'selected' : ''}>6 per octave (Whole tones · every 2 st)</option>
-                <option value="12" ${cfg.notesPerOctave === 12 ? 'selected' : ''}>12 per octave (Chromatic · every 1 st)</option>
+                <option value="1" ${cfg.notesPerOctave === 1 ? 'selected' : ''}>${es ? '1 por octava (Solo raíces C · cada 12 st)' : '1 per octave (Roots C only · 12 st)'}</option>
+                <option value="2" ${cfg.notesPerOctave === 2 ? 'selected' : ''}>${es ? '2 por octava (Tritono · cada 6 st)' : '2 per octave (Tritone · every 6 st)'}</option>
+                <option value="3" ${cfg.notesPerOctave === 3 ? 'selected' : ''}>${es ? '3 por octava (3ª Mayores · cada 4 st)' : '3 per octave (Major 3rds · every 4 st)'}</option>
+                <option value="4" ${cfg.notesPerOctave === 4 ? 'selected' : ''}>${es ? '4 por octava (3ª Menores · cada 3 st)' : '4 per octave (Minor 3rds · every 3 st)'}</option>
+                <option value="6" ${cfg.notesPerOctave === 6 ? 'selected' : ''}>${es ? '6 por octava (Tonos enteros · cada 2 st)' : '6 per octave (Whole tones · every 2 st)'}</option>
+                <option value="12" ${cfg.notesPerOctave === 12 ? 'selected' : ''}>${es ? '12 por octava (Cromático · cada 1 st)' : '12 per octave (Chromatic · every 1 st)'}</option>
               </select>
             </div>
           `
@@ -1717,7 +1742,7 @@ export class AudioRecorderModal {
               ? `
             <div class="form-group nmm-as-drum-group">
               <div class="label-with-val">
-                <label for="as-drum-preset">PERCUSSION KIT / DRUM MAP</label>
+                <label for="as-drum-preset">${es ? 'KIT DE PERCUSIÓN / DRUM MAP' : 'PERCUSSION KIT / DRUM MAP'}</label>
                 <span class="val-pill font-mono">${cfg.drumMap ? `${escHtml(cfg.drumMap.kitName)} (${cfg.drumMap.hits.length} hits)` : 'Standard Kit'}</span>
               </div>
               <div class="cfg-inline-row">
@@ -1729,15 +1754,15 @@ export class AudioRecorderModal {
                     )
                     .join('')}
                 </select>
-                <label class="btn btn-xs btn-outline" for="as-drum-file-inp" title="Import .txt, .json, or .yaml drum hit-name map">
-                  ${ICONS.upload} Importar
+                <label class="btn btn-xs btn-outline" for="as-drum-file-inp" title="${es ? 'Importar mapa de golpes .txt, .json o .yaml' : 'Import .txt, .json, or .yaml drum hit-name map'}">
+                  ${ICONS.upload} ${es ? 'Importar' : 'Import'}
                 </label>
                 <input type="file" id="as-drum-file-inp" accept=".txt,.csv,.json,.yaml,.yml" hidden />
-                <button type="button" class="btn btn-xs btn-outline" id="btn-as-paste-manual" title="Pegar tabla desde manual PDF para extraer notas y nombres">
-                  ${ICONS.sparkle} Pegar Tabla
+                <button type="button" class="btn btn-xs btn-outline" id="btn-as-paste-manual" title="${es ? 'Pegar tabla desde manual PDF para extraer notas y nombres' : 'Paste table from PDF manual to extract notes and names'}">
+                  ${ICONS.sparkle} ${es ? 'Pegar Tabla' : 'Paste Table'}
                 </button>
-                <button type="button" class="btn btn-xs btn-outline" id="btn-as-drum-spec" title="Ver especificación y descargar plantillas">
-                  ? Plantillas
+                <button type="button" class="btn btn-xs btn-outline" id="btn-as-drum-spec" title="${es ? 'Ver especificación y descargar plantillas' : 'View specification and download templates'}">
+                  ? ${es ? 'Plantillas' : 'Templates'}
                 </button>
               </div>
             </div>
@@ -1749,26 +1774,26 @@ export class AudioRecorderModal {
             <div class="form-group ${isLive ? 'is-conditioned-disabled' : ''}">
               <div class="label-with-val">
                 <label for="as-gate-ms">
-                  NOTE DURATION (GATE)
-                  ${isLive ? '<span class="cond-reason-badge">SOLO BARRIDO</span>' : ''}
+                  ${es ? 'DURACIÓN DE NOTA (GATE)' : 'NOTE DURATION (GATE)'}
+                  ${isLive ? `<span class="cond-reason-badge">${es ? 'SOLO BARRIDO' : 'SWEEP ONLY'}</span>` : ''}
                 </label>
                 <span class="val-pill font-mono">${isLive ? 'REAL-TIME KEY' : `${cfg.gateDurationMs} ms`}</span>
               </div>
-              <input type="number" id="as-gate-ms" class="form-control form-control-sm font-mono" min="80" max="15000" step="50" value="${cfg.gateDurationMs}" title="Gate duration (NoteOn to NoteOff in ms)" />
+              <input type="number" id="as-gate-ms" class="form-control form-control-sm font-mono" min="80" max="15000" step="50" value="${cfg.gateDurationMs}" title="${es ? 'Duración de puerta (NoteOn a NoteOff en ms)' : 'Gate duration (NoteOn to NoteOff in ms)'}" />
             </div>
           </fieldset>
 
           <div class="form-group">
             <div class="label-with-val">
-              <label for="as-release-mode">RELEASE TAIL MODE &amp; MAX</label>
+              <label for="as-release-mode">${es ? 'MODO DE COLA RELEASE Y MÁX' : 'RELEASE TAIL MODE &amp; MAX'}</label>
               <span class="val-pill font-mono">${cfg.releaseMode === 'auto_decay' ? `Auto-Decay (max ${cfg.maxReleaseMs}ms)` : `Fixed ${cfg.maxReleaseMs}ms`}</span>
             </div>
             <div class="cfg-inline-row">
-              <select id="as-release-mode" class="form-control form-control-sm cfg-flex-1" title="When NoteOff is sent, sound may keep ringing: Auto-Detect waits until decay hits noise floor; Fixed waits exact ms">
-                <option value="auto_decay" ${cfg.releaseMode === 'auto_decay' ? 'selected' : ''}>Auto-Decay to Silence</option>
-                <option value="fixed_time" ${cfg.releaseMode === 'fixed_time' ? 'selected' : ''}>Fixed Release Time</option>
+              <select id="as-release-mode" class="form-control form-control-sm cfg-flex-1" title="${es ? 'Al enviar NoteOff el sonido puede seguir sonando: Auto-Decay espera hasta caer al suelo de ruido; Fijo espera los ms exactos' : 'When NoteOff is sent, sound may keep ringing: Auto-Detect waits until decay hits noise floor; Fixed waits exact ms'}">
+                <option value="auto_decay" ${cfg.releaseMode === 'auto_decay' ? 'selected' : ''}>${es ? 'Auto-Decaimiento a Silencio' : 'Auto-Decay to Silence'}</option>
+                <option value="fixed_time" ${cfg.releaseMode === 'fixed_time' ? 'selected' : ''}>${es ? 'Tiempo de Release Fijo' : 'Fixed Release Time'}</option>
               </select>
-              <input type="number" id="as-release-ms" class="form-control form-control-sm font-mono cfg-ordinal-input" min="100" max="20000" step="100" value="${cfg.maxReleaseMs}" title="Max release timeout / Fixed release duration (ms)" />
+              <input type="number" id="as-release-ms" class="form-control form-control-sm font-mono cfg-ordinal-input" min="100" max="20000" step="100" value="${cfg.maxReleaseMs}" title="${es ? 'Tiempo máximo de cola release / Duración fija (ms)' : 'Max release timeout / Fixed release duration (ms)'}" />
             </div>
           </div>
 
@@ -1778,33 +1803,33 @@ export class AudioRecorderModal {
             <div class="form-group">
               <div class="label-with-val">
                 <label for="as-vel-curve">
-                  VELOCITY LAYERS &amp; CURVE
-                  ${cfg.velocityCurve === 'classic_neuron_2layer' ? '<span class="cond-reason-badge is-classic-only">FIJA 2 CAPAS</span>' : cfg.velocityCurve === 'manual_table' ? '<span class="cond-reason-badge">TABLA MANUAL</span>' : ''}
+                  ${es ? 'CAPAS Y CURVA DE VELOCIDAD' : 'VELOCITY LAYERS &amp; CURVE'}
+                  ${cfg.velocityCurve === 'classic_neuron_2layer' ? `<span class="cond-reason-badge is-classic-only">${es ? 'FIJA 2 CAPAS' : 'FIXED 2 LAYERS'}</span>` : cfg.velocityCurve === 'manual_table' ? `<span class="cond-reason-badge">${es ? 'TABLA MANUAL' : 'MANUAL TABLE'}</span>` : ''}
                 </label>
                 <span class="val-pill font-mono">${escHtml(curveSummaryPill)}</span>
               </div>
               <div class="cfg-inline-row">
-                <input type="number" id="as-vel-layers" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="8" value="${cfg.velocityLayers}" ${cfg.velocityCurve === 'classic_neuron_2layer' ? 'disabled title="Clásica Neuron fija siempre 2 capas (60 / 120)"' : cfg.velocityCurve === 'manual_table' ? 'disabled title="En Tabla Manual las capas se añaden o quitan con los botones de cada capa a la derecha"' : 'title="Number of velocity layers (1..8)"'} />
+                <input type="number" id="as-vel-layers" class="form-control form-control-sm font-mono cfg-ordinal-input" min="1" max="8" value="${cfg.velocityLayers}" ${cfg.velocityCurve === 'classic_neuron_2layer' ? `disabled title="${es ? 'Clásica Neuron fija siempre 2 capas (60 / 120)' : 'Classic Neuron always fixes 2 layers (60 / 120)'}"` : cfg.velocityCurve === 'manual_table' ? `disabled title="${es ? 'En Tabla Manual las capas se añaden o quitan con los botones de cada capa a la derecha' : 'In Manual Table layers are added or removed with the layer buttons on the right'}"` : `title="${es ? 'Número de capas de velocidad (1..8)' : 'Number of velocity layers (1..8)'}"`} />
                 <select id="as-vel-curve" class="form-control form-control-sm cfg-flex-1">
                   ${
                     cfg.velocityLayers === 1 && cfg.velocityCurve !== 'manual_table'
-                      ? `<option value="linear" selected>Capa Única (v127 · rango 1..127)</option>`
-                      : `<option value="linear" ${cfg.velocityCurve === 'linear' ? 'selected' : ''}>Lineal (Equidistante)</option>`
+                      ? `<option value="linear" selected>${es ? 'Capa Única (v127 · rango 1..127)' : 'Single Layer (v127 · range 1..127)'}</option>`
+                      : `<option value="linear" ${cfg.velocityCurve === 'linear' ? 'selected' : ''}>${es ? 'Lineal (Equidistante)' : 'Linear (Equidistant)'}</option>`
                   }
-                  <option value="high_precision" ${cfg.velocityCurve === 'high_precision' && cfg.velocityLayers > 1 ? 'selected' : ''} ${cfg.velocityLayers <= 1 ? 'disabled' : ''}>Logarítmica / Exponencial (+ precisión en altos 85..127)</option>
-                  <option value="low_precision" ${cfg.velocityCurve === 'low_precision' && cfg.velocityLayers > 1 ? 'selected' : ''} ${cfg.velocityLayers <= 1 ? 'disabled' : ''}>Comprimida (+ precisión en bajos 1..65)</option>
-                  <option value="classic_neuron_2layer" ${cfg.velocityCurve === 'classic_neuron_2layer' ? 'selected' : ''}>Clásica Neuron (Fija 2 capas: 60 / 120)</option>
-                  <option value="manual_table" ${cfg.velocityCurve === 'manual_table' ? 'selected' : ''}>Tabla Manual por Capas (1..127)</option>
+                  <option value="high_precision" ${cfg.velocityCurve === 'high_precision' && cfg.velocityLayers > 1 ? 'selected' : ''} ${cfg.velocityLayers <= 1 ? 'disabled' : ''}>${es ? 'Logarítmica / Exponencial (+ precisión en altos 85..127)' : 'Logarithmic / Exponential (+ precision in highs 85..127)'}</option>
+                  <option value="low_precision" ${cfg.velocityCurve === 'low_precision' && cfg.velocityLayers > 1 ? 'selected' : ''} ${cfg.velocityLayers <= 1 ? 'disabled' : ''}>${es ? 'Comprimida (+ precisión en bajos 1..65)' : 'Compressed (+ precision in lows 1..65)'}</option>
+                  <option value="classic_neuron_2layer" ${cfg.velocityCurve === 'classic_neuron_2layer' ? 'selected' : ''}>${es ? 'Clásica Neuron (Fija 2 capas: 60 / 120)' : 'Classic Neuron (Fixed 2 layers: 60 / 120)'}</option>
+                  <option value="manual_table" ${cfg.velocityCurve === 'manual_table' ? 'selected' : ''}>${es ? 'Tabla Manual por Capas (1..127)' : 'Manual Layer Table (1..127)'}</option>
                 </select>
               </div>
             </div>
 
             <div class="form-group nmm-as-vel-viz-group">
               <div class="label-with-val">
-                <label>VELOCITY DISTRIBUTION MAP (1..127)</label>
+                <label>${es ? 'MAPA DE DISTRIBUCIÓN DE VELOCIDAD (1..127)' : 'VELOCITY DISTRIBUTION MAP (1..127)'}</label>
                 <span class="val-pill font-mono">${displayLayers.map((l) => `v${l.velocity}`).join(' / ')}</span>
               </div>
-              <div class="nmm-vel-curve-viz" title="Representación gráfica de las capas de velocidad MIDI (altura = velocidad 1..127, ancho = rango [lowVel..highVel])">
+              <div class="nmm-vel-curve-viz" title="${es ? 'Representación gráfica de las capas de velocidad MIDI (altura = velocidad 1..127, ancho = rango [lowVel..highVel])' : 'Graphical representation of MIDI velocity layers (height = velocity 1..127, width = range [lowVel..highVel])'}">
                 <div class="nmm-vel-curve-bars">
                   ${displayLayers
                     .map((layer, idx) => {
@@ -1849,14 +1874,14 @@ export class AudioRecorderModal {
                                     min="1"
                                     max="127"
                                     value="${vel}"
-                                    title="Velocidad MIDI para la capa L${idx + 1} (1..127, sin duplicados)"
+                                    title="${es ? `Velocidad MIDI para la capa L${idx + 1} (1..127, sin duplicados)` : `MIDI velocity for layer L${idx + 1} (1..127, no duplicates)`}"
                                   />
                                   <button
                                     type="button"
                                     class="nmm-manual-vel-remove"
                                     data-remove-vel-idx="${idx}"
                                     ${cfg.manualVelocities.length <= 1 ? 'disabled' : ''}
-                                    title="Eliminar capa L${idx + 1}"
+                                    title="${es ? `Eliminar capa L${idx + 1}` : `Remove layer L${idx + 1}`}"
                                   >&times;</button>
                                 </div>
                               `;
@@ -1864,8 +1889,8 @@ export class AudioRecorderModal {
                             .join('')}
                           ${
                             cfg.manualVelocities.length < 8
-                              ? `<button type="button" class="btn btn-xs btn-outline" id="btn-as-add-vel-layer" title="Añadir una nueva capa de velocidad (máx. 8)">
-                                  + Añadir capa
+                              ? `<button type="button" class="btn btn-xs btn-outline" id="btn-as-add-vel-layer" title="${es ? 'Añadir una nueva capa de velocidad (máx. 8)' : 'Add a new velocity layer (max 8)'}">
+                                  + ${es ? 'Añadir capa' : 'Add layer'}
                                 </button>`
                               : ''
                           }
@@ -1874,8 +1899,8 @@ export class AudioRecorderModal {
                           !velValidation.valid && velValidation.errorMessage
                             ? `<div class="nmm-vel-error-banner" role="alert">
                                 <span>${escHtml(velValidation.errorMessage)}</span>
-                                <button type="button" class="btn btn-xs btn-accent" id="btn-as-autofix-vels" title="Corregir rango 1..127, eliminar duplicados y ordenar de menor a mayor">
-                                  Corregir y ordenar
+                                <button type="button" class="btn btn-xs btn-accent" id="btn-as-autofix-vels" title="${es ? 'Corregir rango 1..127, eliminar duplicados y ordenar de menor a mayor' : 'Fix 1..127 range, remove duplicates, and sort ascending'}">
+                                  ${es ? 'Corregir y ordenar' : 'Fix &amp; sort'}
                                 </button>
                               </div>`
                             : ''
@@ -1895,11 +1920,11 @@ export class AudioRecorderModal {
           isDrum && this.showDrumHelpPanel
             ? `<div class="raw-card">
                 <div class="nmm-recorder-inspector-head">
-                  <span class="raw-card-title">TECHNICAL SPECIFICATION FOR DRUM HIT-NAME MAPS (.TXT / .JSON / .YAML)</span>
+                  <span class="raw-card-title">${es ? 'ESPECIFICACIÓN TÉCNICA PARA MAPAS DE BATERÍA (.TXT / .JSON / .YAML)' : 'TECHNICAL SPECIFICATION FOR DRUM HIT-NAME MAPS (.TXT / .JSON / .YAML)'}</span>
                   <div class="nmm-recorder-dsp-right">
-                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="txt">${ICONS.download} Template .txt</button>
-                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="json">${ICONS.download} Template .json</button>
-                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="yaml">${ICONS.download} Template .yaml</button>
+                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="txt">${ICONS.download} ${es ? 'Plantilla' : 'Template'} .txt</button>
+                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="json">${ICONS.download} ${es ? 'Plantilla' : 'Template'} .json</button>
+                    <button type="button" class="btn btn-xs btn-outline" data-dl-template="yaml">${ICONS.download} ${es ? 'Plantilla' : 'Template'} .yaml</button>
                   </div>
                 </div>
                 <pre class="nmm-drum-help-pre">${escHtml(getDrumMapFormatSpecificationHelpText())}</pre>
@@ -1909,10 +1934,10 @@ export class AudioRecorderModal {
         ${
           isDrum && this.showManualExtractorPanel
             ? `<div class="raw-card">
-                <span class="raw-card-title">PASTE RAW DRUM MANUAL TABLE (E.G. "36 Bass Drum 1" OR "C1: Kick")</span>
+                <span class="raw-card-title">${es ? 'PEGAR TABLA DE MANUAL DE BATERÍA (EJ. "36 Bass Drum 1" O "C1: Kick")' : 'PASTE RAW DRUM MANUAL TABLE (E.G. "36 Bass Drum 1" OR "C1: Kick")'}</span>
                 <textarea id="as-manual-raw-text" class="form-control font-mono" rows="3" placeholder="36 = Kick Drum&#10;38 = Snare Acoustic&#10;42 = Closed Hat&#10;46 = Open Hat"></textarea>
                 <div class="nmm-recorder-dsp-right">
-                  <button type="button" class="btn btn-xs btn-accent" id="btn-as-run-manual-extract">${ICONS.check} Parse Manual Text into Drum Map</button>
+                  <button type="button" class="btn btn-xs btn-accent" id="btn-as-run-manual-extract">${ICONS.check} ${es ? 'Extraer Texto a Drum Map' : 'Parse Manual Text into Drum Map'}</button>
                 </div>
               </div>`
             : ''
@@ -1923,28 +1948,32 @@ export class AudioRecorderModal {
           <div class="nmm-recorder-dsp-left">
             <span class="toolbar-label">${
               isLive
-                ? `LIVE MIDI CAPTURE (${selectedTake?.manifest?.events.length ?? 0} NOTAS REGISTRADAS):`
-                : `SCHEDULE MATRIX (${this.activeSchedule.length} CELLS · ${recordedCount} DONE · ${pendingCount} PENDING):`
+                ? es
+                  ? `CAPTURA MIDI EN VIVO (${selectedTake?.manifest?.events.length ?? 0} NOTAS REGISTRADAS):`
+                  : `LIVE MIDI CAPTURE (${selectedTake?.manifest?.events.length ?? 0} RECORDED NOTES):`
+                : es
+                  ? `MATRIZ PROGRAMADA (${this.activeSchedule.length} CELDAS · ${recordedCount} HECHAS · ${pendingCount} PENDIENTES):`
+                  : `SCHEDULE MATRIX (${this.activeSchedule.length} CELLS · ${recordedCount} DONE · ${pendingCount} PENDING):`
             }</span>
-            <label class="batch-check" title="Clean DC offset and subtract pre-roll Noise Print on the continuous take BEFORE slicing">
+            <label class="batch-check" title="${es ? 'Limpiar DC offset y restar Huella de Ruido pre-roll en la toma continua ANTES de cortar' : 'Clean DC offset and subtract pre-roll Noise Print on the continuous take BEFORE slicing'}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="as-chk-clean" ${cfg.cleanBeforeSlice ? 'checked' : ''} />
-              <span>Clean before slice</span>
+              <span>${es ? 'Limpiar antes de cortar' : 'Clean before slice'}</span>
             </label>
-            <label class="batch-check" title="Search zero-crossing sustain loops strictly between NoteOn and NoteOff (never inside the release tail)">
+            <label class="batch-check" title="${es ? 'Buscar bucles de sostenido en paso por cero estrictamente entre NoteOn y NoteOff (nunca en la cola release)' : 'Search zero-crossing sustain loops strictly between NoteOn and NoteOff (never inside the release tail)'}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="as-chk-autoloop" ${cfg.autoLoopSustained ? 'checked' : ''} />
               <span>AutoLoop (NoteOn..NoteOff)</span>
             </label>
-            <label class="batch-check" title="Measure real F0 in sustained region and set detuneCents (-50..+50) for analog drift compensation">
+            <label class="batch-check" title="${es ? 'Medir F0 real en la región sostenida y ajustar detuneCents (-50..+50) para compensar deriva analógica' : 'Measure real F0 in sustained region and set detuneCents (-50..+50) for analog drift compensation'}">
               <input type="checkbox" class="articulation-checkbox switch--sm" id="as-chk-detune" ${cfg.autoCompensateAnalogDetune ? 'checked' : ''} />
-              <span>Analog F0 Detune Comp</span>
+              <span>${es ? 'Comp. Desafinación Analógica F0' : 'Analog F0 Detune Comp'}</span>
             </label>
           </div>
 
           <div class="nmm-recorder-dsp-right">
             ${
               canResume
-                ? `<button type="button" class="btn btn-xs btn-accent" id="btn-as-resume" title="Continue recording only pending or failed cells from where it stopped">
-                    ${ICONS.play} Continuar desde donde se paró (${pendingCount})
+                ? `<button type="button" class="btn btn-xs btn-accent" id="btn-as-resume" title="${es ? 'Continuar grabando solo las celdas pendientes o fallidas desde donde se paró' : 'Continue recording only pending or failed cells from where it stopped'}">
+                    ${ICONS.play} ${es ? `Continuar desde donde se paró (${pendingCount})` : `Resume from where it stopped (${pendingCount})`}
                   </button>`
                 : ''
             }
@@ -1952,9 +1981,9 @@ export class AudioRecorderModal {
               selectedTake?.manifest
                 ? `
                   <label class="toolbar-label" for="as-rescue-offset">OFFSET (ms):</label>
-                  <input type="number" id="as-rescue-offset" class="form-control form-control-sm font-mono cfg-ordinal-input" value="${cfg.extraLatencyOffsetMs}" min="-500" max="500" step="5" title="Rescue cut offset (± ms) if hardware latency shifted NoteOn markers" />
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-as-reparse" title="Re-run deterministic slicing & AutoLoop on the already recorded continuous take without re-recording">
-                    ${ICONS.refresh} Re-ejecutar Corte + AutoLoop
+                  <input type="number" id="as-rescue-offset" class="form-control form-control-sm font-mono cfg-ordinal-input" value="${cfg.extraLatencyOffsetMs}" min="-500" max="500" step="5" title="${es ? 'Desplazamiento de rescate (± ms) si la latencia hardware desplazó las marcas NoteOn' : 'Rescue cut offset (± ms) if hardware latency shifted NoteOn markers'}" />
+                  <button type="button" class="btn btn-xs btn-outline" id="btn-as-reparse" title="${es ? 'Re-ejecutar corte determinista y AutoLoop sobre la toma continua ya grabada sin volver a grabar' : 'Re-run deterministic slicing & AutoLoop on the already recorded continuous take without re-recording'}">
+                    ${ICONS.refresh} ${es ? 'Re-ejecutar Corte + AutoLoop' : 'Re-run Slice + AutoLoop'}
                   </button>
                 `
                 : ''
@@ -1964,7 +1993,7 @@ export class AudioRecorderModal {
 
         ${
           isLive && (!selectedTake?.manifest || selectedTake.manifest.events.length === 0)
-            ? `<div class="nmm-recorder-takes-empty">Modo Captura MIDI en Tiempo Real: no se muestra matriz previa porque las notas y velocidades se registran dinámicamente a medida que interpretas en tu teclado o controlador MIDI.</div>`
+            ? `<div class="nmm-recorder-takes-empty">${es ? 'Modo Captura MIDI en Tiempo Real: no se muestra matriz previa porque las notas y velocidades se registran dinámicamente a medida que interpretas en tu teclado o controlador MIDI.' : 'Real-Time MIDI Capture Mode: no preview matrix is shown because notes and velocities are recorded dynamically as you play on your MIDI keyboard or controller.'}</div>`
             : `<div class="nmm-autosampler-grid-wrap" id="as-cells-grid" aria-label="AutoSampler Notes x Velocities Grid"></div>`
         }
       </div>
@@ -2051,11 +2080,12 @@ export class AudioRecorderModal {
       }
     }
 
+    const es = isEs();
     const theadHtml = `
       <thead>
         <tr>
-          <th>${isDrum ? 'NOTA MIDI' : 'OCTAVA'}</th>
-          <th class="nmm-as-th-note">${isDrum ? 'PIEZA / ARTICULACIÓN DE BATERÍA' : 'NOTA / RANGO TECLAS'}</th>
+          <th>${isDrum ? (es ? 'NOTA MIDI' : 'MIDI NOTE') : (es ? 'OCTAVA' : 'OCTAVE')}</th>
+          <th class="nmm-as-th-note">${isDrum ? (es ? 'PIEZA / ARTICULACIÓN DE BATERÍA' : 'DRUM PIECE / ARTICULATION') : (es ? 'NOTA / RANGO TECLAS' : 'NOTE / KEY RANGE')}</th>
           ${velCols
             .map(
               (vc, vIdx) => `
@@ -2077,12 +2107,12 @@ export class AudioRecorderModal {
         const octMinMidi = Math.max(0, (row.octave + 1) * 12);
         const octMaxMidi = Math.min(127, octMinMidi + 11);
         const firstColHtml = isDrum
-          ? `<td class="nmm-as-oct-cell" title="Nota MIDI ${row.midiNote} (${escHtml(row.noteName)})">
+          ? `<td class="nmm-as-oct-cell" title="${es ? 'Nota MIDI' : 'MIDI Note'} ${row.midiNote} (${escHtml(row.noteName)})">
               MIDI ${row.midiNote}
               <span class="nmm-as-oct-sub">${escHtml(row.noteName)}</span>
             </td>`
           : isOctaveStart
-            ? `<td class="nmm-as-oct-cell" rowspan="${octRowSpan}" title="Octava C${row.octave} (MIDI ${octMinMidi}..${octMaxMidi})">
+            ? `<td class="nmm-as-oct-cell" rowspan="${octRowSpan}" title="${es ? 'Octava' : 'Octave'} C${row.octave} (MIDI ${octMinMidi}..${octMaxMidi})">
                 OCT C${row.octave}
                 <span class="nmm-as-oct-sub">${octMinMidi}..${octMaxMidi}</span>
               </td>`
@@ -2096,16 +2126,16 @@ export class AudioRecorderModal {
         const keyRangeLabel = isDrum
           ? row.muteGroup !== undefined
             ? `Mute Grp ${row.muteGroup}`
-            : `Tecla ${row.noteName}`
+            : `${es ? 'Tecla' : 'Key'} ${row.noteName}`
           : row.lowKey === row.highKey
             ? `MIDI ${row.midiNote}`
             : `[${midiNoteToStandardName(row.lowKey)}..${midiNoteToStandardName(row.highKey)}]`;
 
         const velCellsHtml = velCols
-          .map((vc) => {
+          .map((vc, cIdx) => {
             const cell = row.cellsByVelocity.get(vc.velocity);
             if (!cell) {
-              return `<td class="nmm-as-td-cell">—</td>`;
+              return `<td class="nmm-as-td-cell" role="gridcell">—</td>`;
             }
             const { ev, idx } = cell;
             const statusClass =
@@ -2117,12 +2147,15 @@ export class AudioRecorderModal {
                     ? ' is-failed'
                     : '';
             return `
-              <td class="nmm-as-td-cell">
+              <td class="nmm-as-td-cell" role="gridcell">
                 <button
                   type="button"
                   class="nmm-as-cell${statusClass}"
                   data-cell-idx="${idx}"
-                  title="Click: audicionar muestra · Shift+Click: re-grabar solo esta celda (${escHtml(titleLabel)} · Capa v${ev.velocity} [${ev.lowVel}..${ev.highVel}])"
+                  data-row-idx="${rIdx}"
+                  data-col-idx="${cIdx}"
+                  aria-label="${escHtml(titleLabel)} v${ev.velocity} (${ev.status})"
+                  title="${es ? `Click / Enter / Espacio: audicionar muestra · Shift+Click / Shift+Enter: re-grabar celda · Flechas ←/→/↑/↓: navegar matriz (${escHtml(titleLabel)} · Capa v${ev.velocity} [${ev.lowVel}..${ev.highVel}])` : `Click / Enter / Space: audition sample · Shift+Click / Shift+Enter: re-record cell · Arrows ←/→/↑/↓: navigate matrix (${escHtml(titleLabel)} · Layer v${ev.velocity} [${ev.lowVel}..${ev.highVel}])`}"
                 >
                   <span class="nmm-as-cell-dot"></span>
                   <span>${escHtml(isDrum ? row.customName || row.noteName : row.noteName)}</span>
@@ -2134,9 +2167,9 @@ export class AudioRecorderModal {
           .join('');
 
         return `
-          <tr class="${isOctaveStart && rIdx > 0 ? 'is-octave-start' : ''}">
+          <tr class="${isOctaveStart && rIdx > 0 ? 'is-octave-start' : ''}" role="row">
             ${firstColHtml}
-            <td class="nmm-as-note-cell" title="Nota muestreada ${escHtml(titleLabel)} (MIDI ${row.midiNote}) · cubre teclas MIDI ${row.lowKey}..${row.highKey}">
+            <td class="nmm-as-note-cell" title="${es ? `Nota muestreada ${escHtml(titleLabel)} (MIDI ${row.midiNote}) · cubre teclas MIDI ${row.lowKey}..${row.highKey}` : `Sampled note ${escHtml(titleLabel)} (MIDI ${row.midiNote}) · covers MIDI keys ${row.lowKey}..${row.highKey}`}">
               <span class="nmm-as-note-main">${escHtml(titleLabel)}</span>
               <span class="nmm-as-note-range">${escHtml(keyRangeLabel)}</span>
             </td>
@@ -2147,13 +2180,45 @@ export class AudioRecorderModal {
       .join('');
 
     grid.innerHTML = `
-      <table class="nmm-as-matrix-table">
+      <table class="nmm-as-matrix-table" role="grid" aria-label="${es ? 'Matriz de Notas por Velocidades' : 'Notes by Velocities Matrix'}">
         ${theadHtml}
         <tbody>${tbodyHtml}</tbody>
       </table>
     `;
 
-    grid.querySelectorAll<HTMLButtonElement>('[data-cell-idx]').forEach((btn) => {
+    const allCellBtns = Array.from(grid.querySelectorAll<HTMLButtonElement>('[data-cell-idx]'));
+    allCellBtns.forEach((btn, flatIdx) => {
+      btn.addEventListener('keydown', (e: KeyboardEvent) => {
+        const rIdx = Number(btn.getAttribute('data-row-idx') ?? 0);
+        const cIdx = Number(btn.getAttribute('data-col-idx') ?? 0);
+        let targetBtn: HTMLButtonElement | null = null;
+
+        if (e.key === 'ArrowRight') {
+          targetBtn = allCellBtns[Math.min(allCellBtns.length - 1, flatIdx + 1)] ?? null;
+        } else if (e.key === 'ArrowLeft') {
+          targetBtn = allCellBtns[Math.max(0, flatIdx - 1)] ?? null;
+        } else if (e.key === 'ArrowDown') {
+          targetBtn =
+            grid.querySelector<HTMLButtonElement>(
+              `[data-row-idx="${rIdx + 1}"][data-col-idx="${cIdx}"]`
+            ) ?? allCellBtns[Math.min(allCellBtns.length - 1, flatIdx + velCols.length)] ?? null;
+        } else if (e.key === 'ArrowUp') {
+          targetBtn =
+            grid.querySelector<HTMLButtonElement>(
+              `[data-row-idx="${rIdx - 1}"][data-col-idx="${cIdx}"]`
+            ) ?? allCellBtns[Math.max(0, flatIdx - velCols.length)] ?? null;
+        } else if (e.key === 'Home') {
+          targetBtn = allCellBtns[0] ?? null;
+        } else if (e.key === 'End') {
+          targetBtn = allCellBtns[allCellBtns.length - 1] ?? null;
+        }
+
+        if (targetBtn) {
+          e.preventDefault();
+          targetBtn.focus();
+        }
+      });
+
       btn.addEventListener('click', (e) => {
         const idx = Number(btn.getAttribute('data-cell-idx'));
         const activeTake = this.getSelectedTake();
@@ -2491,14 +2556,15 @@ export class AudioRecorderModal {
   private renderTransport(): void {
     const box = this.backdropEl?.querySelector('#rec-transport');
     if (!box) return;
+    const es = isEs();
     const isAsSweep =
       this.operatingMode === 'midi_autosampler' &&
       this.autoSamplerConfig.mode !== 'live_midi_capture';
-    const recLabel = isAsSweep ? 'START SWEEP' : 'REC';
+    const recLabel = isAsSweep ? (es ? 'INICIAR BARRIDO' : 'START SWEEP') : 'REC';
     box.innerHTML = `
-      <button type="button" class="btn btn-sm btn-danger-solid" id="btn-rec-record" title="Record / start AutoSampler sweep">${ICONS.record} ${recLabel}</button>
-      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-stop" title="Stop and keep take">${ICONS.stop} Stop</button>
-      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-cancel" title="Discard current take">${ICONS.trash} Discard</button>`;
+      <button type="button" class="btn btn-sm btn-danger-solid" id="btn-rec-record" title="${es ? 'Grabar / iniciar barrido AutoSampler' : 'Record / start AutoSampler sweep'}">${ICONS.record} ${recLabel}</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-stop" title="${es ? 'Detener y conservar toma' : 'Stop and keep take'}">${ICONS.stop} ${es ? 'Detener' : 'Stop'}</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-rec-cancel" title="${es ? 'Descartar toma actual' : 'Discard current take'}">${ICONS.trash} ${es ? 'Descartar' : 'Discard'}</button>`;
     box.querySelector('#btn-rec-record')?.addEventListener('click', () => void this.toggleRecord());
     box.querySelector('#btn-rec-stop')?.addEventListener('click', () => this.stopAndKeep());
     box.querySelector('#btn-rec-cancel')?.addEventListener('click', () => this.cancelAndDiscard());
@@ -2513,24 +2579,25 @@ export class AudioRecorderModal {
       footerRight.innerHTML = '';
       return;
     }
+    const es = isEs();
     const isAutoSampled = Boolean(st.manifest);
     const sliceCount = st.processedAutoSample?.slicerResult.slices.length ?? st.manifest?.events.length ?? 0;
 
     footerRight.innerHTML = `
-      <button type="button" class="btn btn-outline" id="btn-rec-footer-download" title="Download selected take as 16-bit WAV">
-        ${ICONS.download} Download WAV
+      <button type="button" class="btn btn-outline" id="btn-rec-footer-download" title="${es ? 'Descargar toma seleccionada como WAV de 16 bits' : 'Download selected take as 16-bit WAV'}">
+        ${ICONS.download} ${es ? 'Descargar WAV' : 'Download WAV'}
       </button>
-      <button type="button" class="btn btn-accent" id="btn-rec-footer-chopper" title="Open selected take in Audio Chopper & Auto-Slicer with MIDI cut points">
-        ${ICONS.scissors} ${isAutoSampled ? `Open in AutoSlicer (${sliceCount} cuts)` : 'Send to Audio Chopper'}
+      <button type="button" class="btn btn-accent" id="btn-rec-footer-chopper" title="${es ? 'Abrir toma seleccionada en Audio Chopper y Auto-Slicer con puntos de corte MIDI' : 'Open selected take in Audio Chopper & Auto-Slicer with MIDI cut points'}">
+        ${ICONS.scissors} ${isAutoSampled ? (es ? `Abrir en AutoSlicer (${sliceCount} cortes)` : `Open in AutoSlicer (${sliceCount} cuts)`) : (es ? 'Enviar a Audio Chopper' : 'Send to Audio Chopper')}
       </button>
       ${
         isAutoSampled && this.context.onInjectAutoSampledInstrument
-          ? `<button type="button" class="btn btn-primary" id="btn-rec-footer-inject" title="Inject all AutoSampled zones/regions + AutoLoops into Session">
-              ${ICONS.check} Inject ${sliceCount} Mapped Zones into Session
+          ? `<button type="button" class="btn btn-primary" id="btn-rec-footer-inject" title="${es ? 'Inyectar todas las zonas/regiones AutoSampled + AutoLoops en la Sesión' : 'Inject all AutoSampled zones/regions + AutoLoops into Session'}">
+              ${ICONS.check} ${es ? `Inyectar ${sliceCount} Zonas Mapeadas en Sesión` : `Inject ${sliceCount} Mapped Zones into Session`}
             </button>`
           : this.context.onInjectTakeIntoSession
-            ? `<button type="button" class="btn btn-primary" id="btn-rec-footer-inject" title="Inject selected take into Active Zone">
-                ${ICONS.check} Inject into Active Zone
+            ? `<button type="button" class="btn btn-primary" id="btn-rec-footer-inject" title="${es ? 'Inyectar toma seleccionada en la Zona Activa' : 'Inject selected take into Active Zone'}">
+                ${ICONS.check} ${es ? 'Inyectar en Zona Activa' : 'Inject into Active Zone'}
               </button>`
             : ''
       }
@@ -2550,10 +2617,11 @@ export class AudioRecorderModal {
     const container = this.backdropEl?.querySelector<HTMLElement>('#rec-take-inspector');
     this.renderFooterActions();
     if (!container) return;
+    const es = isEs();
 
     const liveWindowControlsHtml = `
-      <div class="nmm-audio-zoom-group" title="Constant horizontal zoom window during live recording (never squashes the wave)">
-        <span class="toolbar-label">LIVE WINDOW:</span>
+      <div class="nmm-audio-zoom-group" title="${es ? 'Ventana de zoom horizontal constante durante la grabación en vivo (nunca aplasta la onda)' : 'Constant horizontal zoom window during live recording (never squashes the wave)'}">
+        <span class="toolbar-label">${es ? 'VENTANA EN VIVO:' : 'LIVE WINDOW:'}</span>
         ${([2, 5, 10, 30] as LiveWaveWindowSec[])
           .map(
             (sec) =>
@@ -2591,27 +2659,41 @@ export class AudioRecorderModal {
       st.selectionEndFrame !== null &&
       st.selectionEndFrame > st.selectionStartFrame;
     const selText = !st
-      ? `Live Window: ${this.liveWindowSec}s (Constant Zoom)`
+      ? es
+        ? `Ventana en Vivo: ${this.liveWindowSec}s (Zoom Constante)`
+        : `Live Window: ${this.liveWindowSec}s (Constant Zoom)`
       : hasSelection
-        ? `Selected Noise Zone: ${((st.selectionStartFrame! / st.take.sampleRate) * 1000).toFixed(0)}..${((st.selectionEndFrame! / st.take.sampleRate) * 1000).toFixed(0)} ms`
+        ? es
+          ? `Zona Ruido Seleccionada: ${((st.selectionStartFrame! / st.take.sampleRate) * 1000).toFixed(0)}..${((st.selectionEndFrame! / st.take.sampleRate) * 1000).toFixed(0)} ms`
+          : `Selected Noise Zone: ${((st.selectionStartFrame! / st.take.sampleRate) * 1000).toFixed(0)}..${((st.selectionEndFrame! / st.take.sampleRate) * 1000).toFixed(0)} ms`
         : st.manifest
-          ? `${st.manifest.events.length} MIDI Note Slices (${st.processedAutoSample?.extendedRegions.filter((r) => r.loopMode !== 'no_loop').length ?? 0} AutoLooped)`
-          : 'Arrastra sobre la onda para seleccionar una región de Huella de Ruido';
+          ? es
+            ? `${st.manifest.events.length} Cortes MIDI (${st.processedAutoSample?.extendedRegions.filter((r) => r.loopMode !== 'no_loop').length ?? 0} con AutoLoop)`
+            : `${st.manifest.events.length} MIDI Note Slices (${st.processedAutoSample?.extendedRegions.filter((r) => r.loopMode !== 'no_loop').length ?? 0} AutoLooped)`
+          : es
+            ? 'Arrastra sobre la onda para seleccionar una región de Huella de Ruido'
+            : 'Drag on waveform to select a Noise Print region';
 
     const npSummary = np
       ? `Floor: ${np.levelDbfs.toFixed(1)} dBFS · 50Hz: ${np.hum50HzDb.toFixed(1)} dB · 60Hz: ${np.hum60HzDb.toFixed(1)} dB ${st?.noiseRegionLabel ? `[${st.noiseRegionLabel}]` : ''}`
       : st
-        ? 'Sin huella capturada aún (pulsa Detectar Ruido o arrastra en la onda)'
-        : 'Se detectará automáticamente al finalizar la grabación (o con Detectar Ruido)';
+        ? es
+          ? 'Sin huella capturada aún (pulsa Detectar Ruido o arrastra en la onda)'
+          : 'No noise print captured yet (click Detect Noise or drag on waveform)'
+        : es
+          ? 'Se detectará automáticamente al finalizar la grabación (o con Detectar Ruido)'
+          : 'Automatically detected when recording finishes (or via Detect Noise)';
 
     container.innerHTML = `
       <div class="nmm-recorder-inspector-card">
-        <div class="nmm-recorder-viewport-panel">
+        <div class="nmm-audio-viewport-panel">
           <div class="nmm-recorder-inspector-head">
             <span class="nmm-recorder-inspector-title">${ICONS.wave} ${
               st
                 ? `${escHtml(st.name)} • ${(st.take.sampleRate / 1000).toFixed(1)} kHz • ${st.take.durationSec.toFixed(2)}s`
-                : 'LIVE SCROLLING WAVEFORM &amp; NOISE PRINT INSPECTOR'
+                : es
+                  ? 'FORMA DE ONDA EN VIVO Y INSPECTOR DE HUELLA DE RUIDO'
+                  : 'LIVE SCROLLING WAVEFORM &amp; NOISE PRINT INSPECTOR'
             }</span>
             <div class="nmm-recorder-dsp-right">
               ${liveWindowControlsHtml}
@@ -2619,35 +2701,35 @@ export class AudioRecorderModal {
             </div>
           </div>
 
-          <div class="nmm-recorder-wave-wrap">
+          <div class="nmm-audio-canvas-wrap">
             <canvas id="rec-wave-canvas" class="nmm-recorder-wave-canvas" width="960" height="160"></canvas>
           </div>
 
-          <div class="loop-canvas-legend">
+          <div class="nmm-audio-canvas-legend">
             ${
               st
                 ? `
-              <span>Drag on waveform = Select <strong>Noise Print</strong> region (Violet)</span>
-              <span>• Green line = <strong>NoteOn</strong></span>
-              <span>• Amber line = <strong>NoteOff</strong></span>
-              <span>• Cyan line = <strong>TailEnd / Cut</strong></span>
+              <span>${es ? 'Arrastrar en onda = Seleccionar región <strong>Noise Print</strong> (Violeta)' : 'Drag on waveform = Select <strong>Noise Print</strong> region (Violet)'}</span>
+              <span>• ${es ? 'Línea verde = <strong>NoteOn</strong>' : 'Green line = <strong>NoteOn</strong>'}</span>
+              <span>• ${es ? 'Línea ámbar = <strong>NoteOff</strong>' : 'Amber line = <strong>NoteOff</strong>'}</span>
+              <span>• ${es ? 'Línea cian = <strong>TailEnd / Corte</strong>' : 'Cyan line = <strong>TailEnd / Cut</strong>'}</span>
             `
                 : `
-              <span>Live Recording = Scrolls horizontally at constant <strong>${this.liveWindowSec}s</strong> zoom (never squashes)</span>
-              <span>• Green = <strong>NoteOn</strong></span>
-              <span>• Amber = <strong>NoteOff</strong> (Release start)</span>
-              <span>• Cyan = <strong>TailEnd</strong> / Loop</span>
+              <span>${es ? `Grabación en vivo = Desplazamiento horizontal a zoom constante de <strong>${this.liveWindowSec}s</strong>` : `Live Recording = Scrolls horizontally at constant <strong>${this.liveWindowSec}s</strong> zoom (never squashes)`}</span>
+              <span>• ${es ? 'Verde = <strong>NoteOn</strong>' : 'Green = <strong>NoteOn</strong>'}</span>
+              <span>• ${es ? 'Ámbar = <strong>NoteOff</strong> (Inicio Release)' : 'Amber = <strong>NoteOff</strong> (Release start)'}</span>
+              <span>• ${es ? 'Cian = <strong>TailEnd</strong> / Loop' : 'Cyan = <strong>TailEnd</strong> / Loop'}</span>
             `
             }
           </div>
         </div>
 
-        <div class="nmm-recorder-controls-card">
+        <div class="nmm-audio-controls-card">
           <div class="nmm-recorder-params-grid">
             <div class="form-group">
               <div class="label-with-val">
                 <label>${escHtml(MUSICIAN_TERMS.noisePrint)}</label>
-                <span class="val-pill">${np ? 'ACTIVE' : this.autoDetectNoiseOnFinish ? 'AUTO' : 'NONE'}</span>
+                <span class="val-pill">${np ? (es ? 'ACTIVA' : 'ACTIVE') : this.autoDetectNoiseOnFinish ? 'AUTO' : (es ? 'NINGUNA' : 'NONE')}</span>
               </div>
               <div class="nmm-recorder-noise-readout-box" id="rec-noise-readout" title="${escHtml(npSummary)}">
                 ${escHtml(npSummary)}
@@ -2656,25 +2738,25 @@ export class AudioRecorderModal {
 
             <div class="form-group">
               <div class="label-with-val">
-                <label for="sel-rec-denoise-mode">DENOISE ENGINE MODE</label>
+                <label for="sel-rec-denoise-mode">${es ? 'MODO DE MOTOR DENOISE' : 'DENOISE ENGINE MODE'}</label>
                 <span class="val-pill font-mono">${
                   this.denoiseMode === 'algorithmic'
-                    ? 'ALGORÍTMICO'
+                    ? es ? 'ALGORÍTMICO' : 'ALGORITHMIC'
                     : this.denoiseMode === 'noise_print'
-                      ? 'HUELLA DE RUIDO'
-                      : 'IA NEURAL'
+                      ? es ? 'HUELLA DE RUIDO' : 'NOISE PRINT'
+                      : es ? 'IA NEURAL' : 'NEURAL AI'
                 }</span>
               </div>
-              <select id="sel-rec-denoise-mode" class="form-control form-control-sm" title="Selecciona el motor de reducción de ruido: Algorítmico (puerta espectral automática + notch 50/60Hz), Basado en Huella de Ruido (sustracción de perfil capturado) o con IA">
-                <option value="algorithmic" ${this.denoiseMode === 'algorithmic' ? 'selected' : ''}>Denoise Algorítmico (Puerta Espectral + Hum 50/60Hz)</option>
-                <option value="noise_print" ${this.denoiseMode === 'noise_print' ? 'selected' : ''}>Denoise por Huella de Ruido (Sustracción Espectral)</option>
-                <option value="ai" ${this.denoiseMode === 'ai' ? 'selected' : ''}>Denoise con IA (Companion Bridge + Supresión de Huella)</option>
+              <select id="sel-rec-denoise-mode" class="form-control form-control-sm" title="${es ? 'Selecciona el motor de reducción de ruido: Algorítmico (puerta espectral automática + notch 50/60Hz), Basado en Huella de Ruido (sustracción de perfil capturado) o con IA' : 'Select noise reduction engine: Algorithmic (auto spectral gate + 50/60Hz notch), Noise Print-based (captured profile subtraction) or AI'}">
+                <option value="algorithmic" ${this.denoiseMode === 'algorithmic' ? 'selected' : ''}>${es ? 'Denoise Algorítmico (Puerta Espectral + Hum 50/60Hz)' : 'Algorithmic Denoise (Spectral Gate + 50/60Hz Hum)'}</option>
+                <option value="noise_print" ${this.denoiseMode === 'noise_print' ? 'selected' : ''}>${es ? 'Denoise por Huella de Ruido (Sustracción Espectral)' : 'Noise Print Denoise (Spectral Subtraction)'}</option>
+                <option value="ai" ${this.denoiseMode === 'ai' ? 'selected' : ''}>${es ? 'Denoise con IA (Companion Bridge + Supresión de Huella)' : 'AI Denoise (Companion Bridge + Print Suppression)'}</option>
               </select>
             </div>
 
             <div class="form-group">
               <div class="label-with-val">
-                <label for="inp-rec-denoise-db">DENOISE REDUCTION (dB)</label>
+                <label for="inp-rec-denoise-db">${es ? 'REDUCCIÓN DENOISE (dB)' : 'DENOISE REDUCTION (dB)'}</label>
                 <span class="val-pill font-mono" id="lbl-rec-denoise-db">${this.denoiseReductionDb} dB</span>
               </div>
               <input type="number" id="inp-rec-denoise-db" class="form-control form-control-sm font-mono" value="${this.denoiseReductionDb}" min="3" max="36" step="1" />
@@ -2683,38 +2765,38 @@ export class AudioRecorderModal {
 
           <div class="nmm-recorder-dsp-toolbar">
             <div class="nmm-recorder-dsp-left">
-              <label class="batch-check" title="Normalizar automáticamente a -1.0 dBFS + filtro DC Block al finalizar cada grabación">
+              <label class="batch-check" title="${es ? 'Normalizar automáticamente a -1.0 dBFS + filtro DC Block al finalizar cada grabación' : 'Automatically normalize to -1.0 dBFS + DC Block filter when each recording finishes'}">
                 <input type="checkbox" class="articulation-checkbox switch--sm" id="rec-chk-auto-norm" ${this.autoNormalizeOnFinish ? 'checked' : ''} />
-                <span>Normalizar al grabar (-1 dBFS)</span>
+                <span>${es ? 'Normalizar al grabar (-1 dBFS)' : 'Normalize on record (-1 dBFS)'}</span>
               </label>
-              <label class="batch-check" title="Detectar y capturar automáticamente la huella de ruido del suelo estacionario al finalizar cada grabación">
+              <label class="batch-check" title="${es ? 'Detectar y capturar automáticamente la huella de ruido del suelo estacionario al finalizar cada grabación' : 'Automatically detect and capture stationary noise floor print when each recording finishes'}">
                 <input type="checkbox" class="articulation-checkbox switch--sm" id="rec-chk-auto-noise" ${this.autoDetectNoiseOnFinish ? 'checked' : ''} />
-                <span>Detectar Ruido (Auto)</span>
+                <span>${es ? 'Detectar Ruido (Auto)' : 'Detect Noise (Auto)'}</span>
               </label>
 
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-capture-noise" ${!st ? 'disabled' : ''} title="Detectar suelo de ruido automáticamente o capturar la zona seleccionada en la onda">
-                ${ICONS.search} Detectar Ruido / Huella
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-capture-noise" ${!st ? 'disabled' : ''} title="${es ? 'Detectar suelo de ruido automáticamente o capturar la zona seleccionada en la onda' : 'Auto-detect noise floor or capture selected region on waveform'}">
+                ${ICONS.search} ${es ? 'Detectar Ruido / Huella' : 'Detect Noise / Print'}
               </button>
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-algo-denoise" ${!st ? 'disabled' : ''} title="Denoise Algorítmico: puerta espectral automática sobre el suelo estacionario + filtro DC + notch 50/60 Hz">
-                ${ICONS.sliders} Denoise Algorítmico
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-algo-denoise" ${!st ? 'disabled' : ''} title="${es ? 'Denoise Algorítmico: puerta espectral automática sobre el suelo estacionario + filtro DC + notch 50/60 Hz' : 'Algorithmic Denoise: auto spectral gate on stationary floor + DC filter + 50/60 Hz notch'}">
+                ${ICONS.sliders} ${es ? 'Denoise Algorítmico' : 'Algorithmic Denoise'}
               </button>
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-dsp-denoise" ${!st ? 'disabled' : ''} title="Denoise basado en Huella de Ruido: sustracción espectral de 16 bandas usando la huella capturada + notch 50/60 Hz">
-                ${ICONS.wave} Denoise (Huella)
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-dsp-denoise" ${!st ? 'disabled' : ''} title="${es ? 'Denoise basado en Huella de Ruido: sustracción espectral de 16 bandas usando la huella capturada + notch 50/60 Hz' : 'Noise Print Denoise: 16-band spectral subtraction using captured print + 50/60 Hz notch'}">
+                ${ICONS.wave} ${es ? 'Denoise (Huella)' : 'Denoise (Print)'}
               </button>
               <button type="button" class="btn btn-sm btn-ai-accent" id="btn-rec-ai-enhance" ${!st ? 'disabled' : ''} title="${escHtml(recBweDecl.buttonTooltip)}">
-                ${ICONS.sparkle} Denoise IA
+                ${ICONS.sparkle} ${es ? 'Denoise IA' : 'AI Denoise'}
               </button>
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-normalize" ${!st ? 'disabled' : ''} title="Aplicar filtro DC Block y Normalización de Pico a -1.0 dBFS sobre la toma seleccionada">
-                ${ICONS.zap} Normalizar (-1 dBFS + DC)
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-normalize" ${!st ? 'disabled' : ''} title="${es ? 'Aplicar filtro DC Block y Normalización de Pico a -1.0 dBFS sobre la toma seleccionada' : 'Apply DC Block filter and Peak Normalization to -1.0 dBFS on selected take'}">
+                ${ICONS.zap} ${es ? 'Normalizar (-1 dBFS + DC)' : 'Normalize (-1 dBFS + DC)'}
               </button>
             </div>
 
             <div class="nmm-recorder-dsp-right">
-              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-undo-take" ${!st || st.history.length === 0 ? 'disabled' : ''} title="Undo last edit on this take">
-                ${ICONS.undo} Undo (${st ? st.history.length : 0})
+              <button type="button" class="btn btn-sm btn-outline" id="btn-rec-undo-take" ${!st || st.history.length === 0 ? 'disabled' : ''} title="${es ? 'Deshacer última edición en esta toma' : 'Undo last edit on this take'}">
+                ${ICONS.undo} ${es ? 'Deshacer' : 'Undo'} (${st ? st.history.length : 0})
               </button>
-              <button type="button" class="btn btn-sm btn-accent" id="btn-rec-play-sel" ${!st ? 'disabled' : ''} title="Audition selected region (or full take)">
-                ${ICONS.play} ${hasSelection ? 'Play Selection' : 'Play Take'}
+              <button type="button" class="btn btn-sm btn-accent" id="btn-rec-play-sel" ${!st ? 'disabled' : ''} title="${es ? 'Escuchar región seleccionada (o toma completa)' : 'Audition selected region (or full take)'}">
+                ${ICONS.play} ${hasSelection ? (es ? 'Oír Selección' : 'Play Selection') : (es ? 'Oír Toma' : 'Play Take')}
               </button>
             </div>
           </div>
@@ -3064,18 +3146,19 @@ export class AudioRecorderModal {
     const list = this.backdropEl?.querySelector('#rec-takes');
     const count = this.backdropEl?.querySelector('#rec-takes-count');
     if (!list) return;
+    const es = isEs();
     if (count) count.textContent = String(this.takes.length);
     if (this.takes.length === 0) {
-      list.innerHTML = `<div class="nmm-recorder-takes-empty">No takes yet — enable audio input and press REC / START SWEEP.</div>`;
+      list.innerHTML = `<div class="nmm-recorder-takes-empty">${es ? 'Aún no hay tomas — activa la entrada de audio y pulsa REC / INICIAR BARRIDO.' : 'No takes yet — enable audio input and press REC / START SWEEP.'}</div>`;
       return;
     }
     const activeId = this.getSelectedTake()?.id ?? null;
     list.innerHTML = this.takes
       .map((t) => {
-        const cls = t.take.classification === 'unknown' ? 'unclassified' : t.take.classification;
+        const cls = t.take.classification === 'unknown' ? (es ? 'sin clasificar' : 'unclassified') : t.take.classification;
         const isSelected = t.id === activeId;
         const sliceBadge = t.manifest
-          ? `<span class="panel-badge badge-ai-on">${t.manifest.events.length} MIDI cuts</span>`
+          ? `<span class="panel-badge badge-ai-on">${t.manifest.events.length} ${es ? 'cortes MIDI' : 'MIDI cuts'}</span>`
           : `<span class="panel-badge badge-ai-on">${escHtml(cls)} ${(t.take.classificationConfidence * 100).toFixed(0)}%</span>`;
         return `
         <div class="nmm-recorder-take${isSelected ? ' is-selected' : ''}" data-take-id="${escHtml(t.id)}">
@@ -3083,15 +3166,15 @@ export class AudioRecorderModal {
           <span class="val-pill font-mono">${t.take.durationSec.toFixed(2)}s · ${t.take.peakDbfs.toFixed(1)} dBFS · ${(t.take.sampleRate / 1000).toFixed(0)}k</span>
           ${sliceBadge}
           <span class="nmm-recorder-take-actions">
-            <button type="button" class="btn btn-xs btn-outline" data-act="audition" title="Audition take">${ICONS.play}</button>
-            <button type="button" class="btn btn-xs btn-outline" data-act="chopper" title="Send to Audio Chopper / AutoSlicer">${ICONS.scissors}</button>
+            <button type="button" class="btn btn-xs btn-outline" data-act="audition" title="${es ? 'Escuchar toma' : 'Audition take'}">${ICONS.play}</button>
+            <button type="button" class="btn btn-xs btn-outline" data-act="chopper" title="${es ? 'Enviar a Audio Chopper / AutoSlicer' : 'Send to Audio Chopper / AutoSlicer'}">${ICONS.scissors}</button>
             ${
               this.context.onInjectTakeIntoSession || this.context.onInjectAutoSampledInstrument
-                ? `<button type="button" class="btn btn-xs btn-outline" data-act="inject" title="Inject into Session">${ICONS.plus}</button>`
+                ? `<button type="button" class="btn btn-xs btn-outline" data-act="inject" title="${es ? 'Inyectar en Sesión' : 'Inject into Session'}">${ICONS.plus}</button>`
                 : ''
             }
-            <button type="button" class="btn btn-xs btn-outline" data-act="download" title="Download WAV">${ICONS.download}</button>
-            <button type="button" class="btn btn-xs btn-outline" data-act="delete" title="Delete take">${ICONS.trash}</button>
+            <button type="button" class="btn btn-xs btn-outline" data-act="download" title="${es ? 'Descargar WAV' : 'Download WAV'}">${ICONS.download}</button>
+            <button type="button" class="btn btn-xs btn-outline" data-act="delete" title="${es ? 'Eliminar toma' : 'Delete take'}">${ICONS.trash}</button>
           </span>
         </div>`;
       })
@@ -3133,10 +3216,11 @@ export class AudioRecorderModal {
 
   private syncTransportState(): void {
     if (!this.backdropEl) return;
+    const es = isEs();
     const state: RecorderState = this.capture.isOpen() ? this.capture.getState() : 'idle';
     const badge = this.backdropEl.querySelector('#rec-state-badge');
     if (badge) {
-      badge.textContent = this.isSweepRunning ? 'SWEEPING' : STATE_BADGE[state];
+      badge.textContent = this.isSweepRunning ? (es ? 'BARRIENDO' : 'SWEEPING') : STATE_BADGE[state];
       badge.className = `panel-badge ${state === 'recording' || this.isSweepRunning ? 'badge-ai-on' : 'badge-muted'}`;
     }
     const dot = this.backdropEl.querySelector('#rec-state-dot');
@@ -3151,14 +3235,14 @@ export class AudioRecorderModal {
       recBtn.disabled = !this.capture.isOpen() && !isAsSweep;
       if (isAsSweep) {
         recBtn.innerHTML = this.isSweepRunning
-          ? `${ICONS.pause} PAUSE SWEEP`
-          : `${ICONS.record} START SWEEP`;
+          ? `${ICONS.pause} ${es ? 'PAUSAR BARRIDO' : 'PAUSE SWEEP'}`
+          : `${ICONS.record} ${es ? 'INICIAR BARRIDO' : 'START SWEEP'}`;
       } else {
         recBtn.innerHTML =
           state === 'recording'
-            ? `${ICONS.pause} PAUSE`
+            ? `${ICONS.pause} ${es ? 'PAUSAR' : 'PAUSE'}`
             : state === 'paused'
-              ? `${ICONS.play} RESUME`
+              ? `${ICONS.play} ${es ? 'REANUDAR' : 'RESUME'}`
               : `${ICONS.record} REC`;
       }
     }

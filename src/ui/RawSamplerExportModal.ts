@@ -20,6 +20,7 @@ import type {
   RawSamplerPreflightReport,
 } from '../core/export/rawSamplerTypes.ts';
 import { SAMPLER_FORMAT_METADATA } from '../core/export/rawSamplerPreflight.ts';
+import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import {
   fromRawSamplerPreflightReport,
   renderCommonPreflightGate,
@@ -99,6 +100,11 @@ export class RawSamplerExportModal {
 
   constructor(context: RawSamplerExportModalContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public open(initialFormat?: RawSamplerFormat): void {
@@ -147,6 +153,7 @@ export class RawSamplerExportModal {
   }
 
   private render(): void {
+    const isEs = getAppLocale() === 'es';
     if (!this.backdropEl) {
       this.backdropEl = document.createElement('div');
       this.backdropEl.className = 'nmm-modal-backdrop';
@@ -169,38 +176,38 @@ export class RawSamplerExportModal {
     const selectedCount = Math.max(1, this.selectedFormats.size);
     const continueBtnLabel =
       selectedCount > 1
-        ? `Exportar ${selectedCount} Formatos Simultáneamente`
+        ? (isEs ? `Exportar ${selectedCount} Formatos Simultáneamente` : `Export ${selectedCount} Formats Simultaneously`)
         : gateModel.continueLabel;
 
     this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-modal-xl" role="dialog" aria-modal="true" aria-label="Exportar banco a formato sampler">
+      <div class="nmm-modal-window nmm-modal-xl" role="dialog" aria-modal="true" aria-label="${isEs ? 'Exportar banco a formato sampler' : 'Export bank to sampler format'}">
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.database}</span>
             <div>
-              <h2>Universal Raw Multi-Format Sampler Exporter</h2>
-              <p class="nmm-header-sub">1. Identidad del Banco · 2. Configuración de Audio · 3. Selección Simple o Multi-Formato (${ALL_EXPORTABLE_SAMPLER_FORMATS.length} formatos)</p>
+              <h2>${isEs ? 'Exportador Universal Multi-Formato de Samplers' : 'Universal Raw Multi-Format Sampler Exporter'}</h2>
+              <p class="nmm-header-sub">${isEs ? `1. Identidad del Banco · 2. Configuración de Audio · 3. Selección Simple o Multi-Formato (${ALL_EXPORTABLE_SAMPLER_FORMATS.length} formatos)` : `1. Bank Identity · 2. Audio Configuration · 3. Single or Multi-Format Selection (${ALL_EXPORTABLE_SAMPLER_FORMATS.length} formats)`}</p>
             </div>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-close-sampler-modal" title="Cerrar (Esc)" aria-label="Cerrar">${ICONS.close}</button>
+          <button type="button" class="btn btn-close-modal" id="btn-close-sampler-modal" title="${isEs ? 'Cerrar (Esc)' : 'Close (Esc)'}" aria-label="${isEs ? 'Cerrar' : 'Close'}">${ICONS.close}</button>
         </div>
 
         <div class="raw-export-body">
           <div class="raw-settings">
             <!-- 1. NOMBRE Y METADATOS (PRIMERO) -->
             <div class="raw-card">
-              <span class="raw-card-title">1. Nombre del Instrumento y Metadatos</span>
+              <span class="raw-card-title">${isEs ? '1. Nombre del Instrumento y Metadatos' : '1. Instrument Name &amp; Metadata'}</span>
               <div class="form-group">
-                <label for="input-bank-name">Nombre del Banco / Preset:</label>
+                <label for="input-bank-name">${isEs ? 'Nombre del Banco / Preset:' : 'Bank / Preset Name:'}</label>
                 <input id="input-bank-name" type="text" class="form-control" value="${this.bankName.replace(/"/g, '&quot;')}" />
               </div>
               <div class="raw-meta-grid">
                 <div class="form-group">
-                  <label for="input-author">Autor:</label>
+                  <label for="input-author">${isEs ? 'Autor:' : 'Author:'}</label>
                   <input id="input-author" type="text" class="form-control" value="${this.author.replace(/"/g, '&quot;')}" />
                 </div>
                 <div class="form-group">
-                  <label for="input-license">Licencia:</label>
+                  <label for="input-license">${isEs ? 'Licencia:' : 'License:'}</label>
                   <input id="input-license" type="text" class="form-control" value="${this.license.replace(/"/g, '&quot;')}" />
                 </div>
               </div>
@@ -208,37 +215,37 @@ export class RawSamplerExportModal {
 
             <!-- 2. CONFIGURACIÓN DE AUDIO Y EMPAQUETADO (SEGUNDO) -->
             <div class="raw-card">
-              <span class="raw-card-title">2. Configuración de Audio y Empaquetado</span>
+              <span class="raw-card-title">${isEs ? '2. Configuración de Audio y Empaquetado' : '2. Audio &amp; Packaging Configuration'}</span>
               <div class="form-group">
-                <label for="sel-audio-resolution">Resolución de Bits:</label>
+                <label for="sel-audio-resolution">${isEs ? 'Resolución de Bits:' : 'Bit Resolution:'}</label>
                 <select id="sel-audio-resolution" class="form-control">
-                  <option value="original" ${this.resolution === 'original' ? 'selected' : ''}>Conservar Original (Source Bit Depth)</option>
-                  <option value="pcm16" ${this.resolution === 'pcm16' ? 'selected' : ''}>16-bit PCM (Compatibilidad Universal / SF2)</option>
-                  <option value="pcm24" ${this.resolution === 'pcm24' ? 'selected' : ''}>24-bit PCM (Alta Definición Master)</option>
+                  <option value="original" ${this.resolution === 'original' ? 'selected' : ''}>${isEs ? 'Conservar Original (Source Bit Depth)' : 'Keep Original (Source Bit Depth)'}</option>
+                  <option value="pcm16" ${this.resolution === 'pcm16' ? 'selected' : ''}>${isEs ? '16-bit PCM (Compatibilidad Universal / SF2)' : '16-bit PCM (Universal Compatibility / SF2)'}</option>
+                  <option value="pcm24" ${this.resolution === 'pcm24' ? 'selected' : ''}>${isEs ? '24-bit PCM (Alta Definición Master)' : '24-bit PCM (High-Definition Master)'}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="sel-audio-samplerate">Frecuencia de Muestreo:</label>
+                <label for="sel-audio-samplerate">${isEs ? 'Frecuencia de Muestreo:' : 'Sample Rate:'}</label>
                 <select id="sel-audio-samplerate" class="form-control">
-                  <option value="original" ${this.sampleRate === 'original' ? 'selected' : ''}>Conservar Original (Source Rate)</option>
+                  <option value="original" ${this.sampleRate === 'original' ? 'selected' : ''}>${isEs ? 'Conservar Original (Source Rate)' : 'Keep Original (Source Rate)'}</option>
                   <option value="44100" ${this.sampleRate === 44100 ? 'selected' : ''}>44.100 Hz (CD Audio Standard)</option>
                   <option value="48000" ${this.sampleRate === 48000 ? 'selected' : ''}>48.000 Hz (Broadcast / Pro Studio)</option>
                   <option value="96000" ${this.sampleRate === 96000 ? 'selected' : ''}>96.000 Hz (Master Wave High-Res)</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="sel-audio-norm">Normalización de Pico:</label>
+                <label for="sel-audio-norm">${isEs ? 'Normalización de Pico:' : 'Peak Normalization:'}</label>
                 <select id="sel-audio-norm" class="form-control">
-                  <option value="none" ${this.normalization === 'none' ? 'selected' : ''}>Sin Normalizar (Preservar Dinámica Original)</option>
-                  <option value="0db" ${this.normalization === '0db' ? 'selected' : ''}>Normalizar a 0 dBFS Peak</option>
-                  <option value="minus_0_3db" ${this.normalization === 'minus_0_3db' ? 'selected' : ''}>Normalizar a -0.3 dBFS True-Peak</option>
+                  <option value="none" ${this.normalization === 'none' ? 'selected' : ''}>${isEs ? 'Sin Normalizar (Preservar Dinámica Original)' : 'No Normalization (Preserve Original Dynamics)'}</option>
+                  <option value="0db" ${this.normalization === '0db' ? 'selected' : ''}>${isEs ? 'Normalizar a 0 dBFS Peak' : 'Normalize to 0 dBFS Peak'}</option>
+                  <option value="minus_0_3db" ${this.normalization === 'minus_0_3db' ? 'selected' : ''}>${isEs ? 'Normalizar a -0.3 dBFS True-Peak' : 'Normalize to -0.3 dBFS True-Peak'}</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="sel-audio-layout">Estructura de Empaquetado:</label>
+                <label for="sel-audio-layout">${isEs ? 'Estructura de Empaquetado:' : 'Packaging Layout:'}</label>
                 <select id="sel-audio-layout" class="form-control">
-                  <option value="folder_samples" ${this.layout === 'folder_samples' ? 'selected' : ''}>Carpeta Samples/ + Definición (.zip)</option>
-                  <option value="monolithic" ${this.layout === 'monolithic' ? 'selected' : ''}>Monolítico (Directo en formato destino)</option>
+                  <option value="folder_samples" ${this.layout === 'folder_samples' ? 'selected' : ''}>${isEs ? 'Carpeta Samples/ + Definición (.zip)' : 'Samples/ Folder + Definition (.zip)'}</option>
+                  <option value="monolithic" ${this.layout === 'monolithic' ? 'selected' : ''}>${isEs ? 'Monolítico (Directo en formato destino)' : 'Monolithic (Direct target format)'}</option>
                 </select>
               </div>
             </div>
@@ -246,10 +253,10 @@ export class RawSamplerExportModal {
             <!-- 3. FORMATOS DE SAMPLER DESTINO (AL FINAL, CON SELECCIÓN MÚLTIPLE) -->
             <div class="form-group">
               <div class="u-flex-between" style="margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
-                <label style="margin: 0;">3. Formatos de Sampler Destino (${selectedCount} seleccionado${selectedCount === 1 ? '' : 's'})</label>
+                <label style="margin: 0;">${isEs ? `3. Formatos de Sampler Destino (${selectedCount} seleccionado${selectedCount === 1 ? '' : 's'})` : `3. Target Sampler Formats (${selectedCount} selected)`}</label>
                 <div class="u-flex-row u-gap-1">
-                  <button type="button" class="btn btn-xs btn-ghost" id="btn-raw-select-all" title="Marcar todos los formatos para exportación simultánea">Todos (${ALL_EXPORTABLE_SAMPLER_FORMATS.length})</button>
-                  <button type="button" class="btn btn-xs btn-ghost" id="btn-raw-select-single" title="Dejar seleccionado únicamente el formato inspeccionado">Solo activo</button>
+                  <button type="button" class="btn btn-xs btn-ghost" id="btn-raw-select-all" title="${isEs ? 'Marcar todos los formatos para exportación simultánea' : 'Check all formats for simultaneous export'}">${isEs ? `Todos (${ALL_EXPORTABLE_SAMPLER_FORMATS.length})` : `All (${ALL_EXPORTABLE_SAMPLER_FORMATS.length})`}</button>
+                  <button type="button" class="btn btn-xs btn-ghost" id="btn-raw-select-single" title="${isEs ? 'Dejar seleccionado únicamente el formato inspeccionado' : 'Select only the currently inspected format'}">${isEs ? 'Solo activo' : 'Active only'}</button>
                 </div>
               </div>
               <div class="raw-format-list" style="max-height: 260px; overflow-y: auto; padding-right: 4px;">
@@ -259,7 +266,7 @@ export class RawSamplerExportModal {
                   return `
                   <div class="raw-format-btn ${isActive ? 'is-active' : ''}" data-format="${f.id}" role="button" tabindex="0">
                     <span class="u-flex-row u-gap-2" style="align-items: center;">
-                      <input type="checkbox" class="raw-format-check" data-check-format="${f.id}" ${isChecked ? 'checked' : ''} aria-label="Incluir ${f.label} en exportación múltiple" />
+                      <input type="checkbox" class="raw-format-check" data-check-format="${f.id}" ${isChecked ? 'checked' : ''} aria-label="${isEs ? `Incluir ${f.label} en exportación múltiple` : `Include ${f.label} in multi-export`}" />
                       <span>${f.label}</span>
                     </span>
                     <span class="raw-format-badge">${f.badge}</span>
@@ -274,7 +281,7 @@ export class RawSamplerExportModal {
             <div class="triage-summary">
               <span>${ICONS.database}</span>
               <div>
-                <p><strong>${meta.title}</strong> ${selectedCount > 1 ? `<span class="badge badge-info">+${selectedCount - 1} formato(s) más en cola</span>` : ''}</p>
+                <p><strong>${meta.title}</strong> ${selectedCount > 1 ? `<span class="badge badge-info">${isEs ? `+${selectedCount - 1} formato(s) más en cola` : `+${selectedCount - 1} more format(s) queued`}</span>` : ''}</p>
                 <p>${meta.description}</p>
               </div>
             </div>
@@ -285,12 +292,12 @@ export class RawSamplerExportModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <span class="triage-count">Modo: <strong>${this.context.core.getSession()?.processConfig.workingMode || 'classic'}</strong> | Salida: <strong>${selectedCount > 1 ? `${selectedCount} formatos simultáneos` : meta.extension}</strong></span>
+            <span class="triage-count">${isEs ? 'Modo:' : 'Mode:'} <strong>${this.context.core.getSession()?.processConfig.workingMode || 'classic'}</strong> | ${isEs ? 'Salida:' : 'Output:'} <strong>${selectedCount > 1 ? (isEs ? `${selectedCount} formatos simultáneos` : `${selectedCount} simultaneous formats`) : meta.extension}</strong></span>
           </div>
           <div class="footer-right">
-            <button type="button" id="btn-cancel-sampler-export" class="btn btn-ghost" title="Volver al selector de destinos de exportación">${this.context.onBack ? '← Volver a Exportar Instrumento' : gateModel.adjustLabel}</button>
+            <button type="button" id="btn-cancel-sampler-export" class="btn btn-ghost" title="${isEs ? 'Volver al selector de destinos de exportación' : 'Back to export destination selector'}">${this.context.onBack ? (isEs ? '← Volver a Exportar Instrumento' : '← Back to Export Instrument') : gateModel.adjustLabel}</button>
             <button type="button" id="btn-run-sampler-export" class="btn btn-primary" ${!gateModel.canContinue || this.isExporting ? 'disabled' : ''}>
-              ${this.isExporting ? 'Exportando y Empaquetando…' : continueBtnLabel}
+              ${this.isExporting ? (isEs ? 'Exportando y Empaquetando…' : 'Exporting &amp; Packaging…') : continueBtnLabel}
             </button>
           </div>
         </footer>

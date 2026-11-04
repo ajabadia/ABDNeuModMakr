@@ -1,4 +1,5 @@
 import type { SettingsModalContext } from './types';
+import { getAppLocale } from '../../core/i18n';
 import { ICONS } from '../icons';
 import { bridgeClient } from '../../core/bridge/BridgeClient';
 import { escAttr } from '../escape';
@@ -7,6 +8,7 @@ import { toast } from '../notify';
 import { buildBridgeModelsHtml, bindBridgeModelActions, refreshBridgeModels } from './bridgeModels';
 
 export function renderBridgeTab(ctx: SettingsModalContext): string {
+  const isEs = getAppLocale() === 'es';
   const bridge = bridgeClient.getStatus();
   const isOnline = bridge.connected;
   const bridgeUrl = escAttr(bridgeClient.getUrl());
@@ -19,26 +21,26 @@ export function renderBridgeTab(ctx: SettingsModalContext): string {
         <div class="bridge-card-header">
           <div class="bridge-card-title">
             <span class="bridge-dot ${isOnline ? 'dot-online' : 'dot-offline'}"></span>
-            <strong>Local Companion Bridge (Python &amp; GPU)</strong>
+            <strong>${isEs ? 'Companion Bridge Local (Python y GPU)' : 'Local Companion Bridge (Python &amp; GPU)'}</strong>
           </div>
-          <span class="bridge-badge">${isOnline ? 'ONLINE (7860)' : 'DISCONNECTED'}</span>
+          <span class="bridge-badge">${isOnline ? (isEs ? 'CONECTADO (7860)' : 'ONLINE (7860)') : (isEs ? 'DESCONECTADO' : 'DISCONNECTED')}</span>
         </div>
 
         <div class="bridge-details-grid">
           <div class="bridge-detail-item">
-            <span class="detail-label">Local Endpoint:</span>
+            <span class="detail-label">${isEs ? 'Endpoint Local:' : 'Local Endpoint:'}</span>
             <span class="detail-value"><code>${escHtml(bridge.url)}</code></span>
           </div>
           <div class="bridge-detail-item">
-            <span class="detail-label">Compute Device:</span>
-            <span class="detail-value">${escHtml(bridge.capabilities?.device ?? 'N/A')} (${escHtml(bridge.capabilities?.gpu_name || 'CPU Fallback')})</span>
+            <span class="detail-label">${isEs ? 'Dispositivo de Cómputo:' : 'Compute Device:'}</span>
+            <span class="detail-value">${escHtml(bridge.capabilities?.device ?? 'N/A')} (${escHtml(bridge.capabilities?.gpu_name || (isEs ? 'Respaldo CPU' : 'CPU Fallback'))})</span>
           </div>
           <div class="bridge-detail-item">
-            <span class="detail-label">GPU Acceleration:</span>
-            <span class="detail-value">${bridge.capabilities?.gpu ? 'Enabled (CUDA / VRAM)' : 'Disabled'}</span>
+            <span class="detail-label">${isEs ? 'Aceleración GPU:' : 'GPU Acceleration:'}</span>
+            <span class="detail-value">${bridge.capabilities?.gpu ? (isEs ? 'Activada (CUDA / VRAM)' : 'Enabled (CUDA / VRAM)') : (isEs ? 'Desactivada' : 'Disabled')}</span>
           </div>
           <div class="bridge-detail-item">
-            <span class="detail-label">Loopback Latency:</span>
+            <span class="detail-label">${isEs ? 'Latencia Loopback:' : 'Loopback Latency:'}</span>
             <span class="detail-value">${bridge.latencyMs ?? 0} ms</span>
           </div>
         </div>
@@ -48,15 +50,18 @@ export function renderBridgeTab(ctx: SettingsModalContext): string {
             ? `
           <div class="bridge-offline-instructions">
             <p>
-              The Companion Bridge connects your browser (even when hosted on Vercel) to your local dedicated GPU (e.g. RTX 3070 8GB VRAM) to execute heavy neural models with zero server costs and zero audio uploads.
-              To launch it, run in your terminal:
+              ${
+                isEs
+                  ? 'El Companion Bridge conecta tu navegador (incluso alojado en Vercel) con tu GPU dedicada local (ej. RTX 3070 8GB VRAM) para ejecutar modelos neuronales pesados con cero coste de servidor y sin subir tu audio a la nube. Para iniciarlo, ejecuta en tu terminal:'
+                  : 'The Companion Bridge connects your browser (even when hosted on Vercel) to your local dedicated GPU (e.g. RTX 3070 8GB VRAM) to execute heavy neural models with zero server costs and zero audio uploads. To launch it, run in your terminal:'
+              }
             </p>
-            <pre class="bridge-code-snippet"><code>start.bat  (Launches app and companion bridge)
-or:
+            <pre class="bridge-code-snippet"><code>start.bat  (${isEs ? 'Inicia la aplicación y el companion bridge' : 'Launches app and companion bridge'})
+${isEs ? 'o bien:' : 'or:'}
 python bridge/server.py</code></pre>
             <div class="bridge-retry-row">
               <button type="button" class="btn btn-sm btn-outline" id="btn-bridge-retry">
-                ${ICONS.refresh} Retry Connection Now
+                ${ICONS.refresh} ${isEs ? 'Reintentar Conexión Ahora' : 'Retry Connection Now'}
               </button>
             </div>
           </div>
@@ -68,7 +73,7 @@ python bridge/server.py</code></pre>
       <!-- Bridge Connection Settings (S5: endpoint + token, ambos en localStorage) -->
       <div class="card bridge-connection-card">
         <div class="byok-field-group">
-          <label class="byok-field-label" for="bridge-url-input">Bridge Endpoint URL:</label>
+          <label class="byok-field-label" for="bridge-url-input">${isEs ? 'URL del Endpoint del Bridge:' : 'Bridge Endpoint URL:'}</label>
           <div class="byok-input-row">
             <div class="byok-input-wrap">
               <input
@@ -81,7 +86,7 @@ python bridge/server.py</code></pre>
                 autocomplete="off"
               />
             </div>
-            <button type="button" class="btn btn-secondary" id="btn-bridge-save-url">Save &amp; Reconnect</button>
+            <button type="button" class="btn btn-secondary" id="btn-bridge-save-url">${isEs ? 'Guardar y Reconectar' : 'Save &amp; Reconnect'}</button>
           </div>
         </div>
         <div class="byok-field-group">
@@ -92,15 +97,15 @@ python bridge/server.py</code></pre>
                 type="password"
                 id="bridge-token-input"
                 class="form-control byok-key-field"
-                placeholder="Token impreso por bridge/server.py (vacío = sin auth)"
+                placeholder="${isEs ? 'Token impreso por bridge/server.py (vacío = sin auth)' : 'Token printed by bridge/server.py (empty = no auth)'}"
                 value="${bridgeToken}"
                 spellcheck="false"
                 autocomplete="off"
               />
             </div>
-            <button type="button" class="btn btn-outline" id="btn-bridge-clear-token" title="Clear token from local browser storage">Clear</button>
+            <button type="button" class="btn btn-outline" id="btn-bridge-clear-token" title="${isEs ? 'Borrar token del almacenamiento local del navegador' : 'Clear token from local browser storage'}">${isEs ? 'Limpiar' : 'Clear'}</button>
           </div>
-          <small class="text-muted">Se envía como cabecera <code>X-Bridge-Token</code>. El bridge la exige solo si defines <code>ABD_BRIDGE_TOKEN</code>.</small>
+          <small class="text-muted">${isEs ? 'Se envía como cabecera <code>X-Bridge-Token</code>. El bridge la exige solo si defines <code>ABD_BRIDGE_TOKEN</code>.' : 'Sent as <code>X-Bridge-Token</code> header. The bridge only requires it if you set <code>ABD_BRIDGE_TOKEN</code>.'}</small>
         </div>
       </div>
 
@@ -108,15 +113,15 @@ python bridge/server.py</code></pre>
       <div class="card bridge-models-section">
         <div class="models-section-header">
           <div class="header-left">
-            <h4>Local Neural Model Catalog</h4>
+            <h4>${isEs ? 'Catálogo de Modelos Neuronales Locales' : 'Local Neural Model Catalog'}</h4>
             <p class="text-muted">
-              Transparent multithreaded model pre-download directly to your local GPU.
+              ${isEs ? 'Pre-descarga multihilo transparente de modelos directamente a tu GPU local.' : 'Transparent multithreaded model pre-download directly to your local GPU.'}
               <br/>
-              <small class="bridge-note-small">(Note: Models are also downloaded automatically on first demand if not pre-fetched here).</small>
+              <small class="bridge-note-small">${isEs ? '(Nota: Los modelos también se descargan automáticamente bajo demanda la primera vez si no se pre-descargan aquí).' : '(Note: Models are also downloaded automatically on first demand if not pre-fetched here).'}</small>
             </p>
           </div>
           <button type="button" class="btn btn-xs btn-outline" id="btn-refresh-models">
-            ${ICONS.refresh} Refresh List
+            ${ICONS.refresh} ${isEs ? 'Actualizar Lista' : 'Refresh List'}
           </button>
         </div>
 

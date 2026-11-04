@@ -11,6 +11,7 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
+import { isEs, onAppLocaleChange } from '../core/i18n.ts';
 import { confirmDialog, toast } from './notify.ts';
 import {
   resolveAiActionDeclaration,
@@ -26,7 +27,7 @@ import {
 import {
   snapFrameToNearestZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
-import { sliceAudioBuffer, sliceAudioBufferPreservingManualCuts, buildSlicesFromBoundaries, buildSlicesFromPhoneticWords, buildSlicesFromMidiManifest, moveSliceBoundary, toggleSliceSilence, extractBoundaryFrames, normalizePeakPcm, conformLoopToTargetBpm, DEFAULT_SLICER_OPTIONS, type DetectedSlice, type SlicerOptions, type SlicerResult, type ManualSilenceRange } from '../core/dsp/AudioSlicerEngine.ts';
+import { sliceAudioBuffer, sliceAudioBufferPreservingManualCuts, buildSlicesFromBoundaries, buildSlicesFromPhoneticWords, buildSlicesFromMidiManifest, moveSliceBoundary, toggleSliceSilence, extractBoundaryFrames, normalizePeakPcm, conformLoopToTargetBpm, DEFAULT_SLICER_OPTIONS, deleteSlice, type DetectedSlice, type SlicerOptions, type SlicerResult, type ManualSilenceRange } from '../core/dsp/AudioSlicerEngine.ts';
 import { extractManifestFromWavBytes } from '../core/autoSampler/MidiAutoSampleSession.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
@@ -51,6 +52,7 @@ import {
 } from './chopper/auditionOps.ts';
 import { bindChopperDetectControlsEvents, bindChopperFileEvents } from './chopper/bindEventsOps.ts';
 import { bindChopperActionEvents } from './chopper/actionEventOps.ts';
+import { bindChopperKeyboard, unbindChopperKeyboard } from './chopper/a11yKeyboard.ts';
 
 export interface AudioChopperContext {
   getCurrentWorkingMode: () => WorkingMode;
@@ -220,11 +222,22 @@ export class AudioChopperModal {
       runWhisperVocalAlignment: () => host.runWhisperVocalAlignment(),
       showManualCutsConfirmationModal: (descriptionHtml, onKeep, onDiscard, onCancel) => host.showManualCutsConfirmationModal(descriptionHtml, onKeep, onDiscard, onCancel),
       showStemSeparationModal: () => host.showStemSeparationModal(),
+      syncActiveSliceFromBoundary: () => host.syncActiveSliceFromBoundary(),
+      updateMagnifierHeader: () => host.updateMagnifierHeader(),
+      closeContextMenu: () => host.closeContextMenu(),
+      extractBoundaryFrames: (result: SlicerResult | null, length: number) => (result ? extractBoundaryFrames(result, length) : []),
+      deleteSlice: (result: SlicerResult, pcm: Float32Array, sampleRate: number, sliceId: string, options: SlicerOptions) => deleteSlice(result, pcm, sampleRate, sliceId, options),
+      stopAudition: () => host.stopAudition?.(),
     };
   }
 
   constructor(context: AudioChopperContext) {
     this.context = context;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public open(
@@ -267,6 +280,8 @@ export class AudioChopperModal {
     }
 
     this.render();
+
+    bindChopperKeyboard(this.chopperCtx());
 
     if (!this.focusTrap && this.backdropEl) {
       this.focusTrap = createModalFocusTrap(this.backdropEl, {
@@ -323,6 +338,7 @@ export class AudioChopperModal {
   }
 
   public close(): void {
+    unbindChopperKeyboard(this.chopperCtx());
     this.context.onStopAudition?.();
     this.closeContextMenu();
     this.closeConfirmModal(false);
@@ -678,6 +694,7 @@ export class AudioChopperModal {
     onCancel: () => void
   ): void {
     this.closeConfirmModal();
+    const es = isEs();
 
     const modal = document.createElement('div');
     modal.className = 'nmm-modal-backdrop nmm-confirm-backdrop';
@@ -686,36 +703,36 @@ export class AudioChopperModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
-            <h2>Manual Slice Edits Detected</h2>
+            <h2>${es ? 'Cortes Manuales Detectados' : 'Manual Slice Edits Detected'}</h2>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-confirm-close" aria-label="Close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" id="btn-confirm-close" aria-label="${es ? 'Cerrar' : 'Close'}">${ICONS.close}</button>
         </header>
         <div class="nmm-modal-body nmm-audio-modal-body">
           <p>
             ${descriptionHtml}
           </p>
           <div class="nmm-audio-controls-card">
-            <span class="badge-manual-cuts">Manual Customizations:</span>
+            <span class="badge-manual-cuts">${es ? 'Personalizaciones manuales:' : 'Manual Customizations:'}</span>
             <ul>
-              <li><strong>${this.manualCutFrames.size}</strong> manual slice cut marker(s)</li>
-              ${this.manualSilenceRanges.length > 0 ? `<li><strong>${this.manualSilenceRanges.length}</strong> manual silence interval(s)</li>` : ''}
+              <li><strong>${this.manualCutFrames.size}</strong> ${es ? 'marcador(es) de corte manual(es)' : 'manual slice cut marker(s)'}</li>
+              ${this.manualSilenceRanges.length > 0 ? `<li><strong>${this.manualSilenceRanges.length}</strong> ${es ? 'intervalo(s) de silencio manual(es)' : 'manual silence interval(s)'}</li>` : ''}
             </ul>
           </div>
           <p class="nmm-audio-table-hint">
-            How would you like to handle your manual cuts?
+            ${es ? '¿Cómo quieres gestionar tus cortes manuales?' : 'How would you like to handle your manual cuts?'}
           </p>
           <label class="batch-check nmm-audio-table-hint">
             <input type="checkbox" class="articulation-checkbox switch--sm" id="chk-remember-policy" />
-            <span>Remember choice for subsequent changes in this session</span>
+            <span>${es ? 'Recordar elección para próximos cambios en esta sesión' : 'Remember choice for subsequent changes in this session'}</span>
           </label>
         </div>
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <button type="button" class="btn btn-ghost" id="btn-cuts-cancel">Cancel</button>
+            <button type="button" class="btn btn-ghost" id="btn-cuts-cancel">${es ? 'Cancelar' : 'Cancel'}</button>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-danger-solid" id="btn-cuts-discard">Discard Cuts (Auto)</button>
-            <button type="button" class="btn btn-primary" id="btn-cuts-keep">Keep Manual Cuts</button>
+            <button type="button" class="btn btn-danger-solid" id="btn-cuts-discard">${es ? 'Descartar Cortes (Auto)' : 'Discard Cuts (Auto)'}</button>
+            <button type="button" class="btn btn-primary" id="btn-cuts-keep">${es ? 'Conservar Cortes Manuales' : 'Keep Manual Cuts'}</button>
           </div>
         </footer>
       </div>
@@ -1026,6 +1043,35 @@ export class AudioChopperModal {
     this.drawMagnifierCanvas();
     this.updateMagnifierHeader();
     this.refreshTable();
+  }
+
+  private syncActiveSliceFromBoundary(): void {
+    if (!this.currentResult || this.pcm.length === 0) return;
+    const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
+    if (boundaries.length <= 2) return;
+    const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
+    const cutFrame = boundaries[bIdx];
+    const hit = this.currentResult.slices.find((s) => Math.abs(s.startFrame - cutFrame) < 32);
+    if (hit) {
+      this.selectedSliceId = hit.id;
+    }
+    this.drawWaveformCanvas();
+    this.drawMagnifierCanvas();
+    this.updateMagnifierHeader();
+    this.refreshTable();
+  }
+
+  private stopAudition(): void {
+    if (this.context.onStopAudition) {
+      this.context.onStopAudition();
+    }
+    if (this.playingSliceId) {
+      this.playingSliceId = null;
+      this.drawWaveformCanvas();
+      this.drawMagnifierCanvas();
+      this.updateMagnifierHeader();
+      this.refreshTable();
+    }
   }
 
   private nudgeActiveBoundary(deltaSamples: number): void {

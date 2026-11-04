@@ -1,4 +1,3 @@
-import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Akai MESA & MESA II Program Importer
 //
@@ -15,8 +14,13 @@ import { presetIdentity } from './PresetIdentity.ts';
 //   - Decoded program links to associated .wav or Akai raw .s files
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { akaiLoudnessToDb, decodeAkaiText } from './AkaiDiskFormat.ts';
+import {
+  akaiEnvelopeTimeToSeconds,
+  akaiLoudnessToDb,
+  decodeAkaiText,
+} from './AkaiDiskFormat.ts';
 import type {
+  ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
@@ -85,7 +89,8 @@ export function parseAkaiMesaS3p(buffer: ArrayBuffer | Uint8Array): AkaiMesaDeco
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 8;
-    offset += 4;
+  const numGroupsHint = view.getUint32(offset, true);
+  offset += 4;
 
   let progName = 'MESA_Prog';
   let progVol = 99;
@@ -221,21 +226,17 @@ export function convertAkaiMesaToPreset(
       const totalDetune = kgTune + smp.tuneSemitones * 100 + smp.tuneCents;
 
       regions.push({
-        id: `akai_mesa_${regions.length + 1}`,
-        samplePath: `${sampleName}.wav`,
         sampleName: `${sampleName}.wav`,
         rootKey: 60,
         lowKey,
         highKey,
-        lowVel: smp.lowVelocity,
-        highVel: smp.highVelocity,
-        detuneCents: totalDetune,
-        volumeDb: totalGain,
+        lowVelocity: smp.lowVelocity,
+        highVelocity: smp.highVelocity,
+        fineTuneCents: totalDetune,
+        gainDb: totalGain,
         pan: (mesaProg.stereoPan + smp.pan) / 50.0,
         filterCutoffHz: Math.round(13 + (kg.filterCutoff / 99) * (12275 - 13)),
         loopMode: smp.loopMode === 3 ? 'one_shot' : 'loop_continuous',
-        loopStart: 0,
-        loopEnd: 0,
       });
       regionIndex++;
     }
@@ -248,6 +249,5 @@ export function convertAkaiMesaToPreset(
     audioBuffers,
     isMultiLayer: regions.length > 1,
     sourceFormat: 'akai_mesa',
-    ...presetIdentity('akai_mesa', 'Akai MESA', mesaProg.name),
   };
 }

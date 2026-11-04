@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { pcm16ToWavBuffer } from './PcmWavHelper.ts';
+import type { LoopMode } from './SamplerTypes.ts';
 import type { ParsedImportRegion, ParsedSamplerPreset } from './rawSamplerParsers.ts';
 
 export interface KurzweilSampleHeader {

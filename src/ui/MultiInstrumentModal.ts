@@ -12,6 +12,7 @@
 // superior, barra de búsqueda, tabla con scroll 200px y pie.
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale } from '../core/i18n.ts';
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
@@ -116,26 +117,37 @@ export class MultiInstrumentModal {
       );
     });
 
+    const isEs = getAppLocale() === 'es';
     const formatBadge = format.toUpperCase();
     const containerNoun =
       format === 'sf2'
         ? 'SoundFont'
         : format === 'mpc'
-          ? 'Akai MPC expansion'
+          ? isEs
+            ? 'expansión Akai MPC'
+            : 'Akai MPC expansion'
           : format === 'folder'
-            ? 'sample directory'
+            ? isEs
+              ? 'directorio de muestras'
+              : 'sample directory'
             : format === 'disk' || format === 'akai'
-              ? 'disk image'
+              ? isEs
+                ? 'imagen de disco'
+                : 'disk image'
               : format === 'zip'
-                ? 'archive'
-                : 'collection';
+                ? isEs
+                  ? 'archivo comprimido'
+                  : 'archive'
+                : isEs
+                  ? 'colección'
+                  : 'collection';
 
     const folderNavHtml =
       folderCounts.size > 1
         ? `
-          <div class="triage-folder-nav" role="tablist" aria-label="Carpetas y contenedores">
+          <div class="triage-folder-nav" role="tablist" aria-label="${isEs ? 'Carpetas y contenedores' : 'Folders and containers'}">
             <button type="button" class="btn btn-xs ${this.activeFolder === '' ? 'btn-accent' : 'btn-outline'} btn-folder-pill" data-folder="">
-              ${ICONS.layers} Todas (${items.length})
+              ${ICONS.layers} ${isEs ? 'Todas' : 'All'} (${items.length})
             </button>
             ${Array.from(folderCounts.entries())
               .map(
@@ -155,20 +167,20 @@ export class MultiInstrumentModal {
         <div class="nmm-modal-header">
           <div class="nmm-modal-header-title" id="multi-inst-title">
             <span class="modal-icon">${ICONS.layers}</span>
-            <h2>MULTI-INSTRUMENT ${escHtml(formatBadge)} DETECTED</h2>
-            <span class="badge badge-accent">${items.length} INSTRUMENTS</span>
+            <h2>${isEs ? `DETECTADOS MÚLTIPLES INSTRUMENTOS (${escHtml(formatBadge)})` : `MULTI-INSTRUMENT ${escHtml(formatBadge)} DETECTED`}</h2>
+            <span class="badge badge-accent">${items.length} ${isEs ? 'INSTRUMENTOS' : 'INSTRUMENTS'}</span>
           </div>
-          <button type="button" class="btn btn-close-modal" id="btn-multi-inst-close" title="Cancel" aria-label="Cerrar">
+          <button type="button" class="btn btn-close-modal" id="btn-multi-inst-close" title="${isEs ? 'Cancelar' : 'Cancel'}" aria-label="${isEs ? 'Cerrar' : 'Close'}">
             ${ICONS.close}
           </button>
         </div>
 
-        <div class="nmm-triage-body">
+        <div class="nmm-audio-modal-body">
           <div class="triage-summary">
             <span>${ICONS.layers}</span>
             <div>
-              <p><strong>${escHtml(fileName)}</strong> trae ${items.length} instrumentos en este ${escHtml(containerNoun)}.</p>
-              <p>Navega por carpeta/contenedor, carga uno directo en la sesión o procesa la colección entera en el Batch.</p>
+              <p><strong>${escHtml(fileName)}</strong> ${isEs ? `trae ${items.length} instrumentos en este ${escHtml(containerNoun)}.` : `contains ${items.length} instruments in this ${escHtml(containerNoun)}.`}</p>
+              <p>${isEs ? 'Navega por carpeta/contenedor, carga uno directo en la sesión o procesa la colección entera en el Batch.' : 'Browse by folder/container, load one directly into the session, or process the entire collection in Batch.'}</p>
             </div>
           </div>
 
@@ -180,40 +192,40 @@ export class MultiInstrumentModal {
                 type="text"
                 id="inp-multi-inst-filter"
                 class="form-control triage-search"
-                placeholder="Filtrar por nombre o carpeta (p. ej. Guitar, EXS24, HALion, WAV)…"
+                placeholder="${isEs ? 'Filtrar por nombre o carpeta (p. ej. Guitar, EXS24, HALion, WAV)…' : 'Filter by name or folder (e.g. Guitar, EXS24, HALion, WAV)…'}"
                 value="${escAttr(this.filterQuery)}"
                 autocomplete="off"
                 spellcheck="false"
               />
-              ${this.filterQuery ? `<button type="button" class="btn btn-sm btn-outline" id="btn-clear-search">Limpiar</button>` : ''}
+              ${this.filterQuery ? `<button type="button" class="btn btn-sm btn-outline" id="btn-clear-search">${isEs ? 'Limpiar' : 'Clear'}</button>` : ''}
             </div>
             <div class="triage-toolbar-right">
               ${
                 this.options.onDeduceWithAi
-                  ? `<button type="button" class="btn btn-sm btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="Reagrupar por instrumento con IA (BYOK LLM)">
-                      ${ICONS.sparkle} ${this.isAiGrouping ? 'Agrupando…' : 'Agrupar por nombre (IA)'}
+                  ? `<button type="button" class="btn btn-sm btn-outline" id="btn-ai-deduce-inst" ${this.isAiGrouping ? 'disabled' : ''} title="${isEs ? 'Reagrupar por instrumento con IA (BYOK LLM)' : 'Re-cluster by instrument with AI (BYOK LLM)'}">
+                      ${ICONS.sparkle} ${this.isAiGrouping ? (isEs ? 'Agrupando…' : 'Grouping…') : isEs ? 'Agrupar por nombre (IA)' : 'Group by name (AI)'}
                     </button>`
                   : ''
               }
             </div>
           </div>
 
-          <div class="triage-table-panel">
+          <div class="nmm-audio-table-panel">
             <div class="triage-table-scroll">
               <table class="triage-table nmm-data-table">
                 <thead>
                   <tr>
                     <th class="triage-col-idx">#</th>
                     <th class="triage-col-bank">Bank : Prog</th>
-                    <th>Instrumento / Ruta</th>
-                    <th class="triage-col-regions">Estructura</th>
+                    <th>${isEs ? 'Instrumento / Ruta' : 'Instrument / Path'}</th>
+                    <th class="triage-col-regions">${isEs ? 'Estructura' : 'Structure'}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   ${
                     filtered.length === 0
-                      ? `<tr><td colspan="5"><div class="triage-empty">Sin coincidencias para «${escHtml(this.filterQuery)}».</div></td></tr>`
+                      ? `<tr><td colspan="5"><div class="triage-empty">${isEs ? `Sin coincidencias para «${escHtml(this.filterQuery)}».` : `No matches for "${escHtml(this.filterQuery)}".`}</div></td></tr>`
                       : filtered
                           .map((it) => {
                             const isSel = it.index === this.selectedIndex;
@@ -223,7 +235,9 @@ export class MultiInstrumentModal {
                                 : `—`;
                             const regStr =
                               it.regionCount !== undefined
-                                ? `${it.regionCount} region${it.regionCount === 1 ? '' : 's'}`
+                                ? isEs
+                                  ? `${it.regionCount} ${it.regionCount === 1 ? 'región' : 'regiones'}`
+                                  : `${it.regionCount} region${it.regionCount === 1 ? '' : 's'}`
                                 : it.detail || 'Standard';
                             const rawFolder = it.folderPath ? it.folderPath.replace(/\\/g, '/') : '';
                             const parentFolder = rawFolder.includes('/')
@@ -240,8 +254,8 @@ export class MultiInstrumentModal {
                                 </td>
                                 <td class="triage-col-regions"><span class="reg-tag">${escHtml(regStr)}</span></td>
                                 <td class="triage-col-action">
-                                  <button type="button" class="btn btn-sm btn-accent btn-load-this-inst" data-index="${it.index}" title="Cargar este instrumento">
-                                    ${ICONS.play} Cargar
+                                  <button type="button" class="btn btn-sm btn-accent btn-load-this-inst" data-index="${it.index}" title="${isEs ? 'Cargar este instrumento' : 'Load this instrument'}">
+                                    ${ICONS.play} ${isEs ? 'Cargar' : 'Load'}
                                   </button>
                                 </td>
                               </tr>
@@ -252,14 +266,14 @@ export class MultiInstrumentModal {
                 </tbody>
               </table>
             </div>
-            <p class="triage-hint">Doble clic carga el instrumento · «Procesar» manda la colección entera al Batch</p>
+            <p class="triage-hint">${isEs ? 'Doble clic carga el instrumento · «Procesar» manda la colección entera al Batch' : 'Double-click loads the instrument · "Process" sends the entire collection to Batch'}</p>
           </div>
         </div>
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
             <button type="button" class="btn btn-ghost" id="btn-multi-inst-cancel">
-              Cerrar
+              ${isEs ? 'Cerrar' : 'Close'}
             </button>
           </div>
           <div class="footer-right">
@@ -267,17 +281,17 @@ export class MultiInstrumentModal {
               type="button"
               class="btn btn-outline btn-batch-call"
               id="btn-multi-inst-batch"
-              title="Procesar los ${items.length} instrumentos en el Batch"
+              title="${isEs ? `Procesar los ${items.length} instrumentos en el Batch` : `Process all ${items.length} instruments in Batch`}"
             >
-              ${ICONS.cpu} Procesar todo en Batch (${items.length})
+              ${ICONS.cpu} ${isEs ? `Procesar todo en Batch (${items.length})` : `Process all in Batch (${items.length})`}
             </button>
             <button
               type="button"
               class="btn btn-accent"
               id="btn-multi-inst-load-selected"
-              title="Cargar el instrumento seleccionado"
+              title="${isEs ? 'Cargar el instrumento seleccionado' : 'Load selected instrument'}"
             >
-              ${ICONS.check} Cargar seleccionado
+              ${ICONS.check} ${isEs ? 'Cargar seleccionado' : 'Load selected'}
             </button>
           </div>
         </footer>

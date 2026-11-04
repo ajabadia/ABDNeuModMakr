@@ -6,32 +6,38 @@
 // ─────────────────────────────────────────────────────────
 
 import { yieldToUI } from '../core/asyncUtils.ts';
+import { getAppLocale } from '../core/i18n.ts';
+import { announceToScreenReader } from './notify.ts';
 
 export class LoadingModal {
   private backdropEl: HTMLElement | null = null;
   private titleEl: HTMLElement | null = null;
   private subtitleEl: HTMLElement | null = null;
   private activeCount = 0;
+  private lastAnnounceAt = 0;
 
   private ensureDom(): void {
     if (this.backdropEl) return;
     if (typeof document === 'undefined') return;
 
+    const isEs = getAppLocale() === 'es';
     this.backdropEl = document.createElement('div');
     this.backdropEl.className = 'loading-modal-backdrop is-hidden';
     this.backdropEl.setAttribute('role', 'status');
     this.backdropEl.setAttribute('aria-live', 'polite');
+    this.backdropEl.setAttribute('aria-atomic', 'true');
+    this.backdropEl.setAttribute('aria-busy', 'false');
     this.backdropEl.innerHTML = `
       <div class="loading-modal-card">
-        <div class="loading-spinner-ring">
+        <div class="loading-spinner-ring" aria-hidden="true">
           <svg class="spinner-svg" viewBox="0 0 50 50">
             <circle class="spinner-track" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
             <circle class="spinner-glow" cx="25" cy="25" r="20" fill="none" stroke-width="4"></circle>
           </svg>
         </div>
         <div class="loading-text-stack">
-          <h3 class="loading-title" id="loading-modal-title">TRABAJANDO...</h3>
-          <p class="loading-subtitle" id="loading-modal-subtitle">Por favor espera un momento...</p>
+          <h3 class="loading-title" id="loading-modal-title">${isEs ? 'TRABAJANDO...' : 'WORKING...'}</h3>
+          <p class="loading-subtitle" id="loading-modal-subtitle">${isEs ? 'Por favor espera un momento...' : 'Please wait a moment...'}</p>
         </div>
       </div>
     `;
@@ -41,7 +47,10 @@ export class LoadingModal {
     this.subtitleEl = this.backdropEl.querySelector('#loading-modal-subtitle');
   }
 
-  public show(title: string, subtitle = 'Procesando datos de audio...'): void {
+  public show(
+    title: string,
+    subtitle = getAppLocale() === 'es' ? 'Procesando datos de audio...' : 'Processing audio data...'
+  ): void {
     this.ensureDom();
     if (!this.backdropEl) return;
 
@@ -49,24 +58,34 @@ export class LoadingModal {
     if (this.titleEl) this.titleEl.textContent = title;
     if (this.subtitleEl) this.subtitleEl.textContent = subtitle;
 
+    this.backdropEl.setAttribute('aria-busy', 'true');
     this.backdropEl.classList.remove('is-hidden');
+    this.lastAnnounceAt = Date.now();
+    announceToScreenReader(`${title}. ${subtitle}`, 'polite');
   }
 
   public setMessage(subtitle: string): void {
     if (this.subtitleEl) {
       this.subtitleEl.textContent = subtitle;
     }
+    const now = Date.now();
+    if (now - this.lastAnnounceAt >= 1200) {
+      this.lastAnnounceAt = now;
+      announceToScreenReader(subtitle, 'polite');
+    }
   }
 
   public hide(): void {
     this.activeCount = Math.max(0, this.activeCount - 1);
     if (this.activeCount === 0 && this.backdropEl) {
+      this.backdropEl.setAttribute('aria-busy', 'false');
       this.backdropEl.classList.add('is-hidden');
     }
   }
 
   public forceHide(): void {
     this.activeCount = 0;
+    this.backdropEl?.setAttribute('aria-busy', 'false');
     this.backdropEl?.classList.add('is-hidden');
   }
 }

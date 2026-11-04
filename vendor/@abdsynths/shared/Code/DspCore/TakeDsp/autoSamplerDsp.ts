@@ -730,6 +730,28 @@ export interface PilotNoteRecommendation {
   recommendedVelocityLayers: number;
   recommendedVelocityCurve: AutoSamplerVelocityCurve;
   rationaleEs: string;
+  rationaleEn: string;
+  rationale: string;
+}
+
+function resolveAutoSamplerLocale(explicitLocale?: 'es' | 'en'): 'es' | 'en' {
+  if (explicitLocale === 'en' || explicitLocale === 'es') return explicitLocale;
+  try {
+    if (typeof globalThis !== 'undefined' && 'localStorage' in globalThis && globalThis.localStorage) {
+      const saved =
+        globalThis.localStorage.getItem('abdsynths.locale') ||
+        globalThis.localStorage.getItem('abd_locale') ||
+        globalThis.localStorage.getItem('neumodmakr.locale');
+      if (saved === 'en' || saved === 'es') return saved;
+    }
+    if (typeof document !== 'undefined' && document.documentElement?.lang) {
+      const docLang = document.documentElement.lang.slice(0, 2).toLowerCase();
+      if (docLang === 'en' || docLang === 'es') return docLang;
+    }
+  } catch {
+    // Ignore storage/DOM access errors
+  }
+  return 'es';
 }
 
 /**
@@ -740,7 +762,8 @@ export function analyzePilotNoteResponse(
   mono: Float32Array,
   sampleRate: number,
   noteOnSentFrame: number,
-  noteOffSentFrame: number
+  noteOffSentFrame: number,
+  locale?: 'es' | 'en'
 ): PilotNoteRecommendation {
   const sr = Math.max(1, sampleRate);
   const preRollEnd = Math.max(1, Math.min(mono.length, Math.round(noteOnSentFrame)));
@@ -787,7 +810,10 @@ export function analyzePilotNoteResponse(
   const recommendedVelocityCurve: AutoSamplerVelocityCurve =
     attackTimeMs < 35 ? 'high_precision' : 'low_precision';
 
-  const rationaleEs = `Latencia medida: ${lat.latencyMs} ms (${lat.latencySamples} smp) · Suelo de ruido: ${noiseProfile.levelDbfs.toFixed(1)} dBFS · Ataque: ${attackTimeMs} ms · Cola de release: ${measuredReleaseTailMs} ms (RMS sostén ${Number.isFinite(sustainRms) ? sustainRms.toFixed(1) : '-∞'} dBFS) → Recomendado Gate ${recommendedGateDurationMs} ms, Release máx ${recommendedMaxReleaseMs} ms y ${recommendedVelocityLayers} capas (${recommendedVelocityCurve === 'high_precision' ? 'más precisión arriba' : 'más precisión abajo'}).`;
+  const sustainRmsStr = Number.isFinite(sustainRms) ? sustainRms.toFixed(1) : '-∞';
+  const rationaleEs = `Latencia medida: ${lat.latencyMs} ms (${lat.latencySamples} smp) · Suelo de ruido: ${noiseProfile.levelDbfs.toFixed(1)} dBFS · Ataque: ${attackTimeMs} ms · Cola de release: ${measuredReleaseTailMs} ms (RMS sostén ${sustainRmsStr} dBFS) → Recomendado Gate ${recommendedGateDurationMs} ms, Release máx ${recommendedMaxReleaseMs} ms y ${recommendedVelocityLayers} capas (${recommendedVelocityCurve === 'high_precision' ? 'más precisión arriba' : 'más precisión abajo'}).`;
+  const rationaleEn = `Measured latency: ${lat.latencyMs} ms (${lat.latencySamples} smp) · Noise floor: ${noiseProfile.levelDbfs.toFixed(1)} dBFS · Attack: ${attackTimeMs} ms · Release tail: ${measuredReleaseTailMs} ms (Sustain RMS ${sustainRmsStr} dBFS) → Recommended Gate ${recommendedGateDurationMs} ms, Max Release ${recommendedMaxReleaseMs} ms and ${recommendedVelocityLayers} layers (${recommendedVelocityCurve === 'high_precision' ? 'higher precision at top' : 'higher precision at bottom'}).`;
+  const activeLocale = resolveAutoSamplerLocale(locale);
 
   return {
     latencySamples: lat.latencySamples,
@@ -801,6 +827,8 @@ export function analyzePilotNoteResponse(
     recommendedVelocityLayers,
     recommendedVelocityCurve,
     rationaleEs,
+    rationaleEn,
+    rationale: activeLocale === 'es' ? rationaleEs : rationaleEn,
   };
 }
 

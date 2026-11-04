@@ -9,6 +9,7 @@ import {
   analyzeExtendedIntersections,
 } from '../core/extendedAdapter';
 import type { RowAuditionSpan } from '../core/noteMapping';
+import { onAppLocaleChange, tApp } from '../core/i18n';
 import { ICONS } from './icons';
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -125,6 +126,11 @@ export class ZoneRibbon {
   constructor(container: HTMLElement, handlers: ZoneRibbonHandlers) {
     this.container = container;
     this.handlers = handlers;
+    onAppLocaleChange(() => {
+      if (this.currentZones.length > 0) {
+        this.render();
+      }
+    });
   }
 
   public setZones(
@@ -274,25 +280,25 @@ export class ZoneRibbon {
 
     const overlapHeaderPill =
       totalIntersections > 0
-        ? `<span class="ribbon-overlap-pill" title="${totalIntersections} range/velocity intersection(s) detected. Highlighted in the zone map below so you can verify whether layering is intentional.">${ICONS.alert} ${totalIntersections} INTERSECTION${totalIntersections > 1 ? 'S' : ''}</span>`
+        ? `<span class="ribbon-overlap-pill" title="${tApp('zoneInspector.intersectionTitle', { count: totalIntersections })}">${ICONS.alert} ${tApp(totalIntersections > 1 ? 'zoneInspector.intersectionsBadge' : 'zoneInspector.intersectionBadge', { count: totalIntersections })}</span>`
         : '';
 
     this.container.innerHTML = `
       <div class="zone-ribbon-card">
         <div class="ribbon-header">
           <div class="ribbon-title">
-            <span class="ribbon-caption">KEY (0 C-2 .. 127 G8) &times; VELOCITY (1..127) ZONE MAP</span>
+            <span class="ribbon-caption">${tApp('zoneRibbon.headerTitle')}</span>
             ${overlapHeaderPill}
           </div>
           <div class="ribbon-header-right">
-            <span class="ribbon-hint">Drag vertical border = Key Split (no overlap) &bull; Double-Click = Split Zone</span>
+            <span class="ribbon-hint">${this.workingMode === 'extended' ? tApp('zoneRibbon.headerHintExtended') : tApp('zoneRibbon.headerHintClassic')}</span>
             <div class="ribbon-wave-toggle" role="group" aria-label="Zone Waveform Display">
-              <span class="ribbon-wave-label">WAVE:</span>
-              <button type="button" class="btn-ribbon-wave ${this.waveMode === 'original' ? 'is-active' : ''}" data-wave-mode="original" title="Show Original Sample Waveform in Zone Map">
-                A: Original
+              <span class="ribbon-wave-label">${tApp('zoneRibbon.waveLabel')}</span>
+              <button type="button" class="btn-ribbon-wave ${this.waveMode === 'original' ? 'is-active' : ''}" data-wave-mode="original" title="${tApp('zoneRibbon.waveOrigTitle')}">
+                ${tApp('zoneRibbon.waveOrig')}
               </button>
-              <button type="button" class="btn-ribbon-wave ${this.waveMode === 'resynthesis' ? 'is-active' : ''}" data-wave-mode="resynthesis" ${!anyHasProcessed ? 'disabled title="Generate or inspect model first to view Processed Resynthesis Waveform"' : 'title="Show Processed Resynthesis Waveform in Zone Map"'}>
-                B: Processed
+              <button type="button" class="btn-ribbon-wave ${this.waveMode === 'resynthesis' ? 'is-active' : ''}" data-wave-mode="resynthesis" ${!anyHasProcessed ? `disabled title="${tApp('zoneRibbon.waveProcTitle')}"` : `title="${tApp('zoneRibbon.waveProcTitle')}"`}>
+                ${tApp('zoneRibbon.waveProc')}
               </button>
             </div>
           </div>
@@ -366,12 +372,47 @@ export class ZoneRibbon {
       });
 
       el.addEventListener('keydown', (e: KeyboardEvent) => {
+        const id = el.getAttribute('data-zone-id');
+        if (!id) return;
+        const blockList = Array.from(blocks);
+        const curIdx = blockList.indexOf(el);
+
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          const id = el.getAttribute('data-zone-id');
-          if (id) {
-            this.handlers.onSelectZone(id);
-            this.setActiveZone(id);
+          this.handlers.onSelectZone(id);
+          this.setActiveZone(id);
+          return;
+        }
+
+        if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          const zIdx = this.currentZones.findIndex((z) => z.id === id);
+          if (zIdx >= 0 && zIdx < this.currentZones.length - 1) {
+            e.preventDefault();
+            const currZone = this.currentZones[zIdx];
+            const nextZone = this.currentZones[zIdx + 1];
+            const delta = e.key === 'ArrowRight' ? 1 : -1;
+            const nextHigh = Math.max(currZone.lowKey, Math.min(nextZone.highKey - 1, currZone.highKey + delta));
+            if (nextHigh !== currZone.highKey) {
+              this.handlers.onUpdateZone?.(id, { highKey: nextHigh });
+            }
+          }
+          return;
+        }
+
+        let targetIdx = -1;
+        if (e.key === 'ArrowRight') targetIdx = Math.min(blockList.length - 1, curIdx + 1);
+        else if (e.key === 'ArrowLeft') targetIdx = Math.max(0, curIdx - 1);
+        else if (e.key === 'Home') targetIdx = 0;
+        else if (e.key === 'End') targetIdx = blockList.length - 1;
+
+        if (targetIdx >= 0 && targetIdx !== curIdx) {
+          e.preventDefault();
+          const targetEl = blockList[targetIdx];
+          const targetId = targetEl?.getAttribute('data-zone-id');
+          if (targetEl && targetId) {
+            this.handlers.onSelectZone(targetId);
+            this.setActiveZone(targetId);
+            targetEl.focus();
           }
         }
       });
@@ -526,7 +567,7 @@ export class ZoneRibbon {
         </div>
       `;
 
-    const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}${isIntersecting ? ` | INTERSECTION (${intersectPeerText})` : ''}`;
+    const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}${isIntersecting ? ` | INTERSECTION (${intersectPeerText})` : ''} · [←/→: seleccionar zona · Shift+←/→: ajustar frontera ±1 semitono · Doble clic / Alt+Clic: dividir]`;
 
     return `
       <div 
@@ -534,6 +575,7 @@ export class ZoneRibbon {
         data-zone-id="${zone.id}"
         tabindex="0"
         role="button"
+        aria-selected="${isSelected ? 'true' : 'false'}"
         aria-label="Zone #${index + 1}: Keys ${lowStr} to ${highStr}"
         style="width: ${widthPct.toFixed(3)}%;"
         title="${zoneTitle}"

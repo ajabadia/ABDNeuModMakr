@@ -43,6 +43,12 @@ export interface BankShell {
   setBadge(text: string): void;
   setTabCount(tabId: string, count: number): void;
   setTab(tabId: string): void;
+  setTabVisible(tabId: string, visible: boolean): void;
+  setTitle(newTitle: string): void;
+  setSearchPlaceholder(placeholder: string): void;
+  setTabLabels(labelsById: Record<string, string>): void;
+  setFooterActionLabels(labelsById: Record<string, string>): void;
+  setHeaderActionTitle(actionId: string, newTitle: string): void;
   focusSearch(): void;
   flashStatus(message: string, kind?: 'ok' | 'working' | 'error'): void;
   setFootSlot(text: string): void;

@@ -1,5 +1,6 @@
 import type { BridgeModelInfo } from '../../core/bridge/BridgeClient';
 import type { SettingsModalContext } from './types';
+import { getAppLocale } from '../../core/i18n';
 import { ICONS } from '../icons';
 import { bridgeClient } from '../../core/bridge/BridgeClient';
 import { confirmDialog } from '../notify';
@@ -8,10 +9,11 @@ import { escHtml } from '../escape';
 import { toast } from '../notify';
 
 export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
+  const isEs = getAppLocale() === 'es';
   if (!bridgeClient.isConnected()) {
     return `
       <div class="models-empty-state text-muted">
-        Connect the local Companion Bridge to manage, download, or uninstall GPU neural models.
+        ${isEs ? 'Conecta el Companion Bridge local para gestionar, descargar o desinstalar modelos neuronales en GPU.' : 'Connect the local Companion Bridge to manage, download, or uninstall GPU neural models.'}
       </div>
     `;
   }
@@ -19,7 +21,7 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
   if (ctx.state.bridgeModels.length === 0) {
     return `
       <div class="models-empty-state text-muted">
-        Loading catalog of available models...
+        ${isEs ? 'Cargando catálogo de modelos disponibles...' : 'Loading catalog of available models...'}
       </div>
     `;
   }
@@ -45,7 +47,7 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
             <strong>${escHtml(m.name)}</strong>
             <span class="model-size-badge">${sizeDisplay}</span>
             <span class="model-task-badge">${escHtml(m.task)}</span>
-            ${m.is_custom_url ? '<span class="model-custom-url-badge" title="Custom download mirror in use">Custom Mirror</span>' : ''}
+            ${m.is_custom_url ? `<span class="nmm-status-pill is-warn" title="${isEs ? 'Mirror de descarga personalizado en uso' : 'Custom download mirror in use'}">${isEs ? 'Mirror Personalizado' : 'Custom Mirror'}</span>` : ''}
           </div>
           <p class="model-row-desc text-muted">${escHtml(m.description)}</p>
           ${
@@ -64,13 +66,13 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
             isEditingUrl
               ? `
             <div class="model-url-editor-box">
-              <div class="url-editor-label">Model Download URL:</div>
+              <div class="url-editor-label">${isEs ? 'URL de Descarga del Modelo:' : 'Model Download URL:'}</div>
               <div class="url-editor-input-row">
                 <input type="text" class="form-control input-custom-model-url" data-id="${escAttr(m.id)}" value="${escAttr(m.url || '')}" placeholder="${escAttr(m.default_url || '')}" />
-                <button type="button" class="btn btn-xs btn-outline btn-check-model-url" data-id="${escAttr(m.id)}" title="Check if URL is reachable and valid">Check URL</button>
-                <button type="button" class="btn btn-xs btn-primary btn-save-model-url" data-id="${escAttr(m.id)}">Save</button>
-                <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${escAttr(m.id)}">Reset to Official</button>
-                <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${escAttr(m.id)}">Cancel</button>
+                <button type="button" class="btn btn-xs btn-outline btn-check-model-url" data-id="${escAttr(m.id)}" title="${isEs ? 'Comprobar si la URL es accesible y válida' : 'Check if URL is reachable and valid'}">${isEs ? 'Comprobar URL' : 'Check URL'}</button>
+                <button type="button" class="btn btn-xs btn-primary btn-save-model-url" data-id="${escAttr(m.id)}">${isEs ? 'Guardar' : 'Save'}</button>
+                <button type="button" class="btn btn-xs btn-outline btn-reset-model-url" data-id="${escAttr(m.id)}">${isEs ? 'Restaurar Oficial' : 'Reset to Official'}</button>
+                <button type="button" class="btn btn-xs btn-secondary btn-cancel-model-url" data-id="${escAttr(m.id)}">${isEs ? 'Cancelar' : 'Cancel'}</button>
               </div>
               <div class="url-check-feedback" data-id="${escAttr(m.id)}"></div>
             </div>
@@ -82,30 +84,30 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
           ${
             m.installed
               ? `
-              <span class="badge-installed">${ICONS.check} Installed on Disk</span>
-              <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+              <span class="badge-installed">${ICONS.check} ${isEs ? 'Instalado en Disco' : 'Installed on Disk'}</span>
+              <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="${isEs ? 'Configurar URL / Mirror de Descarga' : 'Configure Download URL / Mirror'}">
                 ${ICONS.settings} URL
               </button>
-              <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${escAttr(m.id)}" title="Delete this model from local disk to free space">
-                ${ICONS.trash} Uninstall
+              <button type="button" class="btn btn-sm btn-outline btn-delete-model" data-id="${escAttr(m.id)}" title="${isEs ? 'Eliminar este modelo del disco local para liberar espacio' : 'Delete this model from local disk to free space'}">
+                ${ICONS.trash} ${isEs ? 'Desinstalar' : 'Uninstall'}
               </button>
             `
               : isDownloading
                 ? `
-                <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+                <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="${isEs ? 'Configurar URL / Mirror de Descarga' : 'Configure Download URL / Mirror'}">
                   ${ICONS.settings} URL
                 </button>
                 <button type="button" class="btn btn-sm btn-outline btn-downloading" disabled>
                   <span class="btn-spinner">${ICONS.spinner}</span>
-                  <span>Downloading (${pct}%)...</span>
+                  <span>${isEs ? `Descargando (${pct}%)...` : `Downloading (${pct}%)...`}</span>
                 </button>
               `
                 : `
-                <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="Configure Download URL / Mirror">
+                <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="${isEs ? 'Configurar URL / Mirror de Descarga' : 'Configure Download URL / Mirror'}">
                   ${ICONS.settings} URL
                 </button>
                 <button type="button" class="btn btn-sm btn-primary btn-download-model" data-id="${escAttr(m.id)}">
-                  ${ICONS.zap} Download (${sizeDisplay})
+                  ${ICONS.zap} ${isEs ? `Descargar (${sizeDisplay})` : `Download (${sizeDisplay})`}
                 </button>
               `
           }

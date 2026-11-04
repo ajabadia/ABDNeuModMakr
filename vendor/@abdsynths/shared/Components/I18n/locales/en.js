@@ -115,6 +115,34 @@ export const SHARED_EN = {
     aboutCopyright: '© 2026 ABDSynths',
   },
 
+  aboutDialog: {
+    versionLabel: 'Version:',
+    buildPrefix: 'Build #',
+    checkForUpdates: 'CHECK FOR UPDATES',
+    downloadUpdate: 'DOWNLOAD UPDATE',
+    downloadVersion: 'DOWNLOAD {version}',
+    checkingUpdates: 'Checking for updates...',
+    newVersionAvailable: 'New version available: {version}',
+    upToDate: 'You are running the latest version.',
+    close: 'CLOSE',
+  },
+
+  bank: {
+    browserTitle: 'NEURONDB BANK BROWSER',
+    searchPlaceholder: 'Search by name or slot...',
+    searchAriaLabel: 'Search bank',
+    tabModels: 'MODELS',
+    tabPresets: 'PRESETS',
+    tabLibrary: 'LIBRARY',
+    actionRefresh: 'Refresh',
+    actionFolder: 'Folder',
+    actionClear: 'Clear',
+    actionClose: 'Close',
+    actionLoad: 'Load',
+    actionExport: 'Export',
+    emptyState: 'No items match the current filter.',
+  },
+
   settings: {
     drawerTitle: 'SYNTH SETTINGS',
     polyphonyCard: 'POLYPHONY & STEREO SPREAD',

@@ -1,8 +1,14 @@
 # Inventario de cadenas de texto para internacionalización (i18n)
 
-Proyecto: ABDNeuModMakr · Fecha: 2026-11-03 · Alcance: `src/**/*.ts` (se excluyen `tests/`, `vendor/` y `.d.ts`).
+Proyecto: ABDNeuModMakr · Fecha inicial: 2026-11-03 · Actualizado: 2026-11-04 · Alcance: `src/**/*.ts` (se excluyen `tests/`, `vendor/` y `.d.ts`).
 
-Este documento es solo inventario. No propone implementación.
+> **Estado de implementación (2026-11-04 — Capas 1, 2 y 3 completadas)**:
+> La internacionalización reactiva en tiempo de ejecución (`ES` / `EN` vía `src/core/i18n.ts` + `@abdsynths/shared/i18n`) está implementada en las 3 capas de `ABDNeuModMakr`:
+> - **Capa 1 (Shell y Espacio de Trabajo)**: `Navbar.ts`, `ProcessPanel.ts`, `ZoneRibbon.ts`, `KeyboardStrip.ts`, `ZoneInspector.ts` (`tableRenderOps.ts`), `SpectralView.ts`, `BankDrawer.ts`, `TelemetryDrawer.ts` y `src/core/ai/honesty/status.ts`.
+> - **Capa 2 (Ajustes, Configuración del Modelo y Cajón de Zona)**: `SettingsModal.ts` (`src/ui/settings/*`), `ModelConfigModal.ts` (`src/ui/modelConfig/*`) y `src/ui/zoneInspector/drawerRenderOps.ts`.
+> - **Capa 3 (Modales Interactivos, Asistentes y Talleres de Audio)**: `exportDestinations.ts`, `ExportDestinationModal.ts`, `RawSamplerExportModal.ts`, `preflightGateView.ts` (`MUSICIAN_TERMS` reactivo), `ConfigHealthModal.ts`, `LoadingModal.ts`, `ProcessModal.ts`, `UniversalImportModal.ts`, `MultiAssetTriageModal.ts`, `MultiInstrumentModal.ts`, `NeuronDbModal.ts`, `AiCoverGeneratorModal.ts`, `MusicianWizardModal.ts`, `BatchProcessorModal.ts`, `LoopEditorModal.ts`, `AudioChopperModal.ts` (`chopper/renderOps.ts`) y `AudioRecorderModal.ts`.
+>
+> *Nota*: El inventario inferior refleja la instantánea base previa a la extracción en 3 capas y a la partición modular de la Fase 42.
 
 ## Cómo leer cada fila
 

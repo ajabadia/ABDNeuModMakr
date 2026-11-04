@@ -1,9 +1,11 @@
 import type { AiAssistanceConfig } from '../../core/types';
 import type { SettingsModalContext } from './types';
+import { getAppLocale } from '../../core/i18n';
 import { ICONS } from '../icons';
 
 export function renderMasterWebBar(cfg: AiAssistanceConfig): string {
   const activePreset = getActiveAiPreset(cfg);
+  const es = getAppLocale() === 'es';
 
   return `
     <div class="ai-master-bar">
@@ -11,26 +13,26 @@ export function renderMasterWebBar(cfg: AiAssistanceConfig): string {
         <label class="toggle-switch-label" for="ai-master-toggle">
           <input type="checkbox" id="ai-master-toggle" ${cfg.enabled ? 'checked' : ''} />
           <span class="toggle-slider"></span>
-          <span class="toggle-title">Enable AI Assistance</span>
+          <span class="toggle-title">${es ? 'Activar Asistencia IA' : 'Enable AI Assistance'}</span>
         </label>
         <span class="nmm-hint text-muted">
-          (When disabled, 100% of processing runs with deterministic algorithmic DSP in WebAudio)
+          ${es ? '(Si se desactiva, el 100% del procesado se ejecuta con DSP algorítmico determinista en WebAudio)' : '(When disabled, 100% of processing runs with deterministic algorithmic DSP in WebAudio)'}
         </span>
       </div>
 
       <div class="ai-presets-group" id="ai-presets-group">
-        <span class="presets-label">Quick Presets:</span>
-        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'dsp' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-dsp" title="Pure deterministic classic math algorithms (fast and reproducible)">
+        <span class="presets-label">${es ? 'Presets Rápidos:' : 'Quick Presets:'}</span>
+        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'dsp' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-dsp" title="${es ? 'Algoritmos matemáticos deterministas puros (rápido y reproducible)' : 'Pure deterministic classic math algorithms (fast and reproducible)'}">
           ${ICONS.cpu} 100% DSP
         </button>
-        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'hybrid' ? 'btn-preset-highlight' : ''}" id="btn-preset-hybrid" title="Recommended optimal balance (Sinc DSP + AI Separation &amp; Outpainting)">
-          ${ICONS.zap} Optimal Hybrid
+        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'hybrid' ? 'btn-preset-highlight' : ''}" id="btn-preset-hybrid" title="${es ? 'Equilibrio óptimo recomendado (DSP Sinc + Separación y Outpainting IA)' : 'Recommended optimal balance (Sinc DSP + AI Separation &amp; Outpainting)'}">
+          ${ICONS.zap} ${es ? 'Híbrido Óptimo' : 'Optimal Hybrid'}
         </button>
-        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'max' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-ai" title="All processing stages AI-assisted">
-          ${ICONS.sparkle} Max AI Quality
+        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'max' ? 'btn-preset-highlight' : ''}" id="btn-preset-all-ai" title="${es ? 'Todas las etapas del pipeline asistidas por IA' : 'All processing stages AI-assisted'}">
+          ${ICONS.sparkle} ${es ? 'Máxima Calidad IA' : 'Max AI Quality'}
         </button>
-        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'custom' ? 'btn-preset-highlight' : ''}" id="btn-preset-custom" title="Custom configuration (non-standard combination of stages)">
-          ${ICONS.sliders} Custom
+        <button type="button" class="btn btn-sm btn-preset ${activePreset === 'custom' ? 'btn-preset-highlight' : ''}" id="btn-preset-custom" title="${es ? 'Configuración personalizada (combinación manual de etapas)' : 'Custom configuration (non-standard combination of stages)'}">
+          ${ICONS.sliders} ${es ? 'Personalizado' : 'Custom'}
         </button>
       </div>
     </div>

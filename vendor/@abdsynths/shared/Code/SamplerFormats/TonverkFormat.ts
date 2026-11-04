@@ -33,7 +33,6 @@
 import type { ExtendedRegion, SynthArticulationConfig, SampleLoopDescriptor } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export interface TonverkKeyZone {
   pitch: number;
@@ -69,7 +68,7 @@ export function isTonverkPstText(text: string): boolean {
 
 export function parseTonverkPst(
   text: string,
-  _audioPool?: Map<string, ArrayBuffer>
+  audioPool?: Map<string, ArrayBuffer>
 ): {
   presetName: string;
   regions: ExtendedRegion[];
@@ -301,7 +300,7 @@ export function importTonverkZip(zipBuffer: ArrayBuffer): {
     } else if (low.endsWith('.wav') || low.endsWith('.flac')) {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 

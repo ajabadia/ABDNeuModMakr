@@ -21,7 +21,6 @@ import type { ExtendedRegion, SynthArticulationConfig, SampleLoopDescriptor } fr
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
 import { decodeWav } from '../NeuronFormats/WavAiffDecoder.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export const DISTING_EX_TAG = 'DEXBPRST';
 
@@ -220,7 +219,7 @@ export function importDistingExZip(zipBuffer: ArrayBuffer): {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
       sampleNames.push(name);
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 
@@ -230,7 +229,7 @@ export function importDistingExZip(zipBuffer: ArrayBuffer): {
 
   const dexBytes = extractZipEntry(zipBytes, dexEntry);
   const parsed = parseDistingExPreset(
-    toArrayBuffer(dexBytes),
+    dexBytes.buffer.slice(dexBytes.byteOffset, dexBytes.byteOffset + dexBytes.byteLength),
     sampleNames,
     audioBuffers
   );

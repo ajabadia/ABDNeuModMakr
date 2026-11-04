@@ -2,6 +2,7 @@ import type { SettingsModalContext } from './types';
 import { DEFAULT_AXIONIK_DB_PATH, DEFAULT_BANK_PATH, DEFAULT_NEURON_DB_PATH, STORAGE_KEY_AXIONIK_DB_PATH, STORAGE_KEY_BANK_PATH, STORAGE_KEY_NEURON_DB_PATH } from './constants';
 import { ICONS } from '../icons';
 import { bridgeClient } from '../../core/bridge/BridgeClient';
+import { getAppLocale, setAppLocale, tApp } from '../../core/i18n';
 import { browseFilesystemFolder } from '../folderPicker';
 import { escAttr } from '../escape';
 import { escHtml } from '../escape';
@@ -10,18 +11,20 @@ import { toast } from '../notify';
 export function renderGeneralTab(ctx: SettingsModalContext): string {
   const curFamily = ctx.handlers.getCurrentThemeFamily?.() ?? 'neuron';
   const curMode = ctx.handlers.getCurrentThemeMode?.() ?? 'light';
+  const curLocale = ctx.handlers.getCurrentLocale?.() ?? getAppLocale();
+  const es = curLocale === 'es';
   const savedAxionikDbPath = localStorage.getItem(STORAGE_KEY_AXIONIK_DB_PATH) || DEFAULT_AXIONIK_DB_PATH;
   const savedNeuronDbPath = localStorage.getItem(STORAGE_KEY_NEURON_DB_PATH) || DEFAULT_NEURON_DB_PATH;
   const savedBankPath = localStorage.getItem(STORAGE_KEY_BANK_PATH) || DEFAULT_BANK_PATH;
   const isBridgeOnline = bridgeClient.isConnected();
 
   const skinFamilies = [
-    { id: 'neuron', name: 'Hartmann Neuron', desc: 'Original hardware (2002), gray knobs and blue OLED display' },
-    { id: 'virus-snow', name: 'Access Virus Snow', desc: 'Pristine white desktop module aesthetics (2008)' },
-    { id: 'audiolab', name: 'AudioLab Precision', desc: 'Clinical high-contrast audio inspection lab' },
-    { id: 'ms2000', name: 'Korg MS2000', desc: 'Retro teal analog-modeling physical synthesizer panel' },
-    { id: 'advanced', name: 'Hartmann Advanced', desc: 'Expanded special edition with warm amber accents' },
-    { id: 'cz101', name: 'Casio CZ-101', desc: 'Classic phase-distortion synthesizer panel (1984)' },
+    { id: 'neuron', name: 'Hartmann Neuron', desc: es ? 'Hardware original (2002), knobs grises y pantalla OLED azul' : 'Original hardware (2002), gray knobs and blue OLED display' },
+    { id: 'virus-snow', name: 'Access Virus Snow', desc: es ? 'Estética de módulo de escritorio blanco (2008)' : 'Pristine white desktop module aesthetics (2008)' },
+    { id: 'audiolab', name: 'AudioLab Precision', desc: es ? 'Laboratorio clínico de inspección de audio de alto contraste' : 'Clinical high-contrast audio inspection lab' },
+    { id: 'ms2000', name: 'Korg MS2000', desc: es ? 'Panel retro azul petróleo de modelado analógico' : 'Retro teal analog-modeling physical synthesizer panel' },
+    { id: 'advanced', name: 'Hartmann Advanced', desc: es ? 'Edición especial expandida con acentos ámbar cálidos' : 'Expanded special edition with warm amber accents' },
+    { id: 'cz101', name: 'Casio CZ-101', desc: es ? 'Panel clásico de distorsión de fase (1984)' : 'Classic phase-distortion synthesizer panel (1984)' },
   ];
 
   return `
@@ -29,8 +32,8 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
       <!-- 1. Appearance & Hardware Skin -->
       <div class="settings-section-card">
         <div class="settings-card-header">
-          <h4>${ICONS.palette} Hardware Synthesizer Skin &amp; Theme</h4>
-          <span class="text-muted">Personalize the application aesthetic inspired by legendary hardware.</span>
+          <h4>${ICONS.palette} ${es ? 'Skin de Sintetizador Hardware y Tema' : 'Hardware Synthesizer Skin &amp; Theme'}</h4>
+          <span class="text-muted">${es ? 'Personaliza la estética de la aplicación inspirada en hardware legendario.' : 'Personalize the application aesthetic inspired by legendary hardware.'}</span>
         </div>
         <div class="settings-skins-grid">
           ${skinFamilies
@@ -48,13 +51,25 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
         </div>
 
         <div class="settings-appearance-mode-row">
-          <span class="settings-sublabel">Appearance Mode:</span>
+          <span class="settings-sublabel">${es ? 'Modo de Apariencia:' : 'Appearance Mode:'}</span>
           <div class="mode-pill-toggle">
             <button type="button" class="btn btn-sm ${curMode === 'light' ? 'btn-primary' : 'btn-outline'}" id="btn-set-mode-light">
-              ${ICONS.sun} Light Mode
+              ${ICONS.sun} ${es ? 'Modo Claro' : 'Light Mode'}
             </button>
             <button type="button" class="btn btn-sm ${curMode === 'dark' ? 'btn-primary' : 'btn-outline'}" id="btn-set-mode-dark">
-              ${ICONS.moon} Dark Mode
+              ${ICONS.moon} ${es ? 'Modo Oscuro' : 'Dark Mode'}
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-appearance-mode-row">
+          <span class="settings-sublabel">${escHtml(tApp('settings.languageSublabel'))}</span>
+          <div class="mode-pill-toggle" role="group" aria-label="Interface Language">
+            <button type="button" class="btn btn-sm ${curLocale === 'es' ? 'btn-primary' : 'btn-outline'}" id="btn-set-lang-es" aria-pressed="${curLocale === 'es'}">
+              ${ICONS.flagEs} Español (ES)
+            </button>
+            <button type="button" class="btn btn-sm ${curLocale === 'en' ? 'btn-primary' : 'btn-outline'}" id="btn-set-lang-en" aria-pressed="${curLocale === 'en'}">
+              ${ICONS.flagEn} English (EN)
             </button>
           </div>
         </div>
@@ -63,24 +78,24 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
       <!-- 2. Local Library Folders -->
       <div class="settings-section-card">
         <div class="settings-card-header">
-          <h4>${ICONS.folder} Local Library Folders (AxionikDB, NeuronDB &amp; Samples)</h4>
-          <span class="text-muted">Configure paths to your local libraries to synchronize with the Companion Bridge.</span>
+          <h4>${ICONS.folder} ${es ? 'Carpetas de Librería Local (AxionikDB, NeuronDB y Muestras)' : 'Local Library Folders (AxionikDB, NeuronDB &amp; Samples)'}</h4>
+          <span class="text-muted">${es ? 'Configura las rutas a tus librerías locales para sincronizar con el Companion Bridge.' : 'Configure paths to your local libraries to synchronize with the Companion Bridge.'}</span>
         </div>
 
         <div class="settings-libraries-container">
           <!-- 1. AxionikDB (Advanced Mode) -->
           <div class="card card--tight library-path-card">
             <div class="library-path-header">
-              <strong>AxionikDB Library (Advanced / Time-Capsule) <span class="cond-reason-badge is-extended-only">MODO EXTENDED</span></strong>
-              <span class="text-muted">Models with semantic slugs and self-contained Time Capsules (<code>manifest.json</code> + <code>cover.webp</code>).</span>
+              <strong>${es ? 'Librería AxionikDB (Avanzado / Cápsula del Tiempo)' : 'AxionikDB Library (Advanced / Time-Capsule)'} <span class="cond-reason-badge is-extended-only">${es ? 'MODO EXTENDIDO' : 'EXTENDED MODE'}</span></strong>
+              <span class="text-muted">${es ? 'Modelos con slugs semánticos y Cápsulas del Tiempo autocontenidas (<code>manifest.json</code> + <code>cover.webp</code>).' : 'Models with semantic slugs and self-contained Time Capsules (<code>manifest.json</code> + <code>cover.webp</code>).'}</span>
             </div>
             <div class="bank-path-input-wrap">
               <input type="text" id="input-axionikdb-path" class="form-control" value="${escAttr(savedAxionikDbPath)}" placeholder="${escAttr(DEFAULT_AXIONIK_DB_PATH)}" />
-              <button type="button" class="btn btn-outline" id="btn-browse-axionikdb-dir" title="Navegar por el sistema de archivos para seleccionar la carpeta AxionikDB">
-                ${ICONS.folder} Browse...
+              <button type="button" class="btn btn-outline" id="btn-browse-axionikdb-dir" title="${es ? 'Navegar por el sistema de archivos para seleccionar la carpeta AxionikDB' : 'Browse filesystem to select the AxionikDB folder'}">
+                ${ICONS.folder} ${es ? 'Examinar...' : 'Browse...'}
               </button>
-              <button type="button" class="btn btn-primary" id="btn-scan-axionikdb-dir" ${isBridgeOnline ? '' : 'disabled title="Requiere Companion Bridge activo (bridge/server.py)"'}>
-                ${ICONS.search} ${ctx.state.isScanningAxionik ? 'Scanning...' : 'Scan AxionikDB'} ${!isBridgeOnline ? '<span class="cond-reason-badge">BRIDGE OFFLINE</span>' : ''}
+              <button type="button" class="btn btn-primary" id="btn-scan-axionikdb-dir" ${isBridgeOnline ? '' : `disabled title="${es ? 'Requiere Companion Bridge activo (bridge/server.py)' : 'Requires active Companion Bridge (bridge/server.py)'}"`}>
+                ${ICONS.search} ${ctx.state.isScanningAxionik ? (es ? 'Escaneando...' : 'Scanning...') : (es ? 'Escanear AxionikDB' : 'Scan AxionikDB')} ${!isBridgeOnline ? `<span class="cond-reason-badge">${es ? 'BRIDGE DESCONECTADO' : 'BRIDGE OFFLINE'}</span>` : ''}
               </button>
             </div>
           </div>
@@ -88,16 +103,16 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
           <!-- 2. NeuronDB (Classic Mode) -->
           <div class="card card--tight stack-gap library-path-card">
             <div class="library-path-header">
-              <strong>NeuronDB Library (Classic / Hartmann 000..511) <span class="cond-reason-badge is-classic-only">MODO CLASSIC</span></strong>
-              <span class="text-muted">Banks compatible with Hartmann Neuron hardware &amp; classic software.</span>
+              <strong>${es ? 'Librería NeuronDB (Clásico / Hartmann 000..511)' : 'NeuronDB Library (Classic / Hartmann 000..511)'} <span class="cond-reason-badge is-classic-only">${es ? 'MODO CLÁSICO' : 'CLASSIC MODE'}</span></strong>
+              <span class="text-muted">${es ? 'Bancos compatibles con hardware Hartmann Neuron y software clásico.' : 'Banks compatible with Hartmann Neuron hardware &amp; classic software.'}</span>
             </div>
             <div class="bank-path-input-wrap">
               <input type="text" id="input-neurondb-path" class="form-control" value="${escAttr(savedNeuronDbPath)}" placeholder="${escAttr(DEFAULT_NEURON_DB_PATH)}" />
-              <button type="button" class="btn btn-outline" id="btn-browse-neurondb-dir" title="Navegar por el sistema de archivos para seleccionar la carpeta NeuronDB">
-                ${ICONS.folder} Browse...
+              <button type="button" class="btn btn-outline" id="btn-browse-neurondb-dir" title="${es ? 'Navegar por el sistema de archivos para seleccionar la carpeta NeuronDB' : 'Browse filesystem to select the NeuronDB folder'}">
+                ${ICONS.folder} ${es ? 'Examinar...' : 'Browse...'}
               </button>
-              <button type="button" class="btn btn-outline" id="btn-scan-neurondb-dir" ${isBridgeOnline ? '' : 'disabled title="Requiere Companion Bridge activo (bridge/server.py)"'}>
-                ${ICONS.search} ${ctx.state.isScanningNeuronDb ? 'Scanning...' : 'Scan NeuronDB'} ${!isBridgeOnline ? '<span class="cond-reason-badge">BRIDGE OFFLINE</span>' : ''}
+              <button type="button" class="btn btn-outline" id="btn-scan-neurondb-dir" ${isBridgeOnline ? '' : `disabled title="${es ? 'Requiere Companion Bridge activo (bridge/server.py)' : 'Requires active Companion Bridge (bridge/server.py)'}"`}>
+                ${ICONS.search} ${ctx.state.isScanningNeuronDb ? (es ? 'Escaneando...' : 'Scanning...') : (es ? 'Escanear NeuronDB' : 'Scan NeuronDB')} ${!isBridgeOnline ? `<span class="cond-reason-badge">${es ? 'BRIDGE DESCONECTADO' : 'BRIDGE OFFLINE'}</span>` : ''}
               </button>
             </div>
           </div>
@@ -105,16 +120,16 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
           <!-- 3. SoundFonts / Raw Samples -->
           <div class="card card--tight stack-gap library-path-card">
             <div class="library-path-header">
-              <strong>SoundFonts &amp; Raw Sample Collection</strong>
-              <span class="text-muted">Acoustic audio sources (.sf2, .sfz, .wav) for direct sample import.</span>
+              <strong>${es ? 'Colección de SoundFonts y Muestras Raw' : 'SoundFonts &amp; Raw Sample Collection'}</strong>
+              <span class="text-muted">${es ? 'Fuentes de audio acústicas (.sf2, .sfz, .wav) para importación directa.' : 'Acoustic audio sources (.sf2, .sfz, .wav) for direct sample import.'}</span>
             </div>
             <div class="bank-path-input-wrap">
               <input type="text" id="input-bank-path" class="form-control" value="${escAttr(savedBankPath)}" placeholder="${escAttr(DEFAULT_BANK_PATH)}" />
-              <button type="button" class="btn btn-outline" id="btn-browse-bank-dir" title="Navegar por el sistema de archivos para seleccionar la carpeta de muestras / SoundFonts">
-                ${ICONS.folder} Browse...
+              <button type="button" class="btn btn-outline" id="btn-browse-bank-dir" title="${es ? 'Navegar por el sistema de archivos para seleccionar la carpeta de muestras / SoundFonts' : 'Browse filesystem to select the samples / SoundFonts folder'}">
+                ${ICONS.folder} ${es ? 'Examinar...' : 'Browse...'}
               </button>
-              <button type="button" class="btn btn-outline" id="btn-scan-bank-dir" ${isBridgeOnline ? '' : 'disabled title="Requiere Companion Bridge activo (bridge/server.py)"'}>
-                ${ICONS.search} ${ctx.state.isScanning ? 'Scanning...' : 'Scan Samples'} ${!isBridgeOnline ? '<span class="cond-reason-badge">BRIDGE OFFLINE</span>' : ''}
+              <button type="button" class="btn btn-outline" id="btn-scan-bank-dir" ${isBridgeOnline ? '' : `disabled title="${es ? 'Requiere Companion Bridge activo (bridge/server.py)' : 'Requires active Companion Bridge (bridge/server.py)'}"`}>
+                ${ICONS.search} ${ctx.state.isScanning ? (es ? 'Escaneando...' : 'Scanning...') : (es ? 'Escanear Muestras' : 'Scan Samples')} ${!isBridgeOnline ? `<span class="cond-reason-badge">${es ? 'BRIDGE DESCONECTADO' : 'BRIDGE OFFLINE'}</span>` : ''}
               </button>
             </div>
           </div>
@@ -122,7 +137,7 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
           ${
             !isBridgeOnline
               ? `<p class="bank-bridge-offline-hint text-muted cfg-gap-top">
-                  To scan local directories without browser sandbox restrictions, launch the Companion Bridge (<code>bridge/server.py</code>).
+                  ${es ? 'Para escanear directorios locales sin restricciones del navegador, inicia el Companion Bridge (<code>bridge/server.py</code>).' : 'To scan local directories without browser sandbox restrictions, launch the Companion Bridge (<code>bridge/server.py</code>).'}
                 </p>`
               : ''
           }
@@ -137,8 +152,8 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
       <!-- 4. Storage Quota & Offline Persistence -->
       <div class="settings-section-card">
         <div class="settings-card-header">
-          <h4>${ICONS.database} Offline Storage &amp; IndexedDB Quota</h4>
-          <span class="text-muted">Persistent browser storage for audio buffers, time capsules, and models.</span>
+          <h4>${ICONS.database} ${es ? 'Almacenamiento Offline y Cuota IndexedDB' : 'Offline Storage &amp; IndexedDB Quota'}</h4>
+          <span class="text-muted">${es ? 'Almacenamiento persistente del navegador para buffers de audio, cápsulas del tiempo y modelos.' : 'Persistent browser storage for audio buffers, time capsules, and models.'}</span>
         </div>
         <div class="settings-storage-row">
           ${
@@ -146,19 +161,19 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
               ? `
             <div class="storage-estimate-box ${ctx.state.storageEstimate.percent > 80 ? 'is-warning' : ''}">
               <div class="storage-text">
-                <strong>IndexedDB Storage:</strong>
-                <span>${(ctx.state.storageEstimate.usage / (1024 * 1024)).toFixed(1)} MB used of ${(ctx.state.storageEstimate.quota / (1024 * 1024 * 1024)).toFixed(1)} GB available (${ctx.state.storageEstimate.percent}%)</span>
+                <strong>${es ? 'Almacenamiento IndexedDB:' : 'IndexedDB Storage:'}</strong>
+                <span>${(ctx.state.storageEstimate.usage / (1024 * 1024)).toFixed(1)} MB ${es ? 'usados de' : 'used of'} ${(ctx.state.storageEstimate.quota / (1024 * 1024 * 1024)).toFixed(1)} GB ${es ? 'disponibles' : 'available'} (${ctx.state.storageEstimate.percent}%)</span>
               </div>
               ${
                 ctx.state.storageEstimate.percent > 80
-                  ? `<span class="panel-badge badge-warning">High Storage Usage (>80%)</span>`
-                  : `<span class="panel-badge badge-success">Storage Healthy</span>`
+                  ? `<span class="panel-badge badge-warning">${es ? 'Uso Alto (>80%)' : 'High Storage Usage (>80%)'}</span>`
+                  : `<span class="panel-badge badge-success">${es ? 'Almacenamiento Óptimo' : 'Storage Healthy'}</span>`
               }
             </div>
           `
               : `
             <div class="storage-estimate-box">
-              <span class="text-muted">Storage quota estimation available in standard browser sessions.</span>
+              <span class="text-muted">${es ? 'Estimación de cuota disponible en sesiones estándar de navegador.' : 'Storage quota estimation available in standard browser sessions.'}</span>
             </div>
           `
           }
@@ -275,6 +290,20 @@ export function bindGeneralTabEvents(ctx: SettingsModalContext): void {
   ctx.state.backdropEl.querySelector('#btn-set-mode-dark')?.addEventListener('click', () => {
     ctx.handlers.onSetThemeMode('dark');
     ctx.rerender();
+  });
+
+  // Language / Idioma pills (ES / EN, synchronized with @abdsynths/shared/i18n)
+  ctx.state.backdropEl.querySelector('#btn-set-lang-es')?.addEventListener('click', () => {
+    setAppLocale('es');
+    ctx.handlers.onSetLocale?.('es');
+    ctx.rerender();
+    toast(tApp('settings.langChangedToast'), 'info');
+  });
+  ctx.state.backdropEl.querySelector('#btn-set-lang-en')?.addEventListener('click', () => {
+    setAppLocale('en');
+    ctx.handlers.onSetLocale?.('en');
+    ctx.rerender();
+    toast(tApp('settings.langChangedToast'), 'info');
   });
 
   // AxionikDB path browse & scan

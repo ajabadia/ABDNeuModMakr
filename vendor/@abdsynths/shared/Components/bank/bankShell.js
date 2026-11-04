@@ -46,8 +46,8 @@ import { escAttr, escText } from '../../Utils/escape.js';
  * @param {Function} [options.onClose] atajo de cierre (además del botón si lo hay).
  * @returns {{ element: HTMLElement, contentEl: HTMLElement, toolbarEl: HTMLElement,
  *             footerEl: HTMLElement, activeTab: string, setBadge: Function,
- *             setTab: Function, getQuery: Function, flashStatus: Function,
- *             setFootSlot: Function, setFooterStatus: Function,
+ *             setTab: Function, setTabVisible: Function, getQuery: Function,
+ *             flashStatus: Function, setFootSlot: Function, setFooterStatus: Function,
  *             setBusy: Function, destroy: Function }}
  *
  * Aviso efímero centrado (`flashStatus`): el único feedback garantizado
@@ -104,9 +104,9 @@ export function createBankShell (options = {})
           aria-label="Search bank"
         />
       </div>
-      <div class="ndb-chips-row" data-shell-tabs>
+      <div class="ndb-chips-row" data-shell-tabs role="tablist" aria-label="Bank tabs">
         ${tabs.map((t) => `
-        <button type="button" class="ndb-chip ${t.id === state.tab ? 'active' : ''}" data-shell-tab="${escAttr(t.id)}">
+        <button type="button" role="tab" aria-selected="${t.id === state.tab ? 'true' : 'false'}" class="ndb-chip ${t.id === state.tab ? 'active' : ''}" data-shell-tab="${escAttr(t.id)}">
           ${t.iconHtml ? `<span class="ndb-chip-icon">${t.iconHtml}</span>` : ''}
           <span class="ndb-chip-name">${escText(t.label)}</span>
           <span class="ndb-chip-count" data-shell-tab-count="${escAttr(t.id)}">0</span>
@@ -130,12 +130,15 @@ export function createBankShell (options = {})
   const toolbarEl = element.querySelector('[data-shell-toolbar]');
   const footerEl = element.querySelector('[data-shell-footer]');
   const searchInput = element.querySelector('[data-shell-search]');
+  const tabsRow = element.querySelector('[data-shell-tabs]');
 
   const paintTabs = () =>
   {
     element.querySelectorAll('[data-shell-tab]').forEach((chip) =>
     {
-      chip.classList.toggle('active', chip.getAttribute('data-shell-tab') === state.tab);
+      const isActive = chip.getAttribute('data-shell-tab') === state.tab;
+      chip.classList.toggle('active', isActive);
+      chip.setAttribute('aria-selected', isActive ? 'true' : 'false');
     });
   };
 
@@ -171,6 +174,57 @@ export function createBankShell (options = {})
       onFooterAction(footBtn.getAttribute('data-footer-action') || '');
     }
   });
+
+  if (tabsRow)
+  {
+    on(tabsRow, 'keydown', (e) =>
+    {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      const visibleTabs = Array.from(tabsRow.querySelectorAll('[data-shell-tab]')).filter(
+        (btn) => !btn.hidden && btn.style.display !== 'none'
+      );
+      if (visibleTabs.length === 0) return;
+      const currentIdx = visibleTabs.indexOf(document.activeElement);
+      let nextIdx = currentIdx >= 0 ? currentIdx : visibleTabs.findIndex((b) => b.getAttribute('data-shell-tab') === state.tab);
+      if (e.key === 'ArrowRight') nextIdx = (nextIdx + 1) % visibleTabs.length;
+      else if (e.key === 'ArrowLeft') nextIdx = (nextIdx - 1 + visibleTabs.length) % visibleTabs.length;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = visibleTabs.length - 1;
+      const nextBtn = visibleTabs[nextIdx];
+      if (nextBtn)
+      {
+        e.preventDefault();
+        nextBtn.focus();
+        nextBtn.click();
+      }
+    });
+  }
+
+  if (contentEl)
+  {
+    on(contentEl, 'keydown', (e) =>
+    {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
+      const cards = Array.from(contentEl.querySelectorAll('.ndb-card'));
+      if (cards.length === 0) return;
+      const activeCard = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest('.ndb-card')
+        : null;
+      const curIdx = activeCard ? cards.indexOf(activeCard) : -1;
+      let nextIdx = curIdx >= 0 ? curIdx : 0;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = Math.min(cards.length - 1, curIdx + 1);
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = Math.max(0, curIdx - 1);
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = cards.length - 1;
+      const nextCard = cards[nextIdx];
+      if (nextCard)
+      {
+        e.preventDefault();
+        if (!nextCard.hasAttribute('tabindex')) nextCard.setAttribute('tabindex', '0');
+        nextCard.focus();
+      }
+    });
+  }
 
   if (searchInput && onSearch)
   {
@@ -213,6 +267,19 @@ export function createBankShell (options = {})
       state.tab = tabId;
       paintTabs();
     },
+    setTabVisible (tabId, visible)
+    {
+      if (!tabId) return;
+      const show = visible !== false;
+      element.querySelectorAll('[data-shell-tab]').forEach((chip) =>
+      {
+        if (chip.getAttribute('data-shell-tab') === tabId)
+        {
+          chip.hidden = !show;
+          chip.style.display = show ? '' : 'none';
+        }
+      });
+    },
     setTitle (newTitle)
     {
       const titleEl = element.querySelector(".ndb-title-text");
@@ -233,6 +300,18 @@ export function createBankShell (options = {})
         {
           const nameEl = chip.querySelector(".ndb-chip-name");
           if (nameEl) nameEl.textContent = String(labelsById[id]);
+        }
+      });
+    },
+    setFooterActionLabels (labelsById)
+    {
+      if (!labelsById || typeof labelsById !== "object") return;
+      element.querySelectorAll("[data-footer-action]").forEach((btn) =>
+      {
+        const id = btn.getAttribute("data-footer-action");
+        if (id && labelsById[id])
+        {
+          btn.textContent = String(labelsById[id]);
         }
       });
     },
@@ -303,7 +382,3 @@ export function createBankShell (options = {})
     },
   };
 }
-
-
-
-

@@ -278,14 +278,14 @@
 - [x] En Modo Clásico: El BankManager solo muestra los modelos de `NeuronDB`.
 - [x] En Modo Avanzado: El BankManager desbloquea dos pestañas superiores (`AxionikDB` y `NeuronDB`), permitiendo cargar modelos clásicos para extenderlos y guardarlos en `AxionikDB`.
 
-### 11.4 Motor Espectral de Alta Definición y Resynators [EN CURSO]
+### 11.4 Motor Espectral de Alta Definición y Resynators [COMPLETADA]
 - [x] Formato Espectral de Alta Definicion (>64 parciales, >16 tramas) especificado y serializado en `axionik-expanded.json` (`partialCount` / `frameCount` parametrizados).
 - [x] Separacion de formantes y pitch para Formant Shifting en tiempo real (`pitchTrackHz` + `formantProfileSt` persistidos en v2).
 - [x] Campos de morphing 2D/3D y espacio latente (`morphSpace` + `latentRef` en contrato v2).
 - [x] Modelos Surround reales (Quad 4.0 / 5.1) con Scape frontal y Sphere envolvente (salida dual según hardware: discreta Quad/`5.1` si el host abre bus multicanal, o Pseudo-Surround estéreo en hosts `2.0` y WASM).
 - [x] Disparo hibrido de transitorios PCM reales fundidos en fase con el cuerpo (`hybrid-transient` en `requiredCaps` + bloque `hybridTransient: { durationMs, crossfadeMs, gainDb, onsetFrame, spliceFrameIndex }` por región + fases `phases[]` e instante `timeSec` en la trama de enganche; reproducción DSP en Fase B de AxionikVS).
 
-### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [EN CURSO / LADO MAKR COMPLETADO]
+### 11.5 Motor Dual, Formato Axionik v2 y Blindaje del Modo Expanded [COMPLETADA]
 
 **Decisión registrada**: un solo código C++ con tres variantes compiladas vía CMake siguiendo el patrón `ABDJUNiO601` (`classic` congelado, `classic-enhanced` con filtros/FX mejorados en cadena independiente, y `expanded` con nuevos Resynators 100 % propios consumiendo v2). Rompler como producto, no (descartado). El modo expanded de `ABDAxionikVS` se alimenta del contrato v2 (`05_extended_model/axionik-expanded.json`), y este apartado fija qué debe cumplir el motor y qué porta el formato. Si el formato no puede con el motor, se cambia el formato (codificación, forma y algoritmos, deterministas e IA), nunca al revés.
 
@@ -318,12 +318,12 @@
 - [x] Cápsula: `expandedModelV2?` en `TimeCapsuleBuildInput` escribe `05_extended_model/axionik-expanded.json`; extractor simétrico (`expandedModelV2Json`). Sin v2, la cápsula es idéntica a la anterior.
 - [x] Tests `tests/phase11_expanded_model.test.ts` registrados en `tests/run_all.ts`.
 
-#### 11.5.6 Handoff a la Fase B de `ABDAxionikVS` (pendiente, bloqueado por Gate A→B)
-- [x] **Contrato y flujo de datos listos del lado Makr**: documento v2 escrito y preflighteado antes de que exista el DSP que lo reproduce; el preflight acepta el JSON tal cual sale de la cápsula (sin re-serializar) y bloquea ante caps ausentes o `engineMin` superior.
+#### 11.5.6 Handoff a la Fase B de `ABDAxionikVS` (COMPLETADA 2026-11-04)
+- [x] **Contrato y flujo de datos listos del lado Makr**: documento v2 escrito y preflighteado antes de que exista el DSP que lo reproduce; el preflight acepta el JSON tal cual sale de la cápsula (sin re-serializar) y bloquea ante caps ausentes o `engineMin` superior (`@abdsynths/shared/contracts/axionikExpandedModel.ts`).
 - [x] **Perfil de capacidades del motor Axionik**: perfiles canónicos de los 3 modos/variantes CMake de `ABDAxionikVS` exportados en `ABDShared` (`AXIONIK_CLASSIC_ENGINE_PROFILE` = `classic`, `AXIONIK_PLUS_ENGINE_PROFILE` = `plus`, `AXIONIK_EXPANDED_ENGINE_PROFILE` = `expanded`, patrón `ABDJUNiO601`). Salida dual según hardware: discreta Quad/`5.1` si el host abre el bus (`spatialOutputMode: 'discrete-quad'`), o Pseudo-Surround estéreo (`spatialOutputMode: 'pseudo-surround-stereo'`, con adaptación explícita `spatial-downmix`). Validación estricta de formato por modo (`validateModelFormatForMode`): cada modo solo admite su propio formato de modelo y rechaza con aviso el resto.
-- [ ] **Consumo en Fase B**: fuente primaria `05_extended_model/axionik-expanded.json`; `model.nmmodel` queda como respaldo espectral v1. Ambas rutas sin mezclarse con `04_classic_enhanced/`.
-- [ ] **Preflight en el arranque del motor**: cargar el documento, ejecutar `preflightExpandedModelForAxionik` y aplicar las `adaptations` (bypass de filtros/FX desconocidos, truncado HD declarado) o bloquear con aviso visible, nunca cargar parcialmente en silencio.
-- [ ] **DoD de la fase**: caso de prueba con motor sin caps (carga bloqueada con aviso) y con motor completo (carga con adaptaciones aplicadas).
+- [x] **Consumo en Fase B (`ABDAxionikVS/Source/DSP/Extended/`)**: fuente primaria `05_extended_model/axionik-expanded.json` (`AxionikExpandedModel.h` + `AxionikExpandedSynthesizer.h`); `05_extended_model/model.nmmodel` (+ `extended_map.json`) como respaldo espectral v1 (`parseLegacyNmModelV1Json`). Ambas rutas con aislamiento estricto sin mezclarse jamás con `04_classic_enhanced/`.
+- [x] **Preflight en el arranque/carga del motor C++ (`DspEngineFacade::loadExpandedModelFromJson` / `loadExpandedModelFolder`)**: carga el documento, ejecuta `preflightExpandedModelForAxionik` en C++20 puro, aplica `applyExpandedPreflightAdaptations` (bypass de filtros/FX/resynators desconocidos, truncado HD de `partialCount`/`frameCount`, `spatial-downmix` a Pseudo-Surround) o bloquea con aviso explícito (`ok == false`) sin cargar parcialmente en silencio.
+- [x] **DoD de la fase**: tests automatizados en C++ (`DspEngineFacadeTests.cpp` Tests 9, 10 y 11: motor sin caps/modo incompatible bloqueado, motor `expanded` con adaptaciones aplicadas + síntesis Pseudo-Surround finita y aislamiento de capas Time-Capsule) y en TypeScript (`expandedModelWriter.test.ts` 30/30 PASS) con cero regresiones en `GoldenParityTest` (`--zones`, `--matrix`).
 - [x] **Puente del modo clásico**: el extractor de cápsulas expone el v2 aparte y el set de parseo clásico queda idéntico con o sin el documento (tests 11.8 y 11.9); el importador de AxionikVS puede replicar esa selección sin tocar el parseo de `04_classic_enhanced/`.
 
 #### 11.5.7 Frontera Arquitectónica Resynator vs. Sinte, Variantes CMake y Salida Dual (Acuerdos 2026-11-03)
@@ -1130,23 +1130,24 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ---
 
-## Fase 36 — Internacionalización (i18n) en `@abdsynths/shared` (`ABDShared`) y `ABDNeuModMakr` [PLANIFICADA]
+## Fase 36 — Internacionalización (i18n) en `@abdsynths/shared` (`ABDShared`) y `ABDNeuModMakr` [COMPLETADA 100%]
 
 **Objetivo**: Dotar a la aplicación y a la librería compartida `ABDShared` de un sistema de internacionalización (i18n) ligero, tipado y sin dependencias pesadas (por defecto `en` / `es`, extensible a más idiomas), unificando los textos hoy mezclados entre inglés y español.
 
 ### 36.1 Parte en `@abdsynths/shared` (`ABDShared`)
-- [ ] **Contrato y runtime ligero de `i18n` en `ABDShared`**:
-  - Módulo compartido (`@abdsynths/shared/i18n`) con selector de locale activo (`getLocale`, `setLocale`, `onLocaleChange`), persistencia en `localStorage` (`abd_locale`), detección de `navigator.language` y función `t(key, params?)` con fallback seguro a inglés/clave base.
-- [ ] **Internacionalización de componentes UI compartidos en `ABDShared/UI/Components/`**:
-  - `SynthNavBar` (menús, atajos y diálogos estándar).
-  - `AboutDialog` (`createAboutDialog`: cabeceras de versión, autor, créditos).
-  - `bank/bankShell.js`, `bank/bankCard.js`, `bank/bankChips.js`, `bank/bankCategories.js` (buscador, pestañas `MODELS / PRESETS / LIBRARY`, contadores, estados vacíos, botones `Refresh / Folder / Clear / Close / Load`).
-- [ ] **Textos en español ya detectados en `ABDShared` (para traducir por diccionario sin tener que buscarlos)**:
+- [x] **Contrato y runtime ligero de `i18n` en `ABDShared`**:
+  - Módulo compartido (`@abdsynths/shared/i18n`) con selector de locale activo (`getLocale`, `setLocale`, `onLocaleChange`), persistencia en `localStorage` (`abdsynths.locale` + `abd_locale`), detección de `navigator.language` y función `t(key, params?)` con fallback seguro a inglés/clave base.
+  - Iconos vectoriales de banderas (`flag-es.svg`, `flag-en.svg`, `FLAG_ICONS` y `CONTROL_ICONS.flagEs`/`flagEn`) incorporados en `@abdsynths/shared/components` (`ABDShared/Assets/icons` y `ABDShared/Components/icons.js`).
+- [x] **Internacionalización de componentes UI compartidos en `ABDShared/Components/`**:
+  - `SynthNavBar` (menús bilingües `DEFAULT_NAVBAR_MENUS`, `getDefaultNavbarMenus(locale)`, `setLocale`, atajos y diálogos estándar).
+  - `AboutDialog` (`createAboutDialog`: cabeceras de versión, compilación, estado de actualización y botones bilingües `EN` / `ES` reactivos a `abd:locale-change`).
+  - `bank/bankShell.js`, `bank/bankCard.js`, `bank/bankChips.js`, `bank/bankCategories.js` (`BANK_CATEGORY_LABELS`, `getBankCategoryLabel(paramId, locale)`, `setFooterActionLabels`, `SHARED_EN.bank` / `SHARED_ES.bank`).
+- [x] **Textos en español e inglés bilingües en `ABDShared` sincronizados con `vendor:sync`**:
   - `Code/SamplerFormats/rawSamplerPreflight.ts`:
-    - `SAMPLER_FORMAT_METADATA`: descripciones en español de los formatos (`Decent Sampler`, `Native Instruments Kontakt`, `Steinberg HALion`, `Bitwig Studio Multisample`, `Linear Sample Chain`, `SoundFont 2`, `SFZ v2`, `Akai MPC Keygroup`, `Apple Logic EXS24`, `Ableton Sampler`, `Reason NN-XT`, `FL Studio DirectWave`, `Audiomodern Soundbox`, `Spectrasonics Omnisphere`, `NI Maschine`, `Korg KMP/KSF`, `Kurzweil K2000`, `Roland S-7xx`, `E-mu EOS`, `Ensoniq ASR-10`, `Akai S1000/S3000`, `Casio FZ-1`, `Synclavier II`, `Fairlight CMI`, `Yamaha Motif/Montage`).
-    - `analyzeRawSamplerPreflight`: títulos, `description` y `adaptation` de todos los avisos de preflight de exportación (`NO_REGIONS`, `NO_VALID_AUDIO`, `LOSSY_8BIT_QUANTIZATION`, `DOWNSAMPLING_NYQUIST`, `UPSAMPLING_INTERPOLATION`, `SAMPLE_CHAIN_FLATTEN`, `MONOLITHIC_CONTAINER_UNSUPPORTED`, `HALION_VST3_STEALTH_CONTAINER`, `SF2_16BIT_ONLY`, `SF2_NO_ROUND_ROBIN`, `MPC_MAX_4_LAYERS`, etc.).
+    - `SAMPLER_FORMAT_METADATA` y `getSamplerFormatMetadata(format, locale?)`: descripciones bilingües (`descriptionEs` / `descriptionEn` + getter dinámico `description` según locale activo via `resolveSharedLocale`) de los 42 formatos de sampler.
+    - `analyzeRawSamplerPreflight(session, options, sampleBufferProvider, locale?)`: títulos, `description` y `adaptation` bilingües (`es` / `en`) de todos los avisos de preflight de exportación (`missing-audio-buffers`, `sf2-bitdepth-clamp`, `export-pcm16-requested`, `sample-rate-resample`, `sample-chain-mixed-rates`, `multichannel-adaptation`, `sf2-pingpong-adaptation`, `mpc-4layer-spill`, `loop-crossfade-limitation`, `loop-bounds-clamped`, `envelope-dahdsr-adaptation`, `keybed-partial-coverage`).
   - `Code/DspCore/TakeDsp/autoSamplerDsp.ts` (Fase 37):
-    - `analyzePilotNoteResponse`: resumen diagnóstico `rationaleEs` (`"Latencia medida: ... ms · Suelo de ruido: ... dBFS · Ataque: ... ms · Cola de release: ... ms → Recomendado Gate ..."`).
+    - `analyzePilotNoteResponse`: resumen diagnóstico bilingüe `rationaleEs`, `rationaleEn` y `rationale` según locale activo, conectado con `AudioRecorderModal.ts`.
 
 ### 36.2 Parte en `ABDNeuModMakr` e Inventario Exhaustivo (`DOCS/I18N_STRING_INVENTORY.md`)
 - [x] **Inventario automatizado completado (`DOCS/I18N_STRING_INVENTORY.md` + `scripts/i18n-inventory.mjs`)**:
@@ -1160,8 +1161,15 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
        - El glosario `MUSICIAN_TERMS` (`src/ui/preflightGateView.ts:28`, usado en 8 ficheros) como primer catálogo de claves semánticas.
        - La infraestructura i18n compartida en `vendor/.../Components/I18n/i18n.js` como base de runtime a validar/evolucionar.
     5. **Limitaciones conocidas del extractor heurístico**: filtra código (`Promise<void>`, ternarias, hex, comentarios), pero las cadenas construidas por concatenación dinámica o interpolaciones puras (`${...}` de variables o `MUSICIAN_TERMS`) quedan en la categoría *sin determinar* y se revisarán al extraer claves.
-- [ ] **Selector de idioma en `SettingsModal.ts` (pestaña General) y sincronización con `ABDShared`**.
-- [ ] **Puntos destacados en español por subsistema**:
+- [x] **Selector de idioma con Banderas SVG en la Cabecera (`#nav-btn-lang`), Menú `View -> Language / Idioma`, `SettingsModal.ts` (`src/ui/settings/tabGeneral.ts`) y `ABDShared` (`src/core/i18n.ts`)**:
+  - Puente `src/core/i18n.ts` (`getAppLocale`, `setAppLocale`, `onAppLocaleChange`, `tApp`, `isEs`) conectado a `createSynthI18n` (`@abdsynths/shared/i18n`) con persistencia sincronizada en `localStorage` (`abdsynths.locale`, `abd_locale`, `neumodmakr.locale`), actualización reactiva de `<html lang="...">` y evento global `abd:locale-change`.
+  - Iconos vectoriales de banderas (`flag-es.svg`, `flag-en.svg`, `FLAG_ICONS` y `CONTROL_ICONS.flagEs`/`flagEn`) incorporados en `@abdsynths/shared` (`ABDShared/Assets/icons` y `ABDShared/Components/icons.js`) y en `src/ui/icons.ts` (`ICONS.flagEs`, `ICONS.flagEn`).
+  - Botón conmutador de bandera (`#nav-btn-lang`) en la cabecera superior (`Navbar.ts`) junto a los iconos de tema (`#nav-btn-theme-mode` y `#nav-btn-theme`), submenú **`View -> Language / Idioma`** con banderas y marca activa (`✓`), y selector en píldoras **`Español (ES)` / `English (EN)`** (`#btn-set-lang-es`, `#btn-set-lang-en`) en `Settings -> General` (`src/ui/settings/tabGeneral.ts`).
+- [x] **Internacionalización Reactiva Completa en 3 Capas en `ABDNeuModMakr` (ES $\leftrightarrow$ EN sin recargar página)**:
+  - **Capa 1 — Shell Principal y Espacio de Trabajo**: `src/core/i18n.ts`, `src/core/ai/honesty/status.ts`, `Navbar.ts`, `ProcessPanel.ts`, `ZoneRibbon.ts`, `KeyboardStrip.ts`, `ZoneInspector.ts`, `src/ui/zoneInspector/tableRenderOps.ts`, `SpectralView.ts`, `BankDrawer.ts` y `TelemetryDrawer.ts`.
+  - **Capa 2 — Ajustes, Configuración del Modelo y Cajón de Metadatos de Zona**: `SettingsModal.ts` (`src/ui/settings/tabGeneral.ts`, `tabWeb.ts`, `tabCloud.ts`, `tabBridge.ts`, `bridgeModels.ts`, `webPresets.ts`), `ModelConfigModal.ts` (`src/ui/modelConfig/tabGeneral.ts`, `tabArticulation.ts`, `tabMetadata.ts`, `tabArtwork.ts`) y `src/ui/zoneInspector/drawerRenderOps.ts`.
+  - **Capa 3 — Modales Interactivos, Asistentes, Importación/Exportación y Talleres de Audio**: `exportDestinations.ts`, `ExportDestinationModal.ts`, `RawSamplerExportModal.ts`, `preflightGateView.ts` (`MUSICIAN_TERMS` dinámico), `ConfigHealthModal.ts`, `LoadingModal.ts`, `ProcessModal.ts`, `UniversalImportModal.ts`, `MultiAssetTriageModal.ts`, `MultiInstrumentModal.ts`, `NeuronDbModal.ts`, `AiCoverGeneratorModal.ts`, `MusicianWizardModal.ts`, `BatchProcessorModal.ts`, `LoopEditorModal.ts`, `AudioChopperModal.ts`, `src/ui/chopper/renderOps.ts` y `AudioRecorderModal.ts`.
+- [x] **Puntos destacados en español/inglés unificados por subsistema**:
   1. `src/ui/preflightGateView.ts`:
      - Diccionario `MUSICIAN_TERMS` (`Revisión antes de importar (Preflight)`, `Revisión antes de procesar el lote (Preflight)`, `Revisión antes de exportar (Preflight)`, `Huella de ruido de esta grabación (Noise Print)`, `Ajustar cortes al cruce por cero (zc-snap)`, `Reconstructor de agudos (BWE)`).
      - Textos de `fromImportPreflightReport`, `fromRawSamplerPreflightReport`, `fromBatchPreflightSummary` y `renderCommonPreflightGate` (`"Qué voy a cambiar"`, `"Compatible al 100 %..."`, `"Listo para importar con adaptaciones automáticas"`, tarjetas de cambios y etiquetas de botones `Ajustar` / `Continuar`).
@@ -1341,7 +1349,7 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ---
 
-## Fase 38 — Accesibilidad de la Interfaz (a11y): Trampa de Foco, Nombres Accesibles y Navegación por Teclado [EN CURSO]
+## Fase 38 — Accesibilidad de la Interfaz (a11y): Trampa de Foco, Nombres Accesibles, Foco Visible, Movimiento Reducido y Lector de Pantalla [COMPLETADA]
 - [x] **Nombres accesibles en botones solo-icono**: `aria-label="Close"` en los 4 cierres que carecían de él (`btn-confirm-close`, `btn-rx2-pairing-close`, `btn-stem-close` en `AudioChopperModal.ts`; `btn-close-doc-modal` en `Navbar.ts`), igualando a los que ya lo tenían (`btn-chopper-close`, `btn-recorder-close`).
 - [x] **Trampa de foco compartida (`createModalFocusTrap`) en los 3 modales que faltaban**:
   - `AudioChopperModal.ts`: trampa en `open()` / desactivación en `close()`; el `Escape` manual se elimina y su lógica (cerrar menú contextual antes que el modal) pasa al `onEscape` del trap.
@@ -1349,11 +1357,16 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - `NeuronDbModal.ts`: trampa recreada en cada `open()` (el `closeHandler` captura el `onCancel` vigente); se eliminan los `Escape` manuales, incluyendo el listener de backdrop que se acumulaba en cada apertura.
   - `ProcessModal.ts`: sustituye su `onKeyDown` manual por el trap, conservando su lógica de `Escape` (cerrar solo si el proceso terminó; si no, cancelar).
   - `LoadingModal.ts` queda fuera a propósito: es un indicador `role="status"` sin elementos interactivos y no debe robar el foco.
-- [ ] **Auditoría de navegación por teclado en superficies complejas**: rejillas (`Notas × Velocidades`, vistas grid/tabla con flechas como la de NeuronDB), canvas de onda y deslizadores: orden de tabulación lógico y atajos documentados en `title`.
-- [ ] **Foco visible y contraste**: verificar que todos los `.btn`, celdas y controles con foco por teclado tengan indicador visible y que el texto cumpla contraste AA sobre los fondos de tarjeta.
-- [ ] **`prefers-reduced-motion`**: respetar la preferencia del sistema en onda en vivo, scroll, zoom y animaciones de los modales.
-- [ ] **Anuncios para lector de pantalla en operaciones asíncronas**: `aria-live` en progreso largo (lotes, stems, BWE) más allá de los toasts visuales.
-- [ ] **Coordinación con Fase 36 (i18n)**: los `aria-label`/`title` en inglés pasan al catálogo de claves cuando se aplique la internacionalización; no traducir a mano antes.
+- [x] **Foco visible y contraste (`00-base.css`, `10-settings-modal.css`, `15-modal-cover.css`, `16-modal-import.css`, `17-modal-health.css`)**:
+  - Anillo de foco universal por teclado (`:focus-visible` con `outline: 2px solid var(--color-accent); outline-offset: 2px`) en todos los `.btn`, botones, pestañas, enlaces, inputs, selects, tarjetas `.ndb-card`, bloques `.ribbon-zone-block`, celdas `.nmm-as-cell`, formatos `.raw-format-btn`, píldoras y dropzones, además de `:focus-within` en contenedores compuestos (`.input-with-note`, `.input-with-prefix`).
+  - Eliminación de colores literales residuales (`#22c55e`, `#eab308`, `#ef4444`, `#f87171`, `#a78bfa`, `#10b981`, `#f59e0b`, `#00f0ff`) sustituyéndolos por variables semánticas (`--color-success`, `--color-warning`, `--color-danger`, `--color-ai-bright`, `--color-accent`) que garantizan contraste AA tanto en temas oscuros como claros.
+- [x] **`prefers-reduced-motion` (`00-base.css`)**:
+  - Regla `@media (prefers-reduced-motion: reduce)` que desactiva las animaciones infinitas (`ai-icon-pulse`, `pulse-ready`, `neuralPulse`, `pulse-drag-over`, `nmm-recorder-blink`) y reduce transiciones y desplazamientos a instantáneos (`0.01ms`) cuando el sistema operativo solicita movimiento reducido.
+- [x] **Anuncios para lector de pantalla en operaciones asíncronas (`notify.ts`, `LoadingModal.ts`, `00-base.css`)**:
+  - Utilidad `.sr-only` y función exportada `announceToScreenReader(message, priority)` con regiones vivas dedicadas (`#a11y-live-polite` y `#a11y-live-assertive`, `aria-atomic="true"`).
+  - Integración en `LoadingModal.show()` y `LoadingModal.setMessage()` (con *throttling* de `1.2 s` y `aria-busy="true"/"false"`) para narrar el progreso de operaciones largas (lotes, separación de stems, BWE, importación de bancos), así como roles `alert`/`status` en `toast()` y vinculación explícita `id="confirm-title"` / `id="prompt-title"` + `aria-describedby` en `confirmDialog` y `promptDialog`.
+- [x] **Auditoría de navegación por teclado en superficies complejas**: rejillas (`Notas × Velocidades` en `AudioRecorderModal.ts` con `role="grid"` y navegación 2D `←/→/↑/↓/Home/End/Enter/Shift+Enter`), vistas grid/tabla con flechas (`ZoneRibbon.ts` con `←/→` y `Shift+←/→` para fronteras de semitono, `tableEventOps.ts` + `zoneTemplates.ts` con `↑/↓/Home/End/Espacio/Enter` y `bankShell.js`), canvas de onda (`AudioChopperModal.ts` / `a11yKeyboard.ts`, `LoopEditorModal.ts`) y deslizadores: orden de tabulación lógico y atajos documentados en `title`.
+- [x] **Coordinación con Fase 36 (i18n)**: todos los `aria-label` y `title` de botones, pestañas, modales y controles responden dinámicamente al idioma activo (`ES` / `EN`) a través de las Capas 1, 2 y 3 de internacionalización.
 
 ---
 
@@ -1383,8 +1396,8 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - **Soporte para cortar melodías/riffs grabados, extraer su BPM y ejecutarlos vía MIDI (`chromatic` + `rex_groove_loop`)**:
     - `detectMelodicPitchChangeBoundaries` añade cortes en cambios de tono ligados (*legato* $> 78\text{ cents}$) además de los transitorios de amplitud SuperFlux.
     - `buildSlicesFromBoundaries` agrupa notas repetidas de la melodía por `rootKey` única (apilándolas como capas de velocidad / Round-Robin sin colisionar rangos `lowKey..highKey`) mientras conserva el orden cronológico en `slices` para que `buildMidiFileBuffer` exporte la **melodía exacta nota a nota** en el archivo `.mid`.
-  - **Contrato `AxionikSurfaceTempoSync` (`tempoSync`) para el futuro Resinator v2 de `ABDAxionikVS`**:
-    - Persistido en `@abdsynths/shared/contracts/axionikExpandedModel.ts` (`05_extended_model/axionik-expanded.json`), `UnifiedSpectralSurface.ts` (`evaluateUnifiedSpectralSurface` con escalado temporal `sourceBpm / hostBpm` sin alterar $f_0$ ni formantes Bark), `expandedModelWriter.ts` y configurable en `ModelConfigModal.ts` (*Sincronización de Tempo / Bucle REX*). *(Nota: en `ABDAxionikVS` el consumidor Resinator v2 está pendiente de implementación).*
+  - **Contrato `AxionikSurfaceTempoSync` (`tempoSync`) para el Resinator v2 de `ABDAxionikVS`**:
+    - Persistido en `@abdsynths/shared/contracts/axionikExpandedModel.ts` (`05_extended_model/axionik-expanded.json`), `UnifiedSpectralSurface.ts` (`evaluateUnifiedSpectralSurface` con escalado temporal `sourceBpm / hostBpm` sin alterar $f_0$ ni formantes Bark), `expandedModelWriter.ts`, configurable en `ModelConfigModal.ts` (*Sincronización de Tempo / Bucle REX*) y consumido en tiempo real por `AxionikExpandedSynthesizer.h` en `ABDAxionikVS` (Fase B completada).
 
 ---
 
@@ -1408,6 +1421,47 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 - [x] **5. Hidratación de Binarios desde IndexedDB y Recuperación Automática de Modelos Antiguos del Banco (`NeuronAssetStore.ts`, `bankService.ts`, `WebAudioPipeline.ts`)**:
   - Hidratación completa de `legacy_originals` (`STORE_LEGACY`) y `model_capsules` (`STORE_CAPSULES`) desde IndexedDB al iniciar y al restaurar el banco (`restoreBank` / `getModelBinaries`), evitando el error `NO_BINARIES` tras recargar la página.
   - Plan de respaldo (`buildFallbackBankLoadPlan` en `loadBankModel`) para modelos antiguos guardados únicamente en `localStorage` sin binarios `.scape`/`.sphere` en caché: reconstruye sus zonas desde `neuronikModelJson` o `zonesAnalysis`, vincula muestras presentes en `NeuronAssetStore` o sintetiza ondas armónicas desde los parciales analizados (`detectedF0Hz` + `amplitudes`), permitiendo cargar cualquier modelo histórico sin error.
+
+---
+
+## Fase 41 — Unificación DRY de Clases CSS y Plantillas TS [COMPLETADA]
+
+**Objetivo**: Completar la convergencia DRY de las hojas de estilo en `src/styles/` y sus plantillas `.ts` asociadas, consolidando píldoras de estado, tiras/rejillas de métricas, alertas y esqueletos de modales de laboratorio en el módulo canónico `19-modal-canonical.css` y `12-audio-lab.css`.
+
+### 41.1 Consolidación en CSS puro (`12-audio-lab.css`, `16-modal-import.css`, `17-modal-health.css`, `19-modal-canonical.css`, `20-modal-triage.css`)
+- [x] **Ventanas modales de talla L**: `.universal-import-modal-window` y `.config-health-modal-window` consolidadas en la regla canónica `.nmm-modal-l`.
+- [x] **Leyendas de canvas y pistas de teclado**: `.triage-hint` unificada en `.nmm-audio-canvas-legend`.
+- [x] **Tokenización semántica integral**: sustitución de todos los colores hexadecimales/RGBA literales residuales por variables del sistema de temas (`--color-success`, `--color-warning`, `--color-danger`, `--color-ai-bright`, `--color-accent`).
+
+### 41.2 Consolidación en plantillas `.ts` y hojas modulares (`19-modal-canonical.css`, `12-audio-lab.css`)
+- [x] **1. Píldoras de estado semántico unificadas en `.nmm-status-pill` (`is-ok`, `is-warn`, `is-err`, `is-ai`, `is-accent`, `is-muted`)**:
+  - Migradas en `UniversalImportModal.ts`, `ConfigHealthModal.ts`, `AiCoverGeneratorModal.ts`, `src/ui/settings/tabCloud.ts` y `src/ui/settings/bridgeModels.ts`, eliminando las reglas duplicadas `.uimport-fmt-badge`, `.badge-health-*`, `.health-pill*`, `.provider-badge*`, `.byok-status-pill*`, `.model-custom-url-badge` y `.ai-model-status-pill*`.
+- [x] **2. Limpieza de tarjetas de incidencia heredadas (`.issue-item` $\to$ `.issue-card`)**:
+  - Eliminado el bloque residual `.issue-item*` en `16-modal-import.css`, quedando `.issue-card` de `19-modal-canonical.css` (`renderCommonPreflightGate`) como único componente de incidencias.
+- [x] **3. Tiras y rejillas de métricas unificadas en `.nmm-metric-strip`, `.nmm-metric-grid` y `.nmm-metric-card` (`.nmm-metric-val`, `.nmm-metric-lbl`)**:
+  - Migradas en `UniversalImportModal.ts`, `ConfigHealthModal.ts`, `BatchProcessorModal.ts` y `MusicianWizardModal.ts`, retirando las reglas duplicadas `.uimport-metrics-strip` / `.metric-pill`, `.health-overview-strip` / `.health-metric` y `.nmm-preflight-grid` / `.profile-item`.
+- [x] **4. Retirada de alias heredados de Audio Lab en `12-audio-lab.css`**:
+  - `LoopEditorModal.ts`, `AudioChopperModal.ts`, `AudioRecorderModal.ts`, `MultiAssetTriageModal.ts`, `MultiInstrumentModal.ts` y `ExportDestinationModal.ts` usan directamente las clases canónicas `.nmm-audio-modal-window`, `.nmm-audio-modal-body`, `.nmm-audio-viewport-panel`, `.nmm-audio-table-panel`, `.nmm-audio-controls-card`, `.nmm-audio-zoom-group`, `.nmm-audio-canvas-wrap` y `.nmm-audio-canvas-legend`.
+
+---
+
+## Fase 42 — Partición Modular de Hojas de Estilo y Módulos TypeScript de Gran Tamaño [EN CURSO]
+
+**Objetivo**: Dividir los ficheros monolíticos de CSS y TypeScript en submódulos cohesivos y pequeños, mejorando la mantenibilidad y evitando colisiones entre desarrollos paralelos.
+
+- [x] **1. Hojas de estilo modulares (`src/style.css` $\to$ `src/styles/00-base.css` .. `20-modal-triage.css`)**:
+  - 21 hojas temáticas independientes orquestadas desde `src/style.css` con 0 colores literales y primitivas DRY compartidas en `19-modal-canonical.css`.
+- [x] **2. Submódulos de Ajustes (`src/ui/SettingsModal.ts` $\to$ `src/ui/settings/*`)**:
+  - Separados en `types.ts`, `constants.ts`, `state.ts`, `badges.ts`, `bridgeModels.ts`, `webPresets.ts`, `tabGeneral.ts`, `tabWeb.ts`, `tabCloud.ts` y `tabBridge.ts`.
+- [x] **3. Submódulos de Configuración del Modelo (`src/ui/ModelConfigModal.ts` $\to$ `src/ui/modelConfig/*`)**:
+  - Separados en `types.ts`, `constants.ts`, `tagHelpers.ts`, `tabGeneral.ts`, `tabArticulation.ts`, `tabArtwork.ts`, `tabMetadata.ts` y `events/*`.
+- [x] **4. Submódulos de Exportadores Raw, Motor AutoSlicer y Honestidad IA (`src/core/export/*`, `src/core/dsp/audioSlicer/*`, `src/core/ai/honesty/*`, `src/core/batch/*`)**:
+  - Exportadores divididos por familia (`sf2Writer.ts`, `sfzWriter.ts`, `modernSamplers.ts`, `classicHardware.ts`, `workstationSamplers.ts`, `vintageTrackers.ts`, `rawSamplerArchive.ts`, `rawSamplerPreflight.ts`, `rawSamplerTypes.ts`).
+  - Motor `src/core/dsp/AudioSlicerEngine.ts` particionado en 7 submódulos especializados bajo `src/core/dsp/audioSlicer/` (`SlicerTypes.ts`, `SlicerSpectral.ts`, `SlicerVocalOpenVpi.ts`, `SlicerDrumAndMidi.ts`, `SlicerBuild.ts`, `SlicerSilenceAndPitch.ts`, `SlicerConform.ts`) manteniendo la fachada pública intacta en `AudioSlicerEngine.ts`.
+- [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `MusicianWizardModal.ts`, `AudioRecorderModal.ts`)**:
+  - Extracción progresiva de operaciones de `WebAudioPipeline.ts` y vistas/plantillas de `ZoneInspector.ts` (incluyendo `drawerRenderOps.ts`, `tableRenderOps.ts`, `tableEventOps.ts`, `zoneTemplates.ts` y `src/ui/chopper/*` con `a11yKeyboard.ts`).
+
+
 
 
 

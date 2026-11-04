@@ -14,7 +14,6 @@
 import type { ExtendedRegion, SynthArticulationConfig, SampleLoopDescriptor } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export const PROPHET_X_SAMPLE_RATE = 48000;
 
@@ -54,7 +53,7 @@ export function isProphetXGroupText(text: string): boolean {
 
 export function parseProphetXGroupText(
   grpText: string,
-  _audioPool?: Map<string, ArrayBuffer>
+  audioPool?: Map<string, ArrayBuffer>
 ): {
   presetName: string;
   regions: ExtendedRegion[];
@@ -219,7 +218,7 @@ export function importProphetXZip(zipBuffer: ArrayBuffer): {
     } else if (low.endsWith('.wav') || low.endsWith('.flac')) {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 

@@ -17,6 +17,52 @@
  * @param {string} category nombre de categoría (cualquier capitalización).
  * @returns {{ catClass: string, paramId: number }} `cat-0`/`0` si no encaja.
  */
+export const BANK_CATEGORY_LABELS = {
+  en: {
+    0: 'General',
+    1: 'Strings / Solo',
+    2: 'Bells / World',
+    3: 'Bass / Pluck',
+    4: 'Pads / Showcase',
+    5: 'Keys / Organ',
+    6: 'Winds / Vocal',
+    7: 'Textures / FX',
+    8: 'Arp / Loops',
+    9: 'Rhythm / Drums',
+  },
+  es: {
+    0: 'General',
+    1: 'Cuerdas / Solistas',
+    2: 'Campanas / Étnico',
+    3: 'Bajos / Punteo',
+    4: 'Pads / Showcase',
+    5: 'Teclados / Órgano',
+    6: 'Vientos / Voces',
+    7: 'Texturas / FX',
+    8: 'Arpegios / Loops',
+    9: 'Ritmos / Percusión',
+  },
+};
+
+export function getBankCategoryLabel(paramId, locale) {
+  let lang = locale;
+  if (lang !== 'es' && lang !== 'en') {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const saved =
+          localStorage.getItem('abdsynths.locale') ||
+          localStorage.getItem('abd_locale') ||
+          localStorage.getItem('neumodmakr.locale');
+        if (saved === 'es' || saved === 'en') lang = saved;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const dict = lang === 'es' ? BANK_CATEGORY_LABELS.es : BANK_CATEGORY_LABELS.en;
+  return dict[paramId] || dict[0];
+}
+
 export function classifyBankCategory (category)
 {
   const cat = (category || '').toLowerCase();

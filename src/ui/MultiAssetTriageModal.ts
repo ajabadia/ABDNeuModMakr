@@ -6,6 +6,7 @@
 // misma ventana, mismos 4 niveles, cero colores literales.
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale } from '../core/i18n.ts';
 import { ICONS } from './icons.ts';
 import { escHtml, escAttr } from './escape.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
@@ -73,6 +74,7 @@ export class MultiAssetTriageModal {
   }
 
   private render(): string {
+    const isEs = getAppLocale() === 'es';
     const opts = this.options!;
     const items = this.filteredItems();
     const formats = new Set(opts.discoveryReport.items.map((it) => it.formatLabel));
@@ -86,9 +88,9 @@ export class MultiAssetTriageModal {
     const folderNavHtml =
       folderCounts.size > 1
         ? `
-          <div class="triage-folder-nav" role="tablist" aria-label="Carpetas y contenedores">
+          <div class="triage-folder-nav" role="tablist" aria-label="${isEs ? 'Carpetas y contenedores' : 'Folders and containers'}">
             <button type="button" class="btn btn-xs ${this.activeFolder === '' ? 'btn-accent' : 'btn-outline'} btn-triage-folder" data-folder="">
-              ${ICONS.layers} Todas (${opts.discoveryReport.items.length})
+              ${ICONS.layers} ${isEs ? 'Todas' : 'All'} (${opts.discoveryReport.items.length})
             </button>
             ${Array.from(folderCounts.entries())
               .map(
@@ -106,8 +108,8 @@ export class MultiAssetTriageModal {
       <div class="triage-summary">
         <span>${ICONS.layers}</span>
         <div>
-          <p><strong>${escHtml(opts.sourceName)}</strong> trae ${opts.discoveryReport.items.length} piezas en ${formats.size} formatos (${escHtml([...formats].join(' · '))}). Elige qué hacer con cada una.</p>
-          <p>Navega por carpeta/contenedor, carga directo a la sesión o manda tu selección al Batch.</p>
+          <p><strong>${escHtml(opts.sourceName)}</strong> ${isEs ? `trae ${opts.discoveryReport.items.length} piezas en ${formats.size} formatos (${escHtml([...formats].join(' · '))}). Elige qué hacer con cada una.` : `contains ${opts.discoveryReport.items.length} items across ${formats.size} formats (${escHtml([...formats].join(' · '))}). Choose what to do with each.`}</p>
+          <p>${isEs ? 'Navega por carpeta/contenedor, carga directo a la sesión o manda tu selección al Batch.' : 'Browse by folder/container, load directly into the session, or send your selection to Batch.'}</p>
         </div>
       </div>`;
 
@@ -119,60 +121,60 @@ export class MultiAssetTriageModal {
         const parentFolder = rawPath.includes('/') ? rawPath.slice(0, rawPath.lastIndexOf('/')) : '';
         return `
           <tr data-item-id="${escAttr(item.id)}" class="${checked ? 'triage-row-selected' : ''}">
-            <td class="triage-col-check"><input type="checkbox" class="triage-check" data-idx="${i}" ${checked} aria-label="Seleccionar ${escAttr(item.name)}" /></td>
+            <td class="triage-col-check"><input type="checkbox" class="triage-check" data-idx="${i}" ${checked} aria-label="${isEs ? 'Seleccionar' : 'Select'} ${escAttr(item.name)}" /></td>
             <td>
               <div class="triage-item-name">${escHtml(item.name)}</div>
               <div class="triage-item-detail">${escHtml(item.detail)} · ${this.formatSize(item.totalSizeBytes)}${parentFolder ? ` · ${escHtml(parentFolder)}` : ''}</div>
             </td>
             <td><span class="badge ${badgeClass}">${escHtml(item.formatLabel)}</span></td>
             <td class="triage-num">${escHtml(String(item.sampleCount))}</td>
-            <td class="triage-col-action"><button type="button" class="btn btn-sm btn-outline" data-act="load" data-idx="${i}">Cargar</button></td>
+            <td class="triage-col-action"><button type="button" class="btn btn-sm btn-outline" data-act="load" data-idx="${i}">${isEs ? 'Cargar' : 'Load'}</button></td>
           </tr>`;
       })
       .join('');
 
     return `
-    <div class="nmm-modal-window nmm-triage-window" role="dialog" aria-modal="true" aria-label="Contenido mixto: elegir qué hacer con cada pieza">
+    <div class="nmm-modal-window nmm-audio-modal-window" role="dialog" aria-modal="true" aria-label="${isEs ? 'Contenido mixto: elegir qué hacer con cada pieza' : 'Mixed content: choose what to do with each item'}">
       <div class="nmm-modal-header">
         <div class="nmm-modal-header-title">
           <span class="nmm-modal-header-icon">${ICONS.layers}</span>
-          <h2>Contenido mixto: ¿qué hacemos con cada cosa?</h2>
-          <span class="badge badge-accent" id="triage-format-badge">${formats.size} ${formats.size === 1 ? 'formato' : 'formatos'}</span>
+          <h2>${isEs ? 'Contenido mixto: ¿qué hacemos con cada cosa?' : 'Mixed content: what should we do with each item?'}</h2>
+          <span class="badge badge-accent" id="triage-format-badge">${formats.size} ${formats.size === 1 ? (isEs ? 'formato' : 'format') : isEs ? 'formatos' : 'formats'}</span>
         </div>
-        <button type="button" class="nmm-modal-close" id="btn-triage-close" aria-label="Cerrar">${ICONS.close}</button>
+        <button type="button" class="nmm-modal-close" id="btn-triage-close" aria-label="${isEs ? 'Cerrar' : 'Close'}">${ICONS.close}</button>
       </div>
-      <div class="nmm-triage-body">
+      <div class="nmm-audio-modal-body">
         ${summaryHtml}
         ${folderNavHtml}
         <div class="triage-toolbar">
           <div class="triage-toolbar-left">
-            <input type="text" id="inp-triage-search" class="form-control triage-search" placeholder="Filtrar piezas…" value="${escAttr(this.searchTerm)}" autocomplete="off" spellcheck="false" />
+            <input type="text" id="inp-triage-search" class="form-control triage-search" placeholder="${isEs ? 'Filtrar piezas…' : 'Filter items…'}" value="${escAttr(this.searchTerm)}" autocomplete="off" spellcheck="false" />
           </div>
           <div class="triage-toolbar-right">
-            <span class="triage-count"><span class="val-pill" id="triage-sel-count">${this.selectedIds.size}</span> seleccionadas</span>
-            <button type="button" class="btn btn-sm btn-outline" id="btn-triage-select-all">Todas</button>
-            <button type="button" class="btn btn-sm btn-outline" id="btn-triage-clear">Ninguna</button>
+            <span class="triage-count"><span class="val-pill" id="triage-sel-count">${this.selectedIds.size}</span> ${isEs ? 'seleccionadas' : 'selected'}</span>
+            <button type="button" class="btn btn-sm btn-outline" id="btn-triage-select-all">${isEs ? 'Todas' : 'All'}</button>
+            <button type="button" class="btn btn-sm btn-outline" id="btn-triage-clear">${isEs ? 'Ninguna' : 'None'}</button>
           </div>
         </div>
-        <div class="triage-table-panel">
+        <div class="nmm-audio-table-panel">
           <div class="triage-table-scroll">
             <table class="triage-table nmm-data-table">
-              <thead><tr><th></th><th>Pieza</th><th>Formato</th><th>Muestras</th><th></th></tr></thead>
+              <thead><tr><th></th><th>${isEs ? 'Pieza' : 'Item'}</th><th>${isEs ? 'Formato' : 'Format'}</th><th>${isEs ? 'Muestras' : 'Samples'}</th><th></th></tr></thead>
               <tbody id="triage-items-body">${rowsHtml}</tbody>
             </table>
             <div id="triage-list-empty" class="triage-empty${items.length === 0 ? '' : ' is-hidden'}">
-              <p id="triage-empty-msg">Sin coincidencias para «${escHtml(this.searchTerm)}».</p>
+              <p id="triage-empty-msg">${isEs ? `Sin coincidencias para «${escHtml(this.searchTerm)}».` : `No matches for "${escHtml(this.searchTerm)}".`}</p>
             </div>
           </div>
-          <p class="triage-hint">«Cargar» mete el audio directo en la sesión · «Procesar» manda la selección al Batch · el resto va por Importación universal (Ctrl+I)</p>
+          <p class="nmm-audio-canvas-legend">${isEs ? '«Cargar» mete el audio directo en la sesión · «Procesar» manda la selección al Batch · el resto va por Importación universal (Ctrl+I)' : '"Load" sends audio directly to the session · "Process" sends the selection to Batch · everything else goes via Universal Import (Ctrl+I)'}</p>
         </div>
       </div>
       <footer class="nmm-modal-footer">
         <div class="footer-left">
-          <button type="button" class="btn btn-ghost" id="btn-triage-cancel">Cerrar</button>
+          <button type="button" class="btn btn-ghost" id="btn-triage-cancel">${isEs ? 'Cerrar' : 'Close'}</button>
         </div>
         <div class="footer-right">
-          <button type="button" class="btn btn-primary" id="btn-triage-process">Procesar selección</button>
+          <button type="button" class="btn btn-primary" id="btn-triage-process">${isEs ? 'Procesar selección' : 'Process selection'}</button>
         </div>
       </footer>
     </div>`;
@@ -284,6 +286,7 @@ export class MultiAssetTriageModal {
 
   private refreshList(): void {
     if (!this.backdropEl || !this.options) return;
+    const isEs = getAppLocale() === 'es';
     const items = this.filteredItems();
     const body = this.backdropEl.querySelector('#triage-items-body');
     if (body) {
@@ -293,14 +296,14 @@ export class MultiAssetTriageModal {
           const badgeClass = this.isDefinitionFormat(item.format) ? 'badge-accent' : 'badge-neutral';
           return `
           <tr data-item-id="${escAttr(item.id)}" class="${checked ? 'triage-row-selected' : ''}">
-            <td class="triage-col-check"><input type="checkbox" class="triage-check" data-idx="${i}" ${checked} aria-label="Seleccionar ${escAttr(item.name)}" /></td>
+            <td class="triage-col-check"><input type="checkbox" class="triage-check" data-idx="${i}" ${checked} aria-label="${isEs ? 'Seleccionar' : 'Select'} ${escAttr(item.name)}" /></td>
             <td>
               <div class="triage-item-name">${escHtml(item.name)}</div>
               <div class="triage-item-detail">${escHtml(item.detail)} · ${this.formatSize(item.totalSizeBytes)}</div>
             </td>
             <td><span class="badge ${badgeClass}">${escHtml(item.formatLabel)}</span></td>
             <td class="triage-num">${escHtml(String(item.sampleCount))}</td>
-            <td class="triage-col-action"><button type="button" class="btn btn-sm btn-outline" data-act="load" data-idx="${i}">Cargar</button></td>
+            <td class="triage-col-action"><button type="button" class="btn btn-sm btn-outline" data-act="load" data-idx="${i}">${isEs ? 'Cargar' : 'Load'}</button></td>
           </tr>`;
         })
         .join('');
@@ -308,15 +311,16 @@ export class MultiAssetTriageModal {
     const empty = this.backdropEl.querySelector('#triage-list-empty') as HTMLElement | null;
     if (empty) empty.classList.toggle('is-hidden', items.length !== 0);
     const msg = this.backdropEl.querySelector('#triage-empty-msg');
-    if (msg) msg.textContent = `Sin coincidencias para «${this.searchTerm}».`;
+    if (msg) msg.textContent = isEs ? `Sin coincidencias para «${this.searchTerm}».` : `No matches for "${this.searchTerm}".`;
     this.updateProcessButton();
   }
 
   private updateProcessButton(): void {
     if (!this.backdropEl) return;
+    const isEs = getAppLocale() === 'es';
     const btn = this.backdropEl.querySelector('#btn-triage-process') as HTMLButtonElement | null;
     if (btn) {
-      btn.textContent = `Procesar selección (${this.selectedIds.size})`;
+      btn.textContent = isEs ? `Procesar selección (${this.selectedIds.size})` : `Process selection (${this.selectedIds.size})`;
       btn.disabled = this.selectedIds.size === 0;
     }
     const pill = this.backdropEl.querySelector('#triage-sel-count');

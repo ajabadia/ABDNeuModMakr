@@ -1,4 +1,3 @@
-import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Native Instruments Maschine & NICNT Importer
 //
@@ -16,7 +15,9 @@ import { presetIdentity } from './PresetIdentity.ts';
 //         and UPID for Native Access licensing.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { LoopMode } from './SamplerTypes.ts';
 import type {
+  ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
@@ -189,20 +190,18 @@ export function convertMaschineToPreset(
     }
 
     regions.push({
-      id: `maschine_${regions.length + 1}`,
-      samplePath: cleanName,
       sampleName: cleanName,
       rootKey: z.rootKey,
       lowKey: z.lowKey,
       highKey: z.highKey,
-      lowVel: z.lowVelocity,
-      highVel: z.highVelocity,
-      detuneCents: z.tuneSemitones * 100 + z.tuneCents,
-      volumeDb: z.volumeDb,
+      lowVelocity: z.lowVelocity,
+      highVelocity: z.highVelocity,
+      fineTuneCents: z.tuneSemitones * 100 + z.tuneCents,
+      gainDb: z.volumeDb,
       pan: z.pan,
       loopMode: z.loopMode === 1 ? 'loop_continuous' : 'no_loop',
-      loopStart: z.loopStart ?? 0,
-      loopEnd: z.loopEnd ?? 0,
+      loopStart: z.loopStart,
+      loopEnd: z.loopEnd,
     });
   }
 
@@ -213,7 +212,6 @@ export function convertMaschineToPreset(
     audioBuffers,
     isMultiLayer: regions.length > 1,
     sourceFormat: 'ni_maschine',
-    ...presetIdentity('ni_maschine', 'Native Instruments Maschine', ms.name),
   };
 }
 
@@ -229,7 +227,7 @@ export function generateMaschineSoundXml(
   xml += `  <zones count="${regions.length}">\n`;
 
   for (const r of regions) {
-    xml += `    <zone lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVel}" highVel="${r.highVel}" root="${r.rootKey}" tune="${r.detuneCents || 0}" gain="${r.volumeDb || 0}" pan="${r.pan || 0}">\n`;
+    xml += `    <zone lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVelocity}" highVel="${r.highVelocity}" root="${r.rootKey}" tune="${r.fineTuneCents || 0}" gain="${r.gainDb || 0}" pan="${r.pan || 0}">\n`;
     xml += `      <sample path="${r.sampleName}"/>\n`;
     xml += `    </zone>\n`;
   }

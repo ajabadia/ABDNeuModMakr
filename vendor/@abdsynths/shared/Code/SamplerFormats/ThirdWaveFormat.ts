@@ -15,7 +15,6 @@
 import type { ExtendedRegion, SynthArticulationConfig } from './SamplerTypes.ts';
 import { createDefaultArticulation } from './ExtendedAdapter.ts';
 import { indexZipArchive, extractZipEntry } from '../NeuronFormats/ZipArchive.ts';
-import { toArrayBuffer } from './BytesUtil.ts';
 
 export const THIRD_WAVE_MAGIC = '3WV\0';
 
@@ -168,7 +167,7 @@ export function importThirdWaveZip(zipBuffer: ArrayBuffer): {
       const data = extractZipEntry(zipBytes, entry);
       const name = entry.path.split('/').pop() || entry.path;
       sampleNames.push(name);
-      audioBuffers.set(name, toArrayBuffer(data));
+      audioBuffers.set(name, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     }
   }
 
@@ -178,7 +177,7 @@ export function importThirdWaveZip(zipBuffer: ArrayBuffer): {
 
   const pBytes = extractZipEntry(zipBytes, progEntry);
   const parsed = parseThirdWaveProgram(
-    toArrayBuffer(pBytes),
+    pBytes.buffer.slice(pBytes.byteOffset, pBytes.byteOffset + pBytes.byteLength),
     sampleNames
   );
 

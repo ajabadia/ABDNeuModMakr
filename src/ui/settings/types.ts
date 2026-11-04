@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { AiAssistanceConfig, WorkingMode } from '../../core/types';
+import type { AppLocale } from '../../core/i18n';
 import type {
   AxionikDbModelEntry,
   BridgeModelInfo,
@@ -17,9 +18,11 @@ export interface SettingsModalHandlers {
   onSelectThemeFamily: (family: string) => void;
   onSetThemeMode: (mode: 'light' | 'dark') => void;
   onSetWorkingMode?: (mode: WorkingMode) => void;
+  onSetLocale?: (locale: AppLocale) => void;
   getCurrentThemeFamily?: () => string;
   getCurrentThemeMode?: () => 'light' | 'dark';
   getCurrentWorkingMode?: () => WorkingMode;
+  getCurrentLocale?: () => AppLocale;
 }
 
 export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge';

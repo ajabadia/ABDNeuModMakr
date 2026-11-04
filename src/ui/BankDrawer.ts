@@ -21,7 +21,7 @@ import type { SublibraryInfo } from '../core/types';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
 import { escAttr } from './escape';
 import { isSafeCoverDataUrl } from '../core/bankService';
-import { TIME_CAPSULE_CANONICAL_LABEL } from '../app/exportDestinations';
+import { getAppLocale, onAppLocaleChange, tApp } from '../core/i18n';
 
 export type BankTab = 'models' | 'presets' | 'library' | 'axionik';
 
@@ -86,13 +86,6 @@ export function getPresetCategoryInfo(category: string): { icon: string; catClas
   return { icon: ICONS[`param${paramId}` as keyof typeof ICONS] || ICONS.param0, catClass, paramId };
 }
 
-const TAB_LABELS: Record<BankTab, string> = {
-  models: 'GENERATED MODELS',
-  presets: 'SOUND PRESETS',
-  library: 'NEURONDB (CLASSIC)',
-  axionik: 'AXIONIKDB (ADVANCED)',
-};
-
 export class BankDrawer {
   private container: HTMLElement;
   private handlers: BankDrawerHandlers;
@@ -116,6 +109,13 @@ export class BankDrawer {
   private axionikSortMode: 'ordinal' | 'name' | 'date' = 'ordinal';
   private chipsUnbind: (() => void) | null = null;
 
+  private getTabLabel(id: BankTab): string {
+    if (id === 'models') return tApp('bankDrawer.tabGenerated');
+    if (id === 'library') return tApp('bankDrawer.tabClassic');
+    if (id === 'axionik') return tApp('bankDrawer.tabAdvanced');
+    return getAppLocale() === 'es' ? 'PRESETS DE SONIDO' : 'SOUND PRESETS';
+  }
+
   constructor(container: HTMLElement, handlers: BankDrawerHandlers, options?: BankDrawerOptions) {
     this.container = container;
     this.handlers = handlers;
@@ -124,20 +124,43 @@ export class BankDrawer {
       this.activeTab = this.visibleTabs[0] ?? 'models';
     }
     this.init();
+    onAppLocaleChange(() => {
+      if (this.shell) {
+        const titleEl = this.shell.element.querySelector('.bank-shell-title span:last-child, [data-shell-title]');
+        if (titleEl) titleEl.textContent = tApp('bankDrawer.headerTitle');
+        const searchInput = this.shell.element.querySelector<HTMLInputElement>('input[type="search"], input[type="text"], .bank-shell-search input');
+        if (searchInput) searchInput.placeholder = tApp('bankDrawer.searchPlaceholder');
+        this.visibleTabs.forEach((id) => {
+          const tabBtn = this.shell?.element.querySelector(`[data-tab="${id}"]`);
+          if (tabBtn) {
+            const labelSpan = tabBtn.querySelector('.bank-tab-label') ?? tabBtn.firstChild;
+            if (labelSpan && labelSpan.nodeType === Node.TEXT_NODE) {
+              labelSpan.textContent = `${this.getTabLabel(id)} `;
+            } else if (labelSpan instanceof HTMLElement) {
+              labelSpan.textContent = this.getTabLabel(id);
+            }
+          }
+        });
+      }
+      this.updateCounters();
+      this.renderChips();
+      this.renderActiveTab();
+    });
   }
 
   private init(): void {
+    const es = getAppLocale() === 'es';
     this.shell = createBankShell({
-      title: 'NEURONDB BANK BROWSER',
+      title: tApp('bankDrawer.headerTitle'),
       badge: '0 ITEMS',
-      tabs: this.visibleTabs.map((id) => ({ id, label: TAB_LABELS[id] })),
+      tabs: this.visibleTabs.map((id) => ({ id, label: this.getTabLabel(id) })),
       activeTab: this.activeTab,
-      searchPlaceholder: 'Search models or presets by name, slot (#000), set...',
+      searchPlaceholder: tApp('bankDrawer.searchPlaceholder'),
       headerActions: [
-        { id: 'refresh', label: 'Refresh', title: 'Refresh library folder (rescan)', iconHtml: ICONS.refresh },
-        { id: 'folder', label: 'Folder', title: 'Configure NeuronDB library folder', iconHtml: ICONS.folder },
-        { id: 'clear', label: 'Clear', title: 'Clear all generated models from bank', iconHtml: ICONS.trash },
-        { id: 'close', label: 'Close', title: 'Close Drawer (Esc)', iconHtml: ICONS.close },
+        { id: 'refresh', label: es ? 'Refrescar' : 'Refresh', title: es ? 'Reescanear carpeta de librería' : 'Refresh library folder (rescan)', iconHtml: ICONS.refresh },
+        { id: 'folder', label: es ? 'Carpeta' : 'Folder', title: es ? 'Configurar carpeta de librería NeuronDB' : 'Configure NeuronDB library folder', iconHtml: ICONS.folder },
+        { id: 'clear', label: es ? 'Vaciar' : 'Clear', title: tApp('bankDrawer.btnClearTitle'), iconHtml: ICONS.trash },
+        { id: 'close', label: es ? 'Cerrar' : 'Close', title: tApp('bankDrawer.btnCloseTitle'), iconHtml: ICONS.close },
       ],
       // No footer actions: the header already serves Refresh/Folder/Clear/
       // Close. The footer keeps the slot + status line (bank summary,
@@ -376,13 +399,14 @@ export class BankDrawer {
   }
 
   private chipItemsForTab(): { items: BankChipItem[]; activeId: string } | null {
+    const allLabel = tApp('bankDrawer.filterAll');
     if (this.activeTab === 'models' && this.currentBank) {
       const counts: Record<number, number> = {};
       for (const m of this.currentBank.models) {
         counts[m.parameterSet] = (counts[m.parameterSet] || 0) + 1;
       }
       // All ten sets always: same pill row whatever the bank contains.
-      const items: BankChipItem[] = [{ id: 'all', label: 'All', count: this.currentBank.models.length }];
+      const items: BankChipItem[] = [{ id: 'all', label: allLabel, count: this.currentBank.models.length }];
       for (let i = 0; i <= 9; i++) {
         const count = counts[i] || 0;
         const ps = PARAMETER_SETS[i];
@@ -410,7 +434,7 @@ export class BankDrawer {
         else counts[e.parameterSet] = (counts[e.parameterSet] || 0) + 1;
       }
       // All ten sets always: same pill row whatever the folder contains.
-      const items: BankChipItem[] = [{ id: 'all', label: 'All', count: entries.length }];
+      const items: BankChipItem[] = [{ id: 'all', label: allLabel, count: entries.length }];
       for (let i = 0; i <= 9; i++) {
         const count = counts[i] || 0;
         const ps = PARAMETER_SETS[i];
@@ -427,10 +451,10 @@ export class BankDrawer {
       if (pending > 0 || entries.length === 0) {
         items.push({
           id: 'pending',
-          label: 'Pending',
+          label: getAppLocale() === 'es' ? 'Pendiente' : 'Pending',
           count: pending,
           catClass: 'cat-neutral',
-          title: 'Not scanned yet',
+          title: getAppLocale() === 'es' ? 'Aún no escaneado' : 'Not scanned yet',
         });
       }
       return { items, activeId: this.selectedLibraryCategory };
@@ -441,7 +465,7 @@ export class BankDrawer {
       for (const e of entries) {
         counts[e.category] = (counts[e.category] || 0) + 1;
       }
-      const items: BankChipItem[] = [{ id: 'all', label: 'All', count: entries.length }];
+      const items: BankChipItem[] = [{ id: 'all', label: allLabel, count: entries.length }];
       for (const cat of AXIONIK_CATEGORIES) {
         const count = counts[cat.name] || 0;
         items.push({
@@ -539,16 +563,18 @@ export class BankDrawer {
             const iconKey = ps ? (`param${ps.id}` as keyof typeof ICONS) : 'database';
             const dep = this.dbEvaluation?.modelDependencies.get(m.slot);
             const usedCount = dep ? dep.usedByPresetSlots.length : 0;
+            const es = getAppLocale() === 'es';
             const usageBadge =
               usedCount > 0
-                ? `${usedCount} Sound${usedCount === 1 ? '' : 's'}`
-                : 'Unused';
+                ? `${usedCount} ${tApp('bankDrawer.badgeSounds')}`
+                : es ? 'Sin uso' : 'Unused';
             const safeCover = isSafeCoverDataUrl(m.coverWebpDataUrl) ? m.coverWebpDataUrl : undefined;
             const cardIconHtml = safeCover
               ? `<img src="${escAttr(safeCover)}" alt="${escAttr(m.name)}" class="ndb-card-cover-img" />`
               : ICONS[iconKey] || ICONS.database;
+            const zoneWord = m.zoneCount === 1 ? tApp('bankDrawer.badgeZoneSingular') : tApp('bankDrawer.badgeZonePlural');
             const badges = [
-              `${m.zoneCount} Zone${m.zoneCount === 1 ? '' : 's'}`,
+              `${m.zoneCount} ${zoneWord}`,
               `Lvl ${m.complexity}`,
               usageBadge,
             ];
@@ -563,8 +589,8 @@ export class BankDrawer {
               iconHtml: cardIconHtml,
               badges,
               actions: [
-                { id: 'load', label: 'Load', title: `Load Model #${m.slot} into the editor (replaces current session, undoable)` },
-                { id: 'export', label: 'Time Capsule', kind: 'export', title: `Export 5-Layer ${TIME_CAPSULE_CANONICAL_LABEL}`, iconHtml: ICONS.folder },
+                { id: 'load', label: tApp('bankDrawer.btnLoad'), title: tApp('bankDrawer.btnLoadTitle') },
+                { id: 'export', label: tApp('bankDrawer.btnCapsule'), kind: 'export', title: tApp('bankDrawer.btnCapsuleCardTitle'), iconHtml: ICONS.folder },
               ],
               selected: m.slot === this.selectedSlot,
             });

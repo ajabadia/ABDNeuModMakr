@@ -1,4 +1,3 @@
-import { presetIdentity } from './PresetIdentity.ts';
 // ─────────────────────────────────────────────────────────────────────────────
 // @abdsynths/shared — Spectrasonics Omnisphere Importer & Exporter
 //
@@ -15,7 +14,9 @@ import { presetIdentity } from './PresetIdentity.ts';
 //   - Accompanied by external audio files (.wav / .flac) or embedded in STEAM directory tree
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { LoopMode } from './SamplerTypes.ts';
 import type {
+  ArchiveSamplerProgramInfo,
   ParsedImportRegion,
   ParsedSamplerPreset,
 } from './rawSamplerParsers.ts';
@@ -127,20 +128,18 @@ export function convertOmnisphereToPreset(
     }
 
     regions.push({
-      id: `omnisphere_${regions.length + 1}`,
-      samplePath: cleanName,
       sampleName: cleanName,
       rootKey: z.rootKey,
       lowKey: z.lowKey,
       highKey: z.highKey,
-      lowVel: z.lowVelocity,
-      highVel: z.highVelocity,
-      detuneCents: z.coarseTune * 100 + z.fineTune,
-      volumeDb: z.gainDb,
+      lowVelocity: z.lowVelocity,
+      highVelocity: z.highVelocity,
+      fineTuneCents: z.coarseTune * 100 + z.fineTune,
+      gainDb: z.gainDb,
       pan: z.pan / 100.0,
       loopMode: z.loopMode === 1 ? 'loop_continuous' : 'no_loop',
-      loopStart: z.loopStart ?? 0,
-      loopEnd: z.loopEnd ?? 0,
+      loopStart: z.loopStart,
+      loopEnd: z.loopEnd,
     });
   }
 
@@ -151,7 +150,6 @@ export function convertOmnisphereToPreset(
     audioBuffers,
     isMultiLayer: regions.length > 1,
     sourceFormat: 'omnisphere',
-    ...presetIdentity('omnisphere', 'Spectrasonics Omnisphere', zmap.name),
   };
 }
 
@@ -168,7 +166,7 @@ export function generateOmnisphereZmap(
 
   for (const r of regions) {
     const loopVal = r.loopMode === 'loop_continuous' ? 1 : 0;
-    xml += `    <zone sample="${r.sampleName}" root="${r.rootKey}" lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVel}" highVel="${r.highVel}" tune="0" fineTune="${r.detuneCents || 0}" gain="${r.volumeDb || 0}" pan="${Math.round((r.pan || 0) * 100)}" loop="${loopVal}" loopStart="${r.loopStart || 0}" loopEnd="${r.loopEnd || 0}" />\n`;
+    xml += `    <zone sample="${r.sampleName}" root="${r.rootKey}" lowKey="${r.lowKey}" highKey="${r.highKey}" lowVel="${r.lowVelocity}" highVel="${r.highVelocity}" tune="0" fineTune="${r.fineTuneCents || 0}" gain="${r.gainDb || 0}" pan="${Math.round((r.pan || 0) * 100)}" loop="${loopVal}" loopStart="${r.loopStart || 0}" loopEnd="${r.loopEnd || 0}" />\n`;
   }
 
   xml += `  </zones>\n`;

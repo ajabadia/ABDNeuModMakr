@@ -61,6 +61,7 @@ import {
   encodePcm16Wav,
   transcodeAnyAudioToWavBuffer,
 } from '../core/dsp/WavDecoder.ts';
+import { getAppLocale } from '../core/i18n.ts';
 import { PARAMETER_SETS } from '../core/index.ts';
 import type {
   ExtendedRegion,
@@ -326,6 +327,7 @@ export class MusicianWizardModal {
       stepBodyHtml = this.renderStep4GenerateAndExport();
     }
 
+    const isEs = getAppLocale() === 'es';
     const canAccessClean = this.sourceKind === 'raw_audio' && this.rawPcm.length > 0;
     const canAccessSlice = canAccessClean && Boolean(this.cleanResult);
     const canAccessGenerate =
@@ -337,36 +339,36 @@ export class MusicianWizardModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="modal-icon">${ICONS.sparkle}</span>
-            <h2 id="musician-wizard-title">Asistente Guiado (4 Pasos)</h2>
-            <span class="panel-badge badge-ai-on">4 PASOS</span>
+            <h2 id="musician-wizard-title">${isEs ? 'Asistente Guiado (4 Pasos)' : 'Guided Musician Wizard (4 Steps)'}</h2>
+            <span class="panel-badge badge-ai-on">${isEs ? '4 PASOS' : '4 STEPS'}</span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Cerrar" id="btn-wiz-close">${ICONS.close}</button>
+          <button type="button" class="nmm-modal-close" aria-label="${isEs ? 'Cerrar' : 'Close'}" id="btn-wiz-close">${ICONS.close}</button>
         </header>
 
-        <nav class="nmm-batch-steps-nav" aria-label="Pasos del asistente guiado">
+        <nav class="nmm-batch-steps-nav" aria-label="${isEs ? 'Pasos del asistente guiado' : 'Guided wizard steps'}">
           <button
             type="button"
             class="nmm-batch-step-indicator ${this.currentStep === 'material' ? 'is-active' : ''}"
             data-wiz-step="material"
-          >1. Material (Grabar / Importar)</button>
+          >${isEs ? '1. Material (Grabar / Importar)' : '1. Material (Record / Import)'}</button>
           <button
             type="button"
             class="nmm-batch-step-indicator ${this.currentStep === 'clean' ? 'is-active' : ''}"
             data-wiz-step="clean"
             ${!canAccessClean ? 'disabled' : ''}
-          >2. Limpiar</button>
+          >${isEs ? '2. Limpiar' : '2. Clean'}</button>
           <button
             type="button"
             class="nmm-batch-step-indicator ${this.currentStep === 'slice_map' ? 'is-active' : ''}"
             data-wiz-step="slice_map"
             ${!canAccessSlice ? 'disabled' : ''}
-          >3. Cortar y mapear</button>
+          >${isEs ? '3. Cortar y mapear' : '3. Slice & Map'}</button>
           <button
             type="button"
             class="nmm-batch-step-indicator ${this.currentStep === 'generate_export' ? 'is-active' : ''}"
             data-wiz-step="generate_export"
             ${!canAccessGenerate ? 'disabled' : ''}
-          >4. Generar y exportar</button>
+          >${isEs ? '4. Generar y exportar' : '4. Generate & Export'}</button>
         </nav>
 
         <div class="nmm-modal-body nmm-batch-body">
@@ -377,7 +379,7 @@ export class MusicianWizardModal {
               <div class="preflight-status-head">
                 <div class="preflight-status-title">
                   <span class="preflight-status-icon">${ICONS.alert}</span>
-                  <span>Aviso del asistente</span>
+                  <span>${isEs ? 'Aviso del asistente' : 'Wizard notice'}</span>
                 </div>
               </div>
               <p>${escHtml(this.errorMessage)}</p>
@@ -408,6 +410,7 @@ export class MusicianWizardModal {
   // ── Paso 1: Material (Grabar / Importar) ──────────────────
 
   private renderStep1Material(): string {
+    const isEs = getAppLocale() === 'es';
     const activeAudio = this.context.getActiveSessionAudio?.();
     const currentMode = this.context.getCurrentWorkingMode();
     const bankGateModel =
@@ -424,17 +427,17 @@ export class MusicianWizardModal {
         <div class="triage-summary">
           ${ICONS.sparkle}
           <div>
-            <p><strong>Paso 1 — Elige tu punto de partida musical</strong></p>
-            <p>Graba una toma con micrófono/línea, suelta un archivo de audio (nota, frase o ritmo) o importa un banco ya mapeado (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, <code>.model</code> Hartmann, etc.).</p>
+            <p><strong>${isEs ? 'Paso 1 — Elige tu punto de partida musical' : 'Step 1 — Choose your musical starting point'}</strong></p>
+            <p>${isEs ? 'Graba una toma con micrófono/línea, suelta un archivo de audio (nota, frase o ritmo) o importa un banco ya mapeado (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, <code>.model</code> Hartmann, etc.).' : 'Record a take via microphone/line, drop an audio file (note, phrase, or rhythm), or import a pre-mapped bank (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, Hartmann <code>.model</code>, etc.).'}</p>
           </div>
         </div>
 
-        <div class="nmm-preflight-grid">
+        <div class="nmm-metric-grid">
           <!-- Opción A: Grabar toma en vivo -->
           <div class="nmm-batch-card">
-            <h3>${ICONS.mic} Grabar con micrófono o línea</h3>
+            <h3>${ICONS.mic} ${isEs ? 'Grabar con micrófono o línea' : 'Record via microphone or line'}</h3>
             <p class="nmm-batch-hint">
-              Captura una nota, acorde, frase melódica o ritmo percusivo directamente en el asistente, con detección automática de huella de ruido.
+              ${isEs ? 'Captura una nota, acorde, frase melódica o ritmo percusivo directamente en el asistente, con detección automática de huella de ruido.' : 'Capture a note, chord, melodic phrase, or percussive rhythm directly in the wizard with automatic noise print detection.'}
             </p>
             <div class="triage-toolbar-left">
               <button
@@ -442,13 +445,13 @@ export class MusicianWizardModal {
                 class="btn ${this.isRecordingInline ? 'btn-danger' : 'btn-primary'}"
                 id="btn-wiz-record-toggle"
               >
-                ${this.isRecordingInline ? `${ICONS.stop} Detener grabación y continuar` : `${ICONS.mic} Empezar a grabar ahora`}
+                ${this.isRecordingInline ? `${ICONS.stop} ${isEs ? 'Detener grabación y continuar' : 'Stop recording & continue'}` : `${ICONS.mic} ${isEs ? 'Empezar a grabar ahora' : 'Start recording now'}`}
               </button>
               ${
                 this.context.onOpenAdvancedRecorder
                   ? `
                 <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-open-adv-recorder">
-                  Abrir en taller avanzado (Grabadora)…
+                  ${isEs ? 'Abrir en taller avanzado (Grabadora)…' : 'Open in advanced workshop (Recorder)…'}
                 </button>
               `
                   : ''
@@ -456,19 +459,23 @@ export class MusicianWizardModal {
             </div>
             ${
               this.isRecordingInline
-                ? `<div class="nmm-alert-subtle">Grabando en vivo… toca tu instrumento o micrófono y pulsa <strong>Detener grabación</strong> cuando termines.</div>`
+                ? `<div class="nmm-alert-subtle">${isEs ? 'Grabando en vivo… toca tu instrumento o micrófono y pulsa <strong>Detener grabación</strong> cuando termines.' : 'Recording live… play your instrument or microphone and click <strong>Stop recording</strong> when finished.'}</div>`
                 : ''
             }
           </div>
 
           <!-- Opción B: Usar audio ya cargado en la sesión -->
           <div class="nmm-batch-card">
-            <h3>${ICONS.wave} Material actual de la sesión</h3>
+            <h3>${ICONS.wave} ${isEs ? 'Material actual de la sesión' : 'Current session material'}</h3>
             <p class="nmm-batch-hint">
               ${
                 activeAudio?.hasAudio
-                  ? `La sesión actual tiene <strong>${activeAudio.zoneCount} zona(s)</strong> cargada(s) (${escHtml(activeAudio.sampleName || 'muestra activa')}).`
-                  : 'Si ya tienes muestras cargadas en la sesión, puedes pasarlas por el asistente o ir directo al Paso 4.'
+                  ? isEs
+                    ? `La sesión actual tiene <strong>${activeAudio.zoneCount} zona(s)</strong> cargada(s) (${escHtml(activeAudio.sampleName || 'muestra activa')}).`
+                    : `The current session has <strong>${activeAudio.zoneCount} zone(s)</strong> loaded (${escHtml(activeAudio.sampleName || 'active sample')}).`
+                  : isEs
+                    ? 'Si ya tienes muestras cargadas en la sesión, puedes pasarlas por el asistente o ir directo al Paso 4.'
+                    : 'If you already have samples loaded in the session, you can run them through the wizard or jump straight to Step 4.'
               }
             </p>
             <div class="triage-toolbar-left">
@@ -476,13 +483,13 @@ export class MusicianWizardModal {
                 activeAudio?.pcm && activeAudio.pcm.length > 0
                   ? `
                 <button type="button" class="btn btn-outline" id="btn-wiz-use-session-audio">
-                  ${ICONS.play} Limpiar y mapear muestra activa
+                  ${ICONS.play} ${isEs ? 'Limpiar y mapear muestra activa' : 'Clean & map active sample'}
                 </button>
               `
                   : ''
               }
               <button type="button" class="btn btn-outline" id="btn-wiz-skip-to-step4">
-                Ir al Paso 4 con la sesión actual →
+                ${isEs ? 'Ir al Paso 4 con la sesión actual →' : 'Go to Step 4 with current session →'}
               </button>
             </div>
           </div>
@@ -492,14 +499,14 @@ export class MusicianWizardModal {
         <div class="nmm-batch-card">
           <div class="triage-toolbar">
             <div class="triage-toolbar-left">
-              <h3>${ICONS.folder} Importar audio o banco de instrumentos</h3>
+              <h3>${ICONS.folder} ${isEs ? 'Importar audio o banco de instrumentos' : 'Import audio or instrument bank'}</h3>
             </div>
             <div class="triage-toolbar-right">
               ${
                 this.context.onOpenAdvancedUniversalImport
                   ? `
                 <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-open-adv-import">
-                  Abrir Importador Universal avanzado…
+                  ${isEs ? 'Abrir Importador Universal avanzado…' : 'Open advanced Universal Importer…'}
                 </button>
               `
                   : ''
@@ -507,18 +514,18 @@ export class MusicianWizardModal {
             </div>
           </div>
           <p class="nmm-batch-hint">
-            Si sueltas un audio (<code>.wav</code>, <code>.aif</code>, <code>.flac</code>, <code>.mp3</code>) pasará al <strong>Paso 2 (Limpiar)</strong>. Si sueltas un banco ya mapeado (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, <code>.model</code> Hartmann, <code>.zip</code>), revisaremos su adaptación aquí y podrás saltar directo al <strong>Paso 4 (Generar y exportar)</strong>.
+            ${isEs ? 'Si sueltas un audio (<code>.wav</code>, <code>.aif</code>, <code>.flac</code>, <code>.mp3</code>) pasará al <strong>Paso 2 (Limpiar)</strong>. Si sueltas un banco ya mapeado (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, <code>.model</code> Hartmann, <code>.zip</code>), revisaremos su adaptación aquí y podrás saltar directo al <strong>Paso 4 (Generar y exportar)</strong>.' : 'Dropping raw audio (<code>.wav</code>, <code>.aif</code>, <code>.flac</code>, <code>.mp3</code>) proceeds to <strong>Step 2 (Clean)</strong>. Dropping a pre-mapped bank (<code>.sf2</code>, <code>.sfz</code>, <code>.dspreset</code>, Hartmann <code>.model</code>, <code>.zip</code>) reviews adaptations here and jumps straight to <strong>Step 4 (Generate & Export)</strong>.'}
           </p>
 
           <div class="nmm-dropzone" id="wiz-dropzone" tabindex="0">
             <div class="nmm-batch-dropzone-icon">${ICONS.upload}</div>
             <div class="nmm-batch-dropzone-text">
-              Arrastra aquí tu <strong>archivo de audio (.wav, .aif, .flac, .mp3)</strong> o <strong>banco (.sf2, .sfz, .dspreset, .model, .zip)</strong>
+              ${isEs ? 'Arrastra aquí tu <strong>archivo de audio (.wav, .aif, .flac, .mp3)</strong> o <strong>banco (.sf2, .sfz, .dspreset, .model, .zip)</strong>' : 'Drop your <strong>audio file (.wav, .aif, .flac, .mp3)</strong> or <strong>bank (.sf2, .sfz, .dspreset, .model, .zip)</strong> here'}
             </div>
-            <div class="nmm-batch-dropzone-sub">o selecciónalo desde tu equipo</div>
+            <div class="nmm-batch-dropzone-sub">${isEs ? 'o selecciónalo desde tu equipo' : 'or browse from your computer'}</div>
             <div class="nmm-batch-dropzone-actions">
               <label class="btn btn-primary">
-                ${ICONS.folder} Elegir archivo de audio o banco…
+                ${ICONS.folder} ${isEs ? 'Elegir archivo de audio o banco…' : 'Choose audio file or bank…'}
                 <input
                   type="file"
                   id="inp-wiz-file"
@@ -537,7 +544,7 @@ export class MusicianWizardModal {
           <div class="nmm-batch-card">
             <h3>${escHtml(MUSICIAN_TERMS.preflightImport)} — ${escHtml(this.parsedPreset.presetName)}</h3>
             <p class="nmm-batch-hint">
-              Este archivo ya es un instrumento mapeado (${this.parsedPreset.regions.length} regiones). No necesita re-cortarse en los pasos 2 y 3: revisa el estado de compatibilidad y pasa directamente al Paso 4.
+              ${isEs ? `Este archivo ya es un instrumento mapeado (${this.parsedPreset.regions.length} regiones). No necesita re-cortarse en los pasos 2 y 3: revisa el estado de compatibilidad y pasa directamente al Paso 4.` : `This file is already a mapped instrument (${this.parsedPreset.regions.length} regions). It does not need re-slicing in steps 2 and 3: review compatibility and jump straight to Step 4.`}
             </p>
             ${renderCommonPreflightGate(bankGateModel)}
             ${
@@ -552,7 +559,7 @@ export class MusicianWizardModal {
                   ? `
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-extend" ${this.optBankAutoExtend ? 'checked' : ''} />
-                <span>Extender zonas extremas para cubrir todo el teclado MIDI (0..127)</span>
+                <span>${isEs ? 'Extender zonas extremas para cubrir todo el teclado MIDI (0..127)' : 'Extend outer zones to cover the full MIDI keyboard (0..127)'}</span>
               </label>
               `
                   : ''
@@ -562,11 +569,11 @@ export class MusicianWizardModal {
                   ? `
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-vel" ${this.optBankAdaptVelocity ? 'checked' : ''} />
-                <span>Adaptar capas de velocidad a 2 capas en modo Classic</span>
+                <span>${isEs ? 'Adaptar capas de velocidad a 2 capas en modo Classic' : 'Adapt velocity layers to 2 layers in Classic mode'}</span>
               </label>
               <label class="batch-check">
                 <input type="checkbox" id="chk-wiz-bank-extmode" ${this.optBankSwitchExtended ? 'checked' : ''} />
-                <span>Cambiar a modo Extended (conservar ${this.preflightReport.maxVelocityLayers} capas de velocidad)</span>
+                <span>${isEs ? `Cambiar a modo Extended (conservar ${this.preflightReport.maxVelocityLayers} capas de velocidad)` : `Switch to Extended mode (preserve ${this.preflightReport.maxVelocityLayers} velocity layers)`}</span>
               </label>
               `
                   : ''
@@ -585,20 +592,26 @@ export class MusicianWizardModal {
             <span class="triage-count">
               ${
                 this.sourceKind === 'raw_audio'
-                  ? `Audio listo: ${escHtml(this.sourceName)} (${(this.rawPcm.length / this.rawSampleRate).toFixed(2)} s)`
+                  ? isEs
+                    ? `Audio listo: ${escHtml(this.sourceName)} (${(this.rawPcm.length / this.rawSampleRate).toFixed(2)} s)`
+                    : `Audio ready: ${escHtml(this.sourceName)} (${(this.rawPcm.length / this.rawSampleRate).toFixed(2)} s)`
                   : this.sourceKind === 'mapped_bank' && this.parsedPreset
-                    ? `Banco listo: ${escHtml(this.parsedPreset.presetName)} (${this.parsedPreset.regions.length} regiones)`
-                    : 'Selecciona o graba material para continuar'
+                    ? isEs
+                      ? `Banco listo: ${escHtml(this.parsedPreset.presetName)} (${this.parsedPreset.regions.length} regiones)`
+                      : `Bank ready: ${escHtml(this.parsedPreset.presetName)} (${this.parsedPreset.regions.length} regions)`
+                    : isEs
+                      ? 'Selecciona o graba material para continuar'
+                      : 'Select or record material to continue'
               }
             </span>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-outline" id="btn-wiz-cancel">Cerrar</button>
+            <button type="button" class="btn btn-outline" id="btn-wiz-cancel">${isEs ? 'Cerrar' : 'Close'}</button>
             ${
               this.sourceKind === 'mapped_bank' && this.parsedPreset && bankGateModel?.canContinue
                 ? `
               <button type="button" class="btn btn-primary" id="btn-wiz-bank-to-step4">
-                ${ICONS.check} Aplicar banco e ir al Paso 4 (Generar y exportar) →
+                ${ICONS.check} ${isEs ? 'Aplicar banco e ir al Paso 4 (Generar y exportar) →' : 'Apply bank & go to Step 4 (Generate & Export) →'}
               </button>
             `
                 : ''
@@ -607,7 +620,7 @@ export class MusicianWizardModal {
               this.sourceKind === 'raw_audio' && this.rawPcm.length > 0
                 ? `
               <button type="button" class="btn btn-primary" id="btn-wiz-to-step2">
-                Siguiente: 2. Limpiar →
+                ${isEs ? 'Siguiente: 2. Limpiar →' : 'Next: 2. Clean →'}
               </button>
             `
                 : ''
@@ -621,92 +634,97 @@ export class MusicianWizardModal {
   // ── Paso 2: Limpiar ──────────────────────────────────────
 
   private renderStep2Clean(): string {
+    const isEs = getAppLocale() === 'es';
     const clean = this.cleanResult;
     const noiseDb =
       clean && Number.isFinite(clean.noiseProfile.levelDbfs)
         ? `${clean.noiseProfile.levelDbfs.toFixed(1)} dBFS`
-        : 'Silencio limpio (<-85 dBFS)';
+        : isEs
+          ? 'Silencio limpio (<-85 dBFS)'
+          : 'Clean silence (<-85 dBFS)';
     const hum50 =
       clean && Number.isFinite(clean.noiseProfile.hum50HzDb)
         ? `${clean.noiseProfile.hum50HzDb.toFixed(1)} dB`
-        : 'n/d';
+        : isEs
+          ? 'n/d'
+          : 'n/a';
 
     return `
       <div class="nmm-batch-preflight-pane">
         <div class="triage-summary">
           ${ICONS.wave}
           <div>
-            <p><strong>Paso 2 — Limpiar toma antes de cortar (${escHtml(this.sourceName)})</strong></p>
-            <p>Aplicamos por defecto los ajustes seguros de músico: recorte de silencios ajustado al cruce por cero (sin clics), limpieza de ruido de fondo y normalización a -1.0 dBFS.</p>
+            <p><strong>${isEs ? `Paso 2 — Limpiar toma antes de cortar (${escHtml(this.sourceName)})` : `Step 2 — Clean take before slicing (${escHtml(this.sourceName)})`}</strong></p>
+            <p>${isEs ? 'Aplicamos por defecto los ajustes seguros de músico: recorte de silencios ajustado al cruce por cero (sin clics), limpieza de ruido de fondo y normalización a -1.0 dBFS.' : 'Safe musician defaults are enabled automatically: zero-crossing silence trimming (click-free), background noise reduction, and -1.0 dBFS peak normalization.'}</p>
           </div>
         </div>
 
         <!-- Resumen de métricas Antes / Después -->
         <div class="nmm-batch-card">
-          <h3>Diagnóstico de limpieza y ${escHtml(MUSICIAN_TERMS.noisePrint)}</h3>
-          <div class="nmm-preflight-grid">
-            <div class="profile-item">
-              <span class="profile-label">${escHtml(MUSICIAN_TERMS.noisePrint)}:</span>
-              <strong class="profile-val">${escHtml(noiseDb)} (Hum 50 Hz: ${escHtml(hum50)})</strong>
+          <h3>${isEs ? `Diagnóstico de limpieza y ${escHtml(MUSICIAN_TERMS.noisePrint)}` : `Clean-up diagnostics & ${escHtml(MUSICIAN_TERMS.noisePrint)}`}</h3>
+          <div class="nmm-metric-grid">
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${escHtml(MUSICIAN_TERMS.noisePrint)}:</span>
+              <strong class="nmm-metric-val">${escHtml(noiseDb)} (Hum 50 Hz: ${escHtml(hum50)})</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Duración (Antes → Después):</span>
-              <strong class="profile-val">${clean ? `${clean.durationBeforeSec}s → ${clean.durationAfterSec}s` : '—'}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Duración (Antes → Después):' : 'Duration (Before → After):'}</span>
+              <strong class="nmm-metric-val">${clean ? `${clean.durationBeforeSec}s → ${clean.durationAfterSec}s` : '—'}</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Silencio recortado:</span>
-              <strong class="profile-val">${clean ? `Entrada: ${clean.leadingTrimmedMs} ms · Salida: ${clean.trailingTrimmedMs} ms` : '—'}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Silencio recortado:' : 'Silence trimmed:'}</span>
+              <strong class="nmm-metric-val">${clean ? (isEs ? `Entrada: ${clean.leadingTrimmedMs} ms · Salida: ${clean.trailingTrimmedMs} ms` : `Lead: ${clean.leadingTrimmedMs} ms · Trail: ${clean.trailingTrimmedMs} ms`) : '—'}</strong>
             </div>
-            <div class="profile-item">
-              <span class="profile-label">Nivel de Pico (Antes → Después):</span>
-              <strong class="profile-val batch-val-success">${clean ? `${clean.peakBeforeDbfs} dBFS → ${clean.peakAfterDbfs} dBFS` : '—'}</strong>
+            <div class="nmm-metric-card">
+              <span class="nmm-metric-lbl">${isEs ? 'Nivel de Pico (Antes → Después):' : 'Peak Level (Before → After):'}</span>
+              <strong class="nmm-metric-val batch-val-success">${clean ? `${clean.peakBeforeDbfs} dBFS → ${clean.peakAfterDbfs} dBFS` : '—'}</strong>
             </div>
           </div>
 
           <div class="batch-slicer-row">
             <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-audition-raw">
-              ${ICONS.play} Escuchar original
+              ${ICONS.play} ${isEs ? 'Escuchar original' : 'Audition original'}
             </button>
             <button type="button" class="btn btn-primary btn-sm" id="btn-wiz-audition-clean">
-              ${ICONS.play} Escuchar audio limpio
+              ${ICONS.play} ${isEs ? 'Escuchar audio limpio' : 'Audition cleaned audio'}
             </button>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-wiz-stop-audition">
-              ${ICONS.stop} Detener
+              ${ICONS.stop} ${isEs ? 'Detener' : 'Stop'}
             </button>
           </div>
         </div>
 
         <!-- Opciones de limpieza con Defaults de Músico -->
         <div class="nmm-batch-card">
-          <h3>Ajustes de limpieza (Defaults de músico activados)</h3>
-          <div class="nmm-preflight-grid">
+          <h3>${isEs ? 'Ajustes de limpieza (Defaults de músico activados)' : 'Clean-up settings (Musician defaults enabled)'}</h3>
+          <div class="nmm-metric-grid">
             <label class="batch-check">
               <input type="checkbox" id="chk-wiz-trim" ${this.optTrimSilence ? 'checked' : ''} />
-              <span>Recortar silencios de entrada y salida automáticamente</span>
+              <span>${isEs ? 'Recortar silencios de entrada y salida automáticamente' : 'Automatically trim leading and trailing silence'}</span>
             </label>
             <label class="batch-check">
               <input type="checkbox" id="chk-wiz-zcsnap" ${this.optSnapZeroCrossing ? 'checked' : ''} />
-              <span><strong>${escHtml(MUSICIAN_TERMS.zcSnap)}</strong> (evita chasquidos al principio y final)</span>
+              <span><strong>${escHtml(MUSICIAN_TERMS.zcSnap)}</strong> (${isEs ? 'evita chasquidos al principio y final' : 'prevents clicks at start and end'})</span>
             </label>
             <label class="batch-check">
               <input type="checkbox" id="chk-wiz-denoise" ${this.optApplyNoisePrint ? 'checked' : ''} />
-              <span>Atenuar ruido de fondo y zumbido 50/60 Hz usando la huella de ruido</span>
+              <span>${isEs ? 'Atenuar ruido de fondo y zumbido 50/60 Hz usando la huella de ruido' : 'Attenuate background noise and 50/60 Hz hum using the noise print'}</span>
             </label>
             <label class="batch-check">
               <input type="checkbox" id="chk-wiz-norm" ${this.optNormalizePeak ? 'checked' : ''} />
-              <span>Normalizar pico a -1.0 dBFS y eliminar offset DC</span>
+              <span>${isEs ? 'Normalizar pico a -1.0 dBFS y eliminar offset DC' : 'Normalize peak to -1.0 dBFS and remove DC offset'}</span>
             </label>
           </div>
 
           <div class="batch-slicer-row">
             <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-ai-bwe">
-              ${ICONS.sparkle} Aplicar ${escHtml(MUSICIAN_TERMS.bwe)}
+              ${ICONS.sparkle} ${isEs ? `Aplicar ${escHtml(MUSICIAN_TERMS.bwe)}` : `Apply ${escHtml(MUSICIAN_TERMS.bwe)}`}
             </button>
             ${
               this.context.onOpenAdvancedRecorder
                 ? `
               <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-step2-adv-recorder">
-                Abrir en taller avanzado (Grabadora / Huella de ruido manual)…
+                ${isEs ? 'Abrir en taller avanzado (Grabadora / Huella de ruido manual)…' : 'Open in advanced workshop (Recorder / Manual noise print)…'}
               </button>
             `
                 : ''
@@ -716,11 +734,11 @@ export class MusicianWizardModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <button type="button" class="btn btn-outline" id="btn-wiz-back-step1">← 1. Material</button>
+            <button type="button" class="btn btn-outline" id="btn-wiz-back-step1">← ${isEs ? '1. Material' : '1. Material'}</button>
           </div>
           <div class="footer-right">
             <button type="button" class="btn btn-primary" id="btn-wiz-to-step3">
-              Siguiente: 3. Cortar y mapear →
+              ${isEs ? 'Siguiente: 3. Cortar y mapear →' : 'Next: 3. Slice & Map →'}
             </button>
           </div>
         </footer>
@@ -731,6 +749,7 @@ export class MusicianWizardModal {
   // ── Paso 3: Cortar y mapear ──────────────────────────────
 
   private renderStep3SliceAndMap(): string {
+    const isEs = getAppLocale() === 'es';
     const res = this.sliceMapResult;
 
     const slicesRowsHtml = (res?.slices ?? [])
@@ -741,10 +760,10 @@ export class MusicianWizardModal {
           <td class="triage-col-idx">#${idx + 1}</td>
           <td class="triage-item-name">${escHtml(sl.label)}</td>
           <td class="triage-num">${(sl.durationSec * 1000).toFixed(0)} ms</td>
-          <td class="triage-num">Teclas ${sl.lowKey}..${sl.highKey} (Raíz ${sl.rootKey})</td>
+          <td class="triage-num">${isEs ? `Teclas ${sl.lowKey}..${sl.highKey} (Raíz ${sl.rootKey})` : `Keys ${sl.lowKey}..${sl.highKey} (Root ${sl.rootKey})`}</td>
           <td class="triage-col-action">
             <button type="button" class="btn btn-xs btn-outline btn-wiz-play-slice" data-slice-idx="${idx}">
-              ${ICONS.play} Escuchar
+              ${ICONS.play} ${isEs ? 'Escuchar' : 'Play'}
             </button>
           </td>
         </tr>
@@ -757,42 +776,42 @@ export class MusicianWizardModal {
         <div class="triage-summary">
           ${ICONS.scissors}
           <div>
-            <p><strong>Paso 3 — Cortar y mapear en el teclado ("¿Batería o melodía?")</strong></p>
-            <p>Por defecto el asistente analiza el timbre y los ataques para decidir solo cómo trocear y repartir las zonas en el teclado MIDI <code>0..127</code> con ajuste al cruce por cero (<code>zc-snap</code>) y 2 capas en modo Classic.</p>
+            <p><strong>${isEs ? 'Paso 3 — Cortar y mapear en el teclado ("¿Batería o melodía?")' : 'Step 3 — Slice & map across the keyboard ("Drums or melody?")'}</strong></p>
+            <p>${isEs ? 'Por defecto el asistente analiza el timbre y los ataques para decidir solo cómo trocear y repartir las zonas en el teclado MIDI <code>0..127</code> con ajuste al cruce por cero (<code>zc-snap</code>) y 2 capas en modo Classic.' : 'By default the wizard analyzes timbre and transients to automatically slice and distribute zones across MIDI keys <code>0..127</code> with zero-crossing snap (<code>zc-snap</code>) and 2 velocity layers in Classic mode.'}</p>
           </div>
         </div>
 
         <!-- Selector principal: ¿Batería o melodía? con "Detectar solo" por defecto -->
         <div class="nmm-batch-card">
-          <h3>¿Qué tipo de material has grabado o importado?</h3>
+          <h3>${isEs ? '¿Qué tipo de material has grabado o importado?' : 'What kind of material did you record or import?'}</h3>
           <div class="triage-toolbar-left">
             <button
               type="button"
               class="btn ${this.roleChoice === 'auto' ? 'btn-primary' : 'btn-outline'}"
               data-wiz-role="auto"
             >
-              ${ICONS.sparkle} Detectar solo (Recomendado)
+              ${ICONS.sparkle} ${isEs ? 'Detectar solo (Recomendado)' : 'Auto-detect (Recommended)'}
             </button>
             <button
               type="button"
               class="btn ${this.roleChoice === 'drums' ? 'btn-primary' : 'btn-outline'}"
               data-wiz-role="drums"
             >
-              ${ICONS.drum} Batería / Percusión
+              ${ICONS.drum} ${isEs ? 'Batería / Percusión' : 'Drums / Percussion'}
             </button>
             <button
               type="button"
               class="btn ${this.roleChoice === 'melody' ? 'btn-primary' : 'btn-outline'}"
               data-wiz-role="melody"
             >
-              ${ICONS.piano} Melodía / Varias notas
+              ${ICONS.piano} ${isEs ? 'Melodía / Varias notas' : 'Melody / Multiple notes'}
             </button>
             <button
               type="button"
               class="btn ${this.roleChoice === 'single' ? 'btn-primary' : 'btn-outline'}"
               data-wiz-role="single"
             >
-              ${ICONS.wave} Nota única sostenida
+              ${ICONS.wave} ${isEs ? 'Nota única sostenida' : 'Single sustained note'}
             </button>
           </div>
 
@@ -803,10 +822,10 @@ export class MusicianWizardModal {
               <div class="preflight-status-head">
                 <div class="preflight-status-title">
                   <span class="preflight-status-icon">${ICONS.check}</span>
-                  <span>Veredicto: ${escHtml(res.roleLabelEs)}</span>
+                  <span>${isEs ? 'Veredicto:' : 'Verdict:'} ${escHtml(res.roleLabelEs)}</span>
                 </div>
                 <span class="preflight-status-meta">
-                  Categoría: ${escHtml(res.detectedCategory)} · Parameter Set #${res.suggestedParameterSet} (${Math.round(res.classificationConfidence * 100)}% conf.)
+                  ${isEs ? 'Categoría:' : 'Category:'} ${escHtml(res.detectedCategory)} · Parameter Set #${res.suggestedParameterSet} (${Math.round(res.classificationConfidence * 100)}% conf.)
                 </span>
               </div>
               <p>${escHtml(res.roleExplanationEs)}</p>
@@ -822,10 +841,10 @@ export class MusicianWizardModal {
             <div class="batch-slicer-row" id="wiz-single-root-correction-bar">
               <div class="batch-field">
                 <label for="inp-wiz-single-root">
-                  Nota raíz (${midiToNoteName(res.effectiveRootKey)} · F0 auto: ${res.detectedF0Hz.toFixed(1)} Hz):
+                  ${isEs ? 'Nota raíz' : 'Root key'} (${midiToNoteName(res.effectiveRootKey)} · F0 auto: ${res.detectedF0Hz.toFixed(1)} Hz):
                 </label>
-                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-12" title="Bajar 1 octava (-12 semitonos)">-12 Oct</button>
-                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-1" title="Bajar 1 semitono">-1 Semi</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-12" title="${isEs ? 'Bajar 1 octava (-12 semitonos)' : 'Down 1 octave (-12 semitones)'}">-12 Oct</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="-1" title="${isEs ? 'Bajar 1 semitono' : 'Down 1 semitone'}">-1 Semi</button>
                 <input
                   type="number"
                   id="inp-wiz-single-root"
@@ -833,15 +852,15 @@ export class MusicianWizardModal {
                   min="0"
                   max="127"
                   value="${res.effectiveRootKey}"
-                  aria-label="Nota raíz MIDI (0..127)"
+                  aria-label="${isEs ? 'Nota raíz MIDI (0..127)' : 'MIDI root key (0..127)'}"
                 />
                 <span class="val-pill">${midiToNoteName(res.effectiveRootKey)} (MIDI ${res.effectiveRootKey})</span>
-                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="1" title="Subir 1 semitono">+1 Semi</button>
-                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="12" title="Subir 1 octava (+12 semitonos)">+12 Oct</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="1" title="${isEs ? 'Subir 1 semitono' : 'Up 1 semitone'}">+1 Semi</button>
+                <button type="button" class="btn btn-xs btn-outline" data-wiz-root-delta="12" title="${isEs ? 'Subir 1 octava (+12 semitonos)' : 'Up 1 octave (+12 semitones)'}">+12 Oct</button>
                 ${
                   this.singleRootKeyOverride !== null && this.singleRootKeyOverride !== res.detectedRootKey
                     ? `
-                  <button type="button" class="btn btn-xs btn-ghost" id="btn-wiz-root-reset-auto" title="Restaurar nota raíz estimada por F0 (${midiToNoteName(res.detectedRootKey)})">
+                  <button type="button" class="btn btn-xs btn-ghost" id="btn-wiz-root-reset-auto" title="${isEs ? `Restaurar nota raíz estimada por F0 (${midiToNoteName(res.detectedRootKey)})` : `Restore F0 estimated root key (${midiToNoteName(res.detectedRootKey)})`}">
                     Auto F0 (${midiToNoteName(res.detectedRootKey)})
                   </button>
                 `
@@ -855,7 +874,7 @@ export class MusicianWizardModal {
 
           <div class="batch-slicer-row">
             <div class="batch-field">
-              <label for="rng-wiz-sens">Sensibilidad de corte:</label>
+              <label for="rng-wiz-sens">${isEs ? 'Sensibilidad de corte:' : 'Slice sensitivity:'}</label>
               <input
                 type="range"
                 id="rng-wiz-sens"
@@ -875,7 +894,7 @@ export class MusicianWizardModal {
 
             <label class="batch-check">
               <input type="checkbox" id="chk-wiz-step3-2layers" ${this.optClassicTwoLayers ? 'checked' : ''} />
-              <span>Preparar 2 capas de velocidad en Classic (Suave 1..63 / Fuerte 64..127)</span>
+              <span>${isEs ? 'Preparar 2 capas de velocidad en Classic (Suave 1..63 / Fuerte 64..127)' : 'Prepare 2 velocity layers in Classic (Soft 1..63 / Loud 64..127)'}</span>
             </label>
           </div>
         </div>
@@ -884,14 +903,14 @@ export class MusicianWizardModal {
         <div class="nmm-batch-card">
           <div class="triage-toolbar">
             <div class="triage-toolbar-left">
-              <h3>Zonas mapeadas en el teclado (${res?.classicZones.length ?? 0} zona(s) · Cobertura 0..127 completa)</h3>
+              <h3>${isEs ? `Zonas mapeadas en el teclado (${res?.classicZones.length ?? 0} zona(s) · Cobertura 0..127 completa)` : `Zones mapped across keyboard (${res?.classicZones.length ?? 0} zone(s) · Full 0..127 coverage)`}</h3>
             </div>
             <div class="triage-toolbar-right">
               ${
                 this.context.onOpenAdvancedChopper
                   ? `
                 <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-open-adv-chopper">
-                  ${ICONS.scissors} Ajustar cortes en taller avanzado (Audio Chopper)…
+                  ${ICONS.scissors} ${isEs ? 'Ajustar cortes en taller avanzado (Audio Chopper)…' : 'Fine-tune slices in advanced workshop (Audio Chopper)…'}
                 </button>
               `
                   : ''
@@ -900,7 +919,7 @@ export class MusicianWizardModal {
                 this.context.onOpenAdvancedLoopEditor
                   ? `
                 <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-open-adv-loop">
-                  ${ICONS.wave} Taller de bucles (Loop Editor)…
+                  ${ICONS.wave} ${isEs ? 'Taller de bucles (Loop Editor)…' : 'Loop workshop (Loop Editor)…'}
                 </button>
               `
                   : ''
@@ -913,14 +932,14 @@ export class MusicianWizardModal {
               <thead>
                 <tr>
                   <th class="triage-col-idx">#</th>
-                  <th>Nota / Golpe detectado</th>
-                  <th>Duración</th>
-                  <th>Rango de teclado MIDI</th>
-                  <th class="triage-col-action">Escuchar</th>
+                  <th>${isEs ? 'Nota / Golpe detectado' : 'Detected Note / Hit'}</th>
+                  <th>${isEs ? 'Duración' : 'Duration'}</th>
+                  <th>${isEs ? 'Rango de teclado MIDI' : 'MIDI Key Range'}</th>
+                  <th class="triage-col-action">${isEs ? 'Escuchar' : 'Audition'}</th>
                 </tr>
               </thead>
               <tbody>
-                ${slicesRowsHtml || '<tr><td colspan="5" class="triage-empty">Sin cortes</td></tr>'}
+                ${slicesRowsHtml || `<tr><td colspan="5" class="triage-empty">${isEs ? 'Sin cortes' : 'No slices'}</td></tr>`}
               </tbody>
             </table>
           </div>
@@ -928,11 +947,11 @@ export class MusicianWizardModal {
 
         <footer class="nmm-modal-footer">
           <div class="footer-left">
-            <button type="button" class="btn btn-outline" id="btn-wiz-back-step2">← 2. Limpiar</button>
+            <button type="button" class="btn btn-outline" id="btn-wiz-back-step2">← ${isEs ? '2. Limpiar' : '2. Clean'}</button>
           </div>
           <div class="footer-right">
             <button type="button" class="btn btn-primary" id="btn-wiz-to-step4">
-              Siguiente: 4. Generar y exportar →
+              ${isEs ? 'Siguiente: 4. Generar y exportar →' : 'Next: 4. Generate & Export →'}
             </button>
           </div>
         </footer>
@@ -943,6 +962,7 @@ export class MusicianWizardModal {
   // ── Paso 4: Generar y exportar (ProcessPanel simplificado + 35.2) ──
 
   private renderStep4GenerateAndExport(): string {
+    const isEs = getAppLocale() === 'es';
     const paramSets = this.context.getParameterSets?.() ?? PARAMETER_SETS;
     const zoneCount =
       this.sourceKind === 'mapped_bank' && this.parsedPreset
@@ -1021,8 +1041,8 @@ export class MusicianWizardModal {
         <div class="triage-summary">
           ${ICONS.cpu}
           <div>
-            <p><strong>Paso 4 — Generar modelo espectral y exportar a tu destino</strong></p>
-            <p>${escHtml(`${exportSummary.slotLabel} • ${exportSummary.displayName} • ${exportSummary.modeLabel} (${exportSummary.zonesLabel})`)}. Revisa el nombre y el carácter acústico, genera el modelo resintetizado o elige directamente dónde quieres llevártelo.</p>
+            <p><strong>${isEs ? 'Paso 4 — Generar modelo espectral y exportar a tu destino' : 'Step 4 — Generate spectral model & export to your destination'}</strong></p>
+            <p>${escHtml(`${exportSummary.slotLabel} • ${exportSummary.displayName} • ${exportSummary.modeLabel} (${exportSummary.zonesLabel})`)}. ${isEs ? 'Revisa el nombre y el carácter acústico, genera el modelo resintetizado o elige directamente dónde quieres llevártelo.' : 'Review the name and acoustic character, generate the resynthesized model, or choose directly where you want to take it.'}</p>
           </div>
         </div>
 
@@ -1030,14 +1050,14 @@ export class MusicianWizardModal {
         <div class="nmm-batch-card">
           <div class="triage-toolbar">
             <div class="triage-toolbar-left">
-              <h3>Identidad y Motor del Instrumento (ProcessPanel Simplificado)</h3>
+              <h3>${isEs ? 'Identidad y Motor del Instrumento (ProcessPanel Simplificado)' : 'Instrument Identity & Engine (Simplified ProcessPanel)'}</h3>
             </div>
             <div class="triage-toolbar-right">
               ${
                 this.context.onOpenAdvancedModelConfig
                   ? `
                 <button type="button" class="btn btn-outline btn-sm" id="btn-wiz-open-adv-modelcfg">
-                  ${ICONS.settings} Abrir taller avanzado (Configuración completa del modelo)…
+                  ${ICONS.settings} ${isEs ? 'Abrir taller avanzado (Configuración completa del modelo)…' : 'Open advanced workshop (Full Model Configuration)…'}
                 </button>
               `
                   : ''
@@ -1045,9 +1065,9 @@ export class MusicianWizardModal {
             </div>
           </div>
 
-          <div class="nmm-preflight-grid">
+          <div class="nmm-metric-grid">
             <div class="batch-field">
-              <label for="inp-wiz-model-name">Nombre Hardware (Classic, máx. 11):</label>
+              <label for="inp-wiz-model-name">${isEs ? 'Nombre Hardware (Classic, máx. 11):' : 'Hardware Name (Classic, max 11):'}</label>
               <input
                 type="text"
                 id="inp-wiz-model-name"
@@ -1058,7 +1078,7 @@ export class MusicianWizardModal {
             </div>
 
             <div class="batch-field">
-              <label for="inp-wiz-expanded-name">Nombre Extendido (AxionikVS):</label>
+              <label for="inp-wiz-expanded-name">${isEs ? 'Nombre Extendido (AxionikVS):' : 'Expanded Name (AxionikVS):'}</label>
               <input
                 type="text"
                 id="inp-wiz-expanded-name"
@@ -1069,15 +1089,15 @@ export class MusicianWizardModal {
             </div>
 
             <div class="batch-field">
-              <label for="sel-wiz-working-mode">Modo de trabajo:</label>
+              <label for="sel-wiz-working-mode">${isEs ? 'Modo de trabajo:' : 'Working mode:'}</label>
               <select id="sel-wiz-working-mode" class="form-control">
-                <option value="classic" ${this.workingMode === 'classic' ? 'selected' : ''}>Classic (2 capas · Hardware 1:1)</option>
-                <option value="extended" ${this.workingMode === 'extended' ? 'selected' : ''}>Extended (Multicapa 2D HD)</option>
+                <option value="classic" ${this.workingMode === 'classic' ? 'selected' : ''}>${isEs ? 'Classic (2 capas · Hardware 1:1)' : 'Classic (2 layers · 1:1 Hardware)'}</option>
+                <option value="extended" ${this.workingMode === 'extended' ? 'selected' : ''}>${isEs ? 'Extended (Multicapa 2D HD)' : 'Extended (Multi-layer 2D HD)'}</option>
               </select>
             </div>
 
             <div class="batch-field">
-              <label for="sel-wiz-param-set">Carácter Acústico (Parameter Set):</label>
+              <label for="sel-wiz-param-set">${isEs ? 'Carácter Acústico (Parameter Set):' : 'Acoustic Character (Parameter Set):'}</label>
               <select id="sel-wiz-param-set" class="form-control">
                 ${paramOptionsHtml}
               </select>
@@ -1090,17 +1110,17 @@ export class MusicianWizardModal {
 
           <div class="batch-slicer-row">
             <button type="button" class="btn btn-outline" id="btn-wiz-apply-session-only">
-              ${ICONS.check} Volcar zonas a la sesión sin cerrar
+              ${ICONS.check} ${isEs ? 'Volcar zonas a la sesión sin cerrar' : 'Commit zones to session without closing'}
             </button>
             <button type="button" class="btn btn-primary" id="btn-wiz-generate-model-now">
-              ${ICONS.play} Generar Modelo Espectral Ahora (Análisis FFT + Resíntesis)
+              ${ICONS.play} ${isEs ? 'Generar Modelo Espectral Ahora (Análisis FFT + Resíntesis)' : 'Generate Spectral Model Now (FFT Analysis + Resynthesis)'}
             </button>
           </div>
         </div>
 
         <!-- Pantalla de Destinos de Exportación (Fase 35.2 integrada) -->
         <div class="nmm-batch-card">
-          <h3>¿Dónde quieres usar o exportar tu instrumento?</h3>
+          <h3>${isEs ? '¿Dónde quieres usar o exportar tu instrumento?' : 'Where do you want to use or export your instrument?'}</h3>
           <div class="preflight-issues">
             ${destCardsHtml}
           </div>
@@ -1109,11 +1129,11 @@ export class MusicianWizardModal {
         <footer class="nmm-modal-footer">
           <div class="footer-left">
             <button type="button" class="btn btn-outline" id="btn-wiz-back-from-step4">
-              ← ${this.sourceKind === 'raw_audio' ? '3. Cortar y mapear' : '1. Material'}
+              ← ${this.sourceKind === 'raw_audio' ? (isEs ? '3. Cortar y mapear' : '3. Slice & Map') : isEs ? '1. Material' : '1. Material'}
             </button>
           </div>
           <div class="footer-right">
-            <button type="button" class="btn btn-outline" id="btn-wiz-close-footer">Cerrar asistente</button>
+            <button type="button" class="btn btn-outline" id="btn-wiz-close-footer">${isEs ? 'Cerrar asistente' : 'Close wizard'}</button>
           </div>
         </footer>
       </div>

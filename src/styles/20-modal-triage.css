@@ -114,16 +114,3 @@
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
-
-.triage-hint {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-3);
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: var(--text-2xs);
-  color: var(--color-text-dim);
-  font-family: var(--font-mono);
-  text-align: center;
-  margin: 0;
-}

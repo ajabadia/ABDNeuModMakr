@@ -114,6 +114,34 @@ export const SHARED_ES = {
     aboutCopyright: '© 2026 ABDSynths',
   },
 
+  aboutDialog: {
+    versionLabel: 'Versión:',
+    buildPrefix: 'Compilación #',
+    checkForUpdates: 'BUSCAR ACTUALIZACIONES',
+    downloadUpdate: 'DESCARGAR ACTUALIZACIÓN',
+    downloadVersion: 'DESCARGAR {version}',
+    checkingUpdates: 'Buscando actualizaciones...',
+    newVersionAvailable: 'Nueva versión disponible: {version}',
+    upToDate: 'Estás ejecutando la última versión.',
+    close: 'CERRAR',
+  },
+
+  bank: {
+    browserTitle: 'NAVEGADOR DE BANCOS NEURONDB',
+    searchPlaceholder: 'Buscar por nombre o slot...',
+    searchAriaLabel: 'Buscar en el banco',
+    tabModels: 'MODELOS',
+    tabPresets: 'PRESETS',
+    tabLibrary: 'BIBLIOTECA',
+    actionRefresh: 'Refrescar',
+    actionFolder: 'Carpeta',
+    actionClear: 'Limpiar',
+    actionClose: 'Cerrar',
+    actionLoad: 'Cargar',
+    actionExport: 'Exportar',
+    emptyState: 'Ningún elemento coincide con el filtro actual.',
+  },
+
   settings: {
     drawerTitle: 'AJUSTES DEL SINTETIZADOR',
     polyphonyCard: 'POLIFONÍA Y APERTURA ESTÉREO',

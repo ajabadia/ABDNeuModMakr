@@ -5,6 +5,7 @@
 
 import { ICONS } from './icons';
 import { midiToNoteName } from './ZoneRibbon';
+import { onAppLocaleChange, tApp } from '../core/i18n';
 import type { Session } from '../core/types';
 
 export class TelemetryDrawer {
@@ -13,11 +14,24 @@ export class TelemetryDrawer {
   private drawerElement: HTMLElement | null = null;
   private logs: string[] = [];
   private onAutoRepair: (() => void) | null = null;
+  private lastSession: Session | null = null;
+  private lastErrors: string[] = [];
 
   constructor(container: HTMLElement, onAutoRepair?: () => void) {
     this.container = container;
     this.onAutoRepair = onAutoRepair ?? null;
     this.init();
+    onAppLocaleChange(() => {
+      const titleSpan = this.drawerElement?.querySelector('#telemetry-title-text');
+      if (titleSpan) titleSpan.textContent = tApp('telemetryDrawer.headerTitle');
+      const closeBtn = this.drawerElement?.querySelector<HTMLElement>('#btn-close-telemetry');
+      if (closeBtn) closeBtn.title = tApp('telemetryDrawer.btnCloseTitle');
+      const secTitle = this.drawerElement?.querySelector('#telemetry-sec-stream');
+      if (secTitle) secTitle.textContent = tApp('telemetryDrawer.sectionEventStream');
+      if (this.lastSession) {
+        this.updateAudit(this.lastSession, this.lastErrors);
+      }
+    });
   }
 
   private init(): void {
@@ -27,9 +41,9 @@ export class TelemetryDrawer {
       <div class="drawer-header">
         <div class="drawer-title">
           <span class="drawer-icon">${ICONS.terminal}</span>
-          <span>TELEMETRY & MIDI COVERAGE AUDIT</span>
+          <span id="telemetry-title-text">${tApp('telemetryDrawer.headerTitle')}</span>
         </div>
-        <button type="button" class="btn btn-close-drawer" id="btn-close-telemetry" title="Close Drawer">${ICONS.close}</button>
+        <button type="button" class="btn btn-close-drawer" id="btn-close-telemetry" title="${tApp('telemetryDrawer.btnCloseTitle')}">${ICONS.close}</button>
       </div>
 
       <div class="drawer-body">
@@ -37,9 +51,9 @@ export class TelemetryDrawer {
           <!-- Dynamic audit report -->
         </div>
 
-        <div class="drawer-section-title">ENGINE EVENT STREAM</div>
+        <div class="drawer-section-title" id="telemetry-sec-stream">${tApp('telemetryDrawer.sectionEventStream')}</div>
         <div class="telemetry-log-stream" id="telemetry-log-stream">
-          <div class="log-entry">[00:00:00] ABDNeuModMakr session engine initialized.</div>
+          <div class="log-entry">[00:00:00] ${tApp('telemetryDrawer.initLog')}</div>
         </div>
       </div>
     `;
@@ -52,6 +66,8 @@ export class TelemetryDrawer {
   }
 
   public updateAudit(session: Session, errors: string[]): void {
+    this.lastSession = session;
+    this.lastErrors = errors;
     if (!this.drawerElement) return;
     const box = this.drawerElement.querySelector('#telemetry-audit-box');
     if (!box) return;
@@ -63,42 +79,42 @@ export class TelemetryDrawer {
     box.innerHTML = `
       <div class="audit-status-badge ${hasGaps ? 'has-error' : 'is-ok'}">
         <span class="badge-icon">${hasGaps ? ICONS.alert : ICONS.check}</span>
-        <span class="badge-text">${hasGaps ? 'COVERAGE ISSUES DETECTED' : 'CONTINUOUS COVERAGE 0..127 VERIFIED'}</span>
+        <span class="badge-text">${hasGaps ? tApp('telemetryDrawer.statusIssues') : tApp('telemetryDrawer.statusVerified')}</span>
       </div>
 
       <div class="audit-minimap-container">
-        <div class="minimap-header-label">128-NOTE MIDI COVERAGE MAP (0..127):</div>
+        <div class="minimap-header-label">${tApp('telemetryDrawer.minimapHeader')}</div>
         ${this.buildMiniMapHtml(session)}
       </div>
 
       <div class="audit-metrics-row">
         <div class="audit-stat">
           <span class="stat-num">${totalZones}</span>
-          <span class="stat-lbl">ZONES</span>
+          <span class="stat-lbl">${tApp('telemetryDrawer.statZones')}</span>
         </div>
         <div class="audit-stat">
           <span class="stat-num">${assignedSamples} / ${totalZones}</span>
-          <span class="stat-lbl">SAMPLES ASSIGNED</span>
+          <span class="stat-lbl">${tApp('telemetryDrawer.statSamples')}</span>
         </div>
         <div class="audit-stat">
           <span class="stat-num">128</span>
-          <span class="stat-lbl">MIDI NOTES</span>
+          <span class="stat-lbl">${tApp('telemetryDrawer.statMidiNotes')}</span>
         </div>
       </div>
 
       ${hasGaps ? `
         <div class="audit-errors-list">
-          <div class="errors-heading">Errors requiring attention:</div>
+          <div class="errors-heading">${tApp('telemetryDrawer.errorsHeading')}</div>
           ${errors.map((err) => `<div class="error-item">${ICONS.alert} ${err}</div>`).join('')}
           <div class="telemetry-spacer">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-drawer-auto-repair" title="Automatically sort zones, close gaps/overlaps across 0..127, and clamp root keys">
-              ${ICONS.repair} Auto-Repair MIDI 0..127 Coverage
+            <button type="button" class="btn btn-sm btn-primary" id="btn-drawer-auto-repair" title="${tApp('telemetryDrawer.btnAutoRepairTitle')}">
+              ${ICONS.repair} ${tApp('telemetryDrawer.btnAutoRepair')}
             </button>
           </div>
         </div>
       ` : `
         <div class="audit-ok-notice">
-          All 128 MIDI note slots are partitioned continuously with no gaps or overlaps. Session is ready for Model Maker processing.
+          ${tApp('telemetryDrawer.okNotice')}
         </div>
       `}
     `;

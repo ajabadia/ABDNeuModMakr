@@ -8,6 +8,7 @@
 // wiring lives in ./modelConfig/* (one module per tab).
 // ─────────────────────────────────────────────────────────
 
+import { getAppLocale, onAppLocaleChange } from '../core/i18n';
 import { ICONS } from './icons';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap';
 import { toast } from './notify';
@@ -53,6 +54,11 @@ export class ModelConfigModal {
 
   constructor(handlers: ModelConfigModalHandlers) {
     this.handlers = handlers;
+    onAppLocaleChange(() => {
+      if (this.backdropEl) {
+        this.render();
+      }
+    });
   }
 
   public open(tab: ModelConfigTab = 'general'): void {
@@ -99,6 +105,7 @@ export class ModelConfigModal {
   }
 
   private render(): void {
+    const isEs = getAppLocale() === 'es';
     const config = this.handlers.getConfig();
     const isExtended = (config.workingMode ?? 'classic') === 'extended';
 
@@ -133,44 +140,44 @@ export class ModelConfigModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.sliders}</span>
-            <h2 id="model-config-title">Model Configuration</h2>
+            <h2 id="model-config-title">${isEs ? 'Configuración del Modelo' : 'Model Configuration'}</h2>
             <span class="panel-badge ${isExtended ? 'badge-ai-on' : 'badge-muted'}">
-              ${isExtended ? 'EXTENDED MODE (HD)' : 'CLASSIC 1:1 HARDWARE'}
+              ${isExtended ? (isEs ? 'MODO EXTENDED (HD)' : 'EXTENDED MODE (HD)') : (isEs ? 'HARDWARE CLÁSICO 1:1' : 'CLASSIC 1:1 HARDWARE')}
             </span>
           </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-model-config-close">
+          <button type="button" class="nmm-modal-close" aria-label="${isEs ? 'Cerrar' : 'Close'}" id="btn-model-config-close">
             ${ICONS.close}
           </button>
         </header>
 
         <!-- Navigation Tabs -->
-        <nav class="model-config-tabs-nav" aria-label="Model Configuration Sections">
+        <nav class="model-config-tabs-nav" aria-label="${isEs ? 'Secciones de Configuración del Modelo' : 'Model Configuration Sections'}">
           <button type="button" class="model-tab-btn ${this.activeTab === 'general' ? 'is-active' : ''}" data-tab="general">
             <span class="tab-icon">${ICONS.cpu}</span>
             <div class="tab-label">
-              <span class="tab-title">Mode &amp; Engine</span>
-              <span class="tab-sub">Neuron 2002 / HD Multi-Layer</span>
+              <span class="tab-title">${isEs ? 'Modo y Motor' : 'Mode &amp; Engine'}</span>
+              <span class="tab-sub">${isEs ? 'Neuron 2002 / HD Multicapa' : 'Neuron 2002 / HD Multi-Layer'}</span>
             </div>
           </button>
-          <button type="button" class="model-tab-btn ${this.activeTab === 'articulation' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="articulation" title="${!isExtended ? 'Opciones exclusivas del Modo Extended (HD)' : 'Playback, Articulation & Resinator Lab'}">
+          <button type="button" class="model-tab-btn ${this.activeTab === 'articulation' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="articulation" title="${!isExtended ? (isEs ? 'Opciones exclusivas del Modo Extended (HD)' : 'Exclusive options for Extended Mode (HD)') : (isEs ? 'Reproducción, Articulación y Laboratorio Resinator' : 'Playback, Articulation & Resinator Lab')}">
             <span class="tab-icon">${ICONS.piano}</span>
             <div class="tab-label">
-              <span class="tab-title">Playback &amp; Articulation ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
-              <span class="tab-sub">Glide, Bend &amp; Standard 24/96</span>
+              <span class="tab-title">${isEs ? 'Reproducción y Articulación' : 'Playback &amp; Articulation'} ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
+              <span class="tab-sub">${isEs ? 'Glide, Bend y Estándar 24/96' : 'Glide, Bend &amp; Standard 24/96'}</span>
             </div>
           </button>
-          <button type="button" class="model-tab-btn ${this.activeTab === 'metadata' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="metadata" title="${!isExtended ? 'Opciones exclusivas del Modo Extended (HD)' : 'Metadata & Provenance Tags'}">
+          <button type="button" class="model-tab-btn ${this.activeTab === 'metadata' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="metadata" title="${!isExtended ? (isEs ? 'Opciones exclusivas del Modo Extended (HD)' : 'Exclusive options for Extended Mode (HD)') : (isEs ? 'Metadatos y Etiquetas de Procedencia' : 'Metadata & Provenance Tags')}">
             <span class="tab-icon">${ICONS.database}</span>
             <div class="tab-label">
-              <span class="tab-title">Metadata &amp; Tags ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
-              <span class="tab-sub">${tagCount > 0 ? `${tagCount} Tags Defined` : 'SoundFont &amp; Provenance'}</span>
+              <span class="tab-title">${isEs ? 'Metadatos y Etiquetas' : 'Metadata &amp; Tags'} ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
+              <span class="tab-sub">${tagCount > 0 ? (isEs ? `${tagCount} Etiquetas Definidas` : `${tagCount} Tags Defined`) : (isEs ? 'SoundFont y Procedencia' : 'SoundFont &amp; Provenance')}</span>
             </div>
           </button>
-          <button type="button" class="model-tab-btn ${this.activeTab === 'artwork' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="artwork" title="${!isExtended ? 'Opciones exclusivas del Modo Extended (HD)' : '512×512 WebP Cover Artwork'}">
+          <button type="button" class="model-tab-btn ${this.activeTab === 'artwork' ? 'is-active' : ''} ${!isExtended ? 'is-mode-conditioned' : ''}" data-tab="artwork" title="${!isExtended ? (isEs ? 'Opciones exclusivas del Modo Extended (HD)' : 'Exclusive options for Extended Mode (HD)') : (isEs ? 'Portada WebP 512×512' : '512×512 WebP Cover Artwork')}">
             <span class="tab-icon">${ICONS.palette}</span>
             <div class="tab-label">
-              <span class="tab-title">Cover Artwork ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
-              <span class="tab-sub">${config.coverArtwork ? '512×512 WebP Attached' : 'No Cover Image'}</span>
+              <span class="tab-title">${isEs ? 'Portada' : 'Cover Artwork'} ${!isExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}</span>
+              <span class="tab-sub">${config.coverArtwork ? (isEs ? 'WebP 512×512 Adjunta' : '512×512 WebP Attached') : (isEs ? 'Sin Imagen de Portada' : 'No Cover Image')}</span>
             </div>
           </button>
         </nav>

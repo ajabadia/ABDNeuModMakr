@@ -19,6 +19,7 @@ import {
 import { cloudByokClient } from '../core/ai/CloudByokClient.ts';
 import { resolveAiActionDeclaration } from '../core/ai/aiHonesty.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
+import { getAppLocale } from '../core/i18n.ts';
 import type { ModelCoverArtwork, ProcessConfig } from '../core/types.ts';
 import { escAttr, escHtml } from './escape.ts';
 import { ICONS } from './icons.ts';
@@ -37,7 +38,7 @@ export interface ArtworkProviderOption {
   id: ArtworkProvider;
   name: string;
   badge: string;
-  badgeClass: 'badge-free' | 'badge-local' | 'badge-byok';
+  badgeClass: 'is-ok' | 'is-ai' | 'is-accent';
   description: string;
 }
 
@@ -46,56 +47,56 @@ export const ARTWORK_PROVIDERS: readonly ArtworkProviderOption[] = [
     id: 'procedural',
     name: 'Procedural Acoustic',
     badge: 'Offline • Free',
-    badgeClass: 'badge-free',
+    badgeClass: 'is-ok',
     description: 'Mathematical canvas rendering from F0 harmonics. 0 ms, 0 cost.',
   },
   {
     id: 'bridge',
     name: 'Companion Bridge',
     badge: 'Python 7860',
-    badgeClass: 'badge-local',
+    badgeClass: 'is-ai',
     description: 'Local GPU dedicated neural inference (SD-Turbo / PIL synthesis).',
   },
   {
     id: 'gemini',
     name: 'Google Gemini',
     badge: 'Imagen 3 • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'Photorealistic & artistic neural synthesis via Google AI Studio.',
   },
   {
     id: 'openai',
     name: 'OpenAI / ChatGPT',
     badge: 'DALL-E 3 • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'High-definition geometric synth art & aesthetic album covers.',
   },
   {
     id: 'openrouter',
     name: 'OpenRouter',
     badge: 'Multi-Model • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'Universal gateway: FLUX.1, Claude, GPT-4o, Llama-3 & Imagen.',
   },
   {
     id: 'claude',
     name: 'Anthropic Claude',
     badge: 'Reasoning • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'Acoustic prompt reasoning, structure design & vector synthesis.',
   },
   {
     id: 'huggingface',
     name: 'Hugging Face',
     badge: 'FLUX.1 • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'Serverless ultra-fast 4-step latent diffusion inference.',
   },
   {
     id: 'replicate',
     name: 'Replicate',
     badge: 'FLUX / SDXL • BYOK',
-    badgeClass: 'badge-byok',
+    badgeClass: 'is-accent',
     description: 'Cloud serverless GPU for FLUX.1 and SDXL diffusion.',
   },
 ];
@@ -185,6 +186,7 @@ export class AiCoverGeneratorModal {
       });
     }
 
+    const isEs = getAppLocale() === 'es';
     const providerKeyStatus = this.getProviderKeyStatus(this.selectedProvider);
     const isBridgeConn = bridgeClient.isConnected();
     const activeTextLlm = cloudByokClient.getFirstAvailableTextProvider();
@@ -203,10 +205,10 @@ export class AiCoverGeneratorModal {
         <header class="nmm-modal-header">
           <div class="nmm-modal-header-title">
             <span class="nmm-modal-header-icon">${ICONS.palette}</span>
-            <h2 id="ai-cover-title">AI Cover Artwork Generator</h2>
-            <span class="panel-badge badge-ai-on">NEURAL &amp; PROCEDURAL</span>
+            <h2 id="ai-cover-title">${isEs ? 'Generador IA de Portadas de Modelo' : 'AI Cover Artwork Generator'}</h2>
+            <span class="panel-badge badge-ai-on">${isEs ? 'NEURONAL Y PROCEDURAL' : 'NEURAL & PROCEDURAL'}</span>
           </div>
-          <button type="button" class="nmm-modal-close" id="btn-ai-cover-close" aria-label="Close" ${this.isGenerating ? 'disabled' : ''}>
+          <button type="button" class="nmm-modal-close" id="btn-ai-cover-close" aria-label="${isEs ? 'Cerrar' : 'Close'}" ${this.isGenerating ? 'disabled' : ''}>
             ${ICONS.close}
           </button>
         </header>
@@ -221,13 +223,13 @@ export class AiCoverGeneratorModal {
                     ? `
                   <div class="ai-cover-generating-state">
                     <div class="neural-pulse-spinner">${ICONS.sparkle}</div>
-                    <strong class="generating-title">Synthesizing Neural Artwork...</strong>
-                    <span class="nmm-hint">${escHtml(this.generationStatusText || 'Rendering acoustic soundwaves...')}</span>
+                    <strong class="generating-title">${isEs ? 'Sintetizando Portada Neuronal...' : 'Synthesizing Neural Artwork...'}</strong>
+                    <span class="nmm-hint">${escHtml(this.generationStatusText || (isEs ? 'Renderizando ondas acústicas...' : 'Rendering acoustic soundwaves...'))}</span>
                   </div>
                 `
                     : this.currentArtwork
                       ? `
-                  <img src="${escAttr(this.currentArtwork.webpDataUrl)}" alt="Cover Preview" class="ai-cover-img" />
+                  <img src="${escAttr(this.currentArtwork.webpDataUrl)}" alt="${isEs ? 'Vista previa de portada' : 'Cover Preview'}" class="ai-cover-img" />
                   <div class="ai-cover-badge-meta">
                     <span>${this.currentArtwork.width}×${this.currentArtwork.height} WebP</span>
                     <span>${Math.round(this.currentArtwork.byteLength / 1024)} KB</span>
@@ -236,8 +238,8 @@ export class AiCoverGeneratorModal {
                       : `
                   <div class="ai-cover-empty-placeholder">
                     <div class="placeholder-icon">${ICONS.wave}</div>
-                    <strong>Ready to Generate</strong>
-                    <span>Select an artistic style and click Generate below</span>
+                    <strong>${isEs ? 'Listo para Generar' : 'Ready to Generate'}</strong>
+                    <span>${isEs ? 'Selecciona un estilo artístico y pulsa Generar abajo' : 'Select an artistic style and click Generate below'}</span>
                   </div>
                 `
                 }
@@ -247,14 +249,14 @@ export class AiCoverGeneratorModal {
                 this.currentArtwork && !this.isGenerating
                   ? `
                 <div class="ai-cover-actions-bar">
-                  <button type="button" class="btn btn-primary btn-sm flex-1" id="btn-ai-cover-apply" title="Apply this artwork as model cover">
-                    ${ICONS.check} Accept &amp; Apply as Model Cover
+                  <button type="button" class="btn btn-primary btn-sm flex-1" id="btn-ai-cover-apply" title="${isEs ? 'Aplicar esta imagen como portada del modelo' : 'Apply this artwork as model cover'}">
+                    ${ICONS.check} ${isEs ? 'Aceptar y Aplicar como Portada' : 'Accept & Apply as Model Cover'}
                   </button>
-                  <button type="button" class="btn btn-outline btn-sm" id="btn-ai-cover-download" title="Download WebP image">
-                    ${ICONS.download} Download
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-ai-cover-download" title="${isEs ? 'Descargar imagen WebP' : 'Download WebP image'}">
+                    ${ICONS.download} ${isEs ? 'Descargar' : 'Download'}
                   </button>
-                  <button type="button" class="btn btn-outline btn-sm" id="btn-ai-cover-regen" title="Generate another variation">
-                    ${ICONS.refresh} Regenerate
+                  <button type="button" class="btn btn-outline btn-sm" id="btn-ai-cover-regen" title="${isEs ? 'Generar otra variación' : 'Generate another variation'}">
+                    ${ICONS.refresh} ${isEs ? 'Regenerar' : 'Regenerate'}
                   </button>
                 </div>
               `
@@ -267,22 +269,22 @@ export class AiCoverGeneratorModal {
               <!-- Context Card -->
               <div class="ai-ctrl-card">
                 <div class="nmm-title-row">
-                  <strong>${ICONS.cpu} Acoustic Timbre Profile</strong>
-                  <span class="text-muted">Target: ${escHtml(expandedName)}</span>
+                  <strong>${ICONS.cpu} ${isEs ? 'Perfil Tímbrico Acústico' : 'Acoustic Timbre Profile'}</strong>
+                  <span class="text-muted">${isEs ? 'Destino:' : 'Target:'} ${escHtml(expandedName)}</span>
                 </div>
                 <div class="ai-tags-row">
-                  <span class="val-pill">Model: <strong>${escHtml(modelName)}</strong></span>
+                  <span class="val-pill">${isEs ? 'Modelo:' : 'Model:'} <strong>${escHtml(modelName)}</strong></span>
                   <span class="val-pill">Set: <strong>#${pSet}</strong></span>
-                  <span class="val-pill">Category: <strong>${escHtml(category)}</strong></span>
-                  <span class="val-pill">Output: <strong>512×512 WebP</strong></span>
+                  <span class="val-pill">${isEs ? 'Categoría:' : 'Category:'} <strong>${escHtml(category)}</strong></span>
+                  <span class="val-pill">${isEs ? 'Salida:' : 'Output:'} <strong>512×512 WebP</strong></span>
                 </div>
               </div>
 
               <!-- Style Selector -->
               <div class="ai-ctrl-card">
                 <div class="nmm-title-row">
-                  <strong>${ICONS.palette} Artistic Aesthetic Style</strong>
-                  <span class="text-muted">Visual palette and synthesis genre</span>
+                  <strong>${ICONS.palette} ${isEs ? 'Estilo Estético Artístico' : 'Artistic Aesthetic Style'}</strong>
+                  <span class="text-muted">${isEs ? 'Paleta visual y género de síntesis' : 'Visual palette and synthesis genre'}</span>
                 </div>
                 <div class="ai-styles-grid">
                   ${ARTWORK_STYLES.map(
@@ -299,7 +301,7 @@ export class AiCoverGeneratorModal {
               <!-- Prompt Editor -->
               <div class="ai-ctrl-card">
                 <div class="nmm-title-row">
-                  <label for="txt-ai-prompt"><strong>${ICONS.edit} Acoustic Prompt</strong></label>
+                  <label for="txt-ai-prompt"><strong>${ICONS.edit} ${isEs ? 'Prompt Acústico' : 'Acoustic Prompt'}</strong></label>
                   <div class="ai-prompt-actions cfg-inline-row">
                     <button
                       type="button"
@@ -308,10 +310,10 @@ export class AiCoverGeneratorModal {
                       title="${escAttr(llmPromptDecl.buttonTooltip)}"
                       ${this.isEnhancingPrompt ? 'disabled' : ''}
                     >
-                      ${this.isEnhancingPrompt ? `${ICONS.spinner} Enhancing...` : `${ICONS.sparkle} ${escHtml(llmPromptDecl.buttonLabel)}`}
+                      ${this.isEnhancingPrompt ? `${ICONS.spinner} ${isEs ? 'Enriqueciendo...' : 'Enhancing...'}` : `${ICONS.sparkle} ${escHtml(llmPromptDecl.buttonLabel)}`}
                     </button>
-                    <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="Reset prompt to acoustic default">
-                      ${ICONS.refresh} Reset
+                    <button type="button" class="btn btn-xs btn-outline" id="btn-reset-prompt" title="${isEs ? 'Restablecer prompt acústico por defecto' : 'Reset prompt to acoustic default'}">
+                      ${ICONS.refresh} ${isEs ? 'Restablecer' : 'Reset'}
                     </button>
                   </div>
                 </div>
@@ -319,15 +321,15 @@ export class AiCoverGeneratorModal {
                   id="txt-ai-prompt"
                   class="form-control ai-prompt-textarea"
                   rows="3"
-                  placeholder="Acoustic description used for diffusion..."
+                  placeholder="${isEs ? 'Descripción acústica usada para la generación...' : 'Acoustic description used for diffusion...'}"
                 >${escHtml(promptText)}</textarea>
               </div>
 
               <!-- Provider Selection -->
               <div class="ai-ctrl-card">
                 <div class="nmm-title-row">
-                  <strong>${ICONS.sparkle} Generative Engine / Provider</strong>
-                  <span class="text-muted">Select offline procedural, local bridge or private Cloud BYOK</span>
+                  <strong>${ICONS.sparkle} ${isEs ? 'Motor Generativo / Proveedor' : 'Generative Engine / Provider'}</strong>
+                  <span class="text-muted">${isEs ? 'Elige procedural offline, bridge local o Cloud BYOK privado' : 'Select offline procedural, local bridge or private Cloud BYOK'}</span>
                 </div>
                 <div class="ai-styles-grid ai-providers-grid">
                   ${ARTWORK_PROVIDERS.map(
@@ -340,7 +342,7 @@ export class AiCoverGeneratorModal {
                     >
                       <div class="style-title-row">
                         <span class="style-title">${escHtml(p.name)}</span>
-                        <span class="provider-badge ${p.badgeClass}">${escHtml(p.badge)}</span>
+                        <span class="nmm-status-pill ${p.badgeClass}">${escHtml(p.badge)}</span>
                       </div>
                       <div class="style-desc">${escHtml(p.description)}</div>
                     </button>
@@ -351,7 +353,7 @@ export class AiCoverGeneratorModal {
                   ${providerKeyStatus.message}
                   ${
                     providerKeyStatus.showSettingsLink
-                      ? `<button type="button" class="btn-link" id="btn-open-settings-byok">Open Settings (Ctrl+,)</button>`
+                      ? `<button type="button" class="btn-link" id="btn-open-settings-byok">${isEs ? 'Abrir Ajustes (Ctrl+,)' : 'Open Settings (Ctrl+,)'}</button>`
                       : ''
                   }
                 </div>
@@ -375,11 +377,11 @@ export class AiCoverGeneratorModal {
         <footer class="nmm-modal-footer">
           <div class="footer-right">
           <button type="button" class="btn btn-outline" id="btn-ai-cover-cancel" ${this.isGenerating ? 'disabled' : ''}>
-            Close
+            ${isEs ? 'Cerrar' : 'Close'}
           </button>
           <button type="button" class="btn btn-primary btn-ai-generate-main" id="btn-ai-cover-generate" ${this.isGenerating ? 'disabled' : ''} title="${escAttr(artworkGenDecl.buttonTooltip)}">
             ${this.isGenerating ? ICONS.spinner : ICONS.sparkle}
-            ${this.isGenerating ? 'Generating Artwork...' : escHtml(artworkGenDecl.buttonLabel)}
+            ${this.isGenerating ? (isEs ? 'Generando Portada...' : 'Generating Artwork...') : escHtml(artworkGenDecl.buttonLabel)}
           </button>
           </div>
         </footer>

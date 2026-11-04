@@ -5,6 +5,8 @@
 
 import { createSynthNavBar } from '@abdsynths/shared/components';
 import { ICONS } from './icons';
+import { toast } from './notify';
+import { getAppLocale, setAppLocale, onAppLocaleChange, tApp, type AppLocale } from '../core/i18n';
 import { cloudByokClient } from '../core/ai/CloudByokClient';
 import { webNeuralEngine } from '../core/ai/WebNeuralEngine';
 import { resolveAiSystemStatus } from '../core/ai/aiHonesty';
@@ -68,6 +70,8 @@ export interface NavbarHandlers {
   onSelectThemeFamily?: (family: string) => void;
   onSetThemeMode?: (mode: 'light' | 'dark') => void;
   onToggleThemeMode?: () => void;
+  onSetLocale?: (locale: AppLocale) => void;
+  onToggleLocale?: () => void;
 }
 
 export class AppNavbar {
@@ -85,144 +89,138 @@ export class AppNavbar {
   private redoBtn: HTMLButtonElement | null = null;
   private docModalEl: HTMLElement | null = null;
   private themeModeBtn: HTMLButtonElement | null = null;
+  private langBtn: HTMLButtonElement | null = null;
   private currentTheme = 'neuron-light';
   private currentThemeFamily = 'neuron';
   private currentThemeMode: 'light' | 'dark' = 'light';
+  private currentLocale: AppLocale = getAppLocale();
   private currentTargetFormat: TargetFormat = 'dual';
   private currentWorkingMode: WorkingMode = 'classic';
+  private lastSession: Session | null = null;
+  private lastCoverage: string[] = [];
+  private lastIsBridgeConnected = false;
+  private lastHistory: HistoryState | null = null;
 
   constructor(container: HTMLElement, handlers: NavbarHandlers) {
     this.container = container;
     this.handlers = handlers;
   }
 
-  public mount(
-    initialSession: Session,
-    initialCoverage: string[],
-    initialTheme = 'neuron-light'
-  ): void {
-    this.currentTheme = initialTheme;
-    this.currentTargetFormat = initialSession.processConfig.targetFormat ?? 'dual';
-
-    const brand = {
-      title: '',
-      subtitle: '',
-      logoHtml: `<span class="neuron-logo-mark" title="MODELmaker">${ICONS.cpu}</span>`,
-    };
-
-    const menus = [
+  private buildMenus() {
+    const es = this.currentLocale === 'es';
+    return [
       {
-        name: 'File',
+        name: tApp('navbar.menuFile'),
         items: [
-          { id: 101, label: 'New Session (Reset)', action: 'newSession' },
-          { id: 102, label: 'Open Session (.nmsession.json)...', action: 'openSession', shortcut: 'Ctrl+O' },
+          { id: 101, label: es ? 'Nueva Sesión (Reiniciar)' : 'New Session (Reset)', action: 'newSession' },
+          { id: 102, label: es ? 'Abrir Sesión (.nmsession.json)...' : 'Open Session (.nmsession.json)...', action: 'openSession', shortcut: 'Ctrl+O' },
           {
             id: 103,
-            label: 'Save...',
+            label: es ? 'Guardar...' : 'Save...',
             submenu: [
-              { id: 1031, label: 'Save Session', action: 'saveSession', shortcut: 'Ctrl+S' },
-              { id: 1032, label: 'Save Session As...', action: 'saveSessionAs', shortcut: 'Ctrl+Shift+S' },
+              { id: 1031, label: es ? 'Guardar Sesión' : 'Save Session', action: 'saveSession', shortcut: 'Ctrl+S' },
+              { id: 1032, label: es ? 'Guardar Sesión Como...' : 'Save Session As...', action: 'saveSessionAs', shortcut: 'Ctrl+Shift+S' },
               { separator: true },
-              { id: 1033, label: 'Save Model to AxionikDB...', action: 'saveToAxionikDb' },
-              { id: 1034, label: 'Save Model to AxionikDB As (Duplicate)...', action: 'saveToAxionikDbAs' },
+              { id: 1033, label: es ? 'Guardar Modelo en AxionikDB...' : 'Save Model to AxionikDB...', action: 'saveToAxionikDb' },
+              { id: 1034, label: es ? 'Guardar Modelo en AxionikDB Como (Duplicar)...' : 'Save Model to AxionikDB As (Duplicate)...', action: 'saveToAxionikDbAs' },
               { separator: true },
-              { id: 1035, label: `Export ${TIME_CAPSULE_CANONICAL_LABEL}...`, action: 'exportModel', shortcut: 'Ctrl+T' },
-              { id: 1036, label: 'Export Time Capsule As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
+              { id: 1035, label: `${es ? 'Exportar' : 'Export'} ${TIME_CAPSULE_CANONICAL_LABEL}...`, action: 'exportModel', shortcut: 'Ctrl+T' },
+              { id: 1036, label: es ? 'Exportar Cápsula del Tiempo Como (.zip)...' : 'Export Time Capsule As (.zip)...', action: 'exportModelAs', shortcut: 'Ctrl+Shift+T' },
             ],
           },
           { separator: true },
-          { id: 104, label: 'Universal Smart Import...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
+          { id: 104, label: es ? 'Importación Inteligente Universal...' : 'Universal Smart Import...', action: 'universalSmartImport', shortcut: 'Ctrl+I' },
           {
             id: 1040,
-            label: 'Import Specific Formats',
+            label: es ? 'Importar Formatos Específicos' : 'Import Specific Formats',
             submenu: [
-              { id: 1041, label: 'Import Audio Files (.wav / .aif / .flac)...', action: 'importSamples' },
-              { id: 1045, label: 'Import Audio by Name (Hartmann convention)...', action: 'importByName', shortcut: 'Ctrl+N' },
-              { id: 105,  label: 'Import Audio Folder...', action: 'importFolder' },
+              { id: 1041, label: es ? 'Importar Archivos de Audio (.wav / .aif / .flac)...' : 'Import Audio Files (.wav / .aif / .flac)...', action: 'importSamples' },
+              { id: 1045, label: es ? 'Importar Audio por Nombre (Convención Hartmann)...' : 'Import Audio by Name (Hartmann convention)...', action: 'importByName', shortcut: 'Ctrl+N' },
+              { id: 105,  label: es ? 'Importar Carpeta de Audio...' : 'Import Audio Folder...', action: 'importFolder' },
               { separator: true },
-              { id: 1055, label: 'Import Sampler / Disk Image (.sf2, .sfz, .iso, .akp, .exb)...', action: 'importSampler' },
+              { id: 1055, label: es ? 'Importar Sampler / Imagen de Disco (.sf2, .sfz, .iso, .akp, .exb)...' : 'Import Sampler / Disk Image (.sf2, .sfz, .iso, .akp, .exb)...', action: 'importSampler' },
               { separator: true },
-              { id: 106,  label: 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
-              { id: 107,  label: 'Import Model Files / .zip...', action: 'importModel' },
+              { id: 106,  label: es ? 'Importar Carpeta de Modelo (<NNN>.model)...' : 'Import Model Folder (<NNN>.model)...', action: 'importModelFolder' },
+              { id: 107,  label: es ? 'Importar Archivos de Modelo / .zip...' : 'Import Model Files / .zip...', action: 'importModel' },
             ],
           },
-          { id: 1065, label: 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
+          { id: 1065, label: es ? 'Configurar Carpeta de Librería NeuronDB...' : 'Configure NeuronDB Library Folder...', action: 'configureNeuronDbFolder' },
           { separator: true },
-          { id: 1085, label: 'Export Instrument (Choose Destination)...', action: 'openExportDestination', shortcut: 'Ctrl+Shift+X' },
-          { id: 109, label: 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
+          { id: 1085, label: es ? 'Exportar Instrumento (Elegir Destino)...' : 'Export Instrument (Choose Destination)...', action: 'openExportDestination', shortcut: 'Ctrl+Shift+X' },
+          { id: 109, label: es ? 'Exportar Zona Activa como AIFF Clásico (44.1k/16b)...' : 'Export Active Zone as Legacy AIFF (44.1k/16b)...', action: 'exportZoneAiff' },
         ],
       },
       {
-        name: 'Edit',
+        name: tApp('navbar.menuEdit'),
         items: [
-          { id: 201, label: 'Undo', action: 'undo', shortcut: 'Ctrl+Z' },
-          { id: 202, label: 'Redo', action: 'redo', shortcut: 'Ctrl+Y' },
+          { id: 201, label: tApp('navbar.editUndo'), action: 'undo', shortcut: 'Ctrl+Z' },
+          { id: 202, label: tApp('navbar.editRedo'), action: 'redo', shortcut: 'Ctrl+Y' },
           { separator: true },
-          { id: 203, label: 'New Zone (Split at Root Key)', action: 'addZone', shortcut: 'Insert' },
-          { id: 204, label: 'Remove Selected Zone', action: 'removeZone', shortcut: 'Delete' },
-          { id: 206, label: 'Reset to Single Zone (0..127)', action: 'clearZones' },
+          { id: 203, label: tApp('navbar.editAddZone'), action: 'addZone', shortcut: 'Insert' },
+          { id: 204, label: tApp('navbar.editRemoveZone'), action: 'removeZone', shortcut: 'Delete' },
+          { id: 206, label: tApp('navbar.editResetZones'), action: 'clearZones' },
           { separator: true },
-          { id: 205, label: 'Auto-Repair MIDI Coverage (0..127)', action: 'autoRepairCoverage' },
-          { id: 302, label: 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
+          { id: 205, label: tApp('navbar.editAutoRepair'), action: 'autoRepairCoverage' },
+          { id: 302, label: es ? 'Validar Cobertura MIDI (0..127)' : 'Validate MIDI Coverage (0..127)', action: 'validateCoverage' },
           { separator: true },
-          { id: 207, label: 'Settings & AI Engine...', action: 'openSettingsModal', shortcut: 'Ctrl+,' },
+          { id: 207, label: tApp('navbar.viewSettings'), action: 'openSettingsModal', shortcut: 'Ctrl+,' },
         ],
       },
       {
-        name: 'Model',
+        name: tApp('navbar.menuModel'),
         items: [
-          { id: 3011, label: 'Configure Model...', action: 'openModelConfig', shortcut: 'Ctrl+M' },
+          { id: 3011, label: tApp('navbar.modelSettings'), action: 'openModelConfig', shortcut: 'Ctrl+M' },
           {
             id: 3000,
-            label: 'Tools',
+            label: es ? 'Herramientas' : 'Tools',
             submenu: [
-              { id: 3016, label: 'Record (Audio Recorder & MIDI AutoSampler)...', action: 'openAudioRecorder' },
-              { id: 3013, label: 'Loop Editor (Waveform & Zero-Crossing)...', action: 'openLoopEditor' },
-              { id: 3017, label: 'AutoLoop en todas las zonas', action: 'autoLoopAllZones' },
-              { id: 3012, label: 'AutoSlicer (Audio Chopper)...', action: 'openAudioChopper' },
+              { id: 3016, label: tApp('navbar.fileRecordAudio'), action: 'openAudioRecorder' },
+              { id: 3013, label: es ? 'Editor de Bucles (Forma de Onda y Cruce por Cero)...' : 'Loop Editor (Waveform & Zero-Crossing)...', action: 'openLoopEditor' },
+              { id: 3017, label: tApp('zoneInspector.toolAutoLoopAll'), action: 'autoLoopAllZones' },
+              { id: 3012, label: tApp('navbar.fileAutoSlicer'), action: 'openAudioChopper' },
               { separator: true },
-              { id: 3014, label: 'AI Cover Artwork Generator...', action: 'openAiCoverGenerator' },
-              { id: 3010, label: 'Asistente Guiado (4 Pasos)...', action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
+              { id: 3014, label: tApp('navbar.modelArtwork'), action: 'openAiCoverGenerator' },
+              { id: 3010, label: tApp('navbar.modelGuidedWizard'), action: 'openMusicianWizard', shortcut: 'Ctrl+Shift+W' },
             ],
           },
           { separator: true },
-          { id: 301, label: 'Generate Neuron Model...', action: 'startProcess', shortcut: 'Ctrl+P' },
-          { id: 3015, label: 'Batch Processor...', action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
+          { id: 301, label: tApp('navbar.modelGenerate'), action: 'startProcess', shortcut: 'Ctrl+P' },
+          { id: 3015, label: tApp('navbar.fileBatchCreator'), action: 'openBatchModal', shortcut: 'Ctrl+Shift+B' },
           { separator: true },
           {
             id: 303,
-            label: 'Working Mode',
+            label: es ? 'Modo de Trabajo' : 'Working Mode',
             submenu: [
-              { id: 304, label: 'Classic Mode (1:1 Hardware)', action: 'setWorkingMode', value: 'classic' },
-              { id: 305, label: 'Extended Mode (HD Multi-Layer)', action: 'setWorkingMode', value: 'extended' },
+              { id: 304, label: es ? 'Modo Clásico (Hardware 1:1)' : 'Classic Mode (1:1 Hardware)', action: 'setWorkingMode', value: 'classic' },
+              { id: 305, label: es ? 'Modo Extendido (HD Multi-Capa)' : 'Extended Mode (HD Multi-Layer)', action: 'setWorkingMode', value: 'extended' },
             ],
           },
           {
             id: 306,
-            label: 'Export / Save Mode',
+            label: es ? 'Formato de Exportación / Guardado' : 'Export / Save Mode',
             submenu: [
               { id: 307, label: 'Dual (.model + .nmmodel)', action: 'setTargetFormat', value: 'dual' },
-              { id: 308, label: 'Classic (.model / .sound)', action: 'setTargetFormat', value: 'legacy-neuron' },
-              { id: 309, label: 'Extended (.nmmodel)', action: 'setTargetFormat', value: 'modern-neural' },
+              { id: 308, label: es ? 'Clásico (.model / .sound)' : 'Classic (.model / .sound)', action: 'setTargetFormat', value: 'legacy-neuron' },
+              { id: 309, label: es ? 'Extendido (.nmmodel)' : 'Extended (.nmmodel)', action: 'setTargetFormat', value: 'modern-neural' },
             ],
           },
           { separator: true },
-          { id: 310, label: 'AI Assistance & Engine Settings...', action: 'openAiEngineModal' },
-          { id: 906, label: 'Local Companion Bridge & GPU Status...', action: 'openBridgeModal' },
+          { id: 310, label: tApp('navbar.modelAiPipeline'), action: 'openAiEngineModal' },
+          { id: 906, label: tApp('navbar.helpCompanion'), action: 'openBridgeModal' },
         ],
       },
       {
-        name: 'View',
+        name: tApp('navbar.menuView'),
         items: [
-          { id: 401, label: 'Zone Metadata Editor Drawer', action: 'toggleZoneDrawer', shortcut: 'Ctrl+J' },
-          { id: 402, label: 'Spectral & A/B Resynthesis Inspector', action: 'toggleSpectral', shortcut: 'Ctrl+E' },
+          { id: 401, label: es ? 'Cajón Editor de Metadatos de Zona' : 'Zone Metadata Editor Drawer', action: 'toggleZoneDrawer', shortcut: 'Ctrl+J' },
+          { id: 402, label: tApp('navbar.viewSpectral'), action: 'toggleSpectral', shortcut: 'Ctrl+E' },
           { separator: true },
-          { id: 403, label: 'NeuronDB & AxionikDB Bank Browser', action: 'toggleBank', shortcut: 'Ctrl+B' },
-          { id: 404, label: 'Telemetry & Coverage Audit', action: 'toggleLogs', shortcut: 'Ctrl+L' },
+          { id: 403, label: tApp('navbar.viewBank'), action: 'toggleBank', shortcut: 'Ctrl+B' },
+          { id: 404, label: tApp('navbar.viewTelemetry'), action: 'toggleLogs', shortcut: 'Ctrl+L' },
           { separator: true },
           {
             id: 405,
-            label: 'Hardware Skin',
+            label: tApp('navbar.viewThemeSkin'),
             submenu: [
               { id: 406, label: 'Hartmann Neuron (2002)', action: 'selectThemeFamily', value: 'neuron' },
               { id: 407, label: 'Access Virus Snow (2008)', action: 'selectThemeFamily', value: 'virus-snow' },
@@ -234,29 +232,58 @@ export class AppNavbar {
           },
           {
             id: 412,
-            label: 'Appearance Mode',
+            label: tApp('navbar.viewColorMode'),
             submenu: [
-              { id: 413, label: 'Light Mode', action: 'setThemeMode', value: 'light' },
-              { id: 414, label: 'Dark Mode', action: 'setThemeMode', value: 'dark' },
+              { id: 413, label: tApp('navbar.viewModeLight'), action: 'setThemeMode', value: 'light' },
+              { id: 414, label: tApp('navbar.viewModeDark'), action: 'setThemeMode', value: 'dark' },
               { separator: true },
-              { id: 415, label: 'Toggle Light / Dark', action: 'toggleThemeMode' },
+              { id: 415, label: tApp('navbar.btnThemeModeTitle'), action: 'toggleThemeMode' },
+            ],
+          },
+          {
+            id: 416,
+            label: tApp('navbar.viewLanguage'),
+            submenu: [
+              { id: 417, label: 'Español (ES)', action: 'setLocale', value: 'es', iconHtml: ICONS.flagEs },
+              { id: 418, label: 'English (EN)', action: 'setLocale', value: 'en', iconHtml: ICONS.flagEn },
+              { separator: true },
+              { id: 419, label: es ? 'Alternar ES / EN' : 'Toggle ES / EN', action: 'toggleLocale' },
             ],
           },
         ],
       },
       {
-        name: 'Help',
+        name: tApp('navbar.menuHelp'),
         items: [
-          { id: 901, label: 'Hartmann MODELmaker User Guide...', action: 'manual', shortcut: 'F1' },
-          { id: 902, label: 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
+          { id: 901, label: tApp('navbar.helpGuide'), action: 'manual', shortcut: 'F1' },
+          { id: 902, label: es ? 'Especificaciones NASAnalysis.dll y Dual-Target...' : 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
-          { id: 9005, label: 'System Configuration Health & Diagnostics...', action: 'openConfigHealth' },
-          { id: 903, label: 'Install Desktop App (PWA)...', action: 'installPwa' },
+          { id: 9005, label: es ? 'Diagnóstico y Salud de Configuración del Sistema...' : 'System Configuration Health & Diagnostics...', action: 'openConfigHealth' },
+          { id: 903, label: es ? 'Instalar Aplicación de Escritorio (PWA)...' : 'Install Desktop App (PWA)...', action: 'installPwa' },
           { separator: true },
-          { id: 904, label: 'About NEURON MODELmaker...', action: 'about' },
+          { id: 904, label: tApp('navbar.helpAbout'), action: 'about' },
         ],
       },
     ];
+  }
+
+  public mount(
+    initialSession: Session,
+    initialCoverage: string[],
+    initialTheme = 'neuron-light'
+  ): void {
+    this.currentTheme = initialTheme;
+    this.currentTargetFormat = initialSession.processConfig.targetFormat ?? 'dual';
+    this.lastSession = initialSession;
+    this.lastCoverage = initialCoverage;
+
+    const brand = {
+      title: '',
+      subtitle: '',
+      logoHtml: `<span class="neuron-logo-mark" title="MODELmaker">${ICONS.cpu}</span>`,
+    };
+
+    const menus = this.buildMenus();
 
     // Center HUD Slot
     const centerSlot = document.createElement('div');
@@ -267,16 +294,16 @@ export class AppNavbar {
     const initCharInfo = isInitExt ? `${initName.length} chars (Extended)` : `${initName.length}/11 chars`;
     centerSlot.innerHTML = `
       <div class="hud-pill hud-model-pill" title="Active target model slot, hardware name, and character length">
-        <span class="hud-label">TARGET MODEL:</span>
+        <span class="hud-label" id="hud-model-label">${tApp('navbar.hudTargetModel')}</span>
         <span class="hud-value hud-model-name" id="hud-model-name">#${initSlot} &bull; ${initName} &bull; ${initCharInfo}</span>
       </div>
-      <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="Click to inspect or repair MIDI 0..127 coverage">
+      <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="${initialCoverage.length === 0 ? tApp('navbar.hudMidiTooltipOk') : tApp('navbar.hudMidiTooltipErr')}">
         <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.piano}</span>
-        <span class="hud-coverage-text">${initialCoverage.length === 0 ? '128/128 MIDI KEYS OK' : `${initialCoverage.length} GAPS DETECTED`}</span>
+        <span class="hud-coverage-text">${initialCoverage.length === 0 ? tApp('navbar.hudMidiOk') : `${initialCoverage.length} ${tApp('navbar.hudMidiGaps')}`}</span>
       </div>
       <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Algorithmic DSP mode (AI Off). Click to configure AI assistance.">
         <span class="hud-ai-icon">${ICONS.ai}</span>
-        <span class="hud-ai-text" id="hud-ai-text">AI MODE: OFF (DSP)</span>
+        <span class="hud-ai-text" id="hud-ai-text">${tApp('aiStatus.disabledBadge')}</span>
         <span class="hud-ai-chevron">${ICONS.settings}</span>
       </div>
     `;
@@ -303,6 +330,9 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
         ${ICONS.terminal}
       </button>
+      <button type="button" class="btn btn-hud-icon btn-lang-toggle" id="nav-btn-lang" title="${this.getLangButtonTitle()}" aria-label="${this.getLangButtonTitle()}">
+        <span class="lang-flag-icon">${this.currentLocale === 'es' ? ICONS.flagEs : ICONS.flagEn}</span>
+      </button>
       <button type="button" class="btn btn-hud-icon btn-theme-mode-toggle" id="nav-btn-theme-mode" title="${this.currentThemeMode === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}">
         <span class="theme-mode-icon">${this.currentThemeMode === 'light' ? ICONS.moon : ICONS.sun}</span>
       </button>
@@ -328,6 +358,7 @@ export class AppNavbar {
         selectTheme: this.currentTheme,
         selectThemeFamily: this.currentThemeFamily,
         setThemeMode: this.currentThemeMode,
+        setLocale: this.currentLocale,
       },
       aboutDialog: {
         appName: 'NEURON MODELmaker',
@@ -391,6 +422,10 @@ export class AppNavbar {
     rightSlot.querySelector('#nav-btn-bank')?.addEventListener('click', () => this.handlers.onToggleBank());
     rightSlot.querySelector('#nav-btn-batch')?.addEventListener('click', () => this.handlers.onOpenBatchModal?.());
     rightSlot.querySelector('#nav-btn-logs')?.addEventListener('click', () => this.handlers.onToggleLogs());
+    this.langBtn = rightSlot.querySelector('#nav-btn-lang');
+    this.langBtn?.addEventListener('click', () => {
+      this.toggleLocale();
+    });
     this.themeModeBtn = rightSlot.querySelector('#nav-btn-theme-mode');
     this.themeModeBtn?.addEventListener('click', () => {
       this.handlers.onToggleThemeMode?.();
@@ -403,6 +438,82 @@ export class AppNavbar {
         this.handlers.onOpenAiEngineModal?.();
       }
     });
+
+    onAppLocaleChange((nextLocale) => {
+      this.currentLocale = nextLocale;
+      this.syncLangButtonUI();
+      this.refreshLocaleUI();
+      this.syncActiveMenuChecks();
+    });
+  }
+
+  private refreshLocaleUI(): void {
+    const menus = this.buildMenus();
+    if (this.navBarInstance && (this.navBarInstance as any).options) {
+      (this.navBarInstance as any).options.menus = menus;
+    }
+    const triggers = this.container.querySelectorAll('.nav-menu-trigger');
+    triggers.forEach((btn, idx) => {
+      if (menus[idx]) {
+        btn.textContent = menus[idx].name;
+      }
+    });
+
+    const modelLabel = this.container.querySelector('#hud-model-label');
+    if (modelLabel) {
+      modelLabel.textContent = tApp('navbar.hudTargetModel');
+    }
+
+    const specBtn = this.container.querySelector<HTMLElement>('#nav-btn-spectral');
+    if (specBtn) specBtn.title = `${tApp('navbar.viewSpectral')} (Ctrl+E)`;
+    const bankBtn = this.container.querySelector<HTMLElement>('#nav-btn-bank');
+    if (bankBtn) bankBtn.title = `${tApp('navbar.btnBankTitle')} (Ctrl+B)`;
+    const batchBtn = this.container.querySelector<HTMLElement>('#nav-btn-batch');
+    if (batchBtn) batchBtn.title = `${tApp('navbar.btnBatchTitle')} (Ctrl+Shift+B)`;
+    const logsBtn = this.container.querySelector<HTMLElement>('#nav-btn-logs');
+    if (logsBtn) logsBtn.title = `${tApp('navbar.btnTelemetryTitle')} (Ctrl+L)`;
+    const themeBtn = this.container.querySelector<HTMLElement>('#nav-btn-theme');
+    if (themeBtn) themeBtn.title = tApp('navbar.btnThemeTitle');
+    const settingsBtn = this.container.querySelector<HTMLElement>('#nav-btn-settings');
+    if (settingsBtn) settingsBtn.title = `${tApp('navbar.btnSettingsTitle')} (Ctrl+,)`;
+
+    if (this.lastSession) {
+      this.updateSession(this.lastSession, this.lastCoverage, this.lastIsBridgeConnected);
+    }
+    if (this.lastHistory) {
+      this.updateHistory(this.lastHistory);
+    }
+  }
+
+  private getLangButtonTitle(): string {
+    return this.currentLocale === 'es'
+      ? 'Idioma: Español (clic para cambiar a English)'
+      : 'Language: English (click to switch to Español)';
+  }
+
+  private syncLangButtonUI(): void {
+    if (!this.langBtn) return;
+    const title = this.getLangButtonTitle();
+    this.langBtn.title = title;
+    this.langBtn.setAttribute('aria-label', title);
+    this.langBtn.innerHTML = `<span class="lang-flag-icon">${this.currentLocale === 'es' ? ICONS.flagEs : ICONS.flagEn}</span>`;
+  }
+
+  public setLocale(locale: AppLocale): void {
+    if (locale !== 'es' && locale !== 'en') return;
+    setAppLocale(locale);
+    this.currentLocale = locale;
+    this.syncLangButtonUI();
+    this.refreshLocaleUI();
+    this.syncActiveMenuChecks();
+    this.handlers.onSetLocale?.(locale);
+  }
+
+  public toggleLocale(): void {
+    const next: AppLocale = this.currentLocale === 'es' ? 'en' : 'es';
+    this.setLocale(next);
+    toast(tApp('settings.langChangedToast'), 'info');
+    this.handlers.onToggleLocale?.();
   }
 
   public setSpectralVisible(visible: boolean): void {
@@ -421,13 +532,19 @@ export class AppNavbar {
     this.currentThemeMode = state.mode;
     if (this.themeModeBtn) {
       const isLight = state.mode === 'light';
-      this.themeModeBtn.title = isLight ? 'Cambiar a Modo Oscuro' : 'Cambiar a Modo Claro';
+      const es = this.currentLocale === 'es';
+      this.themeModeBtn.title = isLight
+        ? (es ? 'Cambiar a Modo Oscuro' : 'Switch to Dark Mode')
+        : (es ? 'Cambiar a Modo Claro' : 'Switch to Light Mode');
       this.themeModeBtn.innerHTML = `<span class="theme-mode-icon">${isLight ? ICONS.moon : ICONS.sun}</span>`;
     }
     this.syncActiveMenuChecks();
   }
 
   public updateSession(session: Session, coverageErrors: string[], isBridgeConnected = false): void {
+    this.lastSession = session;
+    this.lastCoverage = coverageErrors;
+    this.lastIsBridgeConnected = isBridgeConnected;
     this.currentTargetFormat = session.processConfig.targetFormat ?? 'dual';
     this.currentWorkingMode = session.processConfig.workingMode ?? 'classic';
     this.syncActiveMenuChecks();
@@ -438,7 +555,10 @@ export class AppNavbar {
       const dirtyMark = session.dirty ? ' *' : '';
       const isExt = (session.processConfig.workingMode ?? 'classic') === 'extended';
       const displayName = isExt ? (session.processConfig.expandedName || session.processConfig.modelName) : session.processConfig.modelName;
-      const charInfo = isExt ? `${displayName.length} chars (Extended)` : `${displayName.length}/11 chars`;
+      const es = this.currentLocale === 'es';
+      const charInfo = isExt
+        ? `${displayName.length} ${es ? 'car. (Extendido)' : 'chars (Extended)'}`
+        : `${displayName.length}/11 ${es ? 'car.' : 'chars'}`;
       this.statusElement.textContent = `#${slot} \u2022 ${displayName}${dirtyMark} \u2022 ${charInfo}`;
     }
 
@@ -449,15 +569,17 @@ export class AppNavbar {
       if (!hasAnySample && session.zones.length <= 1) {
         // Initial empty state: show neutral onboarding guidance instead of red alarm
         this.coverageElement.className = 'hud-pill hud-coverage-pill is-neutral';
+        this.coverageElement.title = tApp('navbar.hudMidiTooltipOk');
         this.coverageElement.innerHTML = `
           <span class="hud-icon">${ICONS.piano}</span>
-          <span class="hud-coverage-text">128/128 MIDI KEYS READY</span>
+          <span class="hud-coverage-text">${tApp('navbar.hudMidiReady')}</span>
         `;
       } else {
         this.coverageElement.className = `hud-pill hud-coverage-pill ${isOk ? 'is-valid' : 'is-error'}`;
+        this.coverageElement.title = isOk ? tApp('navbar.hudMidiTooltipOk') : tApp('navbar.hudMidiTooltipErr');
         this.coverageElement.innerHTML = `
           <span class="hud-icon">${isOk ? ICONS.check : ICONS.alert}</span>
-          <span class="hud-coverage-text">${isOk ? '128/128 MIDI KEYS OK' : `${coverageErrors.length} GAPS DETECTED`}</span>
+          <span class="hud-coverage-text">${isOk ? tApp('navbar.hudMidiOk') : `${coverageErrors.length} ${tApp('navbar.hudMidiGaps')}`}</span>
         `;
       }
     }
@@ -497,21 +619,24 @@ export class AppNavbar {
       selectTheme: this.currentTheme,
       selectThemeFamily: this.currentThemeFamily,
       setThemeMode: this.currentThemeMode,
+      setLocale: this.currentLocale,
     });
   }
 
   public updateHistory(history: HistoryState): void {
+    this.lastHistory = history;
+    const es = this.currentLocale === 'es';
     if (this.undoBtn) {
       this.undoBtn.disabled = !history.canUndo;
       this.undoBtn.title = history.canUndo
-        ? `Undo: ${history.undoLabel} (Ctrl+Z)`
-        : 'Nothing to Undo (Ctrl+Z)';
+        ? `${tApp('navbar.editUndo')}: ${history.undoLabel} (Ctrl+Z)`
+        : es ? 'Nada que deshacer (Ctrl+Z)' : 'Nothing to Undo (Ctrl+Z)';
     }
     if (this.redoBtn) {
       this.redoBtn.disabled = !history.canRedo;
       this.redoBtn.title = history.canRedo
-        ? `Redo: ${history.redoLabel} (Ctrl+Y)`
-        : 'Nothing to Redo (Ctrl+Y)';
+        ? `${tApp('navbar.editRedo')}: ${history.redoLabel} (Ctrl+Y)`
+        : es ? 'Nada que rehacer (Ctrl+Y)' : 'Nothing to Redo (Ctrl+Y)';
     }
   }
 
@@ -653,6 +778,15 @@ export class AppNavbar {
         }
         break;
       case 'toggleThemeMode': this.handlers.onToggleThemeMode?.(); break;
+      case 'setLocale':
+        if (value === 'es' || value === 'en') {
+          this.setLocale(value);
+          toast(tApp('settings.langChangedToast'), 'info');
+        }
+        break;
+      case 'toggleLocale':
+        this.toggleLocale();
+        break;
       case 'openSettingsModal':
         if (this.handlers.onOpenSettingsModal) {
           this.handlers.onOpenSettingsModal('general');

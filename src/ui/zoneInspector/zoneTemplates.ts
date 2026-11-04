@@ -201,7 +201,7 @@ export function renderZoneTableRows(
         const isCurrentPlaying = opts.playingRowId === zone.id;
 
         return `
-          <tr class="zone-table-row ${isSelected ? 'is-selected' : ''} ${hasOverlap ? 'has-region-intersection' : ''} ${hasDrumCollision ? 'has-drum-collision' : ''}" data-zone-id="${zone.id}">
+          <tr class="zone-table-row ${isSelected ? 'is-selected' : ''} ${hasOverlap ? 'has-region-intersection' : ''} ${hasDrumCollision ? 'has-drum-collision' : ''}" data-zone-id="${zone.id}" tabindex="0" aria-selected="${isSelected ? 'true' : 'false'}" title="Zone #${idx + 1} (${lowKeyStr}..${highKeyStr}) · [↑/↓: navegar filas · Espacio: audicionar · Enter: editar metadatos]">
             <td class="col-zone" title="${drumCollisionTip || overlapTip}">${hasDrumCollision ? `<span class="cell-collision-icon" title="${escAttr(drumCollisionTip)}">${ICONS.alert}</span>` : hasOverlap ? `<span class="cell-overlap-icon">${ICONS.alert}</span>` : ''}${idx + 1}</td>
             <td class="col-key ${hasOverlap ? 'is-overlap-cell' : ''}" title="${overlapTip}">${lowKeyStr}</td>
             <td class="col-key is-root ${isDrumMode ? 'is-drum-piece' : ''} ${hasDrumCollision ? 'is-collision-cell' : ''}" title="${drumCollisionTip || (isDrumMode ? escAttr(rootKeyStr) : '')}">${hasDrumCollision ? `<span class="cell-collision-icon" title="${escAttr(drumCollisionTip)}">${ICONS.alert}</span>` : ''}<span class="drum-piece-text">${escHtml(rootKeyStr)}</span></td>
@@ -306,7 +306,7 @@ export function renderExtendedRegionTableRows(
         const isCurrentPlaying = opts.playingRowId === reg.id;
 
         return `
-          <tr class="zone-table-row ${isSelected ? 'is-selected' : ''} ${hasFullIntersect ? 'has-region-intersection' : ''} ${hasDrumCollision ? 'has-drum-collision' : ''}" data-region-id="${reg.id}" data-zone-id="${mappedZoneId}">
+          <tr class="zone-table-row ${isSelected ? 'is-selected' : ''} ${hasFullIntersect ? 'has-region-intersection' : ''} ${hasDrumCollision ? 'has-drum-collision' : ''}" data-region-id="${reg.id}" data-zone-id="${mappedZoneId}" tabindex="0" aria-selected="${isSelected ? 'true' : 'false'}" title="Region #${idx + 1} (${lowKeyStr}..${highKeyStr}, Vel ${reg.lowVel}..${reg.highVel}) · [↑/↓: navegar filas · Espacio: audicionar · Enter: editar metadatos]">
             <td class="col-zone" title="${drumCollisionTip || fullIntersectTip || keySplitTip || `Region #${idx + 1}`}">${hasDrumCollision ? `<span class="cell-collision-icon" title="${escAttr(drumCollisionTip)}">${ICONS.alert}</span>` : hasFullIntersect ? `<span class="cell-overlap-icon" title="${fullIntersectTip}">${ICONS.alert}</span>` : hasKeySplitOverlap ? `<span class="cell-layer-icon" title="${keySplitTip}">${ICONS.layers}</span>` : ''}${idx + 1}</td>
             <td class="col-key ${keyCellClass}" title="${fullIntersectTip || keySplitTip}">${lowKeyStr}</td>
             <td class="col-key is-root ${isDrumMode ? 'is-drum-piece' : ''} ${hasDrumCollision ? 'is-collision-cell' : ''}" title="${drumCollisionTip || (isDrumMode ? escAttr(rootKeyStr) : '')}">${hasDrumCollision ? `<span class="cell-collision-icon" title="${escAttr(drumCollisionTip)}">${ICONS.alert}</span>` : ''}<span class="drum-piece-text">${escHtml(rootKeyStr)}</span></td>

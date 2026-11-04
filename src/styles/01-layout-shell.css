@@ -270,4 +270,21 @@
   padding: 0;
 }
 
+.btn-lang-toggle .flag-icon,
+.mode-pill-toggle .flag-icon,
+.nav-item-icon .flag-icon {
+  display: block;
+  width: 19px;
+  height: 13px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.nav-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+
 

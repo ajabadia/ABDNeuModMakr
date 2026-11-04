@@ -2,8 +2,13 @@
  * ABDSharedAssets — SVG icon library for synth UI.
  *
  * Canonical icon set shared across all ABDSynths plugins.
- * Usage: import { WAVE_ICONS, FILTER_ICONS, CONTROL_ICONS } from '@abdsynths/shared/components';
+ * Usage: import { WAVE_ICONS, FILTER_ICONS, CONTROL_ICONS, FLAG_ICONS } from '@abdsynths/shared/components';
  */
+
+export const FLAG_ICONS = {
+  es: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" class="sel-icon flag-icon" aria-hidden="true" focusable="false"><rect width="24" height="16" fill="#c60b1e"/><rect y="4" width="24" height="8" fill="#ffc400"/></svg>`,
+  en: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16" width="22" height="15" class="sel-icon flag-icon" aria-hidden="true" focusable="false"><rect width="24" height="16" fill="#012169"/><path d="M0 0l24 16M24 0L0 16" stroke="#fff" stroke-width="3.4"/><path d="M0 0l24 16M24 0L0 16" stroke="#c8102e" stroke-width="1.7"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="5.4"/><path d="M12 0v16M0 8h24" stroke="#c8102e" stroke-width="3.2"/></svg>`,
+};
 
 export const WAVE_ICONS = {
   saw: `<svg viewBox="0 0 24 16" class="sel-icon"><polyline points="2,14 20,2 20,14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
@@ -43,4 +48,6 @@ export const CONTROL_ICONS = {
   zap: `<svg viewBox="0 0 24 24" width="14" height="14" class="sel-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
   sun: `<svg viewBox="0 0 24 24" width="14" height="14" class="sel-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`,
   moon: `<svg viewBox="0 0 24 24" width="14" height="14" class="sel-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  flagEs: FLAG_ICONS.es,
+  flagEn: FLAG_ICONS.en,
 };
