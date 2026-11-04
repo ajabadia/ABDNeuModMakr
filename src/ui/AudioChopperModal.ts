@@ -11,7 +11,6 @@
 
 import { ICONS } from './icons.ts';
 import { escHtml } from './escape.ts';
-import { MUSICIAN_TERMS } from './preflightGateView.ts';
 import { confirmDialog, toast } from './notify.ts';
 import {
   resolveAiActionDeclaration,
@@ -26,7 +25,6 @@ import {
   transcodeAnyAudioToWavBuffer,
 } from '../core/dsp/WavDecoder.ts';
 import {
-  computeZoomedWaveformEnvelope,
   snapFrameToNearestZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
 import {
@@ -36,7 +34,6 @@ import {
   buildSlicesFromPhoneticWords,
   buildSlicesFromMidiManifest,
   moveSliceBoundary,
-  splitSliceAtFrame,
   deleteSlice,
   toggleSliceSilence,
   extractBoundaryFrames,
@@ -55,13 +52,26 @@ import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';
 import { bridgeClient } from '../core/bridge/BridgeClient.ts';
 import {
-  captureNoisePrintFromRegion,
   reduceNoiseWithProfile,
   type NoiseProfile,
 } from '../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
 import type { Zone, ExtendedRegion, WorkingMode, UnifiedSurfaceUiConfig } from '../core/types.ts';
-import { midiToNoteName } from './ZoneRibbon.ts';
 import { createModalFocusTrap, type FocusTrap } from './modalFocusTrap.ts';
+import type { ChopperContext } from './chopper/types.ts';
+import { drawMagnifierCanvas, drawWaveformCanvas } from './chopper/canvasOps.ts';
+import { refreshTable, render, updateMagnifierHeader } from './chopper/renderOps.ts';
+import {
+  bindCanvasInteraction,
+  bindMagnifierInteraction,
+  bindTableEvents,
+  closeContextMenu,
+  showContextMenu,
+} from './chopper/eventsOps.ts';
+import {
+  auditionConformedLoop,
+  auditionFullWav,
+  auditionSlice,
+} from './chopper/auditionOps.ts';
 
 export interface AudioChopperContext {
   getCurrentWorkingMode: () => WorkingMode;
@@ -79,7 +89,7 @@ export interface AudioChopperContext {
   onRegisterSampleBuffer?: (name: string, buffer: ArrayBuffer) => void;
 }
 
-interface ContextMenuItem {
+export interface ContextMenuItem {
   label: string;
   icon?: string;
   isHeader?: boolean;
@@ -138,6 +148,178 @@ export class AudioChopperModal {
 
   // Fase 30: Captured Noise Print from selected slice or silence
   private capturedNoiseProfile: NoiseProfile | null = null;
+
+  private chopperCtx(): ChopperContext {
+    const host = this;
+    return {
+      state: {
+      get backdropEl() {
+        return host.backdropEl;
+      },
+      set backdropEl(v) {
+        host.backdropEl = v;
+      },
+      get canvas() {
+        return host.canvas;
+      },
+      set canvas(v) {
+        host.canvas = v;
+      },
+      get magnifierCanvas() {
+        return host.magnifierCanvas;
+      },
+      set magnifierCanvas(v) {
+        host.magnifierCanvas = v;
+      },
+      get pcm() {
+        return host.pcm;
+      },
+      set pcm(v) {
+        host.pcm = v;
+      },
+      get zoomFactor() {
+        return host.zoomFactor;
+      },
+      set zoomFactor(v) {
+        host.zoomFactor = v;
+      },
+      get viewCenterNorm() {
+        return host.viewCenterNorm;
+      },
+      set viewCenterNorm(v) {
+        host.viewCenterNorm = v;
+      },
+      get currentResult() {
+        return host.currentResult;
+      },
+      set currentResult(v) {
+        host.currentResult = v;
+      },
+      get selectedSliceId() {
+        return host.selectedSliceId;
+      },
+      set selectedSliceId(v) {
+        host.selectedSliceId = v;
+      },
+      get hoveredBoundaryIndex() {
+        return host.hoveredBoundaryIndex;
+      },
+      set hoveredBoundaryIndex(v) {
+        host.hoveredBoundaryIndex = v;
+      },
+      get draggedBoundaryIndex() {
+        return host.draggedBoundaryIndex;
+      },
+      set draggedBoundaryIndex(v) {
+        host.draggedBoundaryIndex = v;
+      },
+      get activeBoundaryIndex() {
+        return host.activeBoundaryIndex;
+      },
+      set activeBoundaryIndex(v) {
+        host.activeBoundaryIndex = v;
+      },
+      get isDraggingMagnifier() {
+        return host.isDraggingMagnifier;
+      },
+      set isDraggingMagnifier(v) {
+        host.isDraggingMagnifier = v;
+      },
+      get context() {
+        return host.context;
+      },
+      set context(v) {
+        host.context = v;
+      },
+      get options() {
+        return host.options;
+      },
+      set options(v) {
+        host.options = v;
+      },
+      get sourceFilename() {
+        return host.sourceFilename;
+      },
+      set sourceFilename(v) {
+        host.sourceFilename = v;
+      },
+      get sampleRate() {
+        return host.sampleRate;
+      },
+      set sampleRate(v) {
+        host.sampleRate = v;
+      },
+      get playingSliceId() {
+        return host.playingSliceId;
+      },
+      set playingSliceId(v) {
+        host.playingSliceId = v;
+      },
+      get normalizeEnabled() {
+        return host.normalizeEnabled;
+      },
+      set normalizeEnabled(v) {
+        host.normalizeEnabled = v;
+      },
+      get manualCutFrames() {
+        return host.manualCutFrames;
+      },
+      set manualCutFrames(v) {
+        host.manualCutFrames = v;
+      },
+      get isDraggingBoundary() {
+        return host.isDraggingBoundary;
+      },
+      set isDraggingBoundary(v) {
+        host.isDraggingBoundary = v;
+      },
+      get magDragStartMouseX() {
+        return host.magDragStartMouseX;
+      },
+      set magDragStartMouseX(v) {
+        host.magDragStartMouseX = v;
+      },
+      get magDragStartCutFrame() {
+        return host.magDragStartCutFrame;
+      },
+      set magDragStartCutFrame(v) {
+        host.magDragStartCutFrame = v;
+      },
+      get capturedNoiseProfile() {
+        return host.capturedNoiseProfile;
+      },
+      set capturedNoiseProfile(v) {
+        host.capturedNoiseProfile = v;
+      },
+      get activeContextMenuEl() {
+        return host.activeContextMenuEl;
+      },
+      set activeContextMenuEl(v) {
+        host.activeContextMenuEl = v;
+      },
+      get manualSilenceRanges() {
+        return host.manualSilenceRanges;
+      },
+      set manualSilenceRanges(v) {
+        host.manualSilenceRanges = v;
+      },
+      },
+      isBoundaryManual: (frame) => host.isBoundaryManual(frame),
+      getActiveCutFrame: () => host.getActiveCutFrame(),
+      close: () => host.close(),
+      checkZeroCrossing: (frame) => host.checkZeroCrossing(frame),
+      bindEvents: () => host.bindEvents(),
+      navigateBoundary: (delta) => host.navigateBoundary(delta),
+      bindTableEvents: () => host.bindTableEvents(),
+      auditionSlice: (slice, toggleStopIfSame) => host.auditionSlice(slice, toggleStopIfSame),
+      showContextMenu: (x, y, items) => host.showContextMenu(x, y, items),
+      removeManualBoundary: (frame) => host.removeManualBoundary(frame),
+      render: () => host.render(),
+      snapActiveBoundary0X: () => host.snapActiveBoundary0X(),
+      handleToggleSliceSilence: (sliceId) => host.handleToggleSliceSilence(sliceId),
+      registerManualBoundary: (newFrame, oldFrame) => host.registerManualBoundary(newFrame, oldFrame),
+    };
+  }
 
   constructor(context: AudioChopperContext) {
     this.context = context;
@@ -911,867 +1093,16 @@ export class AudioChopperModal {
   }
 
   private render(): void {
-    if (!this.backdropEl) {
-      this.backdropEl = document.createElement('div');
-      this.backdropEl.className = 'nmm-modal-backdrop nmm-chopper-backdrop';
-      document.body.appendChild(this.backdropEl);
-
-      this.backdropEl.addEventListener('click', (e) => {
-        if (e.target === this.backdropEl) this.close();
-      });
-      // Escape + Tab los gestiona la trampa de foco compartida (ver open()).
-    }
-
-    const hasAudio = this.pcm.length > 0;
-    const res = this.currentResult;
-    const slices = res?.slices ?? [];
-    const validCount = res?.validSlicesCount ?? 0;
-    const totalCount = res?.totalSlices ?? 0;
-    const isWorkingExtended = this.context.getCurrentWorkingMode() === 'extended';
-    const activeCutFrame = this.getActiveCutFrame();
-    const activeBoundaryIdx = this.activeBoundaryIndex;
-
-    const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
-    const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
-    const isBridgeConn = bridgeClient.isConnected();
-    const demucsDecl = resolveAiActionDeclaration('chopper-demucs-split', { isBridgeConnected: isBridgeConn });
-    const whisperDecl = resolveAiActionDeclaration('chopper-whisper-align', { isBridgeConnected: isBridgeConn });
-    const bweDecl = resolveAiActionDeclaration('chopper-bwe-enhance', { isBridgeConnected: isBridgeConn });
-    const isOneShotWorkflow = (this.options.workflowMode ?? 'rex_groove_loop') === 'one_shot_extractor';
-    const detectedBpm = res?.detectedBpm ?? this.options.bpm ?? 120;
-    const detectedBars = res?.detectedBars ?? this.options.barCount ?? 2;
-    const effectiveTargetBpm = this.options.targetBpm ?? res?.targetBpm ?? detectedBpm;
-
-    this.backdropEl.innerHTML = `
-      <div class="nmm-modal-window nmm-chopper-window" role="dialog" aria-modal="true" aria-labelledby="chopper-title">
-        <header class="nmm-modal-header">
-          <div class="nmm-modal-header-title">
-            <span class="nmm-modal-header-icon">${ICONS.scissors}</span>
-            <h2 id="chopper-title">AutoSlicer — Audio Chopper &amp; Multi-Layer Slicer</h2>
-            <span class="panel-badge ${hasAudio ? 'badge-ai-on' : 'badge-muted'}">
-              ${hasAudio ? escHtml(this.sourceFilename) : 'No Sample Loaded'}
-            </span>
-          </div>
-          <button type="button" class="nmm-modal-close" aria-label="Close" id="btn-chopper-close">${ICONS.close}</button>
-        </header>
-
-        <div class="nmm-modal-body nmm-chopper-body">
-          <input type="file" id="inp-chopper-audio-file" accept=".wav,.aif,.aiff,.aifc,.flac,.mp3,.ogg,.oga,.m4a,.aac,.opus,.webm,.caf,.ncw,.rx2,.rex,.rcy,.sfz,.cue,.txt,audio/*" class="is-hidden-file" />
-          <input type="file" id="inp-chopper-markers-file" accept=".rx2,.rex,.rcy,.sfz,.cue,.txt,.wav,.aif" class="is-hidden-file" />
-
-          ${
-            !hasAudio
-              ? `
-            <!-- Unified Empty State / Dropzone -->
-            <div class="audio-empty-dropzone" id="chopper-empty-dropzone">
-              <div class="dropzone-icon-ring">
-                <span class="dropzone-icon">${ICONS.scissors}</span>
-              </div>
-              <h3 class="dropzone-title">NO AUDIO FILE LOADED IN AUTO-SLICER</h3>
-              <p class="dropzone-subtitle">
-                Drag &amp; drop a drum loop, vocal track, rhythmic phrase, or ReCycle slice file (.wav, .aif, .flac, .rx2, .rex, .sfz) to auto-detect or import slices.
-              </p>
-              <div class="dropzone-actions">
-                <button type="button" class="btn btn-primary" id="btn-chopper-browse-file">
-                  ${ICONS.folder} Browse Audio or Slice File...
-                </button>
-                <button type="button" class="btn btn-outline" id="btn-chopper-demo-beat" title="Load a 2-second synthesized test beat to test slicing without a sample">
-                  ${ICONS.drum} Load Test Beat (Demo)
-                </button>
-              </div>
-              <div class="dropzone-hint">
-                AutoSlicer detects transients via Spectral Flux, supports ReCycle (.rx2/.rex) tables, snaps boundaries to zero-crossings, and maps slices to GM Drum notes or chromatic keyboard zones.
-              </div>
-            </div>
-          `
-              : `
-            <!-- Waveform Canvas Viewport -->
-            <div class="chopper-waveform-panel">
-              <div class="chopper-waveform-toolbar">
-                <div class="chopper-zoom-controls">
-                  <span class="toolbar-label">ZOOM:</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-zoom-out" title="Zoom Out Waveform">-</button>
-                  <span class="val-pill" id="lbl-chopper-zoom">${this.zoomFactor.toFixed(1)}x</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-zoom-in" title="Zoom In Waveform">+</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-zoom-fit" title="Fit Entire Audio File to Viewport">Fit</button>
-                  <button type="button" class="btn btn-xs ${this.playingSliceId === '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-chopper-play-full" title="Play or stop the entire WAV file from start to end">
-                    ${this.playingSliceId === '__full_wav__' ? ICONS.stop : ICONS.play} Play Full WAV
-                  </button>
-                </div>
-                <div class="chopper-toolbar-right">
-                  <div class="chopper-waveform-stats">
-                    <span>${(this.pcm.length / this.sampleRate).toFixed(2)}s (${this.pcm.length.toLocaleString()} frames)</span>
-                    <span class="val-pill">${validCount} Active Slices</span>
-                  </div>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-import-cues" title="Import ReCycle (.rx2, .rex, .rcy), SFZ, or CUE text slice marker file">
-                    ${ICONS.database} Import ReCycle / Cues...
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-chopper-change-file" title="Open another audio file">
-                    ${ICONS.folder} Open File...
-                  </button>
-                </div>
-              </div>
-
-              <div class="chopper-canvas-wrap" id="chopper-canvas-wrap">
-                <canvas id="chopper-waveform-canvas" height="160"></canvas>
-              </div>
-              <div class="chopper-canvas-hint">
-                <span>Left-drag markers to move</span> • <span>Right-click line/slice for Actions</span> • <span>Double-click or Right-click to Add Cut</span>
-              </div>
-            </div>
-
-            <!-- Cut-Point Magnifier & Sample Nudge Panel (AutoLoop Seam Style) -->
-            <div class="chopper-magnifier-panel">
-              <div class="chopper-magnifier-toolbar">
-                <div class="chopper-magnifier-title-box">
-                  <span>${ICONS.wave}</span>
-                  <span>CUT POINT MAGNIFIER (±256 smp):</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous cut boundary">&lt; Prev Cut</button>
-                  <strong>Boundary #${activeBoundaryIdx}</strong>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next cut boundary">Next Cut &gt;</button>
-                  <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
-                  <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
-                    ${isZeroCrossingGood ? '0-X MATCH' : `0-X OFFSET (${(cutSampleVal * 100).toFixed(1)}%)`}
-                  </span>
-                </div>
-
-                <div class="chopper-magnifier-nudge-group">
-                  <span class="toolbar-label">NUDGE:</span>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m100" title="Nudge boundary -100 samples">&lt;&lt; -100</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m10" title="Nudge boundary -10 samples">&lt; -10</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-m1" title="Nudge boundary -1 sample">-1</button>
-                  <button type="button" class="btn btn-xs btn-accent" id="btn-nudge-snap0x" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">Snap 0-X</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p1" title="Nudge boundary +1 sample">+1</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p10" title="Nudge boundary +10 samples">+10 &gt;</button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-nudge-p100" title="Nudge boundary +100 samples">+100 &gt;&gt;</button>
-                  <button type="button" class="btn btn-xs ${this.playingSliceId === '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-mag-play-full" title="Reproducir o detener todo el WAV completo de principio a fin">
-                    ${this.playingSliceId === '__full_wav__' ? ICONS.stop : ICONS.play} Play WAV
-                  </button>
-                  <button type="button" class="btn btn-xs ${this.playingSliceId && this.playingSliceId !== '__full_wav__' ? 'btn-accent' : 'btn-outline'}" id="btn-mag-play-slice" title="Reproducir solo el slice seleccionado">
-                    ${this.playingSliceId && this.playingSliceId !== '__full_wav__' ? ICONS.stop : ICONS.play} Play Slice
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline" id="btn-mag-toggle-silence" title="Toggle silence for current slice">
-                    ${ICONS.eyeOff || 'Mute'} Silence
-                  </button>
-                  <button type="button" class="btn btn-xs btn-outline btn-danger-hover" id="btn-mag-del-boundary" title="Delete this cut boundary">
-                    ${ICONS.trash} Del Cut
-                  </button>
-                </div>
-              </div>
-
-              <div class="chopper-magnifier-canvas-wrap" id="chopper-mag-canvas-wrap">
-                <canvas id="chopper-magnifier-canvas" height="84"></canvas>
-              </div>
-            </div>
-
-            <!-- Real-Time Parameters & DSP/AI Action Card (Matches AutoLoop & Audio Recorder) -->
-            <div class="chopper-params-card">
-              <!-- Top Row: Macro-Workflow Mode (One-Shot Extractor vs REX/Groove Loop) + Elastic BPM Conformer -->
-              <div class="chopper-params-row" style="padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--color-panel-border);">
-                <div class="chopper-param-group">
-                  <div class="chopper-param-header">
-                    <span>MODO DE FLUJO (WORKFLOW)</span>
-                  </div>
-                  <div class="btn-group">
-                    <button type="button" class="btn btn-xs ${isOneShotWorkflow ? 'btn-accent is-active' : 'btn-outline'}" id="btn-wf-oneshot" title="Cortar y mapear notas aisladas de un instrumento cromático o golpes sueltos de una caja de ritmos grabados nota a nota">
-                      ${ICONS.scissors} 1. Cortar One-Shots (Notas / Kit)
-                    </button>
-                    <button type="button" class="btn btn-xs ${!isOneShotWorkflow ? 'btn-accent is-active' : 'btn-outline'}" id="btn-wf-rex" title="Bucle rítmico o frase melódica tipo REX: detecta el BPM y compases, extrae la partitura MIDI (.mid) con las notas reales y permite igualar el BPM a un Target BPM">
-                      ${ICONS.wave} 2. Bucle Rítmico / Melodía REX (BPM + .mid)
-                    </button>
-                  </div>
-                </div>
-
-                <fieldset class="conditioned-fieldset" ${isOneShotWorkflow ? 'disabled' : ''} style="display: contents;">
-                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
-                    <div class="chopper-param-header">
-                      <span>BPM DETECTADO ${isOneShotWorkflow ? '<span class="cond-reason-badge">SOLO MODO REX</span>' : ''}</span>
-                    </div>
-                    <span class="val-pill font-mono" id="lbl-chopper-detected-bpm" title="BPM estimado automáticamente por intervalos entre ataques (IOI) y duración de compases">
-                      ${detectedBpm} BPM (${detectedBars} comp.)
-                    </span>
-                  </div>
-
-                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
-                    <div class="chopper-param-header">
-                      <span>COMPASES (BARS)</span>
-                    </div>
-                    <input type="number" id="inp-chopper-bars" class="form-control font-mono" min="1" max="64" step="1" value="${detectedBars}" title="Número de compases (4/4) del bucle o melodía" />
-                  </div>
-
-                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
-                    <div class="chopper-param-header">
-                      <span>TARGET BPM (ELÁSTICO)</span>
-                    </div>
-                    <input type="number" id="inp-chopper-target-bpm" class="form-control font-mono" min="20" max="300" step="0.5" value="${effectiveTargetBpm}" title="Ajusta el BPM de destino conservando intactos los primeros 25 ms de cada ataque" />
-                  </div>
-
-                  <div class="chopper-param-group ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}">
-                    <div class="chopper-param-header">
-                      <span>AUDICIÓN A TARGET BPM</span>
-                    </div>
-                    <button type="button" class="btn btn-xs ${this.playingSliceId === '__conformed_loop__' ? 'btn-accent' : 'btn-outline'}" id="btn-chopper-play-conformed" title="Escuchar el bucle o melodía re-ensamblado elásticamente a Target BPM sin perder pegada de ataque">
-                      ${this.playingSliceId === '__conformed_loop__' ? ICONS.stop : ICONS.play} Play @ ${effectiveTargetBpm} BPM
-                    </button>
-                  </div>
-                </fieldset>
-              </div>
-
-              <div class="chopper-params-row">
-                <!-- Slicing Mode -->
-                <div class="chopper-param-group">
-                  <div class="chopper-param-header">
-                    <span>SLICING MODE</span>
-                  </div>
-                  <div class="btn-group">
-                    <button type="button" class="btn btn-xs ${this.options.mode === 'drums' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-drums" title="Classify into General MIDI Drum Map notes">
-                      ${ICONS.drum} Drums (GM)
-                    </button>
-                    <button type="button" class="btn btn-xs ${this.options.mode === 'vocals' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-vocals" title="Vocal & phrase segmentation (OpenVPI silence valley segmentation, avoids micro-chatter)">
-                      ${ICONS.wave} Vocals / Phrase
-                    </button>
-                    <button type="button" class="btn btn-xs ${this.options.mode === 'chromatic' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-chromatic" title="Detect F0 pitch and map to contiguous equidistant key zones">
-                      ${ICONS.piano} Chromatic
-                    </button>
-                    <button type="button" class="btn btn-xs ${this.options.mode === 'grid' ? 'btn-accent is-active' : 'btn-outline'}" id="btn-mode-grid" title="Chop by musical grid tempo division">
-                      Grid BPM
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Transient Sensitivity Slider -->
-                <div class="chopper-param-group flex-1">
-                  <div class="chopper-param-header">
-                    <span>TRANSIENT SENSITIVITY</span>
-                    <span class="chopper-param-val" id="lbl-sens-val">${this.options.sensitivity}%</span>
-                    ${
-                      this.manualCutFrames.size > 0
-                        ? `
-                      <span class="badge-manual-cuts" title="${this.manualCutFrames.size} manual cut(s) preserved">
-                        ${ICONS.scissors} ${this.manualCutFrames.size} manual
-                        <button type="button" class="btn-reset-cuts" id="btn-reset-cuts-auto" title="Discard manual cuts and reset to full auto detection">Reset</button>
-                      </span>
-                    `
-                        : ''
-                    }
-                  </div>
-                  <input type="range" class="form-control" id="rng-sens" min="5" max="98" value="${this.options.sensitivity}" />
-                </div>
-
-                <!-- Silence Gate Threshold -->
-                <div class="chopper-param-group flex-1 ${this.options.detectSilences === false ? 'is-conditioned-disabled' : ''}">
-                  <div class="chopper-param-header">
-                    <span>SILENCE GATE ${this.options.detectSilences === false ? '<span class="cond-reason-badge">OFF</span>' : ''}</span>
-                    <span class="chopper-param-val" id="lbl-silence-val">${this.options.silenceThresholdDb} dB</span>
-                  </div>
-                  <input type="range" class="form-control" id="rng-silence" min="-60" max="-18" value="${this.options.silenceThresholdDb}" ${this.options.detectSilences === false ? 'disabled title="Activa Detect Silences abajo para ajustar el umbral"' : ''} />
-                </div>
-
-                <!-- Min Silence Duration -->
-                <div class="chopper-param-group ${this.options.detectSilences === false ? 'is-conditioned-disabled' : ''}">
-                  <div class="chopper-param-header">
-                    <span>MIN SILENCE (MS) ${this.options.detectSilences === false ? '<span class="cond-reason-badge">OFF</span>' : ''}</span>
-                  </div>
-                  <input type="number" id="inp-minsilence" class="form-control font-mono" min="0" max="2000" step="10" value="${this.options.minSilenceMs ?? 120}" ${this.options.detectSilences === false ? 'disabled title="Activa Detect Silences abajo para ajustar la duración mínima"' : 'title="Minimum quiet duration to flag a slice as silence"'} />
-                </div>
-
-                <!-- Min Slice Ms Input -->
-                <div class="chopper-param-group">
-                  <div class="chopper-param-header">
-                    <span>MIN SLICE (MS)</span>
-                  </div>
-                  <input type="number" id="inp-minslice" class="form-control font-mono" min="20" max="1000" step="10" value="${this.options.minSliceMs ?? (this.options.mode === 'vocals' ? 250 : 45)}" title="Minimum slice duration in milliseconds" />
-                </div>
-
-                <!-- Pre-Roll Safety Margin -->
-                <div class="chopper-param-group">
-                  <div class="chopper-param-header">
-                    <span>PRE-ROLL (MS)</span>
-                  </div>
-                  <input type="number" id="inp-preroll" class="form-control font-mono" min="0" max="25" value="${this.options.preRollMs}" title="Pre-roll safety margin in milliseconds" />
-                </div>
-              </div>
-
-              <!-- Unified Action Bar (Matches .loop-action-bar & .nmm-recorder-dsp-toolbar) -->
-              <div class="chopper-action-bar">
-                <div class="chopper-action-bar-left">
-                  <button type="button" class="btn btn-sm ${this.options.snapZeroCrossing ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-zc-snap" title="${escHtml(MUSICIAN_TERMS.zcSnap)}">
-                    ${escHtml(MUSICIAN_TERMS.zcSnap)}: ${this.options.snapZeroCrossing ? 'ON' : 'OFF'}
-                  </button>
-                  <button type="button" class="btn btn-sm ${isWorkingExtended && this.options.allowOverlap ? 'btn-accent is-active' : 'btn-outline'} ${!isWorkingExtended ? 'is-conditioned-disabled' : ''}" id="btn-toggle-overlap" ${!isWorkingExtended ? 'disabled title="Overlaps solo disponibles en Modo Extended (en Modo Classic el teclado 0..127 es contiguo y disjunto)"' : 'title="Allow overlapping key & velocity zones"'}>
-                    Overlaps: ${isWorkingExtended && this.options.allowOverlap ? 'ALLOW' : 'DISJOINT'} ${!isWorkingExtended ? '<span class="cond-reason-badge is-extended-only">EXTENDED</span>' : ''}
-                  </button>
-                  <button type="button" class="btn btn-sm ${this.options.detectSilences !== false ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-silence-detect" title="Auto-flag quiet slices as silence (excluded when injecting into session)">
-                    Detect Silences: ${this.options.detectSilences !== false ? 'ON' : 'OFF'}
-                  </button>
-                  <button type="button" class="btn btn-sm ${this.normalizeEnabled ? 'btn-accent is-active' : 'btn-outline'}" id="btn-toggle-normalize" title="Peak-normalize working audio to -1 dBFS (non-destructive: source buffer untouched)">
-                    Normalize: ${this.normalizeEnabled ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-
-                <div class="chopper-action-bar-right">
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-dsp-denoise" title="Clean audio with DSP Spectral Gate using captured or auto noise profile">
-                    ${ICONS.sliders} DSP Denoise
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-demucs-split" title="${escHtml(demucsDecl.buttonTooltip)}">
-                    ${ICONS.wave} ${escHtml(demucsDecl.buttonLabel)}
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline" id="btn-chopper-whisper-align" title="${escHtml(whisperDecl.buttonTooltip)}">
-                    ${ICONS.sparkle} ${escHtml(whisperDecl.buttonLabel)}
-                  </button>
-                  <button type="button" class="btn btn-sm btn-ai-accent" id="btn-chopper-ai-enhance" title="${escHtml(bweDecl.buttonTooltip)}">
-                    ${ICONS.sparkle} ${escHtml(bweDecl.buttonLabel)}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slices Table Inspector -->
-            <div class="chopper-table-panel">
-              <div class="chopper-table-header-row">
-                <span class="chopper-table-title">
-                  Detected Slices (${validCount} valid / ${totalCount} total)
-                </span>
-                <span class="nmm-recorder-takes-hint">
-                  Target: <strong>${isWorkingExtended ? 'Extended 2D Regions' : 'Classic 128-Zone Hartmann'}</strong>
-                </span>
-              </div>
-
-              <div class="chopper-table-scroll">
-                <table class="canonical-zone-table nmm-data-table">
-                  <thead>
-                    <tr>
-                      <th>#ID</th>
-                      <th>Time Range</th>
-                      <th>Duration</th>
-                      <th>Classification</th>
-                      <th>Root Key</th>
-                      <th>Key Range</th>
-                      <th>Velocity</th>
-                      <th>Peak / RMS</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="chopper-tbody">
-                    ${this.renderTableRows(slices)}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          `
-          }
-        </div>
-
-        <!-- Footer Actions Bar -->
-        <footer class="nmm-modal-footer">
-          <div class="footer-left">
-            <button type="button" class="btn btn-ghost" id="btn-chopper-discard">Discard &amp; Close</button>
-          </div>
-          <div class="footer-right">
-            ${
-              hasAudio
-                ? `
-              <!-- Draggable MIDI Pattern Button -->
-              <button type="button" class="btn btn-accent btn-drag-midi ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}" id="btn-drag-midi" draggable="${!isOneShotWorkflow}" ${isOneShotWorkflow ? 'disabled title="Cambia al Modo 2 (Bucle Rítmico / Melodía REX) para exportar o arrastrar la partitura MIDI (.mid) al DAW"' : 'title="Drag MIDI Pattern directly to DAW track or click to download .mid file (at Target BPM)"'}>
-                ${ICONS.piano} Drag MIDI to DAW (.mid @ ${effectiveTargetBpm} BPM) ${isOneShotWorkflow ? '<span class="cond-reason-badge">MODO REX</span>' : ''}
-              </button>
-
-              <!-- Inject Conformed Loop at Target BPM Button -->
-              <button type="button" class="btn btn-outline ${isOneShotWorkflow ? 'is-conditioned-disabled' : ''}" id="btn-chopper-inject-loop" ${validCount === 0 || isOneShotWorkflow ? 'disabled' : ''} title="${isOneShotWorkflow ? 'Solo disponible en Modo 2 (Bucle Rítmico / Melodía REX)' : 'Inyecta el bucle continuo re-ensamblado a Target BPM en una zona con loop continuo y guarda Tempo-Sync para el Resinator v2'}">
-                ${ICONS.wave} Inyectar Loop Continuo (${effectiveTargetBpm} BPM) ${isOneShotWorkflow ? '<span class="cond-reason-badge">MODO REX</span>' : ''}
-              </button>
-
-              <!-- Inject as Zones Button -->
-              <button type="button" class="btn btn-primary" id="btn-chopper-inject" ${validCount === 0 ? 'disabled' : ''}>
-                ${ICONS.scissors} Inject as Zones into Session (${validCount} Zones)
-              </button>
-            `
-                : ''
-            }
-          </div>
-        </footer>
-      </div>
-    `;
-
-    this.bindEvents();
-    if (hasAudio) {
-      this.drawWaveformCanvas();
-      this.drawMagnifierCanvas();
-    }
+    render(this.chopperCtx());
   }
 
-  private renderTableRows(slices: DetectedSlice[]): string {
-    if (slices.length === 0) {
-      return `<tr><td colspan="9" class="nmm-recorder-takes-empty">No slices detected. Adjust sensitivity slider above.</td></tr>`;
-    }
-    return slices
-      .map((sl) => {
-        const isSel = sl.id === this.selectedSliceId;
-        const isPlaying = sl.id === this.playingSliceId;
-        const isSilence = sl.isSilence;
-
-        return `
-          <tr class="zone-table-row ${isSel ? 'is-selected' : ''} ${isSilence ? 'is-silence-row' : ''}" data-slice-id="${sl.id}">
-            <td>${sl.index}</td>
-            <td>${sl.startSec.toFixed(2)}s..${sl.endSec.toFixed(2)}s</td>
-            <td>${(sl.durationSec * 1000).toFixed(0)} ms</td>
-            <td>
-              ${isSilence ? `<span class="val-pill">Silence</span>` : `<span class="chopper-param-val">${escHtml(sl.label)}</span>`}
-            </td>
-            <td>${isSilence ? '—' : `${sl.rootKey} (${midiToNoteName(sl.rootKey)})`}</td>
-            <td>${isSilence ? '—' : `${sl.lowKey}..${sl.highKey}`}</td>
-            <td>${isSilence ? '—' : `${sl.lowVel}..${sl.highVel}`}</td>
-            <td>${sl.peakDb}dB / ${sl.rmsDb}dB</td>
-            <td>
-              <button type="button" class="btn btn-xs btn-ghost btn-play-slice" data-slice-id="${sl.id}" title="Audition slice one-shot">
-                ${isPlaying ? ICONS.stop : ICONS.play}
-              </button>
-              <button type="button" class="btn btn-xs ${isSilence ? 'btn-outline' : 'btn-ghost'} btn-toggle-silence-row" data-slice-id="${sl.id}" title="${isSilence ? 'Unmute (Mark as active)' : 'Mute (Mark as silence)'}">
-                ${isSilence ? 'Unmute' : 'Mute'}
-              </button>
-              <button type="button" class="btn btn-xs btn-ghost btn-danger-hover btn-delete-slice" data-slice-id="${sl.id}" title="Remove slice marker">
-                ${ICONS.trash}
-              </button>
-            </td>
-          </tr>
-        `;
-      })
-      .join('');
-  }
-
-  private getThemeColors(): {
-    bg: string;
-    waveform: string;
-    waveformGradientEnd: string;
-    sliceSel: string;
-    sliceEven: string;
-    sliceOdd: string;
-    silence: string;
-    silenceStripe: string;
-    silenceWaveform: string;
-    silenceBadgeBg: string;
-    silenceBadgeText: string;
-    marker: string;
-    markerHover: string;
-    markerManual: string;
-    markerManualHover: string;
-    markerActive: string;
-    markerActiveManual: string;
-    centerLine: string;
-    text: string;
-  } {
-    const style = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement) : null;
-    const token = (name: string, fallback = 'currentColor') =>
-      style?.getPropertyValue(name).trim() || fallback;
-
-    const accent = token('--color-accent');
-    const warn = token('--color-warning');
-    const success = token('--color-success', accent);
-    const bg = token('--color-lcd-bg', token('--color-panel-bg', 'transparent'));
-    const textMain = token('--color-text-main');
-    const textDim = token('--color-text-dim');
-    const borderDim = token('--color-panel-border-dim');
-    const surfaceElev = token('--color-panel-surface-elevated', bg);
-
-    return {
-      bg,
-      waveform: accent,
-      waveformGradientEnd: token('--color-accent-strong', accent),
-      sliceSel: token('--color-accent-dim', surfaceElev),
-      sliceEven: surfaceElev,
-      sliceOdd: bg,
-      silence: surfaceElev,
-      silenceStripe: borderDim,
-      silenceWaveform: textDim,
-      silenceBadgeBg: surfaceElev,
-      silenceBadgeText: textDim,
-      marker: accent,
-      markerHover: accent,
-      markerManual: warn,
-      markerManualHover: warn,
-      markerActive: success,
-      markerActiveManual: warn,
-      centerLine: borderDim,
-      text: textMain,
-    };
-  }
 
   private drawWaveformCanvas(): void {
-    if (!this.backdropEl) return;
-    this.canvas = this.backdropEl.querySelector('#chopper-waveform-canvas') as HTMLCanvasElement | null;
-    if (!this.canvas) return;
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-
-    const wrap = this.backdropEl.querySelector('#chopper-canvas-wrap') as HTMLElement | null;
-    const width = Math.max(300, Math.floor(wrap?.clientWidth || 880));
-    const height = 160;
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-
-    if (this.canvas.width !== Math.floor(width * dpr) || this.canvas.height !== Math.floor(height * dpr)) {
-      this.canvas.width = Math.floor(width * dpr);
-      this.canvas.height = Math.floor(height * dpr);
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    const colors = this.getThemeColors();
-    ctx.fillStyle = colors.bg;
-    ctx.fillRect(0, 0, width, height);
-
-    const totalFrames = this.pcm.length;
-    if (totalFrames === 0) {
-      ctx.restore();
-      return;
-    }
-
-    const zoom = clamp(this.zoomFactor, 1, 16);
-    const windowFrames = Math.max(64, Math.round(totalFrames / zoom));
-    const centerFrame = clamp(Math.round(this.viewCenterNorm * totalFrames), 0, totalFrames);
-    const viewStart = clamp(centerFrame - Math.floor(windowFrames * 0.5), 0, Math.max(0, totalFrames - windowFrames));
-    const viewEnd = clamp(viewStart + windowFrames, viewStart + 1, totalFrames);
-    const viewSpan = Math.max(1, viewEnd - viewStart);
-
-    const frameToX = (frame: number) => ((frame - viewStart) / viewSpan) * width;
-
-    // 1. Draw Slices Background Shading & Active Badges
-    const slices = this.currentResult?.slices ?? [];
-    slices.forEach((sl, idx) => {
-      const x1 = frameToX(sl.startFrame);
-      const x2 = frameToX(sl.endFrame);
-      if (x2 < 0 || x1 > width) return;
-
-      const w = Math.max(1, x2 - x1);
-      if (sl.isSilence) {
-        ctx.fillStyle = colors.silence;
-        ctx.fillRect(x1, 0, w, height);
-      } else {
-        const isSel = sl.id === this.selectedSliceId;
-        const isEven = idx % 2 === 0;
-        ctx.fillStyle = isSel ? colors.sliceSel : isEven ? colors.sliceEven : colors.sliceOdd;
-        ctx.fillRect(x1, 0, w, height);
-
-        if (isSel) {
-          const labelText = `#${sl.index} ${sl.label}`;
-          ctx.font = 'bold 10px monospace';
-          const textW = ctx.measureText(labelText).width;
-          const badgeW = Math.min(Math.max(textW + 10, 48), Math.max(w, 48));
-
-          ctx.fillStyle = colors.marker;
-          ctx.fillRect(x1, 2, badgeW, 14);
-
-          ctx.fillStyle = colors.bg;
-          ctx.fillText(labelText, x1 + 5, 13);
-        } else if (w >= 44) {
-          ctx.fillStyle = colors.text;
-          ctx.font = '10px monospace';
-          const maxChars = Math.max(2, Math.floor((w - 8) / 7));
-          const labelText = `#${sl.index} ${sl.label.slice(0, maxChars)}`;
-          ctx.fillText(labelText, x1 + 4, 14);
-        }
-      }
-    });
-
-    // 2. Center Reference Line
-    const centerY = height * 0.5;
-    ctx.strokeStyle = colors.centerLine;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
-
-    // 3. Waveform Envelope (attenuated / dim color for silence intervals)
-    const numPoints = Math.min(width, 600);
-    const env = computeZoomedWaveformEnvelope(this.pcm, viewStart, viewEnd, numPoints);
-    const ampScale = height * 0.44;
-
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, colors.waveform);
-    grad.addColorStop(1, colors.waveformGradientEnd);
-
-    const stepX = width / numPoints;
-    for (let i = 0; i < numPoints; i++) {
-      const x = i * stepX;
-      const pointFrame = Math.round(viewStart + (i / numPoints) * viewSpan);
-      const inSilence = slices.some((sl) => sl.isSilence && pointFrame >= sl.startFrame && pointFrame < sl.endFrame);
-
-      ctx.fillStyle = inSilence ? colors.silenceWaveform : grad;
-
-      const topY = centerY - (env.max[i] ?? 0) * ampScale;
-      const botY = centerY - (env.min[i] ?? 0) * ampScale;
-      const barH = Math.max(1, botY - topY);
-      ctx.fillRect(x, topY, Math.max(1, stepX - 0.5), barH);
-    }
-
-    // 4. Diagonal Hatching & Disabled Overlay for Silence Slices
-    slices.forEach((sl) => {
-      if (!sl.isSilence) return;
-      const x1 = frameToX(sl.startFrame);
-      const x2 = frameToX(sl.endFrame);
-      if (x2 < 0 || x1 > width) return;
-      const w = Math.max(1, x2 - x1);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x1, 0, w, height);
-      ctx.clip();
-
-      // Diagonal striped lines across silence area
-      ctx.strokeStyle = colors.silenceStripe;
-      ctx.lineWidth = 1.2;
-      const spacing = 10;
-      for (let lx = x1 - height; lx <= x1 + w; lx += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(lx, height);
-        ctx.lineTo(lx + height, 0);
-        ctx.stroke();
-      }
-
-      // Dim "MUTED" badge
-      if (w >= 36) {
-        ctx.fillStyle = colors.silenceBadgeBg;
-        ctx.fillRect(x1 + 4, 3, Math.min(w - 8, 48), 13);
-        ctx.fillStyle = colors.silenceBadgeText;
-        ctx.font = 'bold 9px monospace';
-        ctx.fillText('MUTED', x1 + 8, 13);
-      }
-
-      ctx.restore();
-    });
-
-    // 5. Draw Boundary Lines with Amber Distinction for Manual Cuts & Handles
-    const boundaries = extractBoundaryFrames(this.currentResult || { slices: [] } as any, totalFrames);
-    for (let bIdx = 1; bIdx < boundaries.length - 1; bIdx++) {
-      const bFrame = boundaries[bIdx];
-      const bx = frameToX(bFrame);
-      if (bx < -5 || bx > width + 5) continue;
-
-      const isManual = this.isBoundaryManual(bFrame);
-      const isHovered = bIdx === this.hoveredBoundaryIndex || bIdx === this.draggedBoundaryIndex;
-      const isActive = bIdx === this.activeBoundaryIndex;
-
-      let lineColor: string;
-      if (isHovered) {
-        lineColor = isManual ? colors.markerManualHover : colors.markerHover;
-      } else if (isActive) {
-        lineColor = isManual ? colors.markerActiveManual : colors.markerActive;
-      } else if (isManual) {
-        lineColor = colors.markerManual;
-      } else {
-        lineColor = colors.marker;
-      }
-
-      ctx.strokeStyle = lineColor;
-      ctx.lineWidth = isHovered || isActive ? 2.5 : isManual ? 2.0 : 1.5;
-
-      ctx.beginPath();
-      ctx.moveTo(bx, 0);
-      ctx.lineTo(bx, height);
-      ctx.stroke();
-
-      // Top and bottom handles: diamond shape for manual cuts, triangle for auto cuts
-      ctx.fillStyle = lineColor;
-      if (isManual) {
-        // Top diamond handle
-        ctx.beginPath();
-        ctx.moveTo(bx, 0);
-        ctx.lineTo(bx + 5, 5);
-        ctx.lineTo(bx, 10);
-        ctx.lineTo(bx - 5, 5);
-        ctx.closePath();
-        ctx.fill();
-
-        // Bottom diamond handle
-        ctx.beginPath();
-        ctx.moveTo(bx, height);
-        ctx.lineTo(bx + 5, height - 5);
-        ctx.lineTo(bx, height - 10);
-        ctx.lineTo(bx - 5, height - 5);
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        // Top triangle handle
-        ctx.beginPath();
-        ctx.moveTo(bx - 5, 0);
-        ctx.lineTo(bx + 5, 0);
-        ctx.lineTo(bx, 8);
-        ctx.closePath();
-        ctx.fill();
-
-        // Bottom triangle handle
-        ctx.beginPath();
-        ctx.moveTo(bx - 5, height);
-        ctx.lineTo(bx + 5, height);
-        ctx.lineTo(bx, height - 8);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-
-    ctx.restore();
+    drawWaveformCanvas(this.chopperCtx());
   }
 
   private drawMagnifierCanvas(): void {
-    if (!this.backdropEl) return;
-    this.magnifierCanvas = this.backdropEl.querySelector('#chopper-magnifier-canvas') as HTMLCanvasElement | null;
-    if (!this.magnifierCanvas) return;
-    const ctx = this.magnifierCanvas.getContext('2d');
-    if (!ctx) return;
-
-    const wrap = this.backdropEl.querySelector('#chopper-mag-canvas-wrap') as HTMLElement | null;
-    const width = Math.max(200, Math.floor(wrap?.clientWidth || 880));
-    const height = 84;
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-
-    if (this.magnifierCanvas.width !== Math.floor(width * dpr) || this.magnifierCanvas.height !== Math.floor(height * dpr)) {
-      this.magnifierCanvas.width = Math.floor(width * dpr);
-      this.magnifierCanvas.height = Math.floor(height * dpr);
-    }
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    const colors = this.getThemeColors();
-    ctx.fillStyle = colors.bg;
-    ctx.fillRect(0, 0, width, height);
-
-    if (this.pcm.length === 0) {
-      ctx.restore();
-      return;
-    }
-
-    const cutFrame = this.getActiveCutFrame();
-    const isCutManual = this.isBoundaryManual(cutFrame);
-    const halfWindow = 256;
-    const startFrame = cutFrame - halfWindow;
-    const endFrame = cutFrame + halfWindow;
-    const centerY = height * 0.5;
-
-    // Check if the adjacent slice is silence to draw subtle background hatching
-    const currentSlice = this.currentResult?.slices.find(
-      (s) => cutFrame >= s.startFrame && cutFrame <= s.endFrame
-    );
-    if (currentSlice?.isSilence) {
-      ctx.save();
-      ctx.fillStyle = colors.silence;
-      ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = colors.silenceStripe;
-      ctx.lineWidth = 1.0;
-      for (let lx = -height; lx <= width; lx += 12) {
-        ctx.beginPath();
-        ctx.moveTo(lx, height);
-        ctx.lineTo(lx + height, 0);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    // Center zero reference line
-    ctx.strokeStyle = colors.centerLine;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
-
-    // Waveform line for ±256 sample window
-    const ampScale = height * 0.42;
-    ctx.strokeStyle = currentSlice?.isSilence ? colors.silenceWaveform : colors.waveform;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-
-    const totalSamples = endFrame - startFrame;
-    for (let i = 0; i < totalSamples; i++) {
-      const frame = startFrame + i;
-      const x = (i / totalSamples) * width;
-      const val = frame >= 0 && frame < this.pcm.length ? this.pcm[frame] : 0;
-      const y = centerY - val * ampScale;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
-
-    // Individual sample points
-    ctx.fillStyle = currentSlice?.isSilence ? colors.silenceWaveform : colors.waveform;
-    for (let i = 0; i < totalSamples; i += 4) {
-      const frame = startFrame + i;
-      const x = (i / totalSamples) * width;
-      const val = frame >= 0 && frame < this.pcm.length ? this.pcm[frame] : 0;
-      const y = centerY - val * ampScale;
-      ctx.fillRect(x - 1, y - 1, 2, 2);
-    }
-
-    // Center Cut Line: warning token if manual, success token if auto
-    const centerX = width * 0.5;
-    const isDragging = this.isDraggingMagnifier;
-    const cutColor = isDragging ? colors.markerManual : isCutManual ? colors.markerManualHover : colors.markerActive;
-    ctx.strokeStyle = cutColor;
-    ctx.lineWidth = isDragging ? 3 : 2;
-    ctx.setLineDash(isDragging ? [] : isCutManual ? [6, 2] : [4, 2]);
-    ctx.beginPath();
-    ctx.moveTo(centerX, 0);
-    ctx.lineTo(centerX, height);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Cut point highlight dot
-    const centerVal = cutFrame >= 0 && cutFrame < this.pcm.length ? this.pcm[cutFrame] : 0;
-    const centerDotY = centerY - centerVal * ampScale;
-    ctx.fillStyle = cutColor;
-    ctx.beginPath();
-    ctx.arc(centerX, centerDotY, isDragging ? 5 : 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Top & Bottom Handles: diamond if manual, triangle if auto
-    if (isCutManual) {
-      ctx.beginPath();
-      ctx.moveTo(centerX, 0);
-      ctx.lineTo(centerX + 6, 6);
-      ctx.lineTo(centerX, 12);
-      ctx.lineTo(centerX - 6, 6);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.moveTo(centerX, height);
-      ctx.lineTo(centerX + 6, height - 6);
-      ctx.lineTo(centerX, height - 12);
-      ctx.lineTo(centerX - 6, height - 6);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(centerX - 6, 0);
-      ctx.lineTo(centerX + 6, 0);
-      ctx.lineTo(centerX, 9);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.moveTo(centerX - 6, height);
-      ctx.lineTo(centerX + 6, height);
-      ctx.lineTo(centerX, height - 9);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Visual drag & mode hint
-    ctx.font = '10px monospace';
-    ctx.fillStyle = isDragging ? colors.markerManual : isCutManual ? colors.markerManualHover : colors.markerActive;
-    const hintText = isDragging
-      ? 'DRAGGING CUT POINT (MICRO-ADJUST)'
-      : isCutManual
-      ? 'MANUAL CUT POINT • DRAG OR NUDGE TO REFINE'
-      : 'CLICK & DRAG TO MICRO-ADJUST CUT (±256 smp)';
-    ctx.fillText(hintText, 10, 14);
-
-    ctx.restore();
+    drawMagnifierCanvas(this.chopperCtx());
   }
 
   private navigateBoundary(delta: number): void {
@@ -1852,92 +1183,19 @@ export class AudioChopperModal {
   }
 
   private updateMagnifierHeader(): void {
-    if (!this.backdropEl) return;
-    const activeCutFrame = this.getActiveCutFrame();
-    const isCutManual = this.isBoundaryManual(activeCutFrame);
-    const cutSampleVal = this.pcm.length > 0 && activeCutFrame < this.pcm.length ? this.pcm[activeCutFrame] : 0;
-    const isZeroCrossingGood = this.checkZeroCrossing(activeCutFrame);
-
-    const titleBox = this.backdropEl.querySelector('.chopper-magnifier-title-box');
-    if (titleBox) {
-      titleBox.innerHTML = `
-        <span>${ICONS.wave}</span>
-        <span>CUT POINT MAGNIFIER (±256 smp):</span>
-        <button type="button" class="btn btn-xs btn-outline" id="btn-mag-prev-cut" title="Previous slice boundary">&lt; Prev Cut</button>
-        <strong>Boundary #${this.activeBoundaryIndex}</strong>
-        ${isCutManual ? '<span class="badge-manual-cuts">MANUAL CUT</span>' : ''}
-        <button type="button" class="btn btn-xs btn-outline" id="btn-mag-next-cut" title="Next slice boundary">Next Cut &gt;</button>
-        <span class="val-pill font-mono">${activeCutFrame.toLocaleString()} smp (${((activeCutFrame / this.sampleRate) * 1000).toFixed(1)} ms)</span>
-        <span class="${isZeroCrossingGood ? 'pill-zc-good' : 'pill-zc-warn'}">
-          ${isZeroCrossingGood ? '0-X MATCH' : `0-X OFFSET (${(cutSampleVal * 100).toFixed(1)}%)`}
-        </span>
-      `;
-
-      this.backdropEl.querySelector('#btn-mag-prev-cut')?.addEventListener('click', () => this.navigateBoundary(-1));
-      this.backdropEl.querySelector('#btn-mag-next-cut')?.addEventListener('click', () => this.navigateBoundary(1));
-    }
+    updateMagnifierHeader(this.chopperCtx());
   }
 
   private refreshTable(): void {
-    if (!this.backdropEl) return;
-    const tbody = this.backdropEl.querySelector('#chopper-tbody');
-    if (tbody && this.currentResult) {
-      tbody.innerHTML = this.renderTableRows(this.currentResult.slices);
-      this.bindTableEvents();
-    }
+    refreshTable(this.chopperCtx());
   }
 
   private closeContextMenu(): void {
-    if (this.activeContextMenuEl) {
-      this.activeContextMenuEl.remove();
-      this.activeContextMenuEl = null;
-    }
+    closeContextMenu(this.chopperCtx());
   }
 
   private showContextMenu(x: number, y: number, items: ContextMenuItem[]): void {
-    this.closeContextMenu();
-
-    const menu = document.createElement('div');
-    menu.className = 'chopper-context-menu';
-    menu.style.left = `${Math.min(window.innerWidth - 210, Math.max(10, x))}px`;
-    menu.style.top = `${Math.min(window.innerHeight - 250, Math.max(10, y))}px`;
-
-    items.forEach((it) => {
-      if (it.isHeader) {
-        const header = document.createElement('div');
-        header.className = 'chopper-menu-header';
-        header.textContent = it.label;
-        menu.appendChild(header);
-      } else if (it.isDivider) {
-        const div = document.createElement('div');
-        div.className = 'chopper-menu-divider';
-        menu.appendChild(div);
-      } else {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `chopper-menu-item ${it.isDanger ? 'danger-item' : ''}`;
-        btn.innerHTML = `${it.icon || ''} <span>${escHtml(it.label)}</span>`;
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          this.closeContextMenu();
-          it.onClick?.();
-        });
-        menu.appendChild(btn);
-      }
-    });
-
-    document.body.appendChild(menu);
-    this.activeContextMenuEl = menu;
-
-    const onOutsideClick = (e: MouseEvent) => {
-      if (!menu.contains(e.target as Node)) {
-        this.closeContextMenu();
-        window.removeEventListener('click', onOutsideClick);
-      }
-    };
-    setTimeout(() => {
-      window.addEventListener('click', onOutsideClick);
-    }, 10);
+    showContextMenu(this.chopperCtx(), x, y, items);
   }
 
   private bindEvents(): void {
@@ -2476,523 +1734,30 @@ export class AudioChopperModal {
   }
 
   private bindCanvasInteraction(): void {
-    if (!this.backdropEl) return;
-    const canvas = this.backdropEl.querySelector('#chopper-waveform-canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-
-    const getFrameFromMouseX = (clientX: number): number => {
-      const rect = canvas.getBoundingClientRect();
-      const clickXNorm = clamp((clientX - rect.left) / rect.width, 0, 1);
-      const totalFrames = this.pcm.length;
-      const zoom = clamp(this.zoomFactor, 1, 16);
-      const windowFrames = Math.max(64, Math.round(totalFrames / zoom));
-      const centerFrame = clamp(Math.round(this.viewCenterNorm * totalFrames), 0, totalFrames);
-      const viewStart = clamp(centerFrame - Math.floor(windowFrames * 0.5), 0, Math.max(0, totalFrames - windowFrames));
-      return Math.round(viewStart + clickXNorm * windowFrames);
-    };
-
-    const getXFromFrame = (frame: number): number => {
-      const rect = canvas.getBoundingClientRect();
-      const totalFrames = this.pcm.length;
-      const zoom = clamp(this.zoomFactor, 1, 16);
-      const windowFrames = Math.max(64, Math.round(totalFrames / zoom));
-      const centerFrame = clamp(Math.round(this.viewCenterNorm * totalFrames), 0, totalFrames);
-      const viewStart = clamp(centerFrame - Math.floor(windowFrames * 0.5), 0, Math.max(0, totalFrames - windowFrames));
-      const viewSpan = Math.max(1, windowFrames);
-      return ((frame - viewStart) / viewSpan) * rect.width;
-    };
-
-    // Hover & Drag detection for overview boundary lines
-    canvas.addEventListener('mousemove', (e: MouseEvent) => {
-      if (this.isDraggingBoundary) {
-        if (!this.currentResult) return;
-        const targetFrame = getFrameFromMouseX(e.clientX);
-        this.currentResult = moveSliceBoundary(
-          this.currentResult,
-          this.pcm,
-          this.sampleRate,
-          this.draggedBoundaryIndex,
-          targetFrame,
-          this.options.snapZeroCrossing,
-          this.options
-        );
-        this.activeBoundaryIndex = this.draggedBoundaryIndex;
-        this.drawWaveformCanvas();
-        this.drawMagnifierCanvas();
-        this.updateMagnifierHeader();
-        this.refreshTable();
-        return;
-      }
-
-      if (!this.currentResult || this.pcm.length === 0) return;
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-
-      let foundIdx = -1;
-      for (let bIdx = 1; bIdx < boundaries.length - 1; bIdx++) {
-        const bx = getXFromFrame(boundaries[bIdx]);
-        if (Math.abs(mouseX - bx) <= 7) {
-          foundIdx = bIdx;
-          break;
-        }
-      }
-
-      if (foundIdx !== this.hoveredBoundaryIndex) {
-        this.hoveredBoundaryIndex = foundIdx;
-        canvas.style.cursor = foundIdx > 0 ? 'col-resize' : 'crosshair';
-        this.drawWaveformCanvas();
-      }
-    });
-
-    canvas.addEventListener('mousedown', (e: MouseEvent) => {
-      if (e.button !== 0) return; // Only left button for boundary dragging/selecting
-      this.closeContextMenu();
-
-      if (this.hoveredBoundaryIndex > 0) {
-        this.isDraggingBoundary = true;
-        this.draggedBoundaryIndex = this.hoveredBoundaryIndex;
-        this.activeBoundaryIndex = this.hoveredBoundaryIndex;
-        this.drawWaveformCanvas();
-        this.drawMagnifierCanvas();
-        this.updateMagnifierHeader();
-        return;
-      }
-
-      // Normal click: select slice and update active boundary
-      const clickedFrame = getFrameFromMouseX(e.clientX);
-      const hit = this.currentResult?.slices.find(
-        (s) => clickedFrame >= s.startFrame && clickedFrame <= s.endFrame
-      );
-      if (hit) {
-        this.selectedSliceId = hit.id;
-        if (this.currentResult) {
-          const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-          // If first slice, select boundary #1; otherwise select boundary at slice start
-          const bIdx = boundaries.findIndex((b) => Math.abs(b - hit.startFrame) < 32);
-          this.activeBoundaryIndex = bIdx > 0 && bIdx < boundaries.length - 1 ? bIdx : 1;
-        }
-        this.auditionSlice(hit);
-        this.drawWaveformCanvas();
-        this.drawMagnifierCanvas();
-        this.updateMagnifierHeader();
-        this.refreshTable();
-      }
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (this.isDraggingBoundary) {
-        this.isDraggingBoundary = false;
-        this.draggedBoundaryIndex = -1;
-        this.drawWaveformCanvas();
-        this.drawMagnifierCanvas();
-        this.updateMagnifierHeader();
-        this.refreshTable();
-      }
-    });
-
-    // Right-Click Context Menu on Waveform (on cut line or empty space)
-    canvas.addEventListener('contextmenu', (e: MouseEvent) => {
-      e.preventDefault();
-      if (!this.currentResult || this.pcm.length === 0) return;
-
-      const clickedFrame = getFrameFromMouseX(e.clientX);
-      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-
-      // Check if right-clicked directly on a boundary line
-      const hoveredBIdx = this.hoveredBoundaryIndex;
-      if (hoveredBIdx > 0 && hoveredBIdx < boundaries.length - 1) {
-        const bFrame = boundaries[hoveredBIdx];
-        const sliceLeft = this.currentResult.slices[hoveredBIdx - 1];
-        const sliceRight = this.currentResult.slices[hoveredBIdx];
-
-        this.showContextMenu(e.clientX, e.clientY, [
-          { label: `Cut Boundary #${hoveredBIdx} (${bFrame.toLocaleString()} smp)`, isHeader: true },
-          {
-            label: 'Delete Cut Boundary',
-            icon: ICONS.trash,
-            isDanger: true,
-            onClick: () => {
-              if (sliceRight) {
-                this.removeManualBoundary(sliceRight.startFrame);
-                this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, sliceRight.id, this.options);
-                this.activeBoundaryIndex = Math.max(1, hoveredBIdx - 1);
-                this.render();
-                toast(`Removed cut boundary #${hoveredBIdx}.`, 'info');
-              }
-            },
-          },
-          {
-            label: 'Snap to 0-Crossing',
-            icon: ICONS.wave,
-            onClick: () => {
-              this.activeBoundaryIndex = hoveredBIdx;
-              this.snapActiveBoundary0X();
-            },
-          },
-          {
-            label: 'Inspect in Magnifier',
-            icon: ICONS.scissors,
-            onClick: () => {
-              this.activeBoundaryIndex = hoveredBIdx;
-              this.drawMagnifierCanvas();
-              this.updateMagnifierHeader();
-            },
-          },
-          { label: '', isDivider: true },
-          ...(sliceLeft
-            ? [
-                {
-                  label: `Play Left: Slice #${sliceLeft.index}`,
-                  icon: ICONS.play,
-                  onClick: () => this.auditionSlice(sliceLeft),
-                },
-                {
-                  label: sliceLeft.isSilence ? `Unmute Left Slice #${sliceLeft.index}` : `Mute Left Slice #${sliceLeft.index}`,
-                  icon: ICONS.eyeOff,
-                  onClick: () => {
-                    this.handleToggleSliceSilence(sliceLeft.id);
-                  },
-                },
-              ]
-            : []),
-          ...(sliceRight
-            ? [
-                {
-                  label: `Play Right: Slice #${sliceRight.index}`,
-                  icon: ICONS.play,
-                  onClick: () => this.auditionSlice(sliceRight),
-                },
-                {
-                  label: sliceRight.isSilence ? `Unmute Right Slice #${sliceRight.index}` : `Mute Right Slice #${sliceRight.index}`,
-                  icon: ICONS.eyeOff,
-                  onClick: () => {
-                    this.handleToggleSliceSilence(sliceRight.id);
-                  },
-                },
-              ]
-            : []),
-        ]);
-        return;
-      }
-
-      // Otherwise, right-clicked on empty area within a slice:
-      const hitSlice = this.currentResult.slices.find(
-        (s) => clickedFrame >= s.startFrame && clickedFrame <= s.endFrame
-      );
-
-      this.showContextMenu(e.clientX, e.clientY, [
-        { label: hitSlice ? `Slice #${hitSlice.index} (${((clickedFrame / this.sampleRate) * 1000).toFixed(1)} ms)` : 'Audio Waveform', isHeader: true },
-        {
-          label: `+ Add Cut Marker Here (${clickedFrame.toLocaleString()} smp)`,
-          icon: ICONS.plus,
-          onClick: () => {
-            this.registerManualBoundary(clickedFrame);
-            this.currentResult = splitSliceAtFrame(
-              this.currentResult!,
-              this.pcm,
-              this.sampleRate,
-              clickedFrame,
-              this.options.snapZeroCrossing,
-              this.options
-            );
-            const updatedBoundaries = extractBoundaryFrames(this.currentResult!, this.pcm.length);
-            const newIdx = updatedBoundaries.findIndex((b) => Math.abs(b - clickedFrame) < 64);
-            if (newIdx > 0 && newIdx < updatedBoundaries.length - 1) {
-              this.activeBoundaryIndex = newIdx;
-            }
-            this.render();
-            toast(`Added slice cut at ${clickedFrame.toLocaleString()} smp.`, 'success');
-          },
-        },
-        ...(hitSlice
-          ? [
-              {
-                label: `Audition Slice #${hitSlice.index}`,
-                icon: ICONS.play,
-                onClick: () => this.auditionSlice(hitSlice),
-              },
-              {
-                label: hitSlice.isSilence ? `Unmute Slice (Mark Active)` : `Mark as Silence (Mute)`,
-                icon: ICONS.eyeOff,
-                onClick: () => {
-                  this.handleToggleSliceSilence(hitSlice.id);
-                },
-              },
-              {
-                label: `${MUSICIAN_TERMS.noisePrint} — Slice #${hitSlice.index}`,
-                icon: ICONS.wave,
-                onClick: () => {
-                  this.capturedNoiseProfile = captureNoisePrintFromRegion(this.pcm, this.sampleRate, {
-                    startFrame: hitSlice.startFrame,
-                    endFrame: hitSlice.endFrame,
-                    label: `Slice #${hitSlice.index}`,
-                  });
-                  toast(
-                    `Captured noise print from Slice #${hitSlice.index} (${this.capturedNoiseProfile.levelDbfs.toFixed(1)} dBFS). Ready for DSP cleaning or AI Enhance!`,
-                    'success'
-                  );
-                  this.render();
-                },
-              },
-              { label: '', isDivider: true },
-              {
-                label: `Delete Slice #${hitSlice.index}`,
-                icon: ICONS.trash,
-                isDanger: true,
-                onClick: () => {
-                  this.removeManualBoundary(hitSlice.startFrame);
-                  this.currentResult = deleteSlice(this.currentResult!, this.pcm, this.sampleRate, hitSlice.id, this.options);
-                  this.render();
-                  toast(`Deleted slice #${hitSlice.index}.`, 'info');
-                },
-              },
-            ]
-          : []),
-      ]);
-    });
-
-    // Double-click to split slice at frame
-    canvas.addEventListener('dblclick', (e: MouseEvent) => {
-      if (!this.currentResult || this.pcm.length === 0) return;
-      const splitFrame = getFrameFromMouseX(e.clientX);
-      this.registerManualBoundary(splitFrame);
-      this.currentResult = splitSliceAtFrame(
-        this.currentResult,
-        this.pcm,
-        this.sampleRate,
-        splitFrame,
-        this.options.snapZeroCrossing,
-        this.options
-      );
-
-      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-      const newBIdx = boundaries.findIndex((b) => Math.abs(b - splitFrame) < 64);
-      if (newBIdx > 0 && newBIdx < boundaries.length - 1) {
-        this.activeBoundaryIndex = newBIdx;
-      }
-
-      toast(`Added slice cut at ${splitFrame.toLocaleString()} smp.`, 'success');
-      this.render();
-    });
+    bindCanvasInteraction(this.chopperCtx());
   }
 
   private bindMagnifierInteraction(): void {
-    if (!this.backdropEl) return;
-    const magCanvas = this.backdropEl.querySelector('#chopper-magnifier-canvas') as HTMLCanvasElement | null;
-    if (!magCanvas) return;
-
-    magCanvas.addEventListener('mousedown', (e: MouseEvent) => {
-      if (e.button !== 0) return;
-      this.closeContextMenu();
-      if (!this.currentResult || this.pcm.length === 0) return;
-
-      this.isDraggingMagnifier = true;
-      this.magDragStartMouseX = e.clientX;
-      this.magDragStartCutFrame = this.getActiveCutFrame();
-      this.drawMagnifierCanvas();
-    });
-
-    window.addEventListener('mousemove', (e: MouseEvent) => {
-      if (!this.isDraggingMagnifier || !this.currentResult || this.pcm.length === 0) return;
-      if (!this.magnifierCanvas) return;
-
-      const rect = this.magnifierCanvas.getBoundingClientRect();
-      const deltaX = e.clientX - this.magDragStartMouseX;
-      const totalMagnifierWindowSamples = 512;
-      const samplesPerPixel = totalMagnifierWindowSamples / Math.max(1, rect.width);
-      const deltaSamples = Math.round(deltaX * samplesPerPixel);
-      const targetFrame = this.magDragStartCutFrame + deltaSamples;
-
-      const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-      if (boundaries.length <= 2) return;
-      const bIdx = clamp(this.activeBoundaryIndex, 1, boundaries.length - 2);
-
-      this.registerManualBoundary(targetFrame, this.magDragStartCutFrame);
-
-      this.currentResult = moveSliceBoundary(
-        this.currentResult,
-        this.pcm,
-        this.sampleRate,
-        bIdx,
-        targetFrame,
-        false, // Real-time exact sample dragging (no snap during drag)
-        this.options
-      );
-
-      this.drawWaveformCanvas();
-      this.drawMagnifierCanvas();
-      this.updateMagnifierHeader();
-      this.refreshTable();
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (this.isDraggingMagnifier) {
-        this.isDraggingMagnifier = false;
-        this.drawWaveformCanvas();
-        this.drawMagnifierCanvas();
-        this.updateMagnifierHeader();
-        this.refreshTable();
-      }
-    });
+    bindMagnifierInteraction(this.chopperCtx());
   }
 
   private bindTableEvents(): void {
-    if (!this.backdropEl) return;
-
-    this.backdropEl.querySelectorAll<HTMLTableRowElement>('.nmm-data-table tbody tr').forEach((tr) => {
-      tr.addEventListener('click', () => {
-        const sliceId = tr.dataset.sliceId;
-        const sl = this.currentResult?.slices.find((s) => s.id === sliceId);
-        if (sl && this.currentResult) {
-          this.selectedSliceId = sl.id;
-          const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-          const bIdx = boundaries.findIndex((b) => Math.abs(b - sl.startFrame) < 32);
-          this.activeBoundaryIndex = bIdx > 0 && bIdx < boundaries.length - 1 ? bIdx : 1;
-          this.auditionSlice(sl);
-          this.drawWaveformCanvas();
-          this.drawMagnifierCanvas();
-          this.updateMagnifierHeader();
-          this.refreshTable();
-        }
-      });
-    });
-
-    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-play-slice').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sliceId = btn.dataset.sliceId;
-        const sl = this.currentResult?.slices.find((s) => s.id === sliceId);
-        if (sl) this.auditionSlice(sl);
-      });
-    });
-
-    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-toggle-silence-row').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sliceId = btn.dataset.sliceId;
-        if (sliceId && this.currentResult) {
-          this.handleToggleSliceSilence(sliceId);
-        }
-      });
-    });
-
-    this.backdropEl.querySelectorAll<HTMLButtonElement>('.btn-delete-slice').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sliceId = btn.dataset.sliceId;
-        if (sliceId && this.currentResult) {
-          const sl = this.currentResult.slices.find((s) => s.id === sliceId);
-          if (sl) this.removeManualBoundary(sl.startFrame);
-          this.currentResult = deleteSlice(this.currentResult, this.pcm, this.sampleRate, sliceId, this.options);
-          const boundaries = extractBoundaryFrames(this.currentResult, this.pcm.length);
-          if (this.activeBoundaryIndex >= boundaries.length - 1) {
-            this.activeBoundaryIndex = Math.max(1, boundaries.length - 2);
-          }
-          this.render();
-          toast('Removed slice marker.', 'info');
-        }
-      });
-    });
+    bindTableEvents(this.chopperCtx());
   }
 
   private auditionSlice(sl: DetectedSlice, toggleStopIfSame: boolean = false): void {
-    if (toggleStopIfSame && this.playingSliceId === sl.id) {
-      this.stopAudition();
-      return;
-    }
-    this.playingSliceId = sl.id;
-    if (this.context.onAuditionPcm) {
-      this.context.onAuditionPcm(sl.pcm, this.sampleRate);
-    }
-    this.syncPlayButtonsUi();
+    auditionSlice(this.chopperCtx(), sl, toggleStopIfSame);
   }
 
   private auditionFullWav(): void {
-    if (this.pcm.length === 0) return;
-    if (this.playingSliceId === '__full_wav__') {
-      this.stopAudition();
-      return;
-    }
-    this.playingSliceId = '__full_wav__';
-    if (this.context.onAuditionPcm) {
-      this.context.onAuditionPcm(this.pcm, this.sampleRate);
-    }
-    this.syncPlayButtonsUi();
+    auditionFullWav(this.chopperCtx());
   }
 
   private auditionConformedLoop(): void {
-    if (this.pcm.length === 0 || !this.currentResult) return;
-    if (this.playingSliceId === '__conformed_loop__') {
-      this.stopAudition();
-      return;
-    }
-    const sourceBpm = this.currentResult.detectedBpm || this.options.bpm || 120;
-    const targetBpm = this.options.targetBpm ?? this.currentResult.targetBpm ?? sourceBpm;
-    const conformed = conformLoopToTargetBpm(
-      this.pcm,
-      this.sampleRate,
-      this.currentResult.slices,
-      sourceBpm,
-      targetBpm,
-      { barCount: this.currentResult.detectedBars ?? this.options.barCount }
-    );
-    this.playingSliceId = '__conformed_loop__';
-    if (this.context.onAuditionPcm) {
-      this.context.onAuditionPcm(conformed.pcm, this.sampleRate);
-    }
-    this.syncPlayButtonsUi();
+    auditionConformedLoop(this.chopperCtx());
   }
 
-  private stopAudition(): void {
-    this.playingSliceId = null;
-    this.context.onStopAudition?.();
-    this.syncPlayButtonsUi();
-  }
 
-  private syncPlayButtonsUi(): void {
-    if (!this.backdropEl) return;
-    const isFull = this.playingSliceId === '__full_wav__';
-    const isConformed = this.playingSliceId === '__conformed_loop__';
-    const isSlice = Boolean(
-      this.playingSliceId &&
-        this.playingSliceId !== '__full_wav__' &&
-        this.playingSliceId !== '__conformed_loop__'
-    );
-
-    const topFullBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-chopper-play-full');
-    if (topFullBtn) {
-      topFullBtn.classList.toggle('btn-accent', isFull);
-      topFullBtn.classList.toggle('btn-outline', !isFull);
-      topFullBtn.innerHTML = `${isFull ? ICONS.stop : ICONS.play} Play Full WAV`;
-    }
-
-    const conformedBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-chopper-play-conformed');
-    if (conformedBtn) {
-      const targetBpm =
-        this.options.targetBpm ??
-        this.currentResult?.targetBpm ??
-        this.currentResult?.detectedBpm ??
-        120;
-      conformedBtn.classList.toggle('btn-accent', isConformed);
-      conformedBtn.classList.toggle('btn-outline', !isConformed);
-      conformedBtn.innerHTML = `${isConformed ? ICONS.stop : ICONS.play} Play @ ${targetBpm} BPM`;
-    }
-
-    const magFullBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-mag-play-full');
-    if (magFullBtn) {
-      magFullBtn.classList.toggle('btn-accent', isFull);
-      magFullBtn.classList.toggle('btn-outline', !isFull);
-      magFullBtn.innerHTML = `${isFull ? ICONS.stop : ICONS.play} Play WAV`;
-    }
-
-    const magSliceBtn = this.backdropEl.querySelector<HTMLButtonElement>('#btn-mag-play-slice');
-    if (magSliceBtn) {
-      magSliceBtn.classList.toggle('btn-accent', isSlice);
-      magSliceBtn.classList.toggle('btn-outline', !isSlice);
-      magSliceBtn.innerHTML = `${isSlice ? ICONS.stop : ICONS.play} Play Slice`;
-    }
-  }
 
   private handleInjectConformedLoopIntoSession(): void {
     const res = this.currentResult;
