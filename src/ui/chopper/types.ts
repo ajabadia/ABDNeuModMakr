@@ -6,6 +6,7 @@ import type {
   SlicerResult,
 } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import type { NoiseProfile } from '../../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
+import type { FocusTrap } from '../modalFocusTrap.ts';
 import type { AudioChopperContext, ContextMenuItem } from '../AudioChopperModal.ts';
 
 export interface ChopperState {
@@ -36,6 +37,10 @@ export interface ChopperState {
   manualSilenceRanges: ManualSilenceRange[];
   manualCutsPolicy: 'prompt' | 'keep' | 'discard';
   sourcePcm: Float32Array | null;
+  // Fase 42.5: trampa de foco y dialogo de confirmacion (movidos a sessionOps/fileOps).
+  focusTrap: FocusTrap | null;
+  nestedTrap: FocusTrap | null;
+  activeConfirmModalEl: HTMLElement | null;
   _chopperKeyboardHandler?: ((e: Event) => void) | undefined;
 }
 
@@ -80,4 +85,8 @@ export interface ChopperContext {
   stopAudition?: () => void;
   updateMagnifierHeader: () => void;
   closeContextMenu: () => void;
+  // Fase 42.5: modulos chopperSessionOps (los invoca chopperFileOps via ctx).
+  suspendFocusTrap: () => void;
+  resumeFocusTrap: () => void;
+  closeConfirmModal: (resumeParent?: boolean) => void;
 }

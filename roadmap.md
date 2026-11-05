@@ -1462,9 +1462,10 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - Servicio de bancos `src/core/bankService.ts` (1348 $\to$ 393 líneas) descompuesto limpiamente en `src/core/bank/` (`bankExport.ts`, `bankAxionikDb.ts`, `bankSublibraries.ts`, `bankLoadPlan.ts`).
   - Modal por lotes `src/ui/BatchProcessorModal.ts` (1642 $\to$ 347 líneas) particionado en `src/ui/batch/` (`batchModalCore.ts`, `batchDiscoverView.ts`, `batchPreflightView.ts`, `batchEvents.ts`, `batchQueueOps.ts`).
   - Asistente de músico `src/ui/MusicianWizardModal.ts` (1752 $\to$ 333 líneas) descompuesto en `src/ui/musicianWizard/` (`wizardModalCore.ts`, `wizardStep1View.ts`..`wizardStep4View.ts`, `wizardCommitOps.ts`, `wizardEvents.ts`).
-- [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `AudioChopperModal.ts`, `AudioRecorderModal.ts`)**:
+  - Cortador de audio `src/ui/AudioChopperModal.ts` (1660 $\to$ 625 líneas) particionado en `src/ui/chopper/` (`chopperFileOps.ts`, `chopperSessionOps.ts`, `types.ts`).
+- [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `AudioRecorderModal.ts`)**:
   - Extracción progresiva de operaciones de `WebAudioPipeline.ts` y vistas/plantillas de `ZoneInspector.ts` (incluyendo `drawerRenderOps.ts`, `tableRenderOps.ts`, `tableEventOps.ts`, `zoneTemplates.ts` y `src/ui/chopper/*` con `a11yKeyboard.ts`).
-  - Partición de los últimos 2 modales monolíticos: `AudioChopperModal.ts` ($\to$ `chopperSessionOps.ts`, `chopperFileOps.ts`) y `AudioRecorderModal.ts` ($\to$ `src/ui/recorder/`).
+  - Partición del último modal monolítico: `AudioRecorderModal.ts` ($\to$ `src/ui/recorder/`).
 
 ---
 
