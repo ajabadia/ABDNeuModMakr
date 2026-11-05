@@ -221,3 +221,14 @@ export interface ConformedLoopResult {
   targetBpm: number;
   barCount: number;
 }
+
+/**
+ * Fase 3 — result of `findOptimalZeroCrossingLoop`
+ * (rising zero-crossing search + NCC seam match).
+ */
+export interface ZeroCrossingLoopSearchResult {
+  loopStart: number;
+  loopEnd: number;
+  /** Normalized correlation mapped to 0..1 */
+  zeroCrossingCorrelation: number;
+}

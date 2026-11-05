@@ -1,4 +1,4 @@
-import type { DetectedSlice } from '../../core/dsp/AudioSlicerEngine.ts';
+import type { DetectedSlice } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import { bridgeClient } from '../../core/bridge/BridgeClient.ts';
 import { resolveAiActionDeclaration } from '../../core/ai/aiHonesty.ts';
 import { isEs } from '../../core/i18n.ts';

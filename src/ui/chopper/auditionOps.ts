@@ -1,5 +1,5 @@
 import { ICONS } from '../icons.ts';
-import type { DetectedSlice } from '../../core/dsp/AudioSlicerEngine.ts';
+import type { DetectedSlice } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import { conformLoopToTargetBpm } from '../../core/dsp/AudioSlicerEngine.ts';
 import type { ChopperContext } from './types.ts';
 

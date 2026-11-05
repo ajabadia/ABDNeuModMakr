@@ -27,7 +27,9 @@ import {
 import {
   snapFrameToNearestZeroCrossing,
 } from '../core/dsp/LoopEditorTools.ts';
-import { sliceAudioBuffer, sliceAudioBufferPreservingManualCuts, buildSlicesFromBoundaries, buildSlicesFromPhoneticWords, buildSlicesFromMidiManifest, moveSliceBoundary, toggleSliceSilence, extractBoundaryFrames, normalizePeakPcm, conformLoopToTargetBpm, DEFAULT_SLICER_OPTIONS, deleteSlice, type DetectedSlice, type SlicerOptions, type SlicerResult, type ManualSilenceRange } from '../core/dsp/AudioSlicerEngine.ts';
+import { sliceAudioBuffer, sliceAudioBufferPreservingManualCuts, buildSlicesFromBoundaries, buildSlicesFromPhoneticWords, buildSlicesFromMidiManifest, moveSliceBoundary, toggleSliceSilence, extractBoundaryFrames, normalizePeakPcm, conformLoopToTargetBpm, DEFAULT_SLICER_OPTIONS, deleteSlice } from '../core/dsp/AudioSlicerEngine.ts';
+// Fase 3: slicer contracts come straight from the shared SSOT.
+import type { DetectedSlice, SlicerOptions, SlicerResult, ManualSilenceRange } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import { extractManifestFromWavBytes } from '../core/autoSampler/MidiAutoSampleSession.ts';
 import { parseSliceFile } from '../core/dsp/SliceFileParser.ts';
 import { decompressRx2Audio, isRx2Buffer } from '../core/dsp/DwopDecompressor.ts';

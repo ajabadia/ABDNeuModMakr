@@ -12,12 +12,15 @@
 // and batch auto-loop (they compose shared primitives with app-side DSP).
 
 import { clamp } from './DspMath.ts';
-import { findOptimalZeroCrossingLoop } from './MasterWaveEnhancer.ts';
+// Fase 3: canonical implementation lives in
+// `@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts` (SSOT).
+// (`MasterWaveEnhancer.ts` re-exports it too, but we bind the SSOT directly.)
+import { findOptimalZeroCrossingLoop } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
 import type { AutoLoopAlgorithm, AutoLoopOptions, AutoLoopResult } from '../types.ts';
 import { snapFrameToRisingZeroCrossing } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
 import { computeLoopSeamAnalysis } from '@abdsynths/shared/dsp/slicer-loops/seamAnalysis.ts';
 
-export { findOptimalZeroCrossingLoop };
+export { findOptimalZeroCrossingLoop } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
 
 export { snapFrameToNearestZeroCrossing } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
 export { computeZoomedWaveformEnvelope } from '@abdsynths/shared/dsp/slicer-loops/seamAnalysis.ts';

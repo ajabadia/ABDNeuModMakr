@@ -1,9 +1,10 @@
+// Fase 3: slicer contracts come straight from the shared SSOT.
 import type {
   DetectedSlice,
   ManualSilenceRange,
   SlicerOptions,
   SlicerResult,
-} from '../../core/dsp/AudioSlicerEngine.ts';
+} from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import type { NoiseProfile } from '../../../vendor/@abdsynths/shared/Code/DspCore/TakeDsp/index.ts';
 import type { AudioChopperContext, ContextMenuItem } from '../AudioChopperModal.ts';
 

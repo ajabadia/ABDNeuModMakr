@@ -9,6 +9,7 @@
  */
 
 import { clamp } from './scalar.ts';
+import type { ZeroCrossingLoopSearchResult } from '../../../Contracts/types/loopSlicer.ts';
 
 /**
  * Snaps a frame index to the nearest rising zero-crossing
@@ -122,4 +123,99 @@ export function snapFrameToNearestZeroCrossing(
     }
   }
   return minAbsIdx;
+}
+
+/**
+ * Auto-Loop Finder: searches around `candidateStart` and `candidateEnd` for
+ * rising zero-crossings (`s[i-1] <= 0 && s[i] > 0`) that maximize local waveform
+ * Normalized Cross-Correlation (NCC) and envelope continuity.
+ *
+ * Fase 3 extraction (SSOT): verbatim move from
+ * `ABDNeuModMakr/src/core/dsp/MasterWaveEnhancer.ts`.
+ * Pure Float32Array math. No DOM, no WebAudio.
+ */
+export function findOptimalZeroCrossingLoop(
+  channels: Float32Array[],
+  sampleRate: number,
+  candidateStart: number,
+  candidateEnd: number
+): ZeroCrossingLoopSearchResult {
+  const ch0 = channels[0] ?? new Float32Array(0);
+  const n = ch0.length;
+  if (n < 128) {
+    return { loopStart: 0, loopEnd: Math.max(0, n - 1), zeroCrossingCorrelation: 1.0 };
+  }
+
+  const startCenter = clamp(Math.round(candidateStart), 32, Math.max(32, n - 96));
+  const endCenter = clamp(Math.round(candidateEnd), startCenter + 64, n - 32);
+
+  const searchRadius = Math.min(
+    Math.round(sampleRate * 0.025), // ±25 ms search window
+    Math.floor((endCenter - startCenter) * 0.25)
+  );
+  const corrWin = Math.min(Math.round(sampleRate * 0.008), 512); // 8 ms correlation window
+
+  const findRisingZeroCrossings = (center: number, radius: number): number[] => {
+    const lo = Math.max(corrWin, center - radius);
+    const hi = Math.min(n - corrWin - 1, center + radius);
+    const list: number[] = [];
+    for (let i = lo; i <= hi; i++) {
+      if (ch0[i - 1] <= 0 && ch0[i] > 0) {
+        list.push(i);
+      }
+    }
+    if (list.length === 0) list.push(clamp(center, corrWin, n - corrWin - 1));
+    return list;
+  };
+
+  const starts = findRisingZeroCrossings(startCenter, searchRadius);
+  const ends = findRisingZeroCrossings(endCenter, searchRadius);
+
+  // Pick the start crossing with the cleanest rising slope near startCenter
+  let bestStart = starts[0];
+  let bestStartScore = -Infinity;
+  for (const sIdx of starts) {
+    const distPenalty = Math.abs(sIdx - startCenter) / Math.max(1, searchRadius);
+    const slope = ch0[sIdx] - ch0[sIdx - 1];
+    const score = slope - distPenalty * 0.05;
+    if (score > bestStartScore) {
+      bestStartScore = score;
+      bestStart = sIdx;
+    }
+  }
+
+  // Evaluate candidate end crossings by Normalized Cross-Correlation (NCC) against bestStart
+  let bestEnd = ends[0];
+  let bestNcc = -1.0;
+  const maxEndCandidates = 48;
+  const stepEnd = Math.max(1, Math.floor(ends.length / maxEndCandidates));
+
+  for (let idx = 0; idx < ends.length; idx += stepEnd) {
+    const eIdx = ends[idx];
+    if (eIdx <= bestStart + corrWin) continue;
+
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let k = -corrWin; k < corrWin; k++) {
+      const a = ch0[bestStart + k] ?? 0;
+      const b = ch0[eIdx + k] ?? 0;
+      dot += a * b;
+      normA += a * a;
+      normB += b * b;
+    }
+    const denom = Math.sqrt(normA * normB);
+    const ncc = denom > 1e-9 ? dot / denom : 0;
+    if (ncc > bestNcc) {
+      bestNcc = ncc;
+      bestEnd = eIdx;
+    }
+  }
+
+  const normalizedCorr = Number(clamp((bestNcc + 1.0) * 0.5, 0, 1).toFixed(3));
+  return {
+    loopStart: bestStart,
+    loopEnd: Math.max(bestStart + 1, bestEnd),
+    zeroCrossingCorrelation: normalizedCorr,
+  };
 }

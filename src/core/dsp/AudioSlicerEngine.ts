@@ -13,18 +13,16 @@ import { snapFrameToNearestZeroCrossing } from './LoopEditorTools.ts';
 import { detectPitchYinMpm, hzToMidiAndCents } from './AcousticIntelligence.ts';
 
 import { DEFAULT_SLICER_OPTIONS, midiNoteToString } from './audioSlicer/SlicerTypes.ts';
+// Fase 3: contracts come straight from the shared SSOT.
+// (`PhonemeWord` stays local: re-exported by SlicerTypes from BridgeClient.)
+import type { PhonemeWord } from './audioSlicer/SlicerTypes.ts';
 import type {
-  SlicerMode,
-  SlicerWorkflowMode,
   GridDivision,
   SlicerOptions,
-  DetectedSlice,
   SlicerResult,
   NormalizePeakResult,
   ManualSilenceRange,
-  MidiManifestSliceBuildOptions,
-  PhonemeWord,
-} from './audioSlicer/SlicerTypes.ts';
+} from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import { computeSpectralNoveltyCurve, computeAdaptiveMedianThreshold } from './audioSlicer/SlicerSpectral.ts';
 import { sliceVocalPhrasesOpenVpi } from './audioSlicer/SlicerVocalOpenVpi.ts';
 import { classifyDrumSlice, estimateLoopBpmAndBars, buildMidiFileBuffer } from './audioSlicer/SlicerDrumAndMidi.ts';
@@ -33,9 +31,8 @@ import {
   detectSilenceIntervals,
   injectSilenceCutBoundaries,
   detectMelodicPitchChangeBoundaries,
-  type SilenceInterval,
 } from './audioSlicer/SlicerSilenceAndPitch.ts';
-import { conformLoopToTargetBpm, type ConformedLoopResult } from './audioSlicer/SlicerConform.ts';
+import { conformLoopToTargetBpm } from './audioSlicer/SlicerConform.ts';
 import { buildSlicesFromMidiManifest } from './audioSlicer/SlicerMidiManifest.ts';
 
 // ── Public Re-exports for External Consumers ─────────────
@@ -66,10 +63,10 @@ export type {
   NormalizePeakResult,
   ManualSilenceRange,
   MidiManifestSliceBuildOptions,
-  PhonemeWord,
   SilenceInterval,
   ConformedLoopResult,
-};
+} from '@abdsynths/shared/contracts/types/loopSlicer.ts';
+export type { PhonemeWord };
 
 /**
  * Automatically segments audio using SuperFlux (drums), OpenVPI Silence Valley (vocals), or Grid.

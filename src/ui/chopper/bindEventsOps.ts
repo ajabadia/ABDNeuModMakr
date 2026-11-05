@@ -1,6 +1,6 @@
 import type { ChopperContext } from './types.ts';
 import { normalizePeakPcm } from '../../core/dsp/AudioSlicerEngine.ts';
-import type { SlicerMode, SlicerWorkflowMode } from '../../core/dsp/AudioSlicerEngine.ts';
+import type { SlicerMode, SlicerWorkflowMode } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 import { toast } from '../notify.ts';
 
 export function bindChopperFileEvents(ui: ChopperContext): void {
