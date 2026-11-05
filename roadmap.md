@@ -1455,15 +1455,16 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - Separados en `types.ts`, `constants.ts`, `state.ts`, `badges.ts`, `bridgeModels.ts`, `webPresets.ts`, `tabGeneral.ts`, `tabWeb.ts`, `tabCloud.ts` y `tabBridge.ts`.
 - [x] **3. Submódulos de Configuración del Modelo (`src/ui/ModelConfigModal.ts` $\to$ `src/ui/modelConfig/*`)**:
   - Separados en `types.ts`, `constants.ts`, `tagHelpers.ts`, `tabGeneral.ts`, `tabArticulation.ts`, `tabArtwork.ts`, `tabMetadata.ts` y `events/*`.
-- [x] **4. Submódulos de Exportadores Raw, Motor AutoSlicer, BridgeClient, BankService, BatchProcessorModal y Honestidad IA (`src/core/export/*`, `src/core/dsp/audioSlicer/*`, `src/core/bridge/*`, `src/core/bank/*`, `src/ui/batch/*`, `src/core/ai/honesty/*`, `src/core/batch/*`)**:
+- [x] **4. Submódulos de Exportadores Raw, Motor AutoSlicer, BridgeClient, BankService, BatchProcessorModal, MusicianWizardModal y Honestidad IA (`src/core/export/*`, `src/core/dsp/audioSlicer/*`, `src/core/bridge/*`, `src/core/bank/*`, `src/ui/batch/*`, `src/ui/musicianWizard/*`, `src/core/ai/honesty/*`, `src/core/batch/*`)**:
   - Exportadores divididos por familia (`sf2Writer.ts`, `sfzWriter.ts`, `modernSamplers.ts`, `classicHardware.ts`, `workstationSamplers.ts`, `vintageTrackers.ts`, `rawSamplerArchive.ts`, `rawSamplerPreflight.ts`, `rawSamplerTypes.ts`).
   - Motor `src/core/dsp/AudioSlicerEngine.ts` particionado en 7 submódulos especializados bajo `src/core/dsp/audioSlicer/` (`SlicerTypes.ts`, `SlicerSpectral.ts`, `SlicerVocalOpenVpi.ts`, `SlicerDrumAndMidi.ts`, `SlicerBuild.ts`, `SlicerSilenceAndPitch.ts`, `SlicerConform.ts`) manteniendo la fachada pública intacta en `AudioSlicerEngine.ts`.
   - Cliente de comunicación local `BridgeClient.ts` modularizado en `src/core/bridge/` (`bridgeTypes.ts`, `bridgeAudio.ts`, `bridgeLibrary.ts`, `bridgeModels.ts`, `BridgeClient.ts`).
   - Servicio de bancos `src/core/bankService.ts` (1348 $\to$ 393 líneas) descompuesto limpiamente en `src/core/bank/` (`bankExport.ts`, `bankAxionikDb.ts`, `bankSublibraries.ts`, `bankLoadPlan.ts`).
   - Modal por lotes `src/ui/BatchProcessorModal.ts` (1642 $\to$ 347 líneas) particionado en `src/ui/batch/` (`batchModalCore.ts`, `batchDiscoverView.ts`, `batchPreflightView.ts`, `batchEvents.ts`, `batchQueueOps.ts`).
-- [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `MusicianWizardModal.ts`, `AudioChopperModal.ts`, `AudioRecorderModal.ts`)**:
+  - Asistente de músico `src/ui/MusicianWizardModal.ts` (1752 $\to$ 333 líneas) descompuesto en `src/ui/musicianWizard/` (`wizardModalCore.ts`, `wizardStep1View.ts`..`wizardStep4View.ts`, `wizardCommitOps.ts`, `wizardEvents.ts`).
+- [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `AudioChopperModal.ts`, `AudioRecorderModal.ts`)**:
   - Extracción progresiva de operaciones de `WebAudioPipeline.ts` y vistas/plantillas de `ZoneInspector.ts` (incluyendo `drawerRenderOps.ts`, `tableRenderOps.ts`, `tableEventOps.ts`, `zoneTemplates.ts` y `src/ui/chopper/*` con `a11yKeyboard.ts`).
-  - Partición de los últimos 3 modales monolíticos: `MusicianWizardModal.ts` ($\to$ `src/ui/musicianWizard/`), `AudioChopperModal.ts` ($\to$ `chopperSessionOps.ts`, `chopperFileOps.ts`) y `AudioRecorderModal.ts` ($\to$ `src/ui/recorder/`).
+  - Partición de los últimos 2 modales monolíticos: `AudioChopperModal.ts` ($\to$ `chopperSessionOps.ts`, `chopperFileOps.ts`) y `AudioRecorderModal.ts` ($\to$ `src/ui/recorder/`).
 
 ---
 
