@@ -62,6 +62,8 @@
     "./dsp/neuron-analysis/*": "./Code/DspCore/NeuronAnalysis/*",
     "./dsp/take": "./Code/DspCore/TakeDsp/takeDsp.ts",
     "./dsp/take/*": "./Code/DspCore/TakeDsp/*",
+    "./dsp/slicer-loops": "./Code/DspCore/SlicerLoops/index.ts",
+    "./dsp/slicer-loops/*": "./Code/DspCore/SlicerLoops/*",
     "./contracts/recordingSession": "./Contracts/recordingSession.ts",
     "./contracts/axionikExpandedModel": "./Contracts/axionikExpandedModel.ts"
   },

@@ -90,6 +90,7 @@ export function syncVendor() {
     'Utils',
     'package.json',
   ];
+  // Fase 2: Contracts/types/loopSlicer.ts travels inside 'Contracts' (no extra item needed).
   for (const item of sharedItems) {
     const s = path.join(SHARED_SRC, item);
     const d = path.join(targetShared, item);
@@ -111,6 +112,7 @@ export function syncVendor() {
     'visualizers',
     path.join('DspCore', 'NeuronAnalysis'),
     path.join('DspCore', 'TakeDsp'),
+    path.join('DspCore', 'SlicerLoops'),
   ];
   for (const cItem of codeItems) {
     const s = path.join(SHARED_SRC, 'Code', cItem);

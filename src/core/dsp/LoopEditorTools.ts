@@ -3,295 +3,31 @@
 // High-precision zero-crossing snapping, seam continuity analysis
 // (amplitude step + slope match + NCC), and zoomable waveform slicing.
 // ─────────────────────────────────────────────────────────
+//
+// Fase 2: pure primitives (zero-crossing snaps, seam analysis, waveform
+// envelope, loop crossfade, ping-pong synthesis) live in
+// `@abdsynths/shared/dsp/slicer-loops/*` (SSOT) and are re-exported here
+// so existing imports keep working with zero behaviour change.
+// What stays local: `estimateFundamentalPitchHz`, `findSmartAutoLoop`
+// and batch auto-loop (they compose shared primitives with app-side DSP).
 
 import { clamp } from './DspMath.ts';
 import { findOptimalZeroCrossingLoop } from './MasterWaveEnhancer.ts';
-import type { AutoLoopAlgorithm, AutoLoopOptions, AutoLoopResult, CrossfadeCurve } from '../types.ts';
+import type { AutoLoopAlgorithm, AutoLoopOptions, AutoLoopResult } from '../types.ts';
+import { snapFrameToRisingZeroCrossing } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
+import { computeLoopSeamAnalysis } from '@abdsynths/shared/dsp/slicer-loops/seamAnalysis.ts';
 
 export { findOptimalZeroCrossingLoop };
 
-export interface LoopSeamAnalysis {
-  /** Number of samples in `preEndSamples` (approaching `loopEnd`) and `postStartSamples` (leaving `loopStart`) */
-  windowFrames: number;
-  /** Samples `[loopEnd - windowFrames .. loopEnd - 1]` approaching the loop splice from the left */
-  preEndSamples: Float32Array;
-  /** Samples `[loopStart .. loopStart + windowFrames - 1]` continuing from the loop splice to the right */
-  postStartSamples: Float32Array;
-  /** Ghost continuation `[loopEnd .. loopEnd + windowFrames - 1]` showing how the wave would have continued past `loopEnd` */
-  ghostPostEndSamples: Float32Array;
-  /** Ghost pre-history `[loopStart - windowFrames .. loopStart - 1]` showing how the wave approached `loopStart` */
-  ghostPreStartSamples: Float32Array;
-  /** Absolute amplitude jump `|pcm[loopEnd - 1] - pcm[loopStart]|` at the seam (0 = perfect level match) */
-  stepDiscontinuity: number;
-  /** First-derivative slope difference across the seam (0 = perfect slope match) */
-  slopeDiscontinuity: number;
-  /** Normalized Cross-Correlation (-1..+1) between the neighbourhood of `loopEnd` and `loopStart` */
-  nccScore: number;
-  /** Overall click-free seam quality score (0..100%) */
-  seamQualityPercent: number;
-}
+export { snapFrameToNearestZeroCrossing } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
+export { computeZoomedWaveformEnvelope } from '@abdsynths/shared/dsp/slicer-loops/seamAnalysis.ts';
+export {
+  applyLoopCrossfade,
+  generatePingPongLoopBuffer,
+} from '@abdsynths/shared/dsp/slicer-loops/loopCrossfade.ts';
+export type { LoopSeamAnalysis } from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 
-/**
- * Snaps a frame index to the nearest rising zero-crossing (`s[i - 1] <= 0 && s[i] >= 0`)
- * within `±searchRadiusFrames`. If no rising zero-crossing exists in that window,
- * returns the sample with the smallest `|s[i]|`.
- */
-export function snapFrameToRisingZeroCrossing(
-  pcm: Float32Array,
-  targetFrame: number,
-  searchRadiusFrames: number = 512
-): number {
-  const n = pcm.length;
-  if (n <= 2) return 0;
-  const center = clamp(Math.round(targetFrame), 1, n - 1);
-  const radius = Math.max(1, Math.round(searchRadiusFrames));
-  const lo = Math.max(1, center - radius);
-  const hi = Math.min(n - 1, center + radius);
-
-  let bestZcIdx = -1;
-  let bestZcDist = Number.POSITIVE_INFINITY;
-
-  for (let i = lo; i <= hi; i++) {
-    const prev = pcm[i - 1];
-    const curr = pcm[i];
-    if (prev <= 0 && curr >= 0 && (prev < 0 || curr > 0)) {
-      const dist = Math.abs(i - center);
-      if (dist < bestZcDist) {
-        bestZcDist = dist;
-        bestZcIdx = i;
-        if (dist === 0) break;
-      }
-    }
-  }
-
-  if (bestZcIdx >= 0) {
-    return bestZcIdx;
-  }
-
-  // Fallback: nearest minimum absolute value
-  let minAbsIdx = center;
-  let minAbsVal = Math.abs(pcm[center]);
-  for (let i = lo; i <= hi; i++) {
-    const a = Math.abs(pcm[i]);
-    if (a < minAbsVal) {
-      minAbsVal = a;
-      minAbsIdx = i;
-    }
-  }
-  return minAbsIdx;
-}
-
-/**
- * Snaps a frame index to the nearest zero-crossing (either rising or falling)
- * within `±searchRadiusFrames`, choosing the sample point with minimal absolute amplitude.
- * Returns the frame index with the cleanest zero crossing.
- */
-export function snapFrameToNearestZeroCrossing(
-  pcm: Float32Array,
-  targetFrame: number,
-  searchRadiusFrames: number = 256
-): number {
-  const n = pcm.length;
-  if (n <= 2) return 0;
-  const center = clamp(Math.round(targetFrame), 1, n - 2);
-  const radius = Math.max(1, Math.round(searchRadiusFrames));
-  const lo = Math.max(1, center - radius);
-  const hi = Math.min(n - 2, center + radius);
-
-  let bestIdx = -1;
-  let bestDist = Number.POSITIVE_INFINITY;
-  let minAbsVal = Number.POSITIVE_INFINITY;
-
-  for (let i = lo; i <= hi; i++) {
-    const prev = pcm[i - 1];
-    const curr = pcm[i];
-    const next = pcm[i + 1];
-
-    // Check for sign crossing across sample i
-    const crossesZero =
-      (prev <= 0 && curr >= 0 && (prev < 0 || curr > 0)) ||
-      (prev >= 0 && curr <= 0 && (prev > 0 || curr < 0)) ||
-      (curr <= 0 && next >= 0 && (curr < 0 || next > 0)) ||
-      (curr >= 0 && next <= 0 && (curr > 0 || next < 0));
-
-    if (crossesZero) {
-      let candidate = i;
-      let candVal = Math.abs(curr);
-      if (Math.abs(prev) < candVal) {
-        candidate = i - 1;
-        candVal = Math.abs(prev);
-      }
-      if (Math.abs(next) < candVal) {
-        candidate = i + 1;
-        candVal = Math.abs(next);
-      }
-
-      const dist = Math.abs(candidate - center);
-      if (dist < bestDist || (dist === bestDist && candVal < minAbsVal)) {
-        bestDist = dist;
-        bestIdx = candidate;
-        minAbsVal = candVal;
-        if (dist === 0 && candVal < 0.001) break;
-      }
-    }
-  }
-
-  if (bestIdx >= 0) {
-    return bestIdx;
-  }
-
-  // Fallback: nearest minimum absolute value
-  let minAbsIdx = center;
-  let fallbackMinVal = Math.abs(pcm[center]);
-  for (let i = lo; i <= hi; i++) {
-    const a = Math.abs(pcm[i]);
-    if (a < fallbackMinVal) {
-      fallbackMinVal = a;
-      minAbsIdx = i;
-    }
-  }
-  return minAbsIdx;
-}
-
-/**
- * Computes the high-precision Loop Seam / Zero-Crossing Magnifier curves and
- * click-free splice metrics around `loopEnd -> loopStart`.
- */
-export function computeLoopSeamAnalysis(
-  pcm: Float32Array,
-  loopStart: number,
-  loopEnd: number,
-  windowFrames: number = 128
-): LoopSeamAnalysis {
-  const n = pcm.length;
-  const w = Math.max(16, Math.min(1024, Math.round(windowFrames)));
-  const preEndSamples = new Float32Array(w);
-  const postStartSamples = new Float32Array(w);
-  const ghostPostEndSamples = new Float32Array(w);
-  const ghostPreStartSamples = new Float32Array(w);
-
-  if (n < 4) {
-    return {
-      windowFrames: w,
-      preEndSamples,
-      postStartSamples,
-      ghostPostEndSamples,
-      ghostPreStartSamples,
-      stepDiscontinuity: 0,
-      slopeDiscontinuity: 0,
-      nccScore: 1,
-      seamQualityPercent: 100,
-    };
-  }
-
-  const startIdx = clamp(Math.round(loopStart), 0, n - 2);
-  const endIdx = clamp(Math.round(loopEnd), startIdx + 1, n);
-
-  for (let i = 0; i < w; i++) {
-    const preEndPos = endIdx - w + i;
-    preEndSamples[i] = preEndPos >= 0 && preEndPos < n ? pcm[preEndPos] : 0;
-
-    const postStartPos = startIdx + i;
-    postStartSamples[i] = postStartPos >= 0 && postStartPos < n ? pcm[postStartPos] : 0;
-
-    const ghostPostPos = endIdx + i;
-    ghostPostEndSamples[i] = ghostPostPos >= 0 && ghostPostPos < n ? pcm[ghostPostPos] : 0;
-
-    const ghostPrePos = startIdx - w + i;
-    ghostPreStartSamples[i] = ghostPrePos >= 0 && ghostPrePos < n ? pcm[ghostPrePos] : 0;
-  }
-
-  const leftVal = preEndSamples[w - 1];
-  const rightVal = postStartSamples[0];
-  const stepDiscontinuity = Math.abs(leftVal - rightVal);
-
-  const leftSlope = preEndSamples[w - 1] - preEndSamples[Math.max(0, w - 2)];
-  const rightSlope = postStartSamples[Math.min(w - 1, 1)] - postStartSamples[0];
-  const slopeDiscontinuity = Math.abs(leftSlope - rightSlope);
-
-  // Compute NCC between [preEndSamples, ghostPostEndSamples] and [ghostPreStartSamples, postStartSamples]
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  const halfW = Math.min(64, Math.floor(w / 2));
-  for (let k = -halfW; k < halfW; k++) {
-    const idxA = endIdx + k;
-    const idxB = startIdx + k;
-    const a = idxA >= 0 && idxA < n ? pcm[idxA] : 0;
-    const b = idxB >= 0 && idxB < n ? pcm[idxB] : 0;
-    dot += a * b;
-    normA += a * a;
-    normB += b * b;
-  }
-  const denom = Math.sqrt(normA * normB);
-  const nccScore = denom > 1e-9 ? clamp(dot / denom, -1, 1) : 1;
-
-  // Click-free seam quality score (0..100%)
-  const stepPenalty = clamp(stepDiscontinuity * 140, 0, 60);
-  const slopePenalty = clamp(slopeDiscontinuity * 90, 0, 25);
-  const nccBonus = ((nccScore + 1) * 0.5) * 25; // 0..25
-  const rawQuality = clamp(75 - stepPenalty - slopePenalty + nccBonus, 0, 100);
-
-  return {
-    windowFrames: w,
-    preEndSamples,
-    postStartSamples,
-    ghostPostEndSamples,
-    ghostPreStartSamples,
-    stepDiscontinuity,
-    slopeDiscontinuity,
-    nccScore,
-    seamQualityPercent: Math.round(rawQuality),
-  };
-}
-
-/**
- * Computes `[min, max]` envelope columns for a visible slice `[viewStartFrame .. viewEndFrame]`
- * of a PCM buffer, supporting arbitrary horizontal zoom in the Waveform Loop Editor.
- */
-export function computeZoomedWaveformEnvelope(
-  pcm: Float32Array,
-  viewStartFrame: number,
-  viewEndFrame: number,
-  numColumns: number
-): { min: number[]; max: number[]; viewStartFrame: number; viewEndFrame: number } {
-  const n = pcm.length;
-  const cols = Math.max(16, Math.min(2048, Math.round(numColumns)));
-  const start = clamp(Math.floor(viewStartFrame), 0, Math.max(0, n - 1));
-  const end = clamp(Math.ceil(viewEndFrame), start + 1, Math.max(1, n));
-  const span = Math.max(1, end - start);
-
-  const minArr = new Array<number>(cols).fill(0);
-  const maxArr = new Array<number>(cols).fill(0);
-  if (n === 0) {
-    return { min: minArr, max: maxArr, viewStartFrame: 0, viewEndFrame: 1 };
-  }
-
-  for (let c = 0; c < cols; c++) {
-    const f0 = start + Math.floor((c * span) / cols);
-    const f1 = Math.max(f0 + 1, start + Math.floor(((c + 1) * span) / cols));
-    let lo = 1.0;
-    let hi = -1.0;
-    for (let i = f0; i < f1 && i < n; i++) {
-      const s = pcm[i];
-      if (s < lo) lo = s;
-      if (s > hi) hi = s;
-    }
-    if (lo > hi) {
-      lo = 0;
-      hi = 0;
-    }
-    minArr[c] = lo;
-    maxArr[c] = hi;
-  }
-
-  return {
-    min: minArr,
-    max: maxArr,
-    viewStartFrame: start,
-    viewEndFrame: end,
-  };
-}
+export { snapFrameToRisingZeroCrossing, computeLoopSeamAnalysis };
 
 /**
  * Fast Autocorrelation Pitch & Period Detector:
@@ -374,93 +110,6 @@ export function estimateFundamentalPitchHz(
     f0Hz: Number(f0.toFixed(2)),
     periodFrames: fineLag,
     confidence: clamp(bestRxx, 0, 1),
-  };
-}
-
-/**
- * Applies an equal-power or linear circular crossfade splice at the seam [loopEnd -> loopStart].
- * Blends samples approaching loopEnd with the pre-start / start region to prevent clicks.
- */
-export function applyLoopCrossfade(
-  pcm: Float32Array,
-  loopStart: number,
-  loopEnd: number,
-  xfadeFrames: number,
-  curve: CrossfadeCurve = 'equal-power'
-): Float32Array {
-  const n = pcm.length;
-  const out = new Float32Array(pcm);
-  const s = clamp(Math.round(loopStart), 0, n - 2);
-  const e = clamp(Math.round(loopEnd), s + 1, n);
-  const loopLen = e - s;
-  const maxAllowedXfade = Math.max(4, Math.floor(loopLen * 0.45));
-  const x = clamp(Math.round(xfadeFrames), 0, maxAllowedXfade);
-  if (x <= 1) return out;
-
-  for (let k = 0; k < x; k++) {
-    const t = k / x; // 0..1
-    let gEnd = 1.0 - t;
-    let gStart = t;
-
-    if (curve === 'equal-power') {
-      gEnd = Math.cos(t * Math.PI * 0.5);
-      gStart = Math.sin(t * Math.PI * 0.5);
-    }
-
-    const endPos = e - x + k;
-    const preStartPos = s - x + k;
-    const startPos = s + k;
-
-    // Use pre-start historical wave if available, otherwise post-start wave
-    const sampleFromStart = preStartPos >= 0 ? pcm[preStartPos] : pcm[startPos];
-    const sampleApproachingEnd = pcm[endPos];
-
-    out[endPos] = sampleApproachingEnd * gEnd + sampleFromStart * gStart;
-  }
-
-  return out;
-}
-
-/**
- * Synthesizes an authentic bidirectional (Ping-Pong) looped buffer for auditioning.
- * The loop section [loopStart .. loopEnd] is cloned forward and then reversed [loopEnd .. loopStart].
- * WebAudio AudioBufferSourceNode looping over [loopStart .. loopStart + 2 * (loopEnd - loopStart)]
- * produces authentic forward-backward alternating playback.
- */
-export function generatePingPongLoopBuffer(
-  pcm: Float32Array,
-  loopStart: number,
-  loopEnd: number
-): { pcm: Float32Array; loopStart: number; loopEnd: number } {
-  const n = pcm.length;
-  const s = clamp(Math.round(loopStart), 0, Math.max(0, n - 2));
-  const e = clamp(Math.round(loopEnd), s + 1, n);
-  const loopLen = e - s;
-
-  if (loopLen < 4) {
-    return { pcm, loopStart: s, loopEnd: e };
-  }
-
-  const outLen = n + loopLen;
-  const out = new Float32Array(outLen);
-
-  // 1. Pre-loop + forward loop section: [0 .. e]
-  out.set(pcm.subarray(0, e), 0);
-
-  // 2. Reversed loop section: [e-1 down to s]
-  for (let i = 0; i < loopLen; i++) {
-    out[e + i] = pcm[e - 1 - i];
-  }
-
-  // 3. Post-loop release tail: [e .. n]
-  if (e < n) {
-    out.set(pcm.subarray(e, n), e + loopLen);
-  }
-
-  return {
-    pcm: out,
-    loopStart: s,
-    loopEnd: s + 2 * loopLen,
   };
 }
 
@@ -751,4 +400,3 @@ export function computeBatchAutoLoopForZones(
   }
   return results;
 }
-

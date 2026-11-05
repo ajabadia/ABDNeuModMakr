@@ -295,49 +295,18 @@ export type {
 };
 
 /**
- * Fase 13 — Auto-Loop Search & Seam Smoothing Algorithms:
- *   - 'pitch_periodic': Snaps loop duration (loopEnd - loopStart) to exact integer multiples of
- *                       the fundamental pitch period (k * T0), locking to rising zero-crossings.
- *                       Eliminates pitch detuning, flutter, and phase cancellation.
- *   - 'ncc_zc': Normalized Cross-Correlation search across rising zero-crossings, maximizing
- *               waveform similarity across the seam with minimum step/slope discontinuity.
- *   - 'min_seam_energy': Least-squares minimization of step discontinuity and derivative mismatch.
- *                        Optimal for non-harmonic pads, textures, and percussion.
- *   - 'equal_power_xfade': Circular equal-power crossfade (cos/sin) synthesis across the loop seam.
+ * Fase 13 — Auto-Loop Search & Seam Smoothing Algorithms.
+ *
+ * Fase 2: canonical contracts live in
+ * `@abdsynths/shared/contracts/types/loopSlicer.ts` (SSOT).
+ * Re-exported here so existing `../core/types.ts` imports keep working
+ * with zero behaviour change. See the shared module for algorithm docs.
  */
-export type AutoLoopAlgorithm =
-  | 'pitch_periodic'
-  | 'ncc_zc'
-  | 'min_seam_energy'
-  | 'equal_power_xfade';
-
-export interface AutoLoopOptions {
-  algorithm?: AutoLoopAlgorithm;
-  /** Relative start search range (default 0.15 .. 0.45 of total length) */
-  searchStartRatio?: number;
-  /** Relative end search range (default 0.60 .. 0.92 of total length) */
-  searchEndRatio?: number;
-  candidateStartFrame?: number;
-  candidateEndFrame?: number;
-  knownF0Hz?: number;
-  targetCrossfadeMs?: number;
-  crossfadeCurve?: CrossfadeCurve;
-}
-
-export interface AutoLoopResult {
-  loopStart: number;
-  loopEnd: number;
-  loopCrossfadeMs: number;
-  algorithm: AutoLoopAlgorithm;
-  qualityPercent: number; // 0..100%
-  stepDiscontinuity: number;
-  slopeDiscontinuity: number;
-  nccScore: number;
-  detectedPitchHz?: number;
-  periodFrames?: number;
-  cyclesCount?: number;
-  rationale: string;
-}
+export type {
+  AutoLoopAlgorithm,
+  AutoLoopOptions,
+  AutoLoopResult,
+} from '@abdsynths/shared/contracts/types/loopSlicer.ts';
 
 export interface UnifiedSurfaceUiConfig {
   /** 'auto' (default) detects melodic_surface vs drum_kit_surface from F0 monotonicity & Bark formants */
