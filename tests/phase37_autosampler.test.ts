@@ -453,7 +453,11 @@ await (async () => {
     fs.existsSync('DOCS/AUTOSAMPLER_DRUM_MAP_SPEC.md'),
     'DOCS/AUTOSAMPLER_DRUM_MAP_SPEC.md must exist'
   );
-  const recModalSrc = fs.readFileSync('src/ui/AudioRecorderModal.ts', 'utf8');
+  // Fase 42.5: el modal se partió en src/ui/recorder/* (mismo patrón que chopper/).
+  // Las aserciones de presencia cubren la fachada + todos los submódulos.
+  const recModalSrc = ['AudioRecorderModal', ...['captureOps', 'sweepOps', 'takeOps', 'deckOps', 'renderOps', 'canvasOps'].map((m) => `recorder/${m}`)]
+    .map((m) => fs.readFileSync(`src/ui/${m}.ts`, 'utf8'))
+    .join('\n');
   assert.ok(
     recModalSrc.includes('drawLiveScrollingWaveform'),
     'AudioRecorderModal must implement drawLiveScrollingWaveform'
