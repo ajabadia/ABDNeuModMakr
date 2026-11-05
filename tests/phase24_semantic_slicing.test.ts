@@ -92,7 +92,8 @@ export async function runPhase24Tests(): Promise<void> {
 
   // ── 3. Companion Bridge Integration: Stem Separation ──
   console.log('\n3. Testing Companion Bridge /api/separate-stems endpoint...');
-  const isBridgeAlive = await bridgeClient.checkHealth();
+  const bridgeStatus = await bridgeClient.checkHealth();
+  const isBridgeAlive = bridgeStatus.connected;
 
   if (isBridgeAlive) {
     console.log('   Bridge is ONLINE at http://localhost:7860.');

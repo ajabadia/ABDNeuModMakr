@@ -55,7 +55,8 @@ async function runPhase26Tests(): Promise<void> {
 
   // ── 3. Companion Bridge /api/decode-rx2 Endpoint (Optional Server Route) ──
   console.log('\n3. Testing Companion Bridge DWOP audio decompression endpoint...');
-  const isBridgeAlive = await bridgeClient.checkHealth();
+  const bridgeStatus = await bridgeClient.checkHealth();
+  const isBridgeAlive = bridgeStatus.connected;
 
   if (isBridgeAlive) {
     console.log('   Companion Bridge is online at port 7860! Calling decodeRx2Audio...');
