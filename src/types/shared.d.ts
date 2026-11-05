@@ -22,6 +22,34 @@ declare module '@abdsynths/shared/components' {
 
   export const FLAG_ICONS: { es: string; en: string };
 
+  /**
+   * Shared overlay focus contract (@abdsynths/shared/components).
+   * Used by `src/ui/modalFocusTrap.ts` as the thin wrapper behind
+   * `createModalFocusTrap(...).activate/deactivate`.
+   */
+  export interface OverlayFocusOptions {
+    root: HTMLElement;
+    body?: HTMLElement | null;
+    isClosed: () => boolean;
+    onEscape?: () => void;
+  }
+
+  export interface OverlayFocusApi {
+    attach: () => void;
+    detach: () => void;
+    setInert: () => void;
+    releaseInert: () => void;
+    focusFirst: () => void;
+    restoreFocus: () => void;
+    rememberTrigger: () => void;
+    trapTab: (event: KeyboardEvent) => void;
+    handleKeydown: (event: KeyboardEvent) => void;
+  }
+
+  export function createOverlayFocus(options: OverlayFocusOptions): OverlayFocusApi;
+  export function focusableWithin(root: HTMLElement): HTMLElement[];
+
+
   export interface SynthNavBarMenu {
     name: string;
     items: SynthNavBarMenuItem[];

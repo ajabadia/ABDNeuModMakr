@@ -1,8 +1,14 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — AudioSlicer Types, Constants & Helpers
+//
+// MIDI note name formatters now use the shared canonical
+// `midiNoteToStandardName` (@abdsynths/shared/dsp/take/autoSamplerDsp.ts)
+// behind a local Hartmann display wrapper. This keeps the zone/slicer UIs on
+// the historical Hartmann convention (MIDI 60 -> "C3") and the padded
+// numeric form ("60  C3") while eliminating the duplicate pitch constants.
 // ─────────────────────────────────────────────────────────
 
-import { midiToNoteName } from '../../../ui/ZoneRibbon.ts';
+import { midiNoteToStandardName } from '@abdsynths/shared/dsp/take/autoSamplerDsp.ts';
 import type { PhonemeWord } from '../../bridge/BridgeClient.ts';
 
 export type { PhonemeWord };
@@ -153,8 +159,40 @@ export interface MidiManifestSliceBuildOptions {
 }
 
 /**
- * Helper to generate string note format "60 C3"
+ * Hartmann MODELmaker v1.2 display formatter for MIDI notes.
+ *
+ * NOTE name comes from the shared canonical `midiNoteToStandardName`
+ * (`@abdsynths/shared/dsp/take/autoSamplerDsp.ts`), which gives scientific pitch
+ * notation (e.g. 60 -> "C4", 0 -> "C-1"). The OCTAVE uses the historical
+ * Hartmann convention (MIDI 60 -> "C3"), which is one octave lower than the
+ * scientific octave embedded in that canonical name.
+ *
+ * We parse the canonical name generically so the note letter/alteration (e.g.
+ * "C", "C#", "A#") is reused from shared even for negative octaves like
+ * "C-1" -> Hartmann "C-2".
+ */
+export function midiToNoteName(midi: number): string {
+  if (midi < 0 || midi > 127) return '';
+  const standard = midiNoteToStandardName(midi); // e.g. "C4", "C-1", "A#-1", "G9"
+  const parsed = standard.match(/^([A-G][#b]?)(-?\d+)$/);
+  if (!parsed) {
+    // Fallback should be extremely rare; fall back to a direct Hartmann label
+    // based on the MIDI number itself so we never return a malformed label.
+    const pc = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][midi % 12];
+    return `${pc}${Math.floor(midi / 12) - 2}`;
+  }
+  const noteName = parsed[1];
+  const canonicalOctave = Number(parsed[2]);
+  const hartmannOctave = canonicalOctave - 1;
+  return `${noteName}${hartmannOctave}`;
+}
+
+/**
+ * Canonical Hartmann MODELmaker v1.2 `NeuronApp.midiNoteToString(int)` formatter
+ * (`"0   C-2"`, `"60  C3"`, `"127 G8"`). Returns `""` if `midi < 0 || midi > 127`.
  */
 export function midiNoteToString(midi: number): string {
-  return `${midi} (${midiToNoteName(midi)})`;
+  if (midi < 0 || midi > 127) return '';
+  const pad = midi < 10 ? '   ' : midi < 100 ? '  ' : ' ';
+  return `${midi}${pad}${midiToNoteName(midi)}`;
 }

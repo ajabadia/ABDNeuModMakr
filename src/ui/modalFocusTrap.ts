@@ -1,8 +1,21 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Accessible Modal Keyboard Focus Trap
-// Traps Tab / Shift+Tab navigation within open modal dialogs,
-// auto-focuses initial element, and restores focus upon closing.
+// Thin wrapper around the shared overlay focus contract
+// (@abdsynths/shared/components / createOverlayFocus).
+//
+// Keeps the existing FocusTrap { activate, deactivate } surface and the
+// FocusTrapOptions { initialFocusSelector?, onEscape? } contract so the
+// 14 consuming modals do not need to change.
+//
+// Behaviour is intentionally kept close to the previous local trap:
+//   - Escape closes the dialog and preventDefault() is kept so the key is
+//     consumed by the dialog and does not leak to the browser/audio host.
+//   - Tab / Shift+Tab cycles within the modal's reachable controls.
+//   - On open, focus moves to the initial selector (if given) or to the
+//     first reachable control; on close, focus returns to the trigger.
 // ─────────────────────────────────────────────────────────
+
+import { createOverlayFocus, focusableWithin } from '@abdsynths/shared/components';
 
 export interface FocusTrapOptions {
   initialFocusSelector?: string;
@@ -14,94 +27,70 @@ export interface FocusTrap {
   deactivate: () => void;
 }
 
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(', ');
+const dataModalBodySelector = '.nmm-modal-body, .modal-body, [data-modal-body]';
 
 export function createModalFocusTrap(
   modalElement: HTMLElement,
   options?: FocusTrapOptions
 ): FocusTrap {
-  let previouslyFocusedElement: HTMLElement | null = null;
   let isActive = false;
 
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (!isActive) return;
-
-    if (event.key === 'Escape') {
-      if (options?.onEscape) {
-        event.preventDefault();
-        options.onEscape();
+  const overlay = createOverlayFocus({
+    root: modalElement,
+    body: modalElement.querySelector<HTMLElement>(dataModalBodySelector) ?? modalElement,
+    isClosed: () => !isActive,
+    onEscape: () => {
+      const onEscape = options?.onEscape;
+      if (onEscape) {
+        onEscape();
+        return;
       }
-      return;
-    }
-
-    if (event.key !== 'Tab') return;
-
-    const focusables = Array.from(
-      modalElement.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-    ).filter((el) => el.offsetParent !== null && !el.hasAttribute('disabled'));
-
-    if (focusables.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-
-    if (event.shiftKey) {
-      if (document.activeElement === first || !modalElement.contains(document.activeElement)) {
-        event.preventDefault();
-        last.focus();
+      // Fallback: close the dialog through the same local contract the modals
+      // already use for Escape-driven closure.
+      if (typeof modalElement.closest === 'function') {
+        const dialog = modalElement.closest<HTMLElement>('[role="dialog"][aria-modal="true"]');
+        if (dialog && typeof (dialog as any).close === 'function') {
+          (dialog as any).close();
+        }
       }
-    } else {
-      if (document.activeElement === last || !modalElement.contains(document.activeElement)) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-  };
+    },
+  });
 
   return {
     activate() {
       if (isActive) return;
       isActive = true;
-      previouslyFocusedElement = document.activeElement as HTMLElement | null;
 
-      window.addEventListener('keydown', handleKeyDown, true);
+      overlay.rememberTrigger();
+      overlay.releaseInert();
+      overlay.attach();
 
-      // Focus initial element after current tick
       requestAnimationFrame(() => {
         if (!isActive) return;
-        let target: HTMLElement | null = null;
+
         if (options?.initialFocusSelector) {
-          target = modalElement.querySelector<HTMLElement>(options.initialFocusSelector);
+          const target = modalElement.querySelector<HTMLElement>(options.initialFocusSelector);
+          if (target && !target.hasAttribute('disabled')) {
+            target.focus({ preventScroll: true });
+            return;
+          }
         }
-        if (!target) {
-          const focusables = Array.from(
-            modalElement.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-          ).filter((el) => el.offsetParent !== null && !el.hasAttribute('disabled'));
-          target = focusables[0] ?? modalElement;
-        }
-        target?.focus();
+
+        overlay.focusFirst();
       });
     },
 
     deactivate() {
       if (!isActive) return;
       isActive = false;
-      window.removeEventListener('keydown', handleKeyDown, true);
 
-      if (previouslyFocusedElement && typeof previouslyFocusedElement.focus === 'function') {
-        previouslyFocusedElement.focus();
-        previouslyFocusedElement = null;
-      }
+      overlay.detach();
+      overlay.setInert();
+      overlay.restoreFocus();
     },
   };
 }
+
+// Keep the old selector list available for any local code that inspected it
+// directly (none of the 14 consumers should depend on it, but be safe).
+export { focusableWithin };

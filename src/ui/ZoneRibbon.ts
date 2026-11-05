@@ -1,6 +1,12 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Zone Ribbon (128 MIDI Keys Partition View)
 // Visualizes continuous zones across notes 0..127
+//
+// MIDI note name helpers are now sourced from SlicerTypes.ts, which wraps
+// the shared canonical `midiNoteToStandardName`
+// (@abdsynths/shared/dsp/take/autoSamplerDsp.ts) with the local Hartmann
+// display convention (MIDI 60 -> "C3") and the padded numeric form used by
+// the zone inspector and slicer UI.
 // ─────────────────────────────────────────────────────────
 
 import type { ExtendedRegion, WorkingMode, Zone } from '../core/types';
@@ -11,33 +17,13 @@ import {
 import type { RowAuditionSpan } from '../core/noteMapping';
 import { onAppLocaleChange, tApp } from '../core/i18n';
 import { ICONS } from './icons';
+import {
+  midiNoteToString,
+  midiToNoteName,
+} from '../core/dsp/audioSlicer/SlicerTypes';
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+export { midiNoteToString, midiToNoteName };
 
-/**
- * Canonical Hartmann MODELmaker v1.2 MIDI note name (`0 = C-2`, `60 = C3`, `127 = G8`).
- * Verified against `neuronapp.NeuronApp.noteNames` (`MODELmaker_1_2.exe`).
- */
-export function midiToNoteName(midi: number): string {
-  if (midi < 0 || midi > 127) return '';
-  const octave = Math.floor(midi / 12) - 2;
-  const name = NOTE_NAMES[midi % 12];
-  return `${name}${octave}`;
-}
-
-/**
- * Canonical Hartmann MODELmaker v1.2 `NeuronApp.midiNoteToString(int)` formatter
- * (`"0   C-2"`, `"60  C3"`, `"127 G8"`). Returns `""` if `midi < 0 || midi > 127`.
- */
-export function midiNoteToString(midi: number): string {
-  if (midi < 0 || midi > 127) return '';
-  const pad = midi < 10 ? '   ' : midi < 100 ? '  ' : ' ';
-  return `${midi}${pad}${midiToNoteName(midi)}`;
-}
-
-/**
- * Canonical `NeuronApp.detuneToString(int)` (`-99..+99` -> `"0"`, `"-N"`, `"+N"`).
- */
 export function detuneToString(detune: number): string {
   const v = Math.round(detune);
   if (v < 0) return `-${-v}`;
@@ -45,9 +31,6 @@ export function detuneToString(detune: number): string {
   return '0';
 }
 
-/**
- * Canonical `NeuronApp.volumeToString(int)` (`-32..+12` -> `"0"`, `"-N"`, `"+N"`).
- */
 export function volumeToString(volume: number): string {
   const v = Math.round(volume);
   if (v < 0) return `-${-v}`;
@@ -55,9 +38,6 @@ export function volumeToString(volume: number): string {
   return '0';
 }
 
-/**
- * Canonical `NeuronApp.volumeToLongString(int)` (`-32..+12` -> `"0dB"`, `"-NdB"`, `"+NdB"`).
- */
 export function volumeToLongString(volume: number): string {
   const v = Math.round(volume);
   if (v < 0) return `-${-v}dB`;
@@ -65,9 +45,6 @@ export function volumeToLongString(volume: number): string {
   return '0dB';
 }
 
-/**
- * Canonical `NeuronApp.panToString(int)` (`-50..+50` -> `"0"`, `"-N"`, `"+N"`).
- */
 export function panToString(pan: number): string {
   const v = Math.round(pan);
   if (v < 0) return `-${-v}`;
@@ -505,8 +482,8 @@ export class ZoneRibbon {
     const span = Math.max(1, zone.highKey - zone.lowKey + 1);
     const widthPct = (span / 128) * 100;
     const isSelected = zone.id === this.activeZoneId;
-    const lowLabel = zone.sampleLow ? zone.sampleLow.split(/[\\/]/).pop() : '(No sample)';
-    const highLabel = zone.sampleHigh ? zone.sampleHigh.split(/[\\/]/).pop() : null;
+    const lowLabel = zone.sampleLow ? zone.sampleLow.split(/[/\\]/).pop() : '(No sample)';
+    const highLabel = zone.sampleHigh ? zone.sampleHigh.split(/[/\\]/).pop() : null;
     const lowStr = midiToNoteName(zone.lowKey);
     const highStr = midiToNoteName(zone.highKey);
     const rootStr = midiToNoteName(zone.rootKey);
@@ -570,8 +547,8 @@ export class ZoneRibbon {
     const zoneTitle = `Zone #${index + 1}: Keys ${lowStr} (${zone.lowKey}) .. ${highStr} (${zone.highKey}) | Root: ${rootStr} (${zone.rootKey}) | ${hasHighVel ? `Low Vel 1..${split - 1} + High Vel ${split}..127` : 'Vel 1..127'}${isIntersecting ? ` | INTERSECTION (${intersectPeerText})` : ''} · [←/→: seleccionar zona · Shift+←/→: ajustar frontera ±1 semitono · Doble clic / Alt+Clic: dividir]`;
 
     return `
-      <div 
-        class="ribbon-zone-block ${isSelected ? 'is-selected' : ''} ${!zone.sampleLow ? 'has-no-sample' : ''} ${hasHighVel ? 'has-two-vel-layers' : ''} ${isIntersecting ? 'is-intersecting' : ''}" 
+      <div
+        class="ribbon-zone-block ${isSelected ? 'is-selected' : ''} ${!zone.sampleLow ? 'has-no-sample' : ''} ${hasHighVel ? 'has-two-vel-layers' : ''} ${isIntersecting ? 'is-intersecting' : ''}"
         data-zone-id="${zone.id}"
         tabindex="0"
         role="button"
