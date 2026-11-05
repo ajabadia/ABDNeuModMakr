@@ -1455,11 +1455,32 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
   - Separados en `types.ts`, `constants.ts`, `state.ts`, `badges.ts`, `bridgeModels.ts`, `webPresets.ts`, `tabGeneral.ts`, `tabWeb.ts`, `tabCloud.ts` y `tabBridge.ts`.
 - [x] **3. Submódulos de Configuración del Modelo (`src/ui/ModelConfigModal.ts` $\to$ `src/ui/modelConfig/*`)**:
   - Separados en `types.ts`, `constants.ts`, `tagHelpers.ts`, `tabGeneral.ts`, `tabArticulation.ts`, `tabArtwork.ts`, `tabMetadata.ts` y `events/*`.
-- [x] **4. Submódulos de Exportadores Raw, Motor AutoSlicer y Honestidad IA (`src/core/export/*`, `src/core/dsp/audioSlicer/*`, `src/core/ai/honesty/*`, `src/core/batch/*`)**:
+- [x] **4. Submódulos de Exportadores Raw, Motor AutoSlicer, BridgeClient y Honestidad IA (`src/core/export/*`, `src/core/dsp/audioSlicer/*`, `src/core/bridge/*`, `src/core/ai/honesty/*`, `src/core/batch/*`)**:
   - Exportadores divididos por familia (`sf2Writer.ts`, `sfzWriter.ts`, `modernSamplers.ts`, `classicHardware.ts`, `workstationSamplers.ts`, `vintageTrackers.ts`, `rawSamplerArchive.ts`, `rawSamplerPreflight.ts`, `rawSamplerTypes.ts`).
   - Motor `src/core/dsp/AudioSlicerEngine.ts` particionado en 7 submódulos especializados bajo `src/core/dsp/audioSlicer/` (`SlicerTypes.ts`, `SlicerSpectral.ts`, `SlicerVocalOpenVpi.ts`, `SlicerDrumAndMidi.ts`, `SlicerBuild.ts`, `SlicerSilenceAndPitch.ts`, `SlicerConform.ts`) manteniendo la fachada pública intacta en `AudioSlicerEngine.ts`.
+  - Cliente de comunicación local `BridgeClient.ts` modularizado en `src/core/bridge/` (`bridgeTypes.ts`, `bridgeAudio.ts`, `bridgeLibrary.ts`, `bridgeModels.ts`, `BridgeClient.ts`).
 - [ ] **5. Submódulos de Pipeline de Audio y Modales Restantes (`src/core/pipeline/*`, `src/ui/zoneInspector/*`, `MusicianWizardModal.ts`, `AudioRecorderModal.ts`)**:
   - Extracción progresiva de operaciones de `WebAudioPipeline.ts` y vistas/plantillas de `ZoneInspector.ts` (incluyendo `drawerRenderOps.ts`, `tableRenderOps.ts`, `tableEventOps.ts`, `zoneTemplates.ts` y `src/ui/chopper/*` con `a11yKeyboard.ts`).
+
+---
+
+## Fase 43 — Auditoría Transversal de Conformidad con Estándares VST3 y Diccionario de Datos Común (`ABDShared` v2.0) [PLANIFICADA]
+
+**Objetivo**: Revisar exhaustivamente si `ABDNeuModMakr` (y su interacción con los sintetizadores de la suite, especialmente `ABDAxionikVS`) cumple al 100 % con los estándares canónicos actualizados en `ABDShared`:
+- [`ABDShared/Docs/architecture/CALIDAD_Y_ESTANDARES_VST3.md`](file:///d:/desarrollos/ABDSynths/ABDShared/Docs/architecture/CALIDAD_Y_ESTANDARES_VST3.md)
+- [`ABDShared/Docs/specs/COMMON_DATA_DICTIONARY_AND_INTEGRATION.md`](file:///d:/desarrollos/ABDSynths/ABDShared/Docs/specs/COMMON_DATA_DICTIONARY_AND_INTEGRATION.md)
+
+### Tareas de Auditoría y Verificación:
+- [ ] **1. Conformidad con Curvas `SymBipolar` y Cero Físico Exacto**:
+  - Verificar que todas las exportaciones a plugins y modelos extendidos (`05_extended_model/`) apliquen simetría exacta en parámetros bipolares (`wireZeroCenter: 0` para `[-64..+63]` y `wireZeroCenter: 64` para `[0..127]`), asegurando que el centro en automatización DAW (`0.5` normalizado) mapee estrictamente a `0.0f` físico.
+- [ ] **2. Cobertura de Categorías y Metadatos Semánticos (`semanticRole`)**:
+  - Auditar que los parámetros generados en importaciones/exportaciones de samplers contengan `semanticRole` coherente con `sampler_voice_parameter_spec.json` y `hartmann_neuron_parameter_spec.json`.
+  - Asegurar que los destinos de modulación y articulaciones se mapeen correctamente a roles estándar (`FilterCutoff`, `FilterResonance`, `AmpEnvAttack`, etc.) para organización automática en carpetas del DAW.
+- [ ] **3. Integración de Direccionamiento NRPN 14-bit**:
+  - Comprobar que los scripts de emisión MIDI y perfiles de exportación manejen pares `nrpnMsb / nrpnLsb` de alta resolución para evitar saltos o *zipper noise* en barridos de control.
+- [ ] **4. Roundtrip Rompler E2E con Motores C++**:
+  - Validar de extremo a extremo que un preset/banco exportado desde `ABDNeuModMakr` cargue en `ABDAxionikVS` y reproduzca zonas y loops idénticos a los previsualizados en `AudioChopperModal` y `LoopEditorModal`.
+
 
 
 
