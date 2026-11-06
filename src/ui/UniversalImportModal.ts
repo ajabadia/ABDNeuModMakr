@@ -16,7 +16,7 @@ import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import type { WorkingMode, Zone, ExtendedRegion } from '../core/types.ts';
 import {
   listZipSamplerPrograms,
-  parseUniversalSampler,
+  parseUniversalSamplerCapped,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
 import {
@@ -670,7 +670,7 @@ export class UniversalImportModal {
             siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
           }
         }
-        preset = await parseUniversalSampler(filename, buffer, siblings);
+        preset = await parseUniversalSamplerCapped(filename, buffer, siblings);
       } else {
         if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb)$/i.test(filename)) {
           const programs = await listZipSamplerPrograms(filename, buffer);
@@ -695,7 +695,7 @@ export class UniversalImportModal {
                   try {
                     this.isInspecting = true;
                     this.render();
-                    const selectedPreset = await parseUniversalSampler(
+                    const selectedPreset = await parseUniversalSamplerCapped(
                       filename,
                       buffer,
                       undefined,
@@ -729,7 +729,7 @@ export class UniversalImportModal {
             return;
           }
         }
-        preset = await parseUniversalSampler(filename, buffer, decodedWavBuffer);
+        preset = await parseUniversalSamplerCapped(filename, buffer, decodedWavBuffer);
       }
       const report = analyzeImportPreflight(preset, this.context.getCurrentWorkingMode());
 

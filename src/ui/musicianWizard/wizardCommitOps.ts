@@ -9,7 +9,7 @@ import { bridgeClient } from '../../core/bridge/BridgeClient.ts';
 import { decodeWav, decodeAiff, encodePcm16Wav, transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { analyzeImportPreflight, applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import { isNeuronBankOrModelInput, listNeuronBankModels, parseNeuronBankOrModelToPreset } from '../../core/import/neuronBankImporter.ts';
-import { listZipSamplerPrograms, parseUniversalSampler } from '../../core/import/rawSamplerParsers.ts';
+import { listZipSamplerPrograms, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
 import type { ParsedSamplerPreset } from '../../core/import/rawSamplerParsers.ts';
 import { inspectWizardMaterialFilename, runWizardCleanStep, runWizardSliceAndMapStep, sanitizeClassicModelName } from '../../core/wizard/musicianWizard.ts';
 import { MultiInstrumentModal } from '../MultiInstrumentModal.ts';
@@ -192,7 +192,7 @@ export async function handleFilesSelected(modal: WizardModalCore, files: FileLis
             })),
             onSelect: (chosen) => {
               void (async () => {
-                const preset = await parseUniversalSampler(
+                const preset = await parseUniversalSamplerCapped(
                   primary.name,
                   buffer,
                   undefined,
@@ -220,7 +220,7 @@ export async function handleFilesSelected(modal: WizardModalCore, files: FileLis
           siblings.set(f.name, new Uint8Array(await f.arrayBuffer()));
         }
       }
-      const preset = await parseUniversalSampler(
+      const preset = await parseUniversalSamplerCapped(
         primary.name,
         buffer,
         siblings.size > 0 ? siblings : undefined

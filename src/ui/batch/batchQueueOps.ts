@@ -10,7 +10,7 @@ import { extractFolderFilesToCandidates, extractFolderLoopsToCandidates } from '
 import type { FolderFileInput } from '../../core/batch/FolderBatchExtractor.ts';
 import { discoverTriageReport, extractTriageDefinitionCandidates, indexTriageBuffers, partitionTriageSelection } from '../../app/triageGate.ts';
 import type { TriageExpandedFile } from '../../app/triageGate.ts';
-import { listZipSamplerPrograms, parseUniversalSampler } from '../../core/import/rawSamplerParsers.ts';
+import { listZipSamplerPrograms, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
 import { applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
 import { slugifyModelName } from '../../core/modelSlug.ts';
@@ -173,7 +173,7 @@ export async function loadExpandedFiles(modal: BatchModalCore, inputFiles: Triag
                         await yieldToUI(0);
                       }
                       try {
-                        const preset = await parseUniversalSampler(baseName, ef.buffer, siblings, progId);
+                        const preset = await parseUniversalSamplerCapped(baseName, ef.buffer, siblings, progId);
                         if (preset && preset.audioBuffers.size > 0) {
                           const adapted = applyPreflightImportAdaptations(preset, {
                             autoExtendOuterZones: false,

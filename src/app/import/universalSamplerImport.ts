@@ -13,7 +13,7 @@ import { MultiInstrumentModal } from '../../ui/MultiInstrumentModal';
 import { applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import {
   listZipSamplerPrograms,
-  parseUniversalSampler,
+  parseUniversalSamplerCapped,
 } from '../../core/import/rawSamplerParsers.ts';
 
 export async function importUniversalSamplerFiles(
@@ -42,7 +42,7 @@ export async function importUniversalSamplerFiles(
         'IMPORTING SAMPLER INSTRUMENT...',
         `Parsing "${targetSampler.name}"${programLabel ? ` (${programLabel})` : ''} and decoding audio zones...`,
         async () => {
-          const parsedPreset = await parseUniversalSampler(
+          const parsedPreset = await parseUniversalSamplerCapped(
             targetSampler.name,
             targetSampler.buffer,
             siblingMap.size > 0 ? siblingMap : undefined,

@@ -16,7 +16,7 @@ import type { FolderFileInput } from '../core/batch/FolderBatchExtractor';
 import { extractFolderFilesToCandidates } from '../core/batch/FolderBatchExtractor';
 import type { BatchModelCandidate } from '../core/batch/types.ts';
 import {
-  parseUniversalSampler,
+  parseUniversalSamplerCapped,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
 import {
@@ -293,7 +293,7 @@ export async function parseTriageDefinitionItem(
     siblings.set(f.name.replace(/\\/g, '/'), new Uint8Array(f.buffer));
   }
   try {
-    const preset = await parseUniversalSampler(primaryBase, primaryFile.buffer, siblings);
+    const preset = await parseUniversalSamplerCapped(primaryBase, primaryFile.buffer, siblings);
     return preset ? prunePresetAudioToRegions(preset) : null;
   } catch {
     return null;

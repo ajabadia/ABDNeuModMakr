@@ -1009,3 +1009,78 @@ runSecurityTestsPart7().catch((err) => {
   console.error('Security test (part 7) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 8 (red-team 2026-11-06, ola 6): presets-monstruo (.dspreset/.nki). ──
+// El vendor parsea definiciones de texto sin tope de tamaño y devuelve
+// `regions` sin tope: un `.nki` de 31 MB con 200k `<zone>` se parseaba entero
+// (1,6 s) y sus 200k regiones fluían a `session.zones` → UI muerta.
+// La compuerta vive en `parseUniversalSamplerCapped` (texto > 8 MB y
+// > 16384 regiones; los `.nki` binarios cifrados no huelen a texto y no se tocan).
+
+function buildNkiZones(n: number): Uint8Array {
+  let s = '<?xml version="1.0"?><kontakt-instrument name="evil">';
+  for (let i = 0; i < n; i++) s += `<zone sample="s${i}.wav" rootKey="60" lowKey="0" highKey="127"/>`;
+  return new TextEncoder().encode(s + '</kontakt-instrument>');
+}
+function buildDsSamples(n: number): Uint8Array {
+  let s = '<?xml version="1.0"?><DecentSampler><groups><group>';
+  for (let i = 0; i < n; i++) s += `<sample path="s${i}.wav" rootNote="60" loNote="0" hiNote="127"/>`;
+  return new TextEncoder().encode(s + '</group></groups></DecentSampler>');
+}
+
+async function runSecurityTestsPart8(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 8: preset monsters) ===');
+  const {
+    parseUniversalSamplerCapped,
+    MAX_SAMPLER_DEFINITION_TEXT_BYTES,
+    MAX_SAMPLER_PRESET_REGIONS,
+  } = await import('../src/core/import/rawSamplerParsers.ts');
+
+  // 21a. `.dspreset` de ~9 MB (> 8 MB): rechazo pre-parse, sin DOM.
+  const huge = buildDsSamples(150000);
+  assert.ok(huge.byteLength > 8 * 1024 * 1024, 'el monstruo debe superar 8 MB');
+  const t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil.dspreset', huge.buffer as ArrayBuffer, new Map()),
+    /too large/,
+    'definición gigante debe rechazarse antes de parsear'
+  );
+  assert.ok(Date.now() - t0 < 2000, 'el rechazo por tamaño debe ser inmediato');
+  assert.equal(MAX_SAMPLER_DEFINITION_TEXT_BYTES, 8 * 1024 * 1024, 'tope 8 MB');
+  console.log('[PASS] 21a. dspreset de 9 MB rechazado pre-parse');
+
+  // 21b. 20k zonas bajo el tope de tamaño: rechazo por conteo post-parse.
+  const many = buildNkiZones(20000);
+  assert.ok(many.byteLength < 8 * 1024 * 1024, 'debe entrar bajo el tope de tamaño');
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil.nki', many.buffer as ArrayBuffer, new Map()),
+    /too many regions/,
+    '20k regiones deben rechazarse aunque el fichero sea "pequeño"'
+  );
+  assert.equal(MAX_SAMPLER_PRESET_REGIONS, 16384, 'tope 16384 regiones');
+  console.log('[PASS] 21b. nki con 20k zonas rechazado por conteo');
+
+  // 21c. Legítimos mínimos (dspreset + nki) parsean igual que antes.
+  const okDs = await parseUniversalSamplerCapped(
+    'p.dspreset',
+    new TextEncoder().encode(
+      '<?xml version="1.0"?><DecentSampler><groups><group><sample path="a.wav" rootNote="60" loNote="0" hiNote="127"/></group></groups></DecentSampler>'
+    ).buffer as ArrayBuffer,
+    new Map()
+  );
+  const okNki = await parseUniversalSamplerCapped(
+    'p.nki',
+    new TextEncoder().encode(
+      '<?xml version="1.0"?><kontakt-instrument name="p"><zone sample="a.wav" rootKey="60" lowKey="0" highKey="127"/></kontakt-instrument>'
+    ).buffer as ArrayBuffer,
+    new Map()
+  );
+  assert.equal(okDs.regions.length, 1, 'dspreset legítimo: 1 región');
+  assert.equal(okNki.regions.length, 1, 'nki legítimo: 1 región');
+  console.log('[PASS] 21c. presets legítimos intactos por el mismo camino');
+}
+
+runSecurityTestsPart8().catch((err) => {
+  console.error('Security test (part 8) failed:', err);
+  process.exit(1);
+});
