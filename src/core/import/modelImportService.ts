@@ -14,14 +14,18 @@
 
 import type {
   BankSummary,
+  CommonPlaybackDefaults,
   CoreEvent,
   GeneratedModel,
+  MasterWaveConfig,
   MidiNote,
+  ModelCoverArtwork,
   Session,
   Zone,
   ZoneAnalysisSummary,
 } from '../types.ts';
 import { createZone } from '../sessionFactory.ts';
+import { sanitizeImportedProcessConfig } from '../sessionSchema.ts';
 import {
   DEFAULT_MODEL_NAMES,
   deriveModelNameFromSample,
@@ -755,20 +759,26 @@ export async function importModelFiles(
     session.detectedInstrumentCategory =
       extracted.manifest.detectedInstrumentCategory;
   }
+  // S3/S6: el `manifest.json` del ZIP es entrada no confiable — un cápsula
+  // manipulada podría contrabandear `aiBridgeEndpoint` (SSRF) o un cover
+  // falso al interior de la sesión viva, saltándose `parseSessionJson`.
+  // Se pasa por la misma frontera (`validateProcessConfig`); si falla, se
+  // conservan los campos musicales y se neutralizan las hojas peligrosas.
+  const mpc = sanitizeImportedProcessConfig(extracted.manifest?.processConfig, bundle.slot);
   session.processConfig = {
     modelName: extracted.manifest?.modelName ?? bundle.name,
     modelNumber: bundle.slot,
     parameterSet:
-      extracted.manifest?.processConfig.parameterSet ?? inferredParamSet,
+      (mpc.parameterSet as number | undefined) ?? inferredParamSet,
     complexity:
-      extracted.manifest?.processConfig.complexity ?? inferredComplexity,
+      (mpc.complexity as number | undefined) ?? inferredComplexity,
     targetFormat:
-      extracted.manifest?.processConfig.targetFormat ?? 'legacy-neuron',
-    workingMode: extracted.manifest?.processConfig.workingMode,
-    dspAlgorithm: extracted.manifest?.processConfig.dspAlgorithm,
-    masterWaveConfig: extracted.manifest?.processConfig.masterWaveConfig,
-    commonPlayback: extracted.manifest?.processConfig.commonPlayback,
-    coverArtwork: extracted.manifest?.processConfig.coverArtwork ?? null,
+      (mpc.targetFormat as 'legacy-neuron' | undefined) ?? 'legacy-neuron',
+    workingMode: mpc.workingMode as 'classic' | 'extended' | undefined,
+    dspAlgorithm: mpc.dspAlgorithm as 'legacy' | 'enhanced' | undefined,
+    masterWaveConfig: mpc.masterWaveConfig as MasterWaveConfig | undefined,
+    commonPlayback: mpc.commonPlayback as CommonPlaybackDefaults | undefined,
+    coverArtwork: (mpc.coverArtwork as ModelCoverArtwork | null | undefined) ?? null,
   };
 
   const { manifest: builtManifest, provenance: builtProvenance } =

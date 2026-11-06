@@ -4,6 +4,8 @@
 // (`BridgeCore`) que los módulos de dominio necesitan del cliente.
 // ─────────────────────────────────────────────────────────
 
+import { isBlockedHostname } from '../security/ssrf.ts';
+
 export interface BridgeLibraries {
   numpy: boolean;
   soundfile: boolean;
@@ -172,12 +174,10 @@ export function validateBridgeUrl(v: unknown): string {
     throw new Error('Invalid bridge URL: only http(s) allowed');
   }
   if (u.username || u.password) throw new Error('Invalid bridge URL: credentials in URL are blocked');
-  const host = u.hostname.toLowerCase();
-  const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
-  if (!isLoopback) {
-    if (host.endsWith('.local') || host === '0.0.0.0' || host.startsWith('10.') || host.startsWith('192.168.') || host === '169.254.169.254' || host.startsWith('169.254.') || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
-      throw new Error('Invalid bridge URL: private/link-local hosts are blocked');
-    }
+  // S4.1 (+IPv6 2026-11-06): clasificador compartido — cubre `::ffff:<ipv4>`,
+  // `fe80::/10`, `fc00::/7` y `::`.
+  if (isBlockedHostname(u.hostname)) {
+    throw new Error('Invalid bridge URL: private/link-local hosts are blocked');
   }
   return t.replace(/\/+$/, '');
 }

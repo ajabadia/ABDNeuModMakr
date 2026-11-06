@@ -45,6 +45,7 @@ import type {
 } from './types.ts';
 import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
 import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
+import { isBlockedHostname } from './security/ssrf.ts';
 import { clamp, clampInt } from './dsp/DspMath.ts';
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
@@ -104,21 +105,13 @@ export function validateAiBridgeEndpoint(v: unknown): string {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
     throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'must use http(s)');
   }
-  const host = u.hostname.toLowerCase();
-  const isLoopback =
-    host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
-  if (!isLoopback) {
-    if (
-      host.endsWith('.local') ||
-      host === '0.0.0.0' ||
-      host.startsWith('10.') ||
-      host.startsWith('192.168.') ||
-      host === '169.254.169.254' ||
-      host.startsWith('169.254.') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-    ) {
-      throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'private/link-local hosts are blocked');
-    }
+  if (u.username || u.password) {
+    throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'credentials in URL are blocked');
+  }
+  // S4.1 (+IPv6 2026-11-06): el clasificador compartido cubre `::ffff:<ipv4>`,
+  // `fe80::/10`, `fc00::/7` y `::`, que los checks de rangos IPv4 no ven.
+  if (isBlockedHostname(u.hostname)) {
+    throw fieldError('processConfig.masterWaveConfig.aiBridgeEndpoint', 'private/link-local hosts are blocked');
   }
   return t;
 }
@@ -239,7 +232,36 @@ function validateZone(raw: unknown, index: number): Zone {
 
 const TARGET_FORMATS: readonly TargetFormat[] = ['dual', 'legacy-neuron', 'modern-neural'];
 
-function validateProcessConfig(raw: unknown): ProcessConfig {
+/**
+ * S3/S6: sanea el `processConfig` de un `manifest.json` importado de ZIP.
+ * El manifest es entrada no confiable: una cápsula manipulada podría
+ * contrabandear `aiBridgeEndpoint` (SSRF) o un cover falso al interior de
+ * la sesión viva, saltándose `parseSessionJson`. Se pasa por la misma
+ * frontera (`validateProcessConfig`); si falla, se conservan los campos
+ * musicales y se neutralizan las hojas peligrosas.
+ */
+export function sanitizeImportedProcessConfig(raw: unknown, slot: number): Record<string, unknown> {
+  if (!isRecord(raw)) return {};
+  try {
+    return validateProcessConfig({ ...raw, modelNumber: slot }) as unknown as Record<string, unknown>;
+  } catch {
+    const rest: Record<string, unknown> = { ...raw };
+    delete rest.coverArtwork;
+    const mw = rest.masterWaveConfig;
+    if (isRecord(mw)) {
+      try {
+        rest.masterWaveConfig = { ...mw, aiBridgeEndpoint: validateAiBridgeEndpoint(mw.aiBridgeEndpoint) };
+      } catch {
+        delete rest.masterWaveConfig;
+      }
+    }
+    return rest;
+  }
+}
+
+/** Exportada para reutilizar la misma frontera en la ruta de importación
+ * (modelImportService): el `manifest.json` de un ZIP es entrada no confiable. */
+export function validateProcessConfig(raw: unknown): ProcessConfig {
   const cfg: Record<string, unknown> = isRecord(raw) ? raw : {};
   const targetFormatRaw = cfg['targetFormat'] ?? 'dual';
   if (typeof targetFormatRaw !== 'string' || !TARGET_FORMATS.includes(targetFormatRaw as TargetFormat)) {

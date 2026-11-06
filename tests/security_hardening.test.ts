@@ -5,7 +5,12 @@
 // ─────────────────────────────────────────────────────────
 
 import assert from 'node:assert/strict';
-import { parseSessionJson, validateSourceUrl } from '../src/core/sessionSchema.ts';
+import {
+  parseSessionJson,
+  sanitizeImportedProcessConfig,
+  validateAiBridgeEndpoint,
+  validateSourceUrl,
+} from '../src/core/sessionSchema.ts';
 import { isSafeCoverDataUrl, isSafeSublibraryName } from '../src/core/bankService.ts';
 import { validateBridgeUrl } from '../src/core/bridge/BridgeClient.ts';
 import { fetchWithTimeout, safeErrorSnippet } from '../src/core/ai/CloudByokClient.ts';
@@ -328,5 +333,196 @@ async function testBridgeLiveGuards(): Promise<void> {
 
 runSecurityTestsPart2().catch((err) => {
   console.error('Security test (part 2) failed:', err);
+  process.exit(1);
+});
+
+// ── Parte 3 (red-team 2026-11-06): SSRF IPv6, contrabando en manifest, ataques vivos. ──
+
+async function runSecurityTestsPart3(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 3: red team) ===');
+
+  // 13. SSRF vía IPv6: ::ffff:<privada>, link-local, ULA y :: bloqueados en ambas fronteras.
+  const { validateBridgeUrl: validateBridge } = await import('../src/core/bridge/BridgeClient.ts');
+  for (const bad of [
+    'http://[::ffff:10.0.0.1]/api/enhance',
+    'http://[::ffff:192.168.1.1]/x',
+    'http://[::ffff:169.254.169.254]/latest/meta-data/',
+    'http://[::ffff:172.16.0.1]/x',
+    'http://[::ffff:8.8.8.8]/x', // mapeado público: fail-closed, usar IPv4/hostname
+    'http://[fe80::1]/x',
+    'http://[fc00::1]/x',
+    'http://[fd00::1]/x',
+    'http://[::]/x',
+  ]) {
+    assert.throws(() => validateAiBridgeEndpoint(bad), /blocked/, `SSRF IPv6 debe bloquearse: ${bad}`);
+    assert.throws(() => validateBridge(bad), /blocked/, `bridge URL IPv6 debe bloquearse: ${bad}`);
+  }
+  // Loopback y público legítimo siguen pasando.
+  assert.equal(validateAiBridgeEndpoint('http://[::1]:7860/api/enhance'), 'http://[::1]:7860/api/enhance');
+  assert.equal(validateBridge('http://[::1]:7860/'), 'http://[::1]:7860');
+  assert.equal(validateAiBridgeEndpoint('https://api.ejemplo.com/enhance'), 'https://api.ejemplo.com/enhance');
+  // Decimales/hex/octal ya los normaliza WHATWG a 127.0.0.1 → loopback permitido (no SSRF).
+  assert.equal(validateAiBridgeEndpoint('http://2130706433/x'), 'http://2130706433/x');
+  // `user@host`: credenciales en la URL bloqueadas (paridad con validateBridgeUrl).
+  assert.throws(() => validateAiBridgeEndpoint('http://evil.com@127.0.0.1/x'), /credentials/);
+  console.log('[PASS] 13. SSRF IPv6 bloqueado, loopback/público intactos');
+
+  // 14. Contrabando en manifest.json: endpoint SSRF + cover falso neutralizados al importar.
+  const evilManifestConfig = {
+    modelName: 'Evil',
+    targetFormat: 'dual',
+    complexity: 8,
+    parameterSet: 0,
+    masterWaveConfig: {
+      promotionMethod: 'ai-bridge',
+      channelLayout: 'stereo',
+      targetSampleRate: 96000,
+      targetBitDepth: 24,
+      minLoopDurationSec: 4,
+      enableBandwidthExtension: false,
+      enableDenoiseGate: false,
+      aiBridgeEndpoint: 'http://169.254.169.254/latest/meta-data/',
+    },
+    coverArtwork: {
+      webpDataUrl: 'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+',
+      byteLength: 10,
+      width: 512,
+      height: 512,
+      originalName: 'cover.webp',
+      updatedAt: 'now',
+    },
+  };
+  const clean = sanitizeImportedProcessConfig(evilManifestConfig, 7) as Record<string, unknown>;
+  const cleanMw = clean.masterWaveConfig as Record<string, unknown> | undefined;
+  assert.ok(
+    !cleanMw || (cleanMw.aiBridgeEndpoint as string) !== 'http://169.254.169.254/latest/meta-data/',
+    'el endpoint SSRF del manifest no debe sobrevivir'
+  );
+  assert.ok(
+    !clean.coverArtwork ||
+      !String((clean.coverArtwork as Record<string, unknown>).webpDataUrl ?? '').startsWith('data:image/svg'),
+    'el cover falso del manifest no debe sobrevivir'
+  );
+  // Manifest legítimo pasa intacto.
+  const goodManifestConfig = {
+    modelName: 'Bueno',
+    targetFormat: 'dual',
+    complexity: 5,
+    parameterSet: 3,
+    masterWaveConfig: {
+      ...(evilManifestConfig.masterWaveConfig as object),
+      aiBridgeEndpoint: 'http://127.0.0.1:7860/api/enhance',
+    },
+  };
+  const good = sanitizeImportedProcessConfig(goodManifestConfig, 7) as Record<string, unknown>;
+  assert.equal((good.masterWaveConfig as Record<string, unknown>).aiBridgeEndpoint, 'http://127.0.0.1:7860/api/enhance');
+  assert.equal(good.complexity, 5);
+  console.log('[PASS] 14. manifest malicioso neutralizado, legítimo intacto');
+
+  // 15. Ataques vivos al bridge: traversal, slug, download ajeno, CSRF sin preflight.
+  await testBridgeLiveAttacks();
+
+  console.log('=== ALL SECURITY TESTS (PART 3) PASSED ===');
+}
+
+async function testBridgeLiveAttacks(): Promise<void> {
+  const { spawn, execFileSync } = await import('node:child_process');
+  try {
+    execFileSync('python', ['--version'], { stdio: 'ignore' });
+  } catch {
+    console.log('[SKIP] 15. sin python en PATH');
+    return;
+  }
+  const port = 17862;
+  const child = spawn('python', ['bridge/server.py', '--port', String(port)], { stdio: 'ignore', detached: true });
+  const kill = (): void => {
+    try {
+      process.kill(-child.pid as number, 'SIGKILL');
+    } catch {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // noop
+      }
+    }
+  };
+  const post = async (path: string, body: unknown, origin?: string): Promise<number> => {
+    const res = await fetchWithTimeout(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: {
+        // text/plain = "simple request": SIN preflight (el caso CSRF real).
+        'Content-Type': 'text/plain;charset=UTF-8',
+        ...(origin ? { Origin: origin } : {}),
+      },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+    await res.text().catch(() => '');
+    return res.status;
+  };
+  try {
+    let healthy = false;
+    for (let i = 0; i < 75; i++) {
+      try {
+        const h = await fetchWithTimeout(`http://127.0.0.1:${port}/api/health`, {}, 1000);
+        if (h.ok) {
+          healthy = true;
+          break;
+        }
+      } catch {
+        // arrancando
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.ok(healthy, 'el bridge de pruebas debe arrancar');
+
+    // 15a. Escritura ciega CSRF (text/plain, sin preflight, Origin ajeno) → 403.
+    const csrf = await post(
+      '/api/fs/save_axionik_model',
+      { slug: 'pwned', library_path: 'AxionikDB', files: [{ path: 'x.json', content: '{}' }] },
+      'https://evil.example'
+    );
+    assert.equal(csrf, 403, 'CSRF ciego debe dar 403');
+
+    // 15b. Traversal en rel_path (sin Origin, atacante local/red): la entrada
+    // maligna se ignora y el fichero NO aparece fuera de la librería.
+    const { existsSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const probeName = `rt_pwned_${Date.now()}.txt`;
+    await post('/api/fs/save_axionik_model', {
+      slug: 'okslug',
+      library_path: 'AxionikDB',
+      files: [{ path: `../../${probeName}`, content: 'x' }],
+    });
+    assert.equal(existsSync(resolve('..', probeName)), false, 'traversal no debe escribir fuera');
+    assert.equal(existsSync(resolve('AxionikDB', probeName)), false, 'traversal no debe escribir dentro');
+
+    // 15c. Slug con traversal → 400.
+    const badSlug = await post('/api/fs/save_axionik_model', {
+      slug: '../../evil',
+      library_path: 'AxionikDB',
+      files: [],
+    });
+    assert.equal(badSlug, 400, 'slug con .. debe dar 400');
+
+    // 15d. URL de descarga de host no allowlistado → 400 antes de tocar red (no SSRF).
+    // (No se prueba /models/download con URL válida: descargaría GB de verdad.)
+    const badUrl = await post('/api/models/url', { model_id: 'audiosr', url: 'https://evil.example/x.bin' });
+    assert.equal(badUrl, 400, 'URL de descarga ajena debe dar 400');
+
+    // 15e. Endpoint inexistente → 404 con CORS estricto (no refleja Origin ajeno).
+    const res404 = await fetchWithTimeout(`http://127.0.0.1:${port}/api/nope`, {
+      headers: { Origin: 'https://evil.example' },
+    });
+    await res404.text().catch(() => '');
+    assert.equal(res404.status, 404);
+    assert.notEqual(res404.headers.get('access-control-allow-origin'), 'https://evil.example');
+    console.log('[PASS] 15. ataques vivos bloqueados (CSRF/traversal/slug/URL/404)');
+  } finally {
+    kill();
+  }
+}
+
+runSecurityTestsPart3().catch((err) => {
+  console.error('Security test (part 3) failed:', err);
   process.exit(1);
 });
