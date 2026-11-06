@@ -953,3 +953,59 @@ runSecurityTestsPart6().catch((err) => {
   console.error('Security test (part 6) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 7 (red-team 2026-11-06, ola 5): bomba cuadrática SFZ. ──
+// El vendor fusiona `{...global, ...master, ...group, ...region}` POR REGIÓN
+// sin acotar opcodes/bloque: N opcodes × R regiones = R×N copias.
+// Bomba real: 232 KB → RSS 84→1767 MB en 26 s (medido pre-fix).
+
+function buildSfzQuadro(globalOpcodes: number, regions: number): string {
+  let g = '<global>';
+  for (let i = 0; i < globalOpcodes; i++) g += ` k${String(i).padStart(5, '0')}=1`;
+  let r = '';
+  for (let i = 0; i < regions; i++) r += '<region>sample=a.wav key=60\n';
+  return g + '\n' + r;
+}
+
+async function runSecurityTestsPart7(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 7: SFZ quadratic) ===');
+  const { importSfzToNativeCapped, MAX_SFZ_OPCODES_PER_BLOCK } = await import(
+    '../src/formats/SfzParser.ts'
+  );
+
+  // 20a. Bomba cuadrática real: 232 KB que pre-fix costaban 1,7 GB / 26 s.
+  const bomb = buildSfzQuadro(20000, 2048);
+  assert.ok(bomb.length < 256 * 1024, 'la bomba debe caber en 256 KB');
+  const t0 = Date.now();
+  assert.throws(
+    () => importSfzToNativeCapped(bomb, 'evil.sfz', []),
+    /exceeds cap/,
+    'SFZ cuadrático debe rechazarse por bloque antes de fusionar'
+  );
+  assert.ok(Date.now() - t0 < 2000, 'el rechazo debe ser previo al merge R×N');
+  assert.equal(MAX_SFZ_OPCODES_PER_BLOCK, 128, 'tope documentado 128 opcodes/bloque');
+  console.log('[PASS] 20a. bomba SFZ cuadrática (232 KB → 1,7 GB) rechazada en ms');
+
+  // 20b. SFZ legítimo con global+group+regiones importa igual que antes.
+  const legit =
+    '<global>volume=0\n<group>lokey=36 hikey=72\n' +
+    '<region>sample=piano_c4.wav key=60\n<region>sample=piano_g4.wav lokey=61 hikey=72 pitch_keycenter=67\n';
+  const res = importSfzToNativeCapped(legit, 'piano.sfz', []);
+  assert.equal(res.extendedRegions.length, 2, 'SFZ legítimo: 2 regiones');
+  console.log('[PASS] 20b. SFZ legítimo intacto por el mismo camino');
+
+  // 20c. `sample=` con ruta hostil no escapa: el parser solo usa basename.
+  const trav = importSfzToNativeCapped(
+    '<region>sample=../../../../etc/evil.wav key=60\n',
+    't.sfz',
+    []
+  );
+  const name0 = (trav.extendedRegions[0] as unknown as { sampleName?: string }).sampleName ?? '';
+  assert.ok(!name0.includes('..') && !name0.includes('/'), `basename a salvo: ${name0}`);
+  console.log('[PASS] 20c. sample= con traversal queda en basename (sin escape)');
+}
+
+runSecurityTestsPart7().catch((err) => {
+  console.error('Security test (part 7) failed:', err);
+  process.exit(1);
+});
