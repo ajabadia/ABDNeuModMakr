@@ -1164,7 +1164,7 @@ export function renderModelMetadataPaneHtml(
               <label for="drawer-meta-inp-source-url" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700;">Source / Origin URL</label>
               <div style="display: flex; gap: 4px;">
                 <input type="url" id="drawer-meta-inp-source-url" class="form-control" value="${escAttr(meta.sourceUrl ?? '')}" placeholder="https://..." style="flex: 1;" />
-                ${meta.sourceUrl ? `<a href="${escAttr(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline" title="Open URL in browser">${ICONS.externalLink}</a>` : ''}
+                ${meta.sourceUrl && /^https?:\/\//i.test(meta.sourceUrl) ? `<a href="${escAttr(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-outline" title="Open URL in browser">${ICONS.externalLink}</a>` : ''}
               </div>
             </div>
           </div>

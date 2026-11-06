@@ -3,6 +3,7 @@
 // Inspects coverage integrity, gaps, and core events
 // ─────────────────────────────────────────────────────────
 
+import { escHtml } from './escape';
 import { ICONS } from './icons';
 import { midiToNoteName } from './ZoneRibbon';
 import { onAppLocaleChange, tApp } from '../core/i18n';
@@ -105,7 +106,7 @@ export class TelemetryDrawer {
       ${hasGaps ? `
         <div class="audit-errors-list">
           <div class="errors-heading">${tApp('telemetryDrawer.errorsHeading')}</div>
-          ${errors.map((err) => `<div class="error-item">${ICONS.alert} ${err}</div>`).join('')}
+          ${errors.map((err) => `<div class="error-item">${ICONS.alert} ${escHtml(err)}</div>`).join('')}
           <div class="telemetry-spacer">
             <button type="button" class="btn btn-sm btn-primary" id="btn-drawer-auto-repair" title="${tApp('telemetryDrawer.btnAutoRepairTitle')}">
               ${ICONS.repair} ${tApp('telemetryDrawer.btnAutoRepair')}

@@ -192,6 +192,9 @@ ALLOWED_DOWNLOAD_HOSTS = frozenset([
 ])
 SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-_]{0,63}$')
 SUBLIBRARY_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_\. ]{0,63}$')
+# S5.4: ningún POST puede pedir más de 150 MB (el endpoint más pesado,
+# `/api/enhance` con audio crudo, ya topaba ahí; el resto pide mucho menos).
+MAX_POST_BODY_BYTES = 150 * 1024 * 1024
 
 def is_safe_slug(v):
     return isinstance(v, str) and bool(SLUG_RE.match(v))
@@ -994,7 +997,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', allowed)
         self.send_header('Vary', 'Origin')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Target-Sample-Rate, X-Target-Loop-Sec, X-Capabilities, X-Requested-With')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Target-Sample-Rate, X-Target-Loop-Sec, X-Capabilities, X-Requested-With, X-Bridge-Token')
         self.send_header('Access-Control-Expose-Headers', 'X-AI-Provider, Content-Length, Content-Type')
 
     def do_OPTIONS(self):
@@ -1338,9 +1341,42 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.send_cors_headers()
         self.end_headers()
 
+    def check_post_origin(self):
+        # S5 CSRF: los navegadores siempre envían `Origin` en fetch POST.
+        # Un origen no allowlistado (web maliciosa) recibe 403; clientes sin
+        # Origin (curl, herramientas locales) siguen pasando. Junto al CORS
+        # estricto de `send_cors_headers`, esto deja sin efecto el blind-CSRF
+        # contra el bridge aunque `ABD_BRIDGE_TOKEN` no esté definido.
+        origin = self.headers.get('Origin', '')
+        if origin and origin not in ALLOWED_ORIGINS:
+            err = json.dumps({'error': 'forbidden origin'}).encode('utf-8')
+            self.send_response(403)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+            return False
+        return True
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
+        if not self.check_post_origin():
+            return
+        try:
+            content_len = int(self.headers.get('Content-Length', 0))
+        except (TypeError, ValueError):
+            content_len = 0
+        if content_len > MAX_POST_BODY_BYTES:  # S5.4: cap global anti-DoS de memoria
+            err = json.dumps({'error': f'request body too large (max {MAX_POST_BODY_BYTES} bytes)'}).encode('utf-8')
+            self.send_response(413)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+            return
 
         if path in ('/api/cloud/replicate_proxy', '/cloud/replicate_proxy'):
             content_len = int(self.headers.get('Content-Length', 0))

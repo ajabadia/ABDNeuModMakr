@@ -350,7 +350,7 @@ export class AiCoverGeneratorModal {
                   ).join('')}
                 </div>
                 <div class="provider-key-status ${providerKeyStatus.statusClass}">
-                  ${providerKeyStatus.message}
+                  ${escHtml(providerKeyStatus.message)}
                   ${
                     providerKeyStatus.showSettingsLink
                       ? `<button type="button" class="btn-link" id="btn-open-settings-byok">${isEs ? 'Abrir Ajustes (Ctrl+,)' : 'Open Settings (Ctrl+,)'}</button>`

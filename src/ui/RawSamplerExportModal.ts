@@ -25,6 +25,7 @@ import {
   fromRawSamplerPreflightReport,
   renderCommonPreflightGate,
 } from './preflightGateView.ts';
+import { escAttr, escHtml } from './escape.ts';
 import { ICONS } from './icons.ts';
 import { toast } from './notify.ts';
 import { downloadBlob } from './download.ts';
@@ -199,7 +200,7 @@ export class RawSamplerExportModal {
               <span class="raw-card-title">${isEs ? '1. Nombre del Instrumento y Metadatos' : '1. Instrument Name &amp; Metadata'}</span>
               <div class="form-group">
                 <label for="input-bank-name">${isEs ? 'Nombre del Banco / Preset:' : 'Bank / Preset Name:'}</label>
-                <input id="input-bank-name" type="text" class="form-control" value="${this.bankName.replace(/"/g, '&quot;')}" />
+                <input id="input-bank-name" type="text" class="form-control" value="${escAttr(this.bankName)}" />
               </div>
               <div class="raw-meta-grid">
                 <div class="form-group">
@@ -208,7 +209,7 @@ export class RawSamplerExportModal {
                 </div>
                 <div class="form-group">
                   <label for="input-license">${isEs ? 'Licencia:' : 'License:'}</label>
-                  <input id="input-license" type="text" class="form-control" value="${this.license.replace(/"/g, '&quot;')}" />
+                  <input id="input-license" type="text" class="form-control" value="${escAttr(this.license)}" />
                 </div>
               </div>
             </div>
@@ -281,8 +282,8 @@ export class RawSamplerExportModal {
             <div class="triage-summary">
               <span>${ICONS.database}</span>
               <div>
-                <p><strong>${meta.title}</strong> ${selectedCount > 1 ? `<span class="badge badge-info">${isEs ? `+${selectedCount - 1} formato(s) más en cola` : `+${selectedCount - 1} more format(s) queued`}</span>` : ''}</p>
-                <p>${meta.description}</p>
+                <p><strong>${escHtml(meta.title)}</strong> ${selectedCount > 1 ? `<span class="badge badge-info">${isEs ? `+${selectedCount - 1} formato(s) más en cola` : `+${selectedCount - 1} more format(s) queued`}</span>` : ''}</p>
+                <p>${escHtml(meta.description)}</p>
               </div>
             </div>
 

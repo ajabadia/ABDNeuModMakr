@@ -57,9 +57,17 @@ export function isSafeCoverDataUrl(v: unknown): v is string {
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}  /** S3.1: `localStorage` es entrada no confiable — el nombre viaja a rutas del
+   * bridge y a HTML; mismo charset que `SUBLIBRARY_RE` en `bridge/server.py`. */
+export function isSafeSublibraryName(v: unknown): v is string {
+  return (
+    typeof v === 'string' &&
+    /^[a-zA-Z0-9][a-zA-Z0-9\-_. ]{0,63}$/.test(v.trim()) &&
+    !v.includes('..')
+  );
 }
 
-/** S4: `localStorage` es entrada no confiable — valida antes de hidratar el bank. */
+  /** S4: `localStorage` es entrada no confiable — valida antes de hidratar el bank. */
 function isSafeBankRecord(m: unknown): m is GeneratedModel {
   if (!isRecord(m)) return false;
   if (typeof m['slot'] !== 'number' || !Number.isInteger(m['slot']) || (m['slot'] as number) < 0 || (m['slot'] as number) > 511) return false;
@@ -328,7 +336,9 @@ export class BankService {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const list = parsed.filter((s) => s && typeof s.name === 'string');
+          // S3.1: `localStorage` es entrada no confiable — el nombre viaja a rutas
+          // del bridge y a HTML; se valida igual que en el servidor (SUBLIBRARY_RE).
+          const list = parsed.filter((s) => s && isSafeSublibraryName(s.name));
           if (!list.some((s) => s.name === 'Default')) {
             list.unshift({ name: 'Default', description: 'Default root sub-library', order: 1, modelCount: 0, isDefault: true });
           }

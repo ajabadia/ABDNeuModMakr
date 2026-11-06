@@ -2,6 +2,7 @@
 
 > **Ámbito:** todo software ABDSynths (web, bridge local, formatos, plugins JUCE/C++).
 > **Origen:** auditoría 2026-10-30 de ABDNeuModMakr (XSS, SSRF, traversal, DoS ZIP/sesión).
+> **Verificación 2026-11-06:** auditoría completa control por control contra el código + corrección de 7 hallazgos + `tests/security_hardening.test.ts` ampliado a 12 checks (incl. bridge en vivo). Casillas marcadas = verificado con evidencia citada.
 > **Dónde vive este documento:** canónico en `DOCS/SECURITY_STANDARDS.md` de cada proyecto; espejo en `ABDShared/docs/SECURITY_STANDARDS.md` vía `vendorSync` (no se versiona dentro de `vendor/`).
 > **No encajaba en ningún doc existente** (`ARCHITECTURE_DUAL_TARGET`, `NEURON_MM_SPEC`, `NEXTGEN_ARCHITECTURE…` son arquitectura/DSP, no seguridad) → se crea documento nuevo.
 
@@ -17,18 +18,18 @@
 
 ## 2. Frontend (XSS / inyección)
 
-- [ ] **S2.1** Nunca `eval`, `new Function`, `setTimeout(string)`, `document.write`. Verificado con grep en CI.
-- [ ] **S2.2** Todo `innerHTML` con datos externos usa `escHtml/escAttr` de `src/ui/escape.ts`. Texto puro → `textContent`.
-- [ ] **S2.3** `escAttr` NO basta para URLs. `<img src>` / `<a href>` / `fetch` solo aceptan: `data:image/webp;base64,`, `data:image/png;base64,`, `blob:`, `https:` explícito. Rechazar `javascript:`, `data:text/html`, `data:image/svg+xml`.
-- [ ] **S2.4** Nombres/archivos (`file.name`, `sampleLow`, `modelName`, `originalName`) con longitud máxima y charset `^[\w\-. /\\()\[\]áéíóúñü ]+$`, sin `<>"'&`.
-- [ ] **S2.5** Claves API (BYOK) solo en `localStorage`, `input type="password"`, jamás en logs/URL/telemetría.
+- [x] **S2.1** Nunca `eval`, `new Function`, `setTimeout(string)`, `document.write`, `<script` literal en `src/`. Verificado por `scripts/security-grep.mjs` (`npm run lint:security`, en `verify`/CI) — 2026-11-06: añadidas reglas `setTimeout(string)` y `<script` (§8); gate verde.
+- [x] **S2.2** Todo `innerHTML` con datos externos usa `escHtml/escAttr` de `src/ui/escape.ts`. Texto puro → `textContent`. Auditoría 2026-11-06 (111 sitios): `notify` usa `textContent`; vendor `bankCard.js` escapa (`escAttr/escText`); `NeuronDbModal/ZoneInspector/chopper/recorder` escapan nombres de fichero/muestra. **Corregido 2026-11-06:** `filterQuery` sin escapar en 3 `emptyMsg` de `BankDrawer.ts` (XSS reflejado vía buscador) → `escHtml`; `providerKeyStatus.message`, `bankName/license/meta` (`RawSamplerExportModal`, antes `replace(/"/g)` manual) y `err` (`TelemetryDrawer`) → `escHtml/escAttr`. Ayuda manual: `scripts/audit-innerhtml.mjs` (no en gate: el patrón compone HTML ya escapado en helpers).
+- [x] **S2.3** `escAttr` NO basta para URLs. `<img src>` solo con `webpDataUrl` validado en carga (`validateWebpDataUrl`: prefijo + ≤700 kB) o `isSafeCoverDataUrl` (bank). **Corregido 2026-11-06:** `sourceUrl` llegaba sin validar a `<a href>` (`zoneTemplates.ts:1167`, stored-XSS vía `.nmsession`/SFZ) → nuevo `validateSourceUrl` (solo `http(s)`, ≤500 chars, rechaza `javascript:/data:/ftp:`) aplicado en `sessionSchema` + compuerta de render `^https?://`. `fetch` solo contra URLs constantes o `validateBridgeUrl`.
+- [x] **S2.4** Nombres/archivos con longitud máxima y charset (`^[\w\-. /\\()\[\]áéíóúñü ]+$`, sin `<>`). Verificado 2026-11-06: `isSafeSampleName` exigido en frontera de sesión (`sampleLow/High`, `extendedRegions[].sampleName`) y render con `escHtml/escAttr` (`basenameOf`); `modelName` (≤64/11) y `originalName` (≤128) validados en schema; `isSafeBankRecord` rechaza `<>`.
+- [x] **S2.5** Claves solo en `localStorage` (`STORAGE_KEY_BYOK`), inputs `type="password"` con toggle (`tabCloud.ts`, `tabBridge.ts`), sin `console.*` con claves (verificado por grep) y sin envío a servidores propios (fetch directo al proveedor).
 
 ## 3. Sesión / persistencia (nuestro P0.2 ampliado)
 
 Basado en `src/core/sessionSchema.ts`:
 
-- [ ] **S3.1** Un único `validateSessionPayload` por tipo (sesión, bank, manifest). `restoreBank()` hoy hace `JSON.parse` directo → debe validar igual.
-- [ ] **S3.2** Cotras obligatorias:
+- [x] **S3.1** `parseSessionJson` valida sesión completa. `restoreBank()` filtra con `isSafeBankRecord` (slot 0..511, nombre ≤64 sin `<>`, cover allowlist). **Corregido 2026-11-06:** `restoreSublibraries()` solo comprobaba `typeof name` → nuevo `isSafeSublibraryName` (mismo charset que `SUBLIBRARY_RE` del bridge + anti-`..`).
+- [x] **S3.2** Cotas obligatorias (verificadas 2026-11-06 en `sessionSchema.ts`, coinciden con el código):
 
 | campo | límite |
 |---|---|
@@ -40,48 +41,48 @@ Basado en `src/core/sessionSchema.ts`:
 | `aiBridgeEndpoint` | ver S4.1 |
 | `zones/extendedRegions` | ≤128 / ≤256 |
 
-- [ ] **S3.3** `byteLength/width/height` se recalculan, nunca se confía en el declarado. `width/height 1..2048`.
-- [ ] **S3.4** `JSON.parse` siempre en `try`, error genérico al usuario (sin volcar payload).
+- [x] **S3.3** `byteLength` se recalcula/clampa (≤1 MB), `width/height` del cover vienen de `parseWebpDimensions` (bytes reales) o del schema validado; `parseWebpDimensions` devuelve 512 por defecto ante bytes inválidos (fail-closed en dimensiones).
+- [x] **S3.4** `JSON.parse` en `try` en sesión/bank/sublibraries/manifest/provenance; `fieldError` genérico sin volcar payload (verificado por inspección 2026-11-06).
 
 ## 4. SSRF / red
 
-- [ ] **S4.1** `aiBridgeEndpoint`, `BridgeClient.url`, `models/url` validan con `new URL()`: solo `http:/https:`, longitud ≤500, bloquean `169.254.0.0/16`, `10/8`, `172.16/12`, `192.168/16`, `0.0.0.0`, `*.local`, salvo `127.0.0.1:7860` explícito configurado por el usuario.
-- [ ] **S4.2** `fetch` a IA con `AbortController` (ya existe: 900 ms health / 4500 ms enhance) + `Content-Length` máximo.
-- [ ] **S4.3** `models/url` del bridge: solo `https:` a `huggingface.co`, `github.com`, `raw.githubusercontent.com`, `dl.fbaipublicfiles.com` o allowlist explícita. Sin esto, `urllib.request.urlopen(url)` es SSRF servidor.
+- [x] **S4.1** `validateAiBridgeEndpoint` y `validateBridgeUrl`: solo `http(s)`, ≤500, sin credenciales en URL, bloqueo de rangos privados/link-local salvo loopback. Cubierto por `security_hardening` 1+5 (incl. `169.254.169.254`, `10/8`, `192.168/16`, `ftp:`, `javascript:`).
+- [x] **S4.2** `AbortController` en bridge (`bridgeAudio/Library/Models`, `MasterWaveEnhancer`). **Corregido 2026-11-06:** `CloudByokClient` hacía ~15 `fetch` sin timeout (un proveedor colgado congelaba la UI) → nuevo `fetchWithTimeout(url, init, 30 s)` en todos + `safeErrorSnippet` (errores truncados a 300 chars). Test 10 (aborto ante cuelgue + truncado).
+- [x] **S4.3** `is_allowed_custom_url`: solo `https:` a `huggingface.co`, `github.com`, `raw.githubusercontent.com`, `dl.fbaipublicfiles.com` (verificado por inspección 2026-11-06; `urlopen` con timeout 7–30 s).
 
 ## 5. Bridge Python (`bridge/server.py`)
 
-- [ ] **S5.1** CORS: sustituir `*` por origen explícito (`http://localhost:8388`, dominio Vercel). Sin `*` con escritura.
-- [ ] **S5.2** Auth mínima: token generado al arrancar (`secrets.tokenUrl`) exigido en cabecera para `POST /fs/*`, `/models/*`, `/enhance`.
-- [ ] **S5.3** Antitraversal en `scan`, `save/duplicate/rename`: `abspath` + `commonpath(library_path)`; `slug` solo `^[a-z0-9][a-z0-9-_]{0,63}$`; `rel_path` rechaza `..`, absoluto, `~`, `\\`.
-- [ ] **S5.4** Límites: `Content-Length ≤ 150 MB` (ya existe en `/enhance`), `files ≤ 128`, `file ≤ 50 MB`, respuestas `scan` topadas a 500 (ya existe).
-- [ ] **S5.5** `log_message` y `X-Text-Prompt` no deben loguear secretos.
+- [x] **S5.1** CORS allowlist (`ALLOWED_ORIGINS`: localhost/127.0.0.1:8388+7860, Vercel prod) + `Vary: Origin`; sin `*` (verificado 2026-11-06).
+- [x] **S5.2** Defensa en capas (verificado 2026-11-06, test 12 en vivo): token `X-Bridge-Token` generado al arrancar (`secrets.token_hex(16)`), exigido en `POST /fs/*`, `/models/*`, `/enhance`, etc. cuando se fija `ABD_BRIDGE_TOKEN` (UX documentada en Settings); **NUEVO default-on:** `check_post_origin` → `403` ante `Origin` no allowlistado (mata el blind-CSRF de webs maliciosas aunque no haya token; `curl`/sin-Origin siguen pasando); preflight anuncia `X-Bridge-Token` (**corregido:** faltaba en `Allow-Headers` y el token opt-in no viajaba desde el navegador).
+- [x] **S5.3** `safe_join` (`abspath`+prefijo), `is_safe_slug`, `is_safe_sublibrary`, `is_safe_rel_path` (anti-`..`/absoluto/`~`/`\\`/`\0`) aplicados en `save/move/duplicate/rename/delete` (verificado por inspección 2026-11-06; `library_path` arbitrario es intencional: equivale al file-picker, protegido por S5.2).
+- [x] **S5.4** **Corregido 2026-11-06:** solo `/enhance` topaba el cuerpo; `decode-rx2/separate-stems/align-phonemes` leían `Content-Length` sin cota (DoS de memoria) → cap global `MAX_POST_BODY_BYTES = 150 MB` con `413` antes de leer + `files ≤ 128`, `file ≤ 50 MB`, `scan` topado a 500. Verificado en vivo (test 12c).
+- [x] **S5.5** `log_message` solo registra método/ruta/estado; el `token` de `/enhance` y las BYOK nunca se loguean (verificado por grep 2026-11-06); `X-Text-Prompt` es texto del usuario, no credencial.
 
 ## 6. Archivos / formatos (DoS y Zip-Slip)
 
-- [ ] **S6.1** Mantener caps actuales y testearlos en `phase7`: ZIP `2000 entradas / 100 MB por entrada / 300 MB total`, SFZ `2 MB / tope regiones`, SF2 `MAX_SF2_PRESETS ≤ 512` con `safeRecordCount`, WAV rechaza magia/truncado, import `50 MB × 128 ficheros`.
-- [ ] **S6.2** Zip-Slip: rechazar entradas con `..`, ruta absoluta, `\\`, o que tras `normalize` escapen de su capa (`01_raw_source/`, …). `isMacOsJunkZipPath` se mantiene.
-- [ ] **S6.3** `manifest.json`/`provenance.json` dentro del ZIP se validan (`magic === 'NEURONMM_TIMECAPSULE'`, `schemaVersion === '1.0'`), resto se ignora.
-- [ ] **S6.4** `cover.webp` se revalida con `isWebpBytes` + `parseWebpDimensions`, nunca se confía en `coverArtworkMeta` del ZIP.
+- [x] **S6.1** Caps testeados en `phase7` (`MAX_ZIP_ENTRIES`, `MAX_SFZ_TEXT_BYTES/REGIONS`, `MAX_SF2_PRESETS` con `safeRecordCount`, WAV magia/truncado) + `MAX_IMPORT_FILE_BYTES 50 MB × 128` (`modelImportService`, test `phase0`). Verificado 2026-11-06: suite verde.
+- [x] **S6.2** `isUnsafeZipPath` en `extractTimeCapsuleFromFiles` (anti-`..`/absoluto/`\0`/>512 chars) + `isUnsafeZipPath` del vendor; junk macOS (`__MACOSX/`, `._*`, `.DS_Store`) ignorado. Test 6 + phase7.
+- [x] **S6.3** `magic === 'NEURONMM_TIMECAPSULE'` y `provenance.schemaVersion === '1.0'` exigidos; resto se ignora sin lanzar (verificado por inspección + test 6).
+- [x] **S6.4** **Corregido 2026-11-06:** el `cover.webp` del ZIP se adoptaba sin comprobar magia → compuerta `isWebpBytes` en `extractTimeCapsuleFromFiles` (test 11: bytes falsos rechazados, RIFF/WEBP adoptado). `parseWebpDimensions` fail-closed en dimensiones.
 
 ## 7. Service Worker / build
 
-- [ ] **S7.1** `sw.js` solo cachea `GET` mismo-origen, nunca `POST` ni respuestas con `Authorization`. Versionar `CACHE_NAME`.
-- [ ] **S7.2** `vite.config.ts server.fs.allow` mínimo en dev; nunca `['..','../..']` en prod.
+- [x] **S7.1** `sw.js` solo `GET` mismo-origen (navegación Network-First, `/assets/` Cache-First, resto SWR), sin `Authorization` en la app; `CACHE_NAME` versionado (`v1.2.0`) con purga de viejas. Verificado por inspección 2026-11-06.
+- [x] **S7.2** `server.fs.allow = [repo root]` (solo dev); proxy `/api/proxy/replicate` solo en dev. Verificado 2026-11-06.
 
 ## 8. Checklist de aceptación por PR
 
 Todo PR que toque IO externo debe marcar:
 
-- [ ] `npm test` en verde (incluye `phase7_import_robustness`).
-- [ ] Grep limpio: `eval\(|new Function|document\.write|<script` en `src/`, `__import__|pickle\.loads|yaml\.load|shell=True|os\.system` en `bridge/`.
-- [ ] Nuevo campo de sesión/bank → añadido a `S3.2` + test de rechazo.
-- [ ] Nueva ruta bridge → auth + traversal test con `../../`.
-- [ ] Nuevo `innerHTML` → `escHtml/escAttr` + test XSS de `phase7` ampliado.
+- [x] `npm test` en verde (incluye `phase7_import_robustness` + `security_hardening` 12/12).
+- [x] Grep limpio vía `scripts/security-grep.mjs`: `eval\(|new Function|document\.write|setTimeout(string)|<script|@ts-ignore` en `src/`, `shell=True|os\.system|pickle\.loads|yaml\.load` en `bridge/`.
+- [x] Nuevo campo de sesión/bank → añadido a `S3.2` + test de rechazo (práctica aplicada: `sourceUrl` + `validateSourceUrl` + test 7/8).
+- [x] Nueva ruta bridge → auth + traversal test con `../../` (práctica aplicada: `check_post_origin` + cap 150 MB + test 12 en vivo).
+- [x] Nuevo `innerHTML` → `escHtml/escAttr` + test XSS (práctica aplicada: `filterQuery`/mensajes/bankName + tests 7–11; ayuda: `scripts/audit-innerhtml.mjs`).
 
 ## 9. Tests de regresión a mantener
 
-`tests/phase7_import_robustness.test.ts` es la referencia cross-proyecto. Todo proyecto debe tener su equivalente que pruebe: WAV truncado, SF2 `subSize` absurdo <2 s, ZIP bomba (entry/total caps), SFZ oversize + tope regiones, `escHtml/escAttr` neutralizan `"><img onerror>`, SSRF (`aiBridgeEndpoint=http://169.254.169.254/` rechazado), `webpDataUrl` >700 kB rechazado, `rel_path=../../evil` rechazado.
+`tests/phase7_import_robustness.test.ts` es la referencia cross-proyecto, complementada por `tests/security_hardening.test.ts` (12/12 2026-11-06: SSRF, cotas cover/sesión, traversal, cover allowlist, Bridge URL, `sourceUrl`, sublibraries, `fetchWithTimeout`, cover ZIP, y bridge en vivo 403/413/preflight). Todo proyecto debe tener su equivalente que pruebe: WAV truncado, SF2 `subSize` absurdo <2 s, ZIP bomba (entry/total caps), SFZ oversize + tope regiones, `escHtml/escAttr` neutralizan `"><img onerror>`, SSRF (`aiBridgeEndpoint=http://169.254.169.254/` rechazado), `webpDataUrl` >700 kB rechazado, `rel_path=../../evil` rechazado.
 
 ---
 

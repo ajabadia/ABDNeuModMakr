@@ -1,13 +1,16 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — Security Hardening Regression Suite (S2–S6)
-// SSRF, cotas de sesión/cover, bank restore, Zip-Slip, Bridge URL.
+// SSRF, cotas de sesión/cover, bank restore, Zip-Slip, Bridge URL,
+// sourceUrl allowlist, sublibrary names, fetch timeouts, bridge CSRF.
 // ─────────────────────────────────────────────────────────
 
 import assert from 'node:assert/strict';
-import { parseSessionJson } from '../src/core/sessionSchema.ts';
-import { isSafeCoverDataUrl } from '../src/core/bankService.ts';
+import { parseSessionJson, validateSourceUrl } from '../src/core/sessionSchema.ts';
+import { isSafeCoverDataUrl, isSafeSublibraryName } from '../src/core/bankService.ts';
 import { validateBridgeUrl } from '../src/core/bridge/BridgeClient.ts';
+import { fetchWithTimeout, safeErrorSnippet } from '../src/core/ai/CloudByokClient.ts';
 import { extractTimeCapsuleFromFiles } from '../src/core/timeCapsule.ts';
+import { createZipArchive } from '../src/formats/ZipArchive.ts';
 
 function baseSession(): Record<string, unknown> {
   return {
@@ -130,5 +133,200 @@ async function runSecurityTests(): Promise<void> {
 
 runSecurityTests().catch((err) => {
   console.error('Security test failed:', err);
+  process.exit(1);
+});
+
+// ── Parte 2 (auditoría 2026-11-06): sourceUrl, sublibraries, timeouts, cover, bridge. ──
+
+function sessionWithSourceUrl(sourceUrl: unknown): string {
+  return JSON.stringify({
+    session: {
+      ...baseSession(),
+      processConfig: {
+        ...(baseSession().processConfig as object),
+        extendedMetadata: { sourceUrl },
+      },
+    },
+  });
+}
+
+async function runSecurityTestsPart2(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 2) ===');
+
+  // 7. validateSourceUrl: solo http(s)
+  assert.equal(validateSourceUrl('f', 'https://example.com/x.sf2'), 'https://example.com/x.sf2');
+  assert.equal(validateSourceUrl('f', undefined), undefined);
+  for (const bad of [
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'ftp://example.com/x',
+    'file:///etc/passwd',
+    'https://example.com/' + 'a'.repeat(600),
+  ]) {
+    assert.throws(() => validateSourceUrl('f', bad), /http|only|chars/, `sourceUrl debe rechazarse: ${String(bad).slice(0, 40)}`);
+  }
+  console.log('[PASS] 7. validateSourceUrl solo http(s)');
+
+  // 8. Sesión con sourceUrl malicioso se rechaza (stored-XSS vía <a href>)
+  assert.throws(() => parseSessionJson(sessionWithSourceUrl('javascript:alert(1)')), /sourceUrl/);
+  const okParsed = parseSessionJson(sessionWithSourceUrl('https://example.com/bank.sf2')) as {
+    processConfig?: { extendedMetadata?: { sourceUrl?: string } };
+  };
+  assert.equal(okParsed.processConfig?.extendedMetadata?.sourceUrl, 'https://example.com/bank.sf2');
+  console.log('[PASS] 8. sourceUrl en sesión validado');
+
+  // 9. Nombres de sublibrería: charset del servidor o nada
+  assert.equal(isSafeSublibraryName('Default'), true);
+  assert.equal(isSafeSublibraryName('mis bancos-1'), true);
+  for (const bad of ['../../evil', '..', '', 'a'.repeat(65), '/abs', 'C:\\win', 'nul\0byte', 'con<>']) {
+    assert.equal(isSafeSublibraryName(bad), false, `sublibrería debe rechazarse: ${bad}`);
+  }
+  console.log('[PASS] 9. isSafeSublibraryName');
+
+  // 10. fetchWithTimeout: éxito rápido + aborto ante cuelgue
+  const okRes = await fetchWithTimeout('data:text/plain,hello', {}, 5000);
+  assert.equal(await okRes.text(), 'hello');
+  const realFetch = globalThis.fetch;
+  try {
+    // Stub colgado que SÍ respeta AbortSignal (como un fetch real ante abort).
+    (globalThis as Record<string, unknown>).fetch = (_url: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        const onAbort = (): void => {
+          reject(signal?.reason ?? new Error('aborted'));
+        };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+    await assert.rejects(() => fetchWithTimeout('https://example.com/hang', {}, 20), /timed out/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const longSnippet = await safeErrorSnippet({ text: async () => 'E'.repeat(1000) } as Response);
+  assert.ok(longSnippet.length <= 301 && longSnippet.endsWith('…'), 'error largo se trunca');
+  console.log('[PASS] 10. fetchWithTimeout + safeErrorSnippet');
+
+  // 11. Cover del ZIP: solo bytes WebP reales se adoptan (S6.4)
+  const badZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: new Uint8Array([1, 2, 3, 4]) }]);
+  const badOut = extractTimeCapsuleFromFiles([{ name: 'evil.nmpack', data: badZip }]);
+  assert.equal(badOut.coverWebpBytes, null, 'cover falso no se adopta');
+  const riffWebp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0, 0, 0, 0]);
+  const goodZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: riffWebp }]);
+  const goodOut = extractTimeCapsuleFromFiles([{ name: 'good.nmpack', data: goodZip }]);
+  assert.ok(goodOut.coverWebpBytes && goodOut.coverWebpBytes.byteLength === riffWebp.byteLength, 'cover WebP real se adopta');
+  console.log('[PASS] 11. cover.webp revalidado (S6.4)');
+
+  // 12. Bridge en vivo: 403 ante Origin ajeno, 413 ante cuerpo gigante, preflight con token
+  await testBridgeLiveGuards();
+
+  console.log('=== ALL SECURITY TESTS (PART 2) PASSED ===');
+}
+
+async function testBridgeLiveGuards(): Promise<void> {
+  const { spawn, execFileSync } = await import('node:child_process');
+  try {
+    execFileSync('python', ['--version'], { stdio: 'ignore' });
+  } catch {
+    console.log('[SKIP] 12. sin python en PATH — guards del bridge no verificados en vivo');
+    return;
+  }
+  const port = 17861;
+  const child = spawn('python', ['bridge/server.py', '--port', String(port)], {
+    stdio: 'ignore',
+    detached: true,
+  });
+  const kill = (): void => {
+    try {
+      process.kill(-child.pid as number, 'SIGKILL');
+    } catch {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // noop
+      }
+    }
+  };
+  try {
+    // Espera al /api/health (máx ~15 s).
+    let healthy = false;
+    for (let i = 0; i < 75; i++) {
+      try {
+        const h = await fetchWithTimeout(`http://127.0.0.1:${port}/api/health`, {}, 1000);
+        if (h.ok) {
+          healthy = true;
+          break;
+        }
+      } catch {
+        // aún arrancando
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.ok(healthy, 'el bridge de pruebas debe arrancar');
+
+    // 12a. POST con Origin ajeno → 403 (anti-CSRF), sin queja del token.
+    const evil = await fetchWithTimeout(`http://127.0.0.1:${port}/api/models/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+      body: '{}',
+    });
+    assert.equal(evil.status, 403, 'Origin ajeno debe dar 403');
+
+    // 12b. Mismo POST sin Origin (curl/herramienta local) → NO 403.
+    const local = await fetchWithTimeout(`http://127.0.0.1:${port}/api/models/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    assert.notEqual(local.status, 403, 'sin Origin no hay 403');
+
+    // 12c. Cabecera gigante → 413 inmediato sin leer el cuerpo.
+    const status413 = await new Promise<number>((resolve, reject) => {
+      import('node:net').then(({ default: net }) => {
+        const sock = net.connect(port, '127.0.0.1', () => {
+          sock.write(
+            `POST /api/models/url HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n` +
+              'Content-Length: 200000000\r\nOrigin: http://localhost:8388\r\nConnection: close\r\n\r\n'
+          );
+        });
+        let head = '';
+        const timer = setTimeout(() => {
+          sock.destroy();
+          reject(new Error('sin respuesta 413 a tiempo'));
+        }, 8000);
+        sock.on('data', (chunk: Buffer) => {
+          head += chunk.toString('latin1');
+          const m = head.match(/HTTP\/\d(?:\.\d)?\s+(\d+)/);
+          if (m) {
+            clearTimeout(timer);
+            sock.destroy();
+            resolve(Number(m[1]));
+          }
+        });
+        sock.on('error', (e: Error) => {
+          clearTimeout(timer);
+          reject(e);
+        });
+      }).catch(reject);
+    });
+    assert.equal(status413, 413, 'cuerpo >150MB debe dar 413');
+
+    // 12d. Preflight OPTIONS anuncia X-Bridge-Token (si no, el token opt-in no viaja).
+    const pre = await fetchWithTimeout(`http://127.0.0.1:${port}/api/models/url`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'http://localhost:8388', 'Access-Control-Request-Headers': 'X-Bridge-Token' },
+    });
+    const allowHeaders = (pre.headers.get('access-control-allow-headers') || '').toLowerCase();
+    assert.ok(allowHeaders.includes('x-bridge-token'), 'preflight debe anunciar X-Bridge-Token');
+    console.log('[PASS] 12. bridge en vivo: 403 CSRF + 413 body-cap + preflight token');
+  } finally {
+    kill();
+  }
+}
+
+runSecurityTestsPart2().catch((err) => {
+  console.error('Security test (part 2) failed:', err);
   process.exit(1);
 });

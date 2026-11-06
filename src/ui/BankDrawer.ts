@@ -19,7 +19,7 @@ import { evaluateNeuronDb, type NeuronDbEvaluation } from '@abdsynths/shared/for
 import type { AxionikDbModelEntry } from '../core/bridge/BridgeClient';
 import type { SublibraryInfo } from '../core/types';
 import { AXIONIK_CATEGORIES } from '../core/modelSlug';
-import { escAttr } from './escape';
+import { escAttr, escHtml } from './escape';
 import { isSafeCoverDataUrl } from '../core/bankService';
 import { getAppLocale, onAppLocaleChange, tApp } from '../core/i18n';
 
@@ -542,7 +542,7 @@ export class BankDrawer {
 
     if (filtered.length === 0) {
       const emptyMsg = this.filterQuery
-        ? `No models found matching "${this.filterQuery}"`
+        ? `No models found matching "${escHtml(this.filterQuery)}"`
         : 'No models in this category yet';
       container.innerHTML = `
         <div class="neurondb-empty-state">
@@ -663,7 +663,7 @@ export class BankDrawer {
       container.innerHTML = `
         <div class="neurondb-empty-state">
           <span class="empty-icon">${ICONS.sliders}</span>
-          <span class="empty-msg">No presets found matching "${this.filterQuery}"</span>
+          <span class="empty-msg">No presets found matching "${escHtml(this.filterQuery)}"</span>
         </div>
       `;
       return;
@@ -758,7 +758,7 @@ export class BankDrawer {
 
     if (filtered.length === 0) {
       const emptyMsg = this.filterQuery
-        ? `No library models found matching "${this.filterQuery}"`
+        ? `No library models found matching "${escHtml(this.filterQuery)}"`
         : 'No library models in this category yet';
       container.innerHTML = `
         <div class="neurondb-empty-state">

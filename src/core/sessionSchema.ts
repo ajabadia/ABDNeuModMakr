@@ -123,6 +123,27 @@ export function validateAiBridgeEndpoint(v: unknown): string {
   return t;
 }
 
+/** S2.3: `sourceUrl` solo http(s) — bloquea `javascript:`/`data:` (stored-XSS vía <a href>). */
+export function validateSourceUrl(field: string, v: unknown): string | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'string') throw fieldError(field, 'must be a URL string');
+  const t = v.trim();
+  if (t.length === 0) return undefined;
+  if (t.length > MAX_ENDPOINT_LENGTH) {
+    throw fieldError(field, `must be 1..${MAX_ENDPOINT_LENGTH} chars`);
+  }
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    throw fieldError(field, 'must be a valid http(s) URL');
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw fieldError(field, 'only http(s) URLs are allowed');
+  }
+  return t;
+}
+
 export function validateWebpDataUrl(field: string, v: unknown): string {
   if (typeof v !== 'string' || !v.startsWith('data:image/webp;base64,')) {
     throw fieldError(field, 'must start with data:image/webp;base64,');
@@ -454,12 +475,13 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
         }
       }
     }
+    const safeSourceUrl = validateSourceUrl('processConfig.extendedMetadata.sourceUrl', meta['sourceUrl']);
     extendedMetadata = {
       ...(asStr(meta['author']) ? { author: asStr(meta['author']) } : {}),
       ...(asStr(meta['vendor']) ? { vendor: asStr(meta['vendor']) } : {}),
       ...(asStr(meta['version']) ? { version: asStr(meta['version']) } : {}),
       ...(asStr(meta['releaseYear']) ? { releaseYear: asStr(meta['releaseYear']) } : {}),
-      ...(asStr(meta['sourceUrl']) ? { sourceUrl: asStr(meta['sourceUrl']) } : {}),
+      ...(safeSourceUrl ? { sourceUrl: safeSourceUrl } : {}),
       ...(asStr(meta['sourceFormat']) ? { sourceFormat: asStr(meta['sourceFormat']) } : {}),
       ...(asStr(meta['sourcePresetName']) ? { sourcePresetName: asStr(meta['sourcePresetName']) } : {}),
       ...(asStr(meta['license']) ? { license: asStr(meta['license']) } : {}),

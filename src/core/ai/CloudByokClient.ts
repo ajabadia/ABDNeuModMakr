@@ -56,6 +56,48 @@ export interface CloudTextGenerationResult {
 
 const STORAGE_KEY_BYOK = 'neumodmakr_byok_config';
 
+/**
+ * S4.2: todo `fetch` a proveedores IA lleva timeout explícito.
+ * Un endpoint colgado (DNS caído, modelo en cold-start) aborta en vez de
+ * congelar la UI para siempre. Exportada para el suite de seguridad.
+ */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 30000
+): Promise<Response> {
+  const eventTarget = init.signal;
+  const ctrl = new AbortController();
+  const onAbort = (): void => {
+    ctrl.abort((eventTarget as AbortSignal | undefined)?.reason);
+  };
+  eventTarget?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => {
+    ctrl.abort(new Error(`AI request timed out after ${timeoutMs} ms: ${url}`));
+  }, timeoutMs);
+  try {
+    // `globalThis.fetch` en tiempo de llamada (no capturado): testeable y sin
+    // recursión — el nombre del helper nunca aparece en esta expresión.
+    return await globalThis.fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+    eventTarget?.removeEventListener('abort', onAbort);
+  }
+}
+
+/**
+ * S4.2: mensaje de error acotado — nunca vierte cuerpos de error gigantes
+ * (páginas HTML de un proxy caído, p. ej.) al usuario ni a los logs.
+ */
+export async function safeErrorSnippet(res: Response, maxChars = 300): Promise<string> {
+  try {
+    const text = await res.text();
+    return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+  } catch {
+    return '';
+  }
+}
+
 const DEFAULT_BYOK_CONFIG: ByokConfig = {
   enabled: false,
   provider: 'replicate',
@@ -156,7 +198,7 @@ export class CloudByokClient {
 
     // 1. Try local Vite dev server proxy (`/api/proxy/replicate/...`)
     try {
-      const proxyRes = await fetch(`/api/proxy/replicate${relPath}`, {
+      const proxyRes = await fetchWithTimeout(`/api/proxy/replicate${relPath}`, {
         method,
         headers: {
           Authorization: `Bearer ${cleanToken}`,
@@ -180,7 +222,7 @@ export class CloudByokClient {
       const bridgeUrl =
         (typeof localStorage !== 'undefined' && localStorage.getItem('neumodmakr_bridge_url')) ||
         'http://127.0.0.1:7860';
-      const bridgeRes = await fetch(`${bridgeUrl.replace(/\/+$/, '')}/api/cloud/replicate_proxy`, {
+      const bridgeRes = await fetchWithTimeout(`${bridgeUrl.replace(/\/+$/, '')}/api/cloud/replicate_proxy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -262,7 +304,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'huggingface') {
-        const res = await fetch('https://huggingface.co/api/whoami-v2', {
+        const res = await fetchWithTimeout('https://huggingface.co/api/whoami-v2', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -279,7 +321,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'gemini') {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanToken)}`,
           { method: 'GET' }
         );
@@ -293,7 +335,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'openai') {
-        const res = await fetch('https://api.openai.com/v1/models', {
+        const res = await fetchWithTimeout('https://api.openai.com/v1/models', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -310,7 +352,7 @@ export class CloudByokClient {
 
       if (provider === 'claude') {
         try {
-          const res = await fetch('https://api.anthropic.com/v1/models', {
+          const res = await fetchWithTimeout('https://api.anthropic.com/v1/models', {
             method: 'GET',
             headers: {
               'x-api-key': cleanToken,
@@ -339,7 +381,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'openrouter') {
-        const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+        const res = await fetchWithTimeout('https://openrouter.ai/api/v1/auth/key', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -357,7 +399,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'deepseek') {
-        const res = await fetch('https://api.deepseek.com/models', {
+        const res = await fetchWithTimeout('https://api.deepseek.com/models', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -373,7 +415,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'groq') {
-        const res = await fetch('https://api.groq.com/openai/v1/models', {
+        const res = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -389,7 +431,7 @@ export class CloudByokClient {
       }
 
       if (provider === 'mistral') {
-        const res = await fetch('https://api.mistral.ai/v1/models', {
+        const res = await fetchWithTimeout('https://api.mistral.ai/v1/models', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${cleanToken}`,
@@ -483,7 +525,7 @@ export class CloudByokClient {
         body.system = systemPrompt;
       }
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -495,7 +537,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`Claude API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -525,7 +567,7 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -542,7 +584,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`OpenRouter API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -571,7 +613,7 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -586,7 +628,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`OpenAI API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -615,7 +657,7 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -630,7 +672,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`Groq API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -659,7 +701,7 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetch('https://api.deepseek.com/chat/completions', {
+      const res = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -674,7 +716,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`DeepSeek API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -703,7 +745,7 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      const res = await fetchWithTimeout('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -718,7 +760,7 @@ export class CloudByokClient {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`Mistral API error (HTTP ${res.status}): ${errText}`);
       }
 
@@ -754,7 +796,7 @@ export class CloudByokClient {
         body.systemInstruction = { parts: [{ text: systemPrompt }] };
       }
 
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(token)}`,
         {
           method: 'POST',
@@ -764,7 +806,7 @@ export class CloudByokClient {
       );
 
       if (!res.ok) {
-        const errText = await res.text();
+        const errText = await safeErrorSnippet(res);
         throw new Error(`Gemini API error (HTTP ${res.status}): ${errText}`);
       }
 

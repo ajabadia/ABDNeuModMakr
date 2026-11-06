@@ -46,6 +46,7 @@ import {
 } from './extendedAdapter.ts';
 import {
   dataUrlToWebpBytes,
+  isWebpBytes,
   parseWebpDimensions,
   webpBytesToDataUrl,
 } from './coverArtwork.ts';
@@ -658,7 +659,12 @@ export function extractTimeCapsuleFromFiles(
       } else if (normPath === EXPANDED_MODEL_V2_CAPSULE_PATH) {
         expandedModelV2Json = new TextDecoder().decode(f.data);
       } else if (lowerBase === 'cover.webp') {
-        coverWebpBytes = new Uint8Array(f.data);
+        // S6.4: solo se adopta si son bytes WebP reales; el resto se ignora
+        // (un `cover.webp` falso dentro del ZIP no llega jamás a `<img src>`).
+        const candidate = new Uint8Array(f.data);
+        if (isWebpBytes(candidate)) {
+          coverWebpBytes = candidate;
+        }
       }
       continue;
     }

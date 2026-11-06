@@ -23,6 +23,8 @@ const TARGETS = [
       { re: /\beval\s*\(/, label: 'eval()' },
       { re: /new Function\s*\(/, label: 'new Function()' },
       { re: /document\.write\s*\(/, label: 'document.write()' },
+      { re: /\bsetTimeout\s*\(\s*['"`]/, label: 'setTimeout(string) (usar callback)' },
+      { re: /<script[\s>]/i, label: '<script en src (verificar: solo en tests/XSS permitido)' },
       { re: /@ts-ignore/, label: '@ts-ignore (usar tipado real)' },
     ],
   },
@@ -84,6 +86,6 @@ for (const target of TARGETS) {
 if (violations > 0) {
   console.error(`\nSecurity grep gate FAILED: ${violations} violación(es) de DOCS/SECURITY_STANDARDS.md §2.1.`);
   process.exit(1);
-}
-
-console.log('Security grep gate OK (S2.1): sin eval/new Function/document.write/@ts-ignore en src, sin shell=True/os.system/pickle/yaml.load en bridge.');
+}  console.log(
+    'Security grep gate OK (S2.1): sin eval/new Function/document.write/setTimeout(string)/<script/@ts-ignore en src, sin shell=True/os.system/pickle/yaml.load en bridge.'
+  );
