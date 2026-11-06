@@ -1054,8 +1054,8 @@ async function runSecurityTestsPart8(): Promise<void> {
   assert.ok(many.byteLength < 8 * 1024 * 1024, 'debe entrar bajo el tope de tamaño');
   await assert.rejects(
     parseUniversalSamplerCapped('evil.nki', many.buffer as ArrayBuffer, new Map()),
-    /too many regions/,
-    '20k regiones deben rechazarse aunque el fichero sea "pequeño"'
+    /too many region/,
+    '20k regiones deben rechazarse aunque el fichero sea "pequeño" (pre-conteo o post-parse)'
   );
   assert.equal(MAX_SAMPLER_PRESET_REGIONS, 16384, 'tope 16384 regiones');
   console.log('[PASS] 21b. nki con 20k zonas rechazado por conteo');
@@ -1082,5 +1082,78 @@ async function runSecurityTestsPart8(): Promise<void> {
 
 runSecurityTestsPart8().catch((err) => {
   console.error('Security test (part 8) failed:', err);
+  process.exit(1);
+});
+
+// ── Parte 9 (red-team 2026-11-06, ola 7): CPU-DoS bajo las compuertas. ──
+// El tope post-parse de la ola 6 llegaba tarde: 7,3 MB con 190k `<sample>`
+// sin cerrar quemaban 4,3 s de hilo principal (2,2 s la variante `.nki`)
+// antes del rechazo. El coste es ~lineal en coincidencias, así que la
+// compuerta pre-cuenta etiquetas con `indexOf` antes del parse del vendor.
+
+async function runSecurityTestsPart9(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 9: CPU-DoS under the gates) ===');
+  const { parseUniversalSamplerCapped } = await import('../src/core/import/rawSamplerParsers.ts');
+  const enc = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
+  const bomb = (open: (i: number) => string, root: [string, string], n: number) => {
+    let s = '<?xml version="1.0"?>' + root[0];
+    for (let i = 0; i < n; i++) s += open(i);
+    return enc(s + root[1]);
+  };
+
+  // 22a. Bomba dspreset (7,3 MB, el peor caso medido de la ola 7): rechazo
+  // pre-parse rápido, sin quemar segundos de hilo principal.
+  const dsBomb = bomb(
+    (i) => `<sample path="s${i}.wav" rootNote="60">`,
+    ['<DecentSampler><groups><group>', '</group></groups></DecentSampler>'],
+    190000
+  );
+  assert.ok(dsBomb.byteLength > 7 * 1024 * 1024, 'la bomba debe rozar el tope de 8 MB');
+  let t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('r.dspreset', dsBomb, new Map()),
+    /pre-parse/,
+    '190k tags deben rechazarse antes del parse caro'
+  );
+  assert.ok(Date.now() - t0 < 1000, `rechazo pre-parse rápido (fue ${Date.now() - t0}ms; pre-fix: 4258ms)`);
+  console.log('[PASS] 22a. bomba dspreset 7,3 MB rechazada pre-parse en ms');
+
+  // 22b. Variante nki (pre-fix: 2229 ms).
+  const nkiBomb = bomb(
+    (i) => `<zone sample="s${i}.wav" rootKey="60">`,
+    ['<kontakt-instrument name="r">', '</kontakt-instrument>'],
+    190000
+  );
+  t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('r.nki', nkiBomb, new Map()),
+    /pre-parse/,
+    '190k zonas deben rechazarse antes del parse caro'
+  );
+  assert.ok(Date.now() - t0 < 1000, `rechazo pre-parse rápido (fue ${Date.now() - t0}ms; pre-fix: 2229ms)`);
+  console.log('[PASS] 22b. bomba nki 7,1 MB rechazada pre-parse en ms');
+
+  // 22c. El pre-conteo imita `\b` del vendor en ambas direcciones:
+  // `<samples>` (envoltorio) NO cuenta, `<sample-x>` (el vendor lo casa) SÍ.
+  let manyWrappers = '<?xml version="1.0"?><DecentSampler><groups><group>';
+  for (let i = 0; i < 20000; i++) manyWrappers += '<samples></samples>';
+  manyWrappers += '<sample path="a.wav" rootNote="60"/></group></groups></DecentSampler>';
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('w.dspreset', enc(manyWrappers), new Map()),
+    '20k envoltorios `<samples>` no deben trippear el pre-conteo'
+  );
+  let dashTags = '<?xml version="1.0"?><DecentSampler><groups><group>';
+  for (let i = 0; i < 17000; i++) dashTags += `<sample-x path="s${i}.wav"/>`;
+  dashTags += '</group></groups></DecentSampler>';
+  await assert.rejects(
+    parseUniversalSamplerCapped('x.dspreset', enc(dashTags), new Map()),
+    /pre-parse/,
+    '`<sample-x>` debe contar (el vendor lo casa vía \\b)'
+  );
+  console.log('[PASS] 22c. límite de palabra del pre-conteo fiel al vendor');
+}
+
+runSecurityTestsPart9().catch((err) => {
+  console.error('Security test (part 9) failed:', err);
   process.exit(1);
 });
