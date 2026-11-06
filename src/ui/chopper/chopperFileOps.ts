@@ -7,7 +7,7 @@
 import { extractManifestFromWavBytes } from '../../core/autoSampler/MidiAutoSampleSession.ts';
 import { bridgeClient } from '../../core/bridge/BridgeClient.ts';
 import { buildSlicesFromBoundaries, buildSlicesFromMidiManifest, extractBoundaryFrames, normalizePeakPcm } from '../../core/dsp/AudioSlicerEngine.ts';
-import { decompressRx2Audio, isRx2Buffer } from '../../core/dsp/DwopDecompressor.ts';
+import { decompressRx2AudioCapped, isRx2Buffer } from '../../core/dsp/DwopDecompressor.ts';
 import { parseSliceFile } from '../../core/dsp/SliceFileParser.ts';
 import { decodeWav, decodeAiff, transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { bindChopperKeyboard } from '../chopper/a11yKeyboard.ts';
@@ -299,7 +299,7 @@ export async function _handleRx2Buffer(ctx: ChopperContext, arrayBuf: ArrayBuffe
     // 1. Direct in-browser client-side TypeScript decompression (100% offline, Vercel-ready)
     if (isRx2Buffer(arrayBuf)) {
       try {
-        const decompressed = decompressRx2Audio(arrayBuf);
+        const decompressed = decompressRx2AudioCapped(arrayBuf, filename);
         const wavName = filename.replace(/\.(rx2|rex|rcy)$/i, '.wav');
         ctx.state.context.onRegisterSampleBuffer?.(wavName, decompressed.wavBuffer);
 

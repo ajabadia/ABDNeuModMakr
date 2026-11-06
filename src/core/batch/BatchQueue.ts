@@ -23,7 +23,7 @@ import {
   isSupportedAudioFileName,
   transcodeAnyAudioToWavBuffer,
 } from '../dsp/WavDecoder.ts';
-import { isRx2Buffer, decompressRx2Audio } from '../dsp/DwopDecompressor.ts';
+import { isRx2Buffer, decompressRx2AudioCapped } from '../dsp/DwopDecompressor.ts';
 import { fileExtension } from '../pathUtils.ts';
 import { delay, yieldToUI } from '../asyncUtils.ts';
 import { webNeuralEngine } from '../ai/WebNeuralEngine.ts';
@@ -1077,7 +1077,7 @@ export class BatchQueue {
     let detectedBpm = config.slicerBpm || 120;
 
     if (isRx2) {
-      const rx2Res = decompressRx2Audio(file.buffer);
+      const rx2Res = decompressRx2AudioCapped(file.buffer, file.name);
       pcm = rx2Res.channels[0];
       sampleRate = rx2Res.sampleRate;
     } else {

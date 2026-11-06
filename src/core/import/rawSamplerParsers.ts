@@ -52,6 +52,7 @@ const REGION_TAGS_BY_EXT: Array<{ exts: string[]; tags: string[] }> = [
   { exts: ['.talsmpl'], tags: ['<multisample', '<entry'] },
   { exts: ['.txprog'], tags: ['<region', '<wave', '<entry'] },
   { exts: ['.adv'], tags: ['<multisamplepart'] },
+  { exts: ['.xpm', '.xty', '.xtd'], tags: ['<layer'] },
 ];
 const FALLBACK_REGION_TAGS = ['<sample', '<zone', '<region', '<multisample', '<wave', '<entry'];
 
@@ -62,8 +63,13 @@ function isGzipMagic(data: ArrayBuffer): boolean {
   return b[0] === 0x1f && b[1] === 0x8b;
 }
 
+/** Extensiones cuyo gzip (si lo son) se infla con tope antes del vendor. */
+const CAPPED_GZIP_EXTENSIONS = ['.adv', '.xpm', '.xty', '.xtd'];
+
 /**
  * S6.7c — `.adv` con límite de inflado (red-team 2026-11-06, ola 8).
+ * S6.7d — lo mismo para `.xpm`/`.xty`/`.xtd` MPC3 (ola 9): su `gunzip`
+ * tampoco tiene tope (medido: 28 KB → 9,4 MB de JSON + 68 MB RSS, PASA).
  *
  * `unpackAbletonAdvXml` (vendor) infla gzip con `inflateRaw` SIN tope:
  * 217 KB → 55 MB de XML medidos sin que saltase ninguna compuerta
@@ -76,7 +82,7 @@ function isGzipMagic(data: ArrayBuffer): boolean {
  * resto. `DecompressionStream` ya lo usa el vendor (Kontakt/MPC-XPM) y el
  * proyecto exige Node ≥ 18: sin riesgo nuevo de plataforma.
  */
-async function inflateAdvGzipCapped(filename: string, data: Uint8Array<ArrayBuffer>): Promise<string> {
+async function inflateGzipTextCapped(filename: string, data: Uint8Array<ArrayBuffer>): Promise<string> {
   const ds = new DecompressionStream('gzip');
   const writePromise = (async () => {
     const writer = ds.writable.getWriter();
@@ -97,7 +103,7 @@ async function inflateAdvGzipCapped(filename: string, data: Uint8Array<ArrayBuff
       if (total > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
         await reader.cancel().catch(() => undefined);
         throw new Error(
-          `Ableton preset inflates too large (${filename}: >${MAX_SAMPLER_DEFINITION_TEXT_BYTES} bytes from ${data.byteLength} compressed)`
+          `Sampler preset inflates too large (${filename}: >${MAX_SAMPLER_DEFINITION_TEXT_BYTES} bytes from ${data.byteLength} compressed)`
         );
       }
       chunks.push(value);
@@ -171,14 +177,16 @@ export async function parseUniversalSamplerCapped(
   data: ArrayBuffer | string,
   ...rest: unknown[]
 ): Promise<ParsedSamplerPreset> {
-  // Nivel -1 (ola 8): `.adv` gzip se infla aquí con tope; el vendor lo
-  // recibiría sin límite. Se pasa como string para no re-inflar.
+  // Nivel -1 (olas 8–9): `gzip` de preset se infla aquí con tope; el
+  // vendor lo recibiría sin límite. Se pasa como string para no re-inflar
+  // (ninguna de estas rutas re-comprime: el vendor detecta gzip por magia).
+  const lowerName = filename.toLowerCase();
   if (
     typeof data !== 'string' &&
-    filename.toLowerCase().endsWith('.adv') &&
+    CAPPED_GZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) &&
     isGzipMagic(data)
   ) {
-    const xml = await inflateAdvGzipCapped(filename, new Uint8Array(data));
+    const xml = await inflateGzipTextCapped(filename, new Uint8Array(data));
     assertRegionTagCountSafe(filename, xml);
     const preset = await (
       parseUniversalSampler as (...args: unknown[]) => Promise<{ regions?: unknown[] }>

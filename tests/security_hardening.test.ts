@@ -1214,3 +1214,88 @@ runSecurityTestsPart10().catch((err) => {
   console.error('Security test (part 10) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 11 (red-team 2026-11-06, ola 9): gzip MPC3 + SINF mentiroso. ──
+// `gunzip` de MPC-XPM no tenía tope (28 KB → 9,4 MB PASA) y `decompressRx2`
+// reservaba `Float32Array(totalFrames)` con el u32 del SINF sin validar:
+// 56 bytes con totalFrames=0xFFFFFFFF → intento de 16 GB y cuelgue total
+// (> 100 s sin retorno; solo matando el proceso). El ZIP con entradas
+// solapadas está contenido (S6.1 corta por cabecera; documentado).
+
+async function runSecurityTestsPart11(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 11: xpm gzip + rx2 frames) ===');
+  const { gzipSync } = await import('node:zlib');
+  const { parseUniversalSamplerCapped } = await import('../src/core/import/rawSamplerParsers.ts');
+  const { decompressRx2AudioCapped, assertRx2SizeSafe } = await import('../src/core/dsp/DwopDecompressor.ts');
+  const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+
+  // 24a. Bomba gzip MPC3 válida (300k instrumentos, 9,4 MB desde 28 KB).
+  const inst = '{"name":"i","layersv":[{"l":1}]}';
+  const bigJson =
+    '{"data":{"program":{"name":"evil","instruments":[' + Array(300000).fill(inst).join(',') + ']}}}';
+  const bomb = gzipSync(Buffer.from(bigJson));
+  assert.ok(bomb.byteLength < 100 * 1024, 'la bomba debe caber en un email');
+  const t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil.xpm', ab(bomb), new Map()),
+    /inflates too large/,
+    'gzip bomb MPC3 debe morir en el inflado acotado'
+  );
+  assert.ok(Date.now() - t0 < 3000, `rechazo rápido (fue ${Date.now() - t0}ms)`);
+  console.log('[PASS] 24a. bomba gzip .xpm cortada en el inflado');
+
+  // 24b. `.xpm` legítimo intacto: MPC3 gzip pequeño y MPC2 XML plano.
+  const okJson = '{"data":{"program":{"name":"ok","instruments":[{"name":"i","layersv":[{"l":1}]}]}}}';
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('ok.xpm', ab(gzipSync(Buffer.from(okJson))), new Map()),
+    'MPC3 gzip legítimo debe pasar'
+  );
+  const mpc2layer = (i: number) =>
+    `<Layer number="${i}"><SampleName>s${i}.wav</SampleName><RootNote>60</RootNote></Layer>`;
+  const mpc2wrap = (layers: string) =>
+    `<MPCVObject><Program type="Drum"><ProgramName>ok</ProgramName>` +
+    `<Instrument number="1">${layers ? `<Layers>${layers}</Layers>` : ''}</Instrument></Program></MPCVObject>`;
+  let mpc2layers = '';
+  for (let i = 0; i < 10; i++) mpc2layers += mpc2layer(i);
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('ok2.xpm', mpc2wrap(mpc2layers), new Map()),
+    'MPC2 XML legítimo debe pasar'
+  );
+  let mpc2evil = '';
+  for (let i = 0; i < 20000; i++) mpc2evil += mpc2layer(i);
+  mpc2evil = mpc2wrap(mpc2evil);
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil2.xpm', mpc2evil, new Map()),
+    /too many region/,
+    '20k Layer deben rechazarse pre-parse'
+  );
+  console.log('[PASS] 24b. .xpm legítimo intacto; monstruo MPC2 cortado');
+
+  // 24c. REX2 con SINF mentiroso (56 B, 0xFFFFFFFF): antes colgaba el
+  // proceso; ahora rechazo en ms. Un SINF honesto-pequeño pasa la compuerta.
+  const evilRx2 = (() => {
+    const b = new Uint8Array(56);
+    const w = (off: number, s: string) => { for (let i = 0; i < s.length; i++) b[off + i] = s.charCodeAt(i); };
+    const u32 = (off: number, v: number) => new DataView(b.buffer).setUint32(off, v, false);
+    w(0, 'CAT '); u32(4, 48); w(8, 'REX2');
+    w(12, 'SINF'); u32(16, 18); b[20] = 1; b[21] = 0; u32(22, 44100); u32(26, 0xffffffff); u32(30, 0); u32(34, 0);
+    w(38, 'DWOP'); u32(42, 8);
+    return b.buffer as ArrayBuffer;
+  })();
+  const t1 = Date.now();
+  assert.throws(
+    () => decompressRx2AudioCapped(evilRx2, 'evil.rx2'),
+    /too many frames/,
+    'SINF con 4G frames debe rechazarse sin reservar nada'
+  );
+  assert.ok(Date.now() - t1 < 3000, `rechazo rápido (fue ${Date.now() - t1}ms)`);
+  const okRx2 = evilRx2.slice(0);
+  new DataView(okRx2).setUint32(26, 1000, false);
+  assert.doesNotThrow(() => assertRx2SizeSafe(okRx2, 'ok.rx2'), 'SINF honesto debe pasar la compuerta');
+  console.log('[PASS] 24c. REX2 mentiroso rechazado en ms; SINF honesto pasa');
+}
+
+runSecurityTestsPart11().catch((err) => {
+  console.error('Security test (part 11) failed:', err);
+  process.exit(1);
+});
