@@ -123,6 +123,7 @@ export function renderCloudTab(ctx: SettingsModalContext): string {
                 <div class="nmm-title-row">
                   <span class="provider-title">Anthropic Claude</span>
                   <span class="provider-pill-badge">Sonnet &amp; Haiku</span>
+                  <span class="nmm-status-pill is-muted" title="Offline format check (sk-ant-...) only; network verification happens on Verify Key.">Formato sk-ant-… ≠ verificado</span>
                 </div>
                 <span class="provider-desc">${isEs ? 'Razonamiento acústico profundo, caracterización tímbrica y síntesis de prompts.' : 'Deep acoustic reasoning, timbre characterization &amp; prompt synthesis.'}</span>
               </label>
@@ -179,6 +180,7 @@ export function renderCloudTab(ctx: SettingsModalContext): string {
                 <div class="nmm-title-row">
                   <span class="provider-title">Replicate</span>
                   <span class="provider-pill-badge">AudioSR GPU</span>
+                  <span class="nmm-status-pill is-warn" title="Direct browser calls fail by CORS on Vercel. Use local dev-proxy /api/proxy/replicate (vite.config.ts) or the Bridge replicate_proxy.">Solo dev-proxy / Requiere Bridge</span>
                 </div>
                 <span class="provider-desc">${isEs ? 'Ideal para AudioSR (Super-Resolución 96 kHz) y modelos MusicGen.' : 'Best for AudioSR (96kHz Super-Resolution) and MusicGen models.'}</span>
               </label>

@@ -781,9 +781,11 @@ export function articulationToDictionaryParams(
     params.zoneHighVel = primaryRegion.highVel;
     params.zoneGainDb = primaryRegion.volume;
     params.zonePan = primaryRegion.pan / 50.0;
-    params.zoneTuneCoarseSt = 0;
-    params.zoneTuneFineCents = primaryRegion.detune;
-    params.zoneKeyTrack = primaryRegion.pitchKeytrack;
+    // Fase 43: emit canonical sampler_voice_parameter_spec.json IDs
+    // (was: zoneTuneCoarseSt/zoneTuneFineCents/zoneKeyTrack).
+    params.zoneTuneSemitones = 0;
+    params.zoneTuneCents = primaryRegion.detune;
+    params.zonePitchKeyTrack = primaryRegion.pitchKeytrack;
     params.zoneSampleStart = primaryRegion.sampleStartFrame ?? 0;
     params.zoneSampleEnd = primaryRegion.sampleEndFrame ?? 0;
     params.zoneReverse = primaryRegion.reversed ? 1 : 0;

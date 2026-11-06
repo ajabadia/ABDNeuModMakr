@@ -39,6 +39,7 @@ Cuando abras `ABDNeuModMakr`, el cliente `AiBridgeClient` detectara el servidor 
 | `GET` | `/api/models` | Listado completo de modelos neuronales registrados (`MODEL_REGISTRY`), indicando estado (`downloaded`, `downloading`, `pending`), tamano y ruta en disco. |
 | `POST` | `/api/models/download` | Inicia la descarga multihilo en segundo plano del modelo solicitado (`model_id`), con staging atomico temporal `.part`. |
 | `GET` | `/api/models/progress` | Consulta el progreso de descarga activa (bytes recibidos, total, porcentaje, velocidad de transferencia y ETA) para la barra de progreso de la UI. |
+| `POST` | `/api/cloud/replicate_proxy` | Pass-through a `https://api.replicate.com/v1/*` (body `{path, method, token, body}`). Evita el CORS del navegador en producción (Vercel): el frontend debe usar este proxy o el dev-proxy de Vite `/api/proxy/replicate`, nunca `api.replicate.com` directo. |
 | `GET` | `/api/fs/scan?path=...` | Escanea directorios locales en busca de modelos `.model`, sonidos `.sound` y SoundFonts `.sf2`. |
 
 ---
@@ -48,3 +49,10 @@ Cuando abras `ABDNeuModMakr`, el cliente `AiBridgeClient` detectara el servidor 
 - El servidor solo escucha en la interfaz de bucle invertido local (`127.0.0.1`).
 - Permite peticiones de origen cruzado (CORS) exclusivamente para comunicarse con la aplicacion web local y el despliegue oficial en Vercel.
 - No envia telemetria ni datos a servidores externos.
+
+---
+
+## Notas de honestidad (Fase 44)
+
+- **Replicate**: las llamadas directas del navegador a `api.replicate.com` fallan por CORS en el despliegue de Vercel. Usa el dev-proxy de Vite (`/api/proxy/replicate`, solo desarrollo local) o este bridge (`POST /api/cloud/replicate_proxy`, solo rutas `/v1/*`). La UI marca el proveedor con `Solo dev-proxy / Requiere Bridge`.
+- **Inferencia neuronal**: `GET /health` y `/api/health` reportan `"neural_inference": false` — el procesado actual (`/api/enhance`, stems, denoise) es DSP local provisional; los modelos descargados están en disco pero aún no cargados en VRAM (la UI lo indica como `Descargado en disco ≠ cargado en VRAM`).

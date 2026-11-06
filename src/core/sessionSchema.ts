@@ -30,7 +30,11 @@ import type {
   MasterWaveMethod,
   MidiNote,
   ModelCoverArtwork,
+  PitchAndSlicerMethod,
+  DeEsserMethod,
+  CoverArtworkMethod,
   ProcessConfig,
+  UnifiedSurfaceUiConfig,
   SeparationMethod,
   Session,
   SynthArticulationConfig,
@@ -365,6 +369,10 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     const validLoop = (v: unknown): LoopExpansionMethod => (v === 'ai' || v === 'manual' ? v : 'dsp');
     const validClf = (v: unknown): ClassifierMethod => (v === 'ai' || v === 'manual' ? v : 'dsp');
     const validDen = (v: unknown): DenoiseMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    const validPitch = (v: unknown): PitchAndSlicerMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    const validDeEsser = (v: unknown): DeEsserMethod => (v === 'ai' || v === 'bypass' ? v : 'dsp');
+    const validCover = (v: unknown): CoverArtworkMethod =>
+      (v === 'local-ai' || v === 'cloud-ai' || v === 'bypass' ? (v as CoverArtworkMethod) : 'procedural');
     aiConfig = {
       enabled: typeof a['enabled'] === 'boolean' ? a['enabled'] : false,
       masterWave: validMw(a['masterWave']),
@@ -372,7 +380,62 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
       loopExpansion: validLoop(a['loopExpansion']),
       classifier: validClf(a['classifier']),
       denoise: validDen(a['denoise']),
+      pitchAndSlicer: validPitch(a['pitchAndSlicer']),
+      deEsser: validDeEsser(a['deEsser']),
+      coverArtwork: validCover(a['coverArtwork']),
     };
+  }
+
+  let unifiedSurfaceConfig: UnifiedSurfaceUiConfig | undefined;
+  if (isRecord(cfg['unifiedSurfaceConfig'])) {
+    const u = cfg['unifiedSurfaceConfig'];
+    const topologyMode = u['topologyMode'] === 'melodic_surface' || u['topologyMode'] === 'drum_kit_surface' ? u['topologyMode'] : 'auto';
+    const resolutionStrategy = u['resolutionStrategy'] === 'manual' ? 'manual' as const : 'auto' as const;
+    let tempoSync: UnifiedSurfaceUiConfig['tempoSync'];
+    if (isRecord(u['tempoSync'])) {
+      const t = u['tempoSync'];
+      const grooveRaw = t['grooveMode'];
+      const grooveMode = grooveRaw === 'rex_loop' || grooveRaw === 'melodic_phrase' || grooveRaw === 'sliced_kit' || grooveRaw === 'slice_synced' ? grooveRaw : 'free';
+      const tsRaw = t['timeSignature'];
+      const timeSignature: [number, number] = Array.isArray(tsRaw) && tsRaw.length === 2
+        ? [clampInt(asFiniteNumber(tsRaw[0]) ?? 4, 1, 32), clampInt(asFiniteNumber(tsRaw[1]) ?? 4, 1, 32)]
+        : [4, 4];
+      tempoSync = {
+        enabled: typeof t['enabled'] === 'boolean' ? t['enabled'] : false,
+        sourceBpm: clampNum(asFiniteNumber(t['sourceBpm']) ?? 120, 20, 300),
+        targetBpm: clampNum(asFiniteNumber(t['targetBpm']) ?? 120, 20, 300),
+        barCount: clampInt(asFiniteNumber(t['barCount']) ?? 2, 1, 64),
+        timeSignature,
+        grooveMode,
+        ...(asFiniteNumber(t['sliceCount']) !== null ? { sliceCount: clampInt(asFiniteNumber(t['sliceCount']) ?? 0, 0, 512) } : {}),
+      };
+    }
+    unifiedSurfaceConfig = {
+      topologyMode,
+      resolutionStrategy,
+      ...(typeof u['includeOutliers'] === 'boolean' ? { includeOutliers: u['includeOutliers'] } : {}),
+      ...(typeof u['preserveHybridTransients'] === 'boolean' ? { preserveHybridTransients: u['preserveHybridTransients'] } : {}),
+      ...(asFiniteNumber(u['formantLock01']) !== null ? { formantLock01: clampNum(asFiniteNumber(u['formantLock01']) ?? 1, 0, 1) } : {}),
+      ...(asFiniteNumber(u['attackShorten01']) !== null ? { attackShorten01: clampNum(asFiniteNumber(u['attackShorten01']) ?? 0, 0, 1) } : {}),
+      ...(asFiniteNumber(u['releaseExtendSec']) !== null ? { releaseExtendSec: clampNum(asFiniteNumber(u['releaseExtendSec']) ?? 0, 0, 10) } : {}),
+      ...(asFiniteNumber(u['inharmonicityB']) !== null ? { inharmonicityB: clampNum(asFiniteNumber(u['inharmonicityB']) ?? 0, 0, 0.05) } : {}),
+      ...(asFiniteNumber(u['parity']) !== null ? { parity: clampNum(asFiniteNumber(u['parity']) ?? 0, -1, 1) } : {}),
+      ...(asFiniteNumber(u['residualMix']) !== null ? { residualMix: clampNum(asFiniteNumber(u['residualMix']) ?? 0.15, 0, 1) } : {}),
+      ...(tempoSync ? { tempoSync } : {}),
+    };
+  }
+
+  let sublibrary: string | undefined;
+  if (typeof cfg['sublibrary'] === 'string' && cfg['sublibrary'].trim().length > 0) {
+    const t = cfg['sublibrary'].trim();
+    if (!t.includes('..') && t.length <= 64) sublibrary = t;
+    else throw fieldError('processConfig.sublibrary', 'must be 1..64 chars sin ..');
+  }
+  let sublibraryOrdinal: number | undefined;
+  if (cfg['sublibraryOrdinal'] !== undefined) {
+    const n = asFiniteNumber(cfg['sublibraryOrdinal']);
+    if (n === null || !Number.isInteger(n) || n < 1 || n > 9999) throw fieldError('processConfig.sublibraryOrdinal', 'must be an integer 1..9999');
+    sublibraryOrdinal = n;
   }
 
   let extendedMetadata: ExtendedModelMetadata | undefined;
@@ -421,6 +484,9 @@ function validateProcessConfig(raw: unknown): ProcessConfig {
     ...(commonPlayback !== undefined ? { commonPlayback } : {}),
     ...(coverArtwork !== undefined ? { coverArtwork } : {}),
     ...(aiConfig !== undefined ? { aiConfig } : {}),
+    ...(unifiedSurfaceConfig !== undefined ? { unifiedSurfaceConfig } : {}),
+    ...(sublibrary !== undefined ? { sublibrary } : {}),
+    ...(sublibraryOrdinal !== undefined ? { sublibraryOrdinal } : {}),
     ...(extendedMetadata !== undefined ? { extendedMetadata } : {}),
   };
 }
@@ -575,4 +641,60 @@ export function parseSessionJson(jsonText: string): Session {
     throw new Error('Invalid session JSON: malformed JSON text');
   }
   return validateSessionPayload(parsed);
+}
+
+// ── Fase 44.1.2: detector de migración tolerante + buzón one-shot ──
+// Cuando una sesión antigua llega sin las etapas IA 6/7/8 o sin
+// `unifiedSurfaceConfig`, la validación las defaultea en silencio
+// (dsp/dsp/procedural + `DEFAULT_UNIFIED_SURFACE_CONFIG`). Este detector
+// puro informa qué se defaulteó para que la UI avise UNA vez
+// (toast + TelemetryDrawer) en vez de perderlo en silencio.
+
+export type SessionMigrationNote = 'ai-stages-6-8-defaulted' | 'unified-surface-defaulted';
+
+const migrationOutbox: SessionMigrationNote[] = [];
+
+function pushMigrationNotes(notes: SessionMigrationNote[]): void {
+  for (const n of notes) {
+    if (!migrationOutbox.includes(n)) migrationOutbox.push(n);
+  }
+}
+
+/**
+ * Pure detector (never throws): reports which Fase-44 fields were absent
+ * in the raw payload and therefore defaulted by validation.
+ */
+export function detectSessionMigrationNotes(raw: unknown): SessionMigrationNote[] {
+  if (!isRecord(raw)) return [];
+  const body: unknown = 'session' in raw && raw['session'] !== undefined ? raw['session'] : raw;
+  if (!isRecord(body)) return [];
+  const cfg = body['processConfig'];
+  if (!isRecord(cfg)) return ['ai-stages-6-8-defaulted', 'unified-surface-defaulted'];
+  const notes: SessionMigrationNote[] = [];
+  const ai = cfg['aiConfig'];
+  if (
+    !isRecord(ai) ||
+    ai['pitchAndSlicer'] === undefined ||
+    ai['deEsser'] === undefined ||
+    ai['coverArtwork'] === undefined
+  ) {
+    notes.push('ai-stages-6-8-defaulted');
+  }
+  if (!isRecord(cfg['unifiedSurfaceConfig'])) {
+    notes.push('unified-surface-defaulted');
+  }
+  return notes;
+}
+
+/** Internal: stash migration notes for later one-shot UI consumption. */
+export function noteSessionMigration(raw: unknown): void {
+  pushMigrationNotes(detectSessionMigrationNotes(raw));
+}
+
+/**
+ * One-shot read for the UI layer (toast/log once): returns the pending
+ * migration notes and clears the outbox.
+ */
+export function consumeMigrationNotes(): SessionMigrationNote[] {
+  return migrationOutbox.splice(0, migrationOutbox.length);
 }

@@ -484,6 +484,9 @@ function mapRegion(
     // NeuModMakr pan is -50..+50; the expanded contract uses -1..1.
     pan: roundTo(clamp(region.pan / 50, -1, 1), 3),
     pitchKeytrack: region.pitchKeytrack,
+    // Fase loop-1: sample rate del audio origen — el motor mapea los
+    // loop frames (muestras) a tramas espectrales con su reloj (8 fps).
+    sampleRate: Math.max(8000, Math.round(region.sampleRate ?? 44100)),
     loop: {
       mode: region.loopMode,
       startFrame: region.loopStart,
@@ -520,6 +523,10 @@ function mapRegion(
     out.roundRobinIndex = rrRegion.roundRobinIndex;
   } else if (typeof region.seqPosition === 'number' && region.seqPosition > 0) {
     out.roundRobinIndex = region.seqPosition;
+  }
+  // Choke/mute group end-to-end con el dispatcher (`muteGroup=0` = none).
+  if (typeof region.muteGroup === 'number' && region.muteGroup > 0) {
+    out.muteGroup = Math.min(32, Math.round(region.muteGroup));
   }
   if (region.numChannels === 1 || region.numChannels === 2 || region.numChannels === 4) {
     out.channels = region.numChannels;

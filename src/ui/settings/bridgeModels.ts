@@ -12,8 +12,26 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
   const isEs = getAppLocale() === 'es';
   if (!bridgeClient.isConnected()) {
     return `
+      <div class="models-empty-state is-err">
+        <span class="nmm-status-pill is-err">${isEs ? 'BRIDGE OFFLINE' : 'BRIDGE OFFLINE'}</span>
+        <p class="text-muted">${isEs ? 'Companion Bridge apagado (puerto 7860). Inicia bridge/server.py y pulsa Reintentar.' : 'Companion Bridge is offline (port 7860). Start bridge/server.py and press Retry.'}</p>
+        <button type="button" class="btn btn-sm btn-outline" id="btn-bridge-retry">${isEs ? 'Reintentar Conexión' : 'Retry Connection'}</button>
+      </div>
+    `;
+  }
+
+  if (ctx.state.bridgeModelsLoading) {
+    return `
       <div class="models-empty-state text-muted">
-        ${isEs ? 'Conecta el Companion Bridge local para gestionar, descargar o desinstalar modelos neuronales en GPU.' : 'Connect the local Companion Bridge to manage, download, or uninstall GPU neural models.'}
+        <span class="nmm-status-pill is-accent">${isEs ? 'CARGANDO CATÁLOGO…' : 'LOADING CATALOG…'}</span>
+      </div>
+    `;
+  }
+  if (ctx.state.bridgeModelsError) {
+    return `
+      <div class="models-empty-state is-err">
+        <span class="nmm-status-pill is-err">${isEs ? 'CATÁLOGO NO DISPONIBLE' : 'CATALOG UNAVAILABLE'}</span>
+        <p class="text-muted">${isEs ? `Error HTTP/red: ${ctx.state.bridgeModelsError}` : `HTTP/network error: ${ctx.state.bridgeModelsError}`}</p>
       </div>
     `;
   }
@@ -21,7 +39,8 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
   if (ctx.state.bridgeModels.length === 0) {
     return `
       <div class="models-empty-state text-muted">
-        ${isEs ? 'Cargando catálogo de modelos disponibles...' : 'Loading catalog of available models...'}
+        <span class="nmm-status-pill is-muted">${isEs ? 'CATÁLOGO VACÍO' : 'EMPTY CATALOG'}</span>
+        <p class="text-muted">${isEs ? 'El bridge respondió OK pero no listó modelos.' : 'Bridge answered OK but listed no models.'}</p>
       </div>
     `;
   }
@@ -84,7 +103,7 @@ export function buildBridgeModelsHtml(ctx: SettingsModalContext): string {
           ${
             m.installed
               ? `
-              <span class="badge-installed">${ICONS.check} ${isEs ? 'Instalado en Disco' : 'Installed on Disk'}</span>
+              <span class="badge-installed" title="${isEs ? 'Descargado en disco. Inferencia neuronal real pendiente: el procesado actual es DSP provisional local.' : 'Downloaded to disk. Real neural inference pending: current processing is provisional local DSP.'}">${ICONS.check} ${isEs ? 'Descargado en disco' : 'Downloaded to disk'}</span>
               <button type="button" class="btn btn-xs btn-outline btn-toggle-url-editor" data-id="${escAttr(m.id)}" title="${isEs ? 'Configurar URL / Mirror de Descarga' : 'Configure Download URL / Mirror'}">
                 ${ICONS.settings} URL
               </button>
@@ -338,8 +357,14 @@ export function startModelProgressPolling(ctx: SettingsModalContext, modelId: st
 export async function refreshBridgeModels(ctx: SettingsModalContext): Promise<void> {
   if (!bridgeClient.isConnected()) {
     ctx.state.bridgeModels = [];
+    ctx.state.bridgeModelsError = null;
+    ctx.state.bridgeModelsLoading = false;
+    renderBridgeModelsList(ctx);
     return;
   }
+  ctx.state.bridgeModelsLoading = true;
+  ctx.state.bridgeModelsError = null;
+  renderBridgeModelsList(ctx);
   try {
     ctx.state.bridgeModels = await bridgeClient.getModels();
     for (const m of ctx.state.bridgeModels) {
@@ -347,8 +372,11 @@ export async function refreshBridgeModels(ctx: SettingsModalContext): Promise<vo
         startModelProgressPolling(ctx, m.id);
       }
     }
+  } catch (err) {
+    ctx.state.bridgeModels = [];
+    ctx.state.bridgeModelsError = String(err instanceof Error ? err.message : err);
+  } finally {
+    ctx.state.bridgeModelsLoading = false;
     renderBridgeModelsList(ctx);
-  } catch {
-    // offline
   }
 }

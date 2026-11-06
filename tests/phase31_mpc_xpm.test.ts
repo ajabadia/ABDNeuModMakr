@@ -305,7 +305,7 @@ async function main(): Promise<void> {
 
   await test('ABDShared Common Data Dictionary v2.0 (sampler_voice_parameter_spec + MidiTranslationEngine)', async () => {
     const engine = new MidiTranslationEngine(samplerSpec as any);
-    assert.equal(MidiTranslationEngine.getParameterIds().length, 42);
+    assert.equal(MidiTranslationEngine.getParameterIds().length, 49);
 
     // SymBipolar hardware zero-center (wire 64 -> 0.0 physical)
     const panDef = engine.getMeta('MasterPan')!;

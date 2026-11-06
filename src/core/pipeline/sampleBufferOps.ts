@@ -25,6 +25,13 @@ export function registerSampleBuffer(ctx: PipelineContext, sampleName: string, w
     }
   } else if (!options?.isResynthesizedFromLegacy) {
     ctx.state.assetStore.setRawSource(sampleName, wavBuffer);
+  } else {
+    // Fase 44.5.3: resynthesized-from-legacy buffers live only in the in-memory
+    // sampleBuffers map (no asset-store layer) → they do NOT survive a reload.
+    // Keep them playable now, but warn so callers/UI can label them as demos.
+    console.warn(
+      `[sampleBufferOps] '${sampleName}' is a resynthesized legacy demo buffer (memory-only, no sobrevive a recarga).`
+    );
   }
 
   return decoded;

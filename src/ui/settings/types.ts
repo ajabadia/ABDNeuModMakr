@@ -42,6 +42,8 @@ export interface SettingsModalState {
   isTestingByok: boolean;
   byokTestResult: { success: boolean; message: string } | null;
   bridgeModels: BridgeModelInfo[];
+  bridgeModelsError: string | null;
+  bridgeModelsLoading: boolean;
   activePollingModelIds: Set<string>;
   downloadPollTimer: ReturnType<typeof setInterval> | null;
   showPassword: boolean;
@@ -77,6 +79,8 @@ export function createSettingsModalState(): SettingsModalState {
     isTestingByok: false,
     byokTestResult: null,
     bridgeModels: [],
+    bridgeModelsError: null,
+    bridgeModelsLoading: false,
     activePollingModelIds: new Set<string>(),
     downloadPollTimer: null,
     showPassword: false,

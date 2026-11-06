@@ -43,6 +43,7 @@ export function renderBridgeTab(ctx: SettingsModalContext): string {
             <span class="detail-label">${isEs ? 'Latencia Loopback:' : 'Loopback Latency:'}</span>
             <span class="detail-value">${bridge.latencyMs ?? 0} ms</span>
           </div>
+          ${!isOnline ? `<div class="bridge-detail-item"><span class="detail-label">VRAM:</span><span class="detail-value"><span class="nmm-status-pill is-warn">${isEs ? 'VRAM desconocida (bridge offline)' : 'VRAM unknown (bridge offline)'}</span></span></div>` : ''}
         </div>
 
         ${
@@ -117,7 +118,7 @@ python bridge/server.py</code></pre>
             <p class="text-muted">
               ${isEs ? 'Pre-descarga multihilo transparente de modelos directamente a tu GPU local.' : 'Transparent multithreaded model pre-download directly to your local GPU.'}
               <br/>
-              <small class="bridge-note-small">${isEs ? '(Nota: Los modelos también se descargan automáticamente bajo demanda la primera vez si no se pre-descargan aquí).' : '(Note: Models are also downloaded automatically on first demand if not pre-fetched here).'}</small>
+              <small class="bridge-note-small">${isEs ? '(Nota: Los modelos también se descargan automáticamente bajo demanda la primera vez si no se pre-descargan aquí. "Descargado en disco" ≠ cargado en VRAM: la inferencia neuronal real está pendiente y el procesado actual es DSP provisional local.)' : '(Note: Models are also downloaded automatically on first demand if not pre-fetched here. "Downloaded to disk" ≠ loaded in VRAM: real neural inference is pending and current processing is provisional local DSP.)'}</small>
             </p>
           </div>
           <button type="button" class="btn btn-xs btn-outline" id="btn-refresh-models">

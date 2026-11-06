@@ -356,6 +356,11 @@ export class NeuronAssetStore {
 
   // ── Session Reset & Diagnostics ─────────────────────────
 
+  // Fase 44.5 (honestidad): borra rawSources + promotedToRawAlias +
+  // legacySampleBinaries + enhancedAudio (memoria e IndexedDB RAW/ENHANCED).
+  // CONSERVA capsulesBySlot + legacySlotBundles (y sus stores IDB):
+  // newSession() mantiene Time Capsules pero pierde los binarios legacy
+  // resintetizados en memoria (no sobreviven a recarga).
   public clearSessionAudioLayers(): void {
     this.rawSources.clear();
     this.promotedToRawAlias.clear();

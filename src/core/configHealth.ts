@@ -38,6 +38,26 @@ export interface ConfigHealthReport {
 
 export const STORAGE_KEY_CONFIG_HEALTH_ON_BOOT = 'neumodmakr_config_health_on_boot';
 
+/**
+ * Fase 44.5.1 — Inventario honesto Persiste / Volátil (solo datos, no altera el
+ * cómputo de `evaluateConfigHealth` para no romper umbrales existentes).
+ * Renderizado en Settings → General → Almacenamiento.
+ */
+export const PERSISTENCE_INVENTORY: ReadonlyArray<{
+  key: string;
+  persists: boolean;
+  labelEs: string;
+  labelEn: string;
+}> = [
+  { key: 'abd_neumodmakr_session_v1', persists: true, labelEs: 'Sesión (zonas, processConfig, tempoSync, sublibrary)', labelEn: 'Session (zones, processConfig, tempoSync, sublibrary)' },
+  { key: 'abd_neumodmakr_bank_v1', persists: true, labelEs: 'Banco (metadatos; JSON>250KB truncado con aviso)', labelEn: 'Bank (metadata; JSON>250KB truncated with warning)' },
+  { key: 'neumodmakr_byok_config', persists: true, labelEs: 'Claves BYOK (9 proveedores)', labelEn: 'BYOK keys (9 providers)' },
+  { key: 'neumodmakr_bridge_url/token', persists: true, labelEs: 'URL/token del Bridge', labelEn: 'Bridge URL/token' },
+  { key: 'nmm_theme_family/mode + abdsynths.locale', persists: true, labelEs: 'Tema e idioma', labelEn: 'Theme & locale' },
+  { key: 'sampleBuffers en memoria', persists: false, labelEs: 'Buffers de audio en memoria (incl. resintetizados legacy → demo)', labelEn: 'In-memory audio buffers (incl. legacy resynthesized → demo)' },
+  { key: 'catálogo bridge / VRAM', persists: false, labelEs: 'Catálogo de modelos y estado VRAM (solo con bridge online)', labelEn: 'Model catalog & VRAM state (bridge online only)' },
+];
+
 export function evaluateConfigHealth(): ConfigHealthReport {
   const items: ConfigHealthItem[] = [];
 
@@ -114,19 +134,11 @@ export function evaluateConfigHealth(): ConfigHealthReport {
       : 'Local neural models unavailable (pure DSP fallback active).',
   });
 
-  // 2.2 Cloud AI BYOK Keys
-  const byok = cloudByokClient.getConfig();
-  const hasAnyCloudKey = Boolean(
-    byok.geminiApiKey?.trim() ||
-      byok.openaiApiKey?.trim() ||
-      byok.claudeApiKey?.trim() ||
-      byok.replicateToken?.trim() ||
-      byok.openrouterApiKey?.trim() ||
-      byok.huggingfaceToken?.trim()
-  );
+  // 2.2 Cloud AI BYOK Keys (Fase 44: 9 proveedores, incluye deepseek/groq/mistral)
+  const hasAnyCloudKey = cloudByokClient.isReady();
   items.push({
     id: 'cloud_byok',
-    name: 'Cloud AI API Keys (Gemini, OpenAI, Claude, Replicate)',
+    name: 'Cloud AI API Keys (Gemini, OpenAI, Claude, Replicate, DeepSeek, Groq, Mistral)',
     category: 'optional',
     isConfigured: hasAnyCloudKey,
     statusBadge: hasAnyCloudKey ? 'CONFIGURED' : 'UNCONFIGURED',
@@ -219,19 +231,10 @@ export function isFeatureGated(featureId: 'cloud_ai' | 'bridge_neural'): {
   }
 
   if (featureId === 'cloud_ai') {
-    const byok = cloudByokClient.getConfig();
-    const hasKey = Boolean(
-      byok.geminiApiKey?.trim() ||
-        byok.openaiApiKey?.trim() ||
-        byok.claudeApiKey?.trim() ||
-        byok.replicateToken?.trim() ||
-        byok.openrouterApiKey?.trim() ||
-        byok.huggingfaceToken?.trim()
-    );
-    if (!hasKey) {
+    if (!cloudByokClient.isReady()) {
       return {
         gated: true,
-        reason: 'Cloud AI requires at least one private API key (Gemini, OpenAI, Claude, Replicate).',
+        reason: 'Cloud AI requires at least one private API key (Gemini, OpenAI, Claude, Replicate, DeepSeek, Groq, Mistral).',
         targetTab: 'cloud',
       };
     }

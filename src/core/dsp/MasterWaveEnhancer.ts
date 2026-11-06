@@ -583,10 +583,15 @@ export async function promoteBufferToMasterWave(
   let aiProviderUsed: string | undefined;
 
   // Step 2: Optional AI Bridge (AudioSR / Demucs / BigVGAN) with automatic fallback to DSP Enhanced
+  // Fase 44.4: fallback provenance — aiProviderUsed records WHY we fell back.
   if (cfg.promotionMethod === 'ai-bridge') {
     const provider = getActiveAiEnhancementProvider();
     try {
       const avail = await provider.isAvailable(cfg.aiBridgeEndpoint);
+      if (!avail) {
+        methodUsed = 'dsp-enhanced';
+        aiProviderUsed = 'fallback (bridge unavailable → DSP lineal)';
+      }
       if (avail) {
         const aiRes = await provider.enhance({
           channels: workingChannels,
@@ -605,11 +610,13 @@ export async function promoteBufferToMasterWave(
           finalLoopEnd = aiRes.loopEnd;
         }
         aiProviderUsed = aiRes.providerName;
-      } else {
+      } else if (!aiProviderUsed) {
         methodUsed = 'dsp-enhanced';
+        aiProviderUsed = 'fallback (bridge unavailable → DSP lineal)';
       }
-    } catch {
+    } catch (err) {
       methodUsed = 'dsp-enhanced';
+      aiProviderUsed = `fallback (bridge error: ${err instanceof Error ? err.message : String(err)} → DSP lineal)`;
     }
   }
 

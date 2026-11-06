@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { Session } from './types.ts';
-import { validateSessionPayload } from './sessionSchema.ts';
+import { noteSessionMigration, validateSessionPayload } from './sessionSchema.ts';
 import { DEFAULT_MODEL_NAMES, DEFAULT_SAMPLE_NAME } from './sampleNaming.ts';
 
 export const STORAGE_SESSION_KEY = 'abd_neumodmakr_session_v1';
@@ -32,7 +32,10 @@ export function restoreSessionFromLocalStorage(): Session | null {
     if (!rawSession) return null;
     // P0.2: same strict validation as file import; corrupt state is
     // discarded instead of becoming the live session.
-    const parsedSession = validateSessionPayload(JSON.parse(rawSession) as unknown);
+    // Fase 44.1.2: stash tolerant-migration notes for one-shot UI notice.
+    const rawParsed = JSON.parse(rawSession) as unknown;
+    noteSessionMigration(rawParsed);
+    const parsedSession = validateSessionPayload(rawParsed);
     if (
       parsedSession.zones.length === 1 &&
       parsedSession.zones[0].sampleLow === DEFAULT_SAMPLE_NAME &&

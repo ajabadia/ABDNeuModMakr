@@ -11,6 +11,7 @@ import type { NeuronDbModal } from '../ui/NeuronDbModal';
 import { SUPPORTED_AUDIO_ACCEPT, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
 import { type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { toast, confirmDialog } from '../ui/notify';
+import { consumeMigrationNotes } from '../core/sessionSchema.ts';
 import { importFromDirectoryHandle } from './import/directoryImport.ts';
 import type { DirectoryImportContext, WebkitImportContext , MixedImportContext } from './import/types.ts';
 import { importFromWebkitFileList } from './import/webkitImport.ts';
@@ -171,6 +172,15 @@ export class ImportHandlers {
         this.ctx.session = await this.ctx.core.loadSessionFromJson(text);
         this.ctx.selectedZoneId = this.ctx.session.zones[0]?.id || null;
         this.ctx.log(`Loaded session "${this.ctx.session.name}" from ${f.name}`);
+        // Fase 44.1.2: avisar UNA vez si la sesión migró con defaults.
+        for (const n of consumeMigrationNotes()) {
+          const msg =
+            n === 'ai-stages-6-8-defaulted'
+              ? 'Sesión migrada: etapas IA 6/7/8 a DSP por defecto (la sesión no las traía).'
+              : 'Sesión migrada: superficie unificada por defecto (la sesión no la traía).';
+          this.ctx.log(msg);
+          toast(msg, 'info');
+        }
         this.ctx.refresh();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

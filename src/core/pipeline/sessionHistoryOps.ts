@@ -1,7 +1,7 @@
 import type { ExtendedRegion, HistoryState, ProcessConfig, Session, SynthArticulationConfig, Zone } from '../types.ts';
 import type { PipelineContext } from './types.ts';
 import { createInitialSession, createZone } from '../sessionFactory.ts';
-import { parseSessionJson } from '../sessionSchema.ts';
+import { noteSessionMigration, parseSessionJson } from '../sessionSchema.ts';
 
 export async function newSession(ctx: PipelineContext, name = 'Untitled'): Promise<Session> {
   ctx.state.sampleBuffers.clear();
@@ -62,6 +62,12 @@ export function exportSessionJson(ctx: PipelineContext): string {
 }
 
 export async function loadSessionFromJson(ctx: PipelineContext, jsonText: string): Promise<Session> {
+  // Fase 44.1.2: stash tolerant-migration notes (Ctrl+O) for one-shot UI notice.
+  try {
+    noteSessionMigration(JSON.parse(jsonText) as unknown);
+  } catch {
+    // malformed JSON: parseSessionJson below throws the specific error
+  }
   const newSession = parseSessionJson(jsonText);
   ctx.state.session = newSession;
   clearHistory(ctx);

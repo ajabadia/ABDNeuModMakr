@@ -439,6 +439,9 @@ def get_system_capabilities():
         "status": "ok",
         "app": "ABDNeuModMakr-Bridge",
         "version": SERVER_VERSION,
+        # Fase 44.3: honest capability — process_* endpoints are provisional local DSP,
+        # no torch.load / real neural inference yet.
+        "neural_inference": False,
         "python": sys.version.split()[0],
         "device": device,
         "gpu": gpu_available,

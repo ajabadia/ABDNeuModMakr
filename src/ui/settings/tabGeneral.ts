@@ -3,6 +3,7 @@ import { DEFAULT_AXIONIK_DB_PATH, DEFAULT_BANK_PATH, DEFAULT_NEURON_DB_PATH, STO
 import { ICONS } from '../icons';
 import { bridgeClient } from '../../core/bridge/BridgeClient';
 import { getAppLocale, setAppLocale, tApp } from '../../core/i18n';
+import { PERSISTENCE_INVENTORY } from '../../core/configHealth';
 import { browseFilesystemFolder } from '../folderPicker';
 import { escAttr } from '../escape';
 import { escHtml } from '../escape';
@@ -155,7 +156,13 @@ export function renderGeneralTab(ctx: SettingsModalContext): string {
           <h4>${ICONS.database} ${es ? 'Almacenamiento Offline y Cuota IndexedDB' : 'Offline Storage &amp; IndexedDB Quota'}</h4>
           <span class="text-muted">${es ? 'Almacenamiento persistente del navegador para buffers de audio, cápsulas del tiempo y modelos.' : 'Persistent browser storage for audio buffers, time capsules, and models.'}</span>
         </div>
-        <div class="settings-storage-row">
+        <div class="settings-storage-row settings-persistence-inventory">
+          <div class="persistence-inventory-box">
+            <strong>${es ? 'Qué sobrevive a recargar:' : 'What survives a reload:'}</strong>
+            <ul>
+              ${PERSISTENCE_INVENTORY.map((e) => `<li><span class="panel-badge ${e.persists ? 'badge-success' : 'badge-warning'}">${e.persists ? (es ? 'PERSISTE' : 'PERSISTS') : (es ? 'VOLÁTIL' : 'VOLATILE')}</span> <code>${escHtml(e.key)}</code> — ${escHtml(es ? e.labelEs : e.labelEn)}</li>`).join('')}
+            </ul>
+          </div>
           ${
             ctx.state.storageEstimate
               ? `

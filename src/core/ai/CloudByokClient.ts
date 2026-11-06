@@ -123,15 +123,10 @@ export class CloudByokClient {
   }
 
   public isReady(): boolean {
-    return Boolean(
-      this.hasValidKey() ||
-        this.config.geminiApiKey?.trim() ||
-        this.config.openaiApiKey?.trim() ||
-        this.config.openrouterApiKey?.trim() ||
-        this.config.claudeApiKey?.trim() ||
-        this.config.huggingfaceToken?.trim() ||
-        this.config.replicateToken?.trim()
-    );
+    const providers: CloudAiProvider[] = [
+      'replicate', 'huggingface', 'gemini', 'openai', 'claude', 'openrouter', 'deepseek', 'groq', 'mistral',
+    ];
+    return providers.some((p) => this.hasValidKey(p));
   }
 
   /**

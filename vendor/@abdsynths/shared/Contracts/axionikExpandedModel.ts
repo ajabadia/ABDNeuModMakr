@@ -310,6 +310,8 @@ export interface AxionikRegion {
   volumeDb?: number;
   pan?: number;
   pitchKeytrack?: number;
+  /** Source-audio sample rate in Hz for mapping loop sample-frames to spectral frames (default 44100). */
+  sampleRate?: number;
   /** Voice dispatcher trigger mode (Synth parameter layer). */
   trigger?: 'attack' | 'release' | 'first' | 'legato';
   /** Key/Velocity crossfade ranges and curve (Synth ExtendedRegionDispatcher layer). */
@@ -320,6 +322,8 @@ export interface AxionikRegion {
   fadeCurve?: 'linear' | 'equal-power' | 'spectral-morph';
   roundRobinGroup?: string;
   roundRobinIndex?: number;
+  /** Mute/choke group (0/undefined = none; equal ids choke each other, e.g. closed/open hi-hat). */
+  muteGroup?: number;
   loop?: {
     mode: string;
     startFrame: number;

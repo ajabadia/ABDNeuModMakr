@@ -40,6 +40,7 @@ import { UniversalImportModal } from './ui/UniversalImportModal';
 import { MusicianWizardModal } from './ui/MusicianWizardModal';
 import { ConfigHealthModal } from './ui/ConfigHealthModal';
 import { evaluateConfigHealth, STORAGE_KEY_CONFIG_HEALTH_ON_BOOT } from './core/configHealth';
+import { consumeMigrationNotes } from './core/sessionSchema.ts';
 import { computeBatchAutoLoopForZones, type BatchAutoLoopItemInput } from './core/dsp/LoopEditorTools';
 import { decodeWav } from './core/dsp/WavDecoder';
 import { withLoading } from './ui/LoadingModal';
@@ -1292,6 +1293,16 @@ class App {
       this.telemetryDrawer.addLog(`Auto-repaired MIDI 0..127 zone coverage.`);
       this.refreshUI();
     });
+    // Fase 44.1.2: el restore del arranque (core.init) ya dejó sus notas de
+    // migración en el outbox; avisar UNA vez ahora que hay drawer + toast.
+    for (const n of consumeMigrationNotes()) {
+      const msg =
+        n === 'ai-stages-6-8-defaulted'
+          ? 'Sesión migrada: etapas IA 6/7/8 a DSP por defecto (la sesión guardada no las traía).'
+          : 'Sesión migrada: superficie unificada por defecto (la sesión guardada no la traía).';
+      this.telemetryDrawer.addLog(msg);
+      toast(msg, 'info');
+    }
     this.bankDrawer = new BankDrawer(drawersMount, {
       // Model chosen for loading: restart the whole editor session from
       // the bank record (name, config, zones, resynthesized samples).
@@ -1692,6 +1703,11 @@ class App {
           this.navbar.setProcessing(false);
           this.telemetryDrawer.addLog(`Process error: ${event.error}`);
           toast(`Error during processing: ${event.error}`, 'error');
+          break;
+        case 'quota-warning':
+          // Fase 44.5: descarte por cuota en persistBank (no fatal).
+          this.telemetryDrawer.addLog(`Quota warning: ${event.message}`);
+          toast(event.message, 'info');
           break;
       }
     });

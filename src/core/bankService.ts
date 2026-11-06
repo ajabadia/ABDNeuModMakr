@@ -227,14 +227,27 @@ export class BankService {
   public persistBank(): void {
     if (typeof localStorage === 'undefined') return;
     try {
-      // Cap neuronikModelJson size to avoid quota issues
-      const lightModels = this.generatedModels.map((m) => ({
-        ...m,
-        neuronikModelJson:
-          m.neuronikModelJson && m.neuronikModelJson.length < 250000
-            ? m.neuronikModelJson
-            : undefined,
-      }));
+      // Cap neuronikModelJson size to avoid quota issues (Fase 44.5: warn instead of silent drop)
+      let truncatedJson = 0;
+      let droppedCover = 0;
+      const lightModels = this.generatedModels.map((m) => {
+        const keepJson = m.neuronikModelJson && m.neuronikModelJson.length < 250000 ? m.neuronikModelJson : undefined;
+        if (m.neuronikModelJson && !keepJson) truncatedJson++;
+        const keepCover = 'coverWebpDataUrl' in m && (m as { coverWebpDataUrl?: unknown }).coverWebpDataUrl !== undefined && !isSafeCoverDataUrl((m as { coverWebpDataUrl?: unknown }).coverWebpDataUrl) ? undefined : (m as { coverWebpDataUrl?: string }).coverWebpDataUrl;
+        if ('coverWebpDataUrl' in m && (m as { coverWebpDataUrl?: unknown }).coverWebpDataUrl !== undefined && !isSafeCoverDataUrl((m as { coverWebpDataUrl?: unknown }).coverWebpDataUrl)) droppedCover++;
+        return { ...m, neuronikModelJson: keepJson, ...(keepCover === undefined && 'coverWebpDataUrl' in m ? { coverWebpDataUrl: undefined } : {}) };
+      });
+      if (truncatedJson > 0 || droppedCover > 0) {
+        // Fase 44.5: cada descarte por cuota deja línea en TelemetryDrawer
+        // (vía evento `quota-warning`) además del console.warn.
+        const msg = `Bank quota: ${truncatedJson} modelo(s) con neuronikModelJson truncado (>250KB), ${droppedCover} cover(s) descartado(s) (>700KB o no webp/png). Re-generar tras liberar espacio.`;
+        console.warn(`[bankService.persistBank] ${msg}`);
+        try {
+          this.ctx.emit({ type: 'quota-warning', message: msg });
+        } catch {
+          // never break persistence on telemetry failure
+        }
+      }
       localStorage.setItem(STORAGE_BANK_KEY, JSON.stringify(lightModels));
     } catch {
       // Ignore storage quota or private-mode errors

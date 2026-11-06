@@ -674,6 +674,9 @@ export type CoreEvent =
   | { type: 'process-complete'; model: GeneratedModel }
   | { type: 'process-error'; error: string }
   | { type: 'bank-updated'; bank: BankSummary }
+  // Fase 44.5: aviso no fatal de descarte por cuota (persistBank trunca
+  // neuronikModelJson/covers). La UI lo lleva al TelemetryDrawer + toast.
+  | { type: 'quota-warning'; message: string }
   | { type: 'history-changed'; history: HistoryState };
 
 /** Normalized waveform envelope data for zone ribbons */

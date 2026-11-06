@@ -93,6 +93,9 @@ export async function decodeRx2Audio(core: BridgeCore,
   filename = 'loop.rx2',
   timeoutMs = 15000
 ): Promise<{ wavBuffer: ArrayBuffer; info: any; decodedFrames: number }> {
+  if (!core.isConnected()) {
+    throw new Error('Local companion bridge is offline (port 7860). Start bridge/server.py or use the pure-TS DWOP fallback.');
+  }
   // 1. Convert buffer to Base64
   const uint8 = new Uint8Array(rx2Buffer);
   let binary = '';
