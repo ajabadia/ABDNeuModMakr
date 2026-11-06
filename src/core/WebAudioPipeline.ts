@@ -134,7 +134,7 @@ export class WebAudioPipeline implements CoreService {
     },
     getResynthMono: (zoneId: string) => this.spectralCache.get(zoneId)?.resynthMono,
     getEnhancedMono: (zoneId: string) => this.spectralCache.get(zoneId)?.enhancedMono,
-    getResynatorV2Stereo: (zoneId: string, targetNote?: MidiNote) => {
+    getResynatorV2Stereo: async (zoneId: string, targetNote?: MidiNote) => {
       const targetBpm = this.session?.processConfig.unifiedSurfaceConfig?.tempoSync?.targetBpm;
       return this.synthesizeZoneResynatorV2(zoneId, targetNote, 100, targetBpm);
     },
@@ -439,12 +439,11 @@ export class WebAudioPipeline implements CoreService {
   }
 
   /**
-   * Synthesizes a real-time stereo preview for `zoneId` using `ABDShared` Resynator v2
-   * (`buildUnifiedSpectralSurface` + `evaluateUnifiedSpectralSurface` + `synthesizeResynatorV2Preview`),
-   * applying Formant Locking, Inharmonicity (B), Odd/Even Parity, DDSP Bark Residual,
-   * Attack/Release Time-Warping, Tempo-Sync, and Phase-Locked PCM Attack Transients.
+   * Sintetiza la preescucha estéreo con el MOTOR Resynator v2 (WASM compilado
+   * de `AxionikExpandedSynthesizer.h`): el documento se construye con el writer
+   * y lo renderiza el artefacto versionado. Sin espejo TS.
    */
-  public synthesizeZoneResynatorV2(zoneId: string, targetNote?: MidiNote, velocity = 100, hostBpm?: number): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined {
+  public synthesizeZoneResynatorV2(zoneId: string, targetNote?: MidiNote, velocity = 100, hostBpm?: number): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | undefined> {
     return synthesizeZoneResynatorV2(this.pipelineCtx(), zoneId, targetNote, velocity, hostBpm);
   }
 

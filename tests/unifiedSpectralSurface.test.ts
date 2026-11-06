@@ -11,6 +11,9 @@
 // ─────────────────────────────────────────────────────────────
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   buildUnifiedSpectralSurface,
   detectSurfaceTopology,
@@ -18,10 +21,17 @@ import {
   extractModulationProfile,
   resolveAdaptiveSurfaceResolution,
 } from '../src/core/dsp/UnifiedSpectralSurface.ts';
-import { buildAxionikExpandedModel } from '../src/core/expandedModelWriter.ts';
+import {
+  buildAxionikExpandedModel,
+  type ExpandedSpectralSource,
+} from '../src/core/expandedModelWriter.ts';
+import {
+  EXPECTED_RESYNATOR_ABI,
+  fnv1aHex,
+  renderResynatorWasm,
+} from '../src/core/dsp/ResynatorV2Wasm.ts';
 import { analyzeImportPreflight } from '../src/core/import/importPreflight.ts';
 import { midiNoteToHz } from '../src/core/dsp/WavDecoder.ts';
-import { synthesizeResynatorV2Preview } from '@abdsynths/shared/dsp/neuron-analysis';
 import type {
   AxionikRegion,
   AxionikSpectralFrame,
@@ -457,44 +467,123 @@ test('buildUnifiedSpectralSurface persists tempoSync contract and evaluateUnifie
   );
 });
 
-// 9. Resynator v2 Preview Engine (ABDShared::NeuronResynatorV2)
-test('synthesizeResynatorV2Preview renders Quad 4.0 and Stereo Pseudo-Surround audio with Sonic Matter Shapers', () => {
-  const model = makeSyntheticSpectralModel({ f0Hz: 261.63, partialCount: 64, frameCount: 24 });
-  const surface = buildUnifiedSpectralSurface({
-    regions: [
-      { id: 'r1', sampleRef: 'bell_c4.wav', lowKey: 36, highKey: 84, rootKey: 60, lowVel: 1, highVel: 127 },
-    ],
-    primarySpectral: model,
-    spectralBySample: { 'bell_c4.wav': model },
-  });
 
-  const evaluated = evaluateUnifiedSpectralSurface(surface, {
-    midiNote: 60,
-    velocity: 100,
-  });
-
-  const out = synthesizeResynatorV2Preview({
-    frames: evaluated.frames,
-    targetF0Hz: evaluated.targetF0Hz,
-    partialCount: evaluated.partialCount,
-    shapers: {
-      inharmonicityB: 0.015,
-      parity: -0.4,
-      residualMix: 0.2,
-      spatialSpread: 0.65,
-    },
-    durationSec: 0.25,
-    sampleRate: 22050,
-  });
-
-  assert.equal(out.stereoL.length, Math.round(0.25 * 22050));
-  assert.equal(out.quadFL.length, out.stereoL.length);
-  let maxPeak = 0;
-  for (let i = 0; i < out.stereoL.length; i++) {
-    maxPeak = Math.max(maxPeak, Math.abs(out.stereoL[i]), Math.abs(out.stereoR[i]));
+// 9. Resynator v2 motor (WASM): el documento sintético suena en el motor real.
+// Sin artefacto compilado se OMITE (checkout fresco); con artefacto debe ser
+// finito y no silencioso. (Sin assert de determinismo entre renders: el motor
+// mezcla ruido con semilla fija por instancia —entre procesos es bit-idéntico,
+// que es lo que sella el test de paridad— pero dos renders en la misma sesión
+// consumen el stream y difieren. Comportamiento del motor, no del binding.)
+async function runWasmEngineTest(): Promise<void> {
+  const name = 'motor Resynator v2 (WASM) renderiza documento sintético: finito y no silencioso';
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const artifact = path.resolve(
+    here,
+    '..',
+    'public/wasm',
+    `resynator-v2-abi${EXPECTED_RESYNATOR_ABI}.js`
+  );
+  if (!existsSync(artifact)) {
+    console.log(`  [SKIP] ${name} (artefacto ausente; compilar con build-resynator-wasm.bat)`);
+    return;
   }
-  assert.ok(maxPeak > 0.1 && maxPeak <= 1.0, `Expected non-silent normalized stereo output, got peak=${maxPeak}`);
-});
+  try {
+    const model = makeSyntheticSpectralModel({ f0Hz: 261.63, partialCount: 64, frameCount: 24 });
+    const source: ExpandedSpectralSource = {
+      frameCount: model.frameCount,
+      frameSpanHz: 50,
+      gridFixed: true,
+      ampsOf: (f) => new Float32Array(model.frames[f].amps),
+      offsetsOf: (f) => new Float32Array(model.frames[f].offsets),
+      f0At: (f) => model.frames[f].f0Hz ?? 261.63,
+      isLayered: () => false,
+      layerCount: 0,
+      numFramesOf: () => 0,
+      ampsOfLayer: () => new Float32Array(0),
+      offsetsOfLayer: () => new Float32Array(0),
+      f0AtLayer: () => 0,
+      layerNameAt: () => '',
+      layerWeightAt: () => 0,
+      frameWeightAt: () => 0,
+    };
+    const doc = buildAxionikExpandedModel({
+      slot: 0,
+      modelName: 'WasmProbe',
+      processConfig: {
+        slot: 0,
+        modelName: 'WasmProbe',
+        parameterSet: 0,
+        complexity: 8,
+        workingMode: 'extended',
+      },
+      spectral: source,
+      spectralBySample: { 'bell_c4.wav': source },
+      regions: [
+        {
+          id: 'r1',
+          sampleName: 'bell_c4.wav',
+          lowKey: 36,
+          highKey: 84,
+          rootKey: 60,
+          lowVel: 1,
+          highVel: 127,
+          detune: 0,
+          volume: 0,
+          pan: 0,
+          pitchKeytrack: 100,
+          trigger: 'attack',
+          keyFadeIn: 0,
+          keyFadeOut: 0,
+          velFadeIn: 0,
+          velFadeOut: 0,
+          fadeCurve: 'equal-power',
+          loopMode: 'no_loop',
+          loopStart: 0,
+          loopEnd: 0,
+          loopCrossfadeMs: 0,
+          sampleRate: 22050,
+        },
+      ],
+      populateAdvancedSpectralExtensions: true,
+      buildUnifiedSurface: true,
+    });
+    const modelJson = JSON.stringify(doc);
+    const renderOnce = (): Promise<{ stereoL: Float32Array; stereoR: Float32Array }> =>
+      renderResynatorWasm({
+        modelJson,
+        midiNote: 60,
+        velocity01: 100 / 127,
+        seconds: 0.5,
+        sampleRate: 22050,
+        urlOverride: pathToFileURL(artifact).href,
+      });
+    const hashOf = (s: { stereoL: Float32Array; stereoR: Float32Array }): string => {
+      const interleaved = new Float32Array(s.stereoL.length * 2);
+      for (let i = 0; i < s.stereoL.length; i++) {
+        interleaved[2 * i] = s.stereoL[i];
+        interleaved[2 * i + 1] = s.stereoR[i];
+      }
+      return fnv1aHex(new Uint8Array(interleaved.buffer));
+    };
+    const first = await renderOnce();
+    let peak = 0;
+    for (let i = 0; i < first.stereoL.length; i++) {
+      const l = first.stereoL[i];
+      const r = first.stereoR[i];
+      assert.ok(Number.isFinite(l) && Number.isFinite(r), 'el motor debe renderizar muestras finitas');
+      const a = Math.abs(l) > Math.abs(r) ? Math.abs(l) : Math.abs(r);
+      if (a > peak) peak = a;
+    }
+    assert.ok(peak > 1e-4, `el motor debe sonar (peak=${peak})`);
+    console.log(`  [PASS] ${name} (peak=${peak.toFixed(6)} fnv1a=${hashOf(first)})`);
+    passed++;
+  } catch (err) {
+    console.error(`  [FAIL] ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    failed++;
+  }
+}
+
+await runWasmEngineTest();
 
 console.log(`\nResult: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

@@ -54,3 +54,7 @@ __pycache__/
 *.py[cod]
 bridge/models/checkpoints/*
 !bridge/models/checkpoints/.gitkeep
+
+# Artefacto WASM del motor (reconstruible; ver ABDAxionikVS/tools/resynator-wasm/).
+# Se versiona abi.json, no el binario.
+public/wasm/resynator-v2-abi*.js

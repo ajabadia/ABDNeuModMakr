@@ -1,0 +1,16 @@
+{
+    "engineHash":  "sha256:1c1cf1635de7427f24847d754b119640d995814199c9f56b95668a2bdad0dea2",
+    "builtAtUtc":  "2026-11-06T11:58:12.0276335Z",
+    "sources":  [
+                    "Source/DSP/Extended/ResynatorV2Wasm.cpp",
+                    "Source/DSP/Extended/AxionikExpandedSynthesizer.h",
+                    "Source/DSP/Extended/AxionikExpandedModel.h"
+                ],
+    "abi":  1,
+    "buildFlags":  [
+                       "OPTIMIZE=-O3",
+                       "SINGLE_FILE=1",
+                       "STACK_SIZE=4MB"
+                   ],
+    "artifact":  "wasm/resynator-v2-abi1.js"
+}

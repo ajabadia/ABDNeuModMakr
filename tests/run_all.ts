@@ -54,6 +54,7 @@ const TEST_FILES = [
   'phase35_neuron_bank_import.test.ts',
   'phase35_musician_wizard.test.ts',
   'phase37_autosampler.test.ts',
+  'resynatorWasmParity.test.ts',
 ];
 
 interface TestResult {

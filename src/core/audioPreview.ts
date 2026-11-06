@@ -24,11 +24,11 @@ export interface PreviewSources {
   getResynthMono(zoneId: string): Float32Array | undefined;
   /** Enhanced DSP resynthesized mono PCM for the zone, if already inspected. */
   getEnhancedMono?(zoneId: string): Float32Array | undefined;
-  /** Resynator v2 (Unified Spectral Surface + Formant Lock + Sonic Matter Shapers) stereo PCM for the zone at `targetNote`. */
+  /** Resynator v2 (motor WASM) stereo PCM for the zone at `targetNote`. */
   getResynatorV2Stereo?(
     zoneId: string,
     targetNote?: MidiNote
-  ): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined;
+  ): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | undefined>;
   /** Ensure the zone has been spectrally inspected (populates resynth). */
   ensureSpectrum(zoneId: string): void;
 }
@@ -135,7 +135,7 @@ export class AudioPreviewService {
         : this.sources.getResynthMono(zone.id);
     const resynatorV2Stereo =
       mode === 'resynator_v2'
-        ? this.sources.getResynatorV2Stereo?.(zone.id, targetNote)
+        ? await this.sources.getResynatorV2Stereo?.(zone.id, targetNote)
         : undefined;
 
     // Original mode can play a specific velocity layer / extended region sample

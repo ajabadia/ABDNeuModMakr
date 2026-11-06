@@ -134,7 +134,7 @@ class App {
       onOpenAiCoverGenerator: () => {
         self.aiCoverModal.open();
       },
-      getSessionResynatorV2Stereo: (midiNote, velocity, hostBpm) => {
+      getSessionResynatorV2Stereo: async (midiNote, velocity, hostBpm) => {
         if (!self.session || self.session.zones.length === 0) return undefined;
         const found =
           self.session.zones.find((z) => midiNote >= z.lowKey && midiNote <= z.highKey) ??

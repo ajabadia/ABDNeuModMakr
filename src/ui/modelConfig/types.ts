@@ -17,12 +17,12 @@ export interface ModelConfigModalHandlers {
   onRemoveCoverImage?: () => void;
   onReprocessFromPurestSource?: () => void;
   onOpenAiCoverGenerator?: () => void;
-  /** Optional real-sample Resynator v2 synthesis from the active session's inspected zone. */
+  /** Optional real-sample Resynator v2 synthesis (motor WASM) from the active session's inspected zone. */
   getSessionResynatorV2Stereo?: (
     midiNote: number,
     velocity: number,
     hostBpm: number
-  ) => { left: Float32Array; right: Float32Array; sampleRate: number } | undefined;
+  ) => Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | undefined>;
 }
 
 /** Resinator v2 audition parameters; shared by reference so tabs mutate live state. */

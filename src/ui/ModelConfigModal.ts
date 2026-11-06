@@ -30,12 +30,13 @@ import type {
   ModelConfigTabContext,
   ModelConfigTagEditorState,
 } from './modelConfig/types';
-import type { UnifiedSurfaceUiConfig } from '../core/types';
+import type { ExtendedRegion, UnifiedSurfaceUiConfig } from '../core/types';
 import {
-  buildUnifiedSpectralSurface,
-  evaluateUnifiedSpectralSurface,
-} from '../core/dsp/UnifiedSpectralSurface';
-import { synthesizeResynatorV2Preview } from '@abdsynths/shared/dsp/neuron-analysis';
+  buildAxionikExpandedModel,
+  type ExpandedSpectralSource,
+} from '../core/expandedModelWriter';
+import { renderResynatorWasm } from '../core/dsp/ResynatorV2Wasm';
+import { midiNoteToHz } from '../core/dsp/WavDecoder';
 import type { AxionikSpectralModel } from '@abdsynths/shared/contracts/axionikExpandedModel';
 
 export type { ModelConfigModalHandlers, ModelConfigTab } from './modelConfig/types';
@@ -240,6 +241,25 @@ export class ModelConfigModal {
     }
   }
 
+  /** Reproduce un par estéreo en el contexto de preescucha, sustituyendo lo que hubiera. */
+  private playStereoBuffer(left: Float32Array, right: Float32Array, sampleRate: number): void {
+    if (!this.previewAudioCtx) return;
+    this.stopResynatorV2Preview();
+    const audioBuf = this.previewAudioCtx.createBuffer(2, left.length, sampleRate);
+    audioBuf.copyToChannel(new Float32Array(left), 0);
+    audioBuf.copyToChannel(new Float32Array(right), 1);
+    const src = this.previewAudioCtx.createBufferSource();
+    src.buffer = audioBuf;
+    src.connect(this.previewAudioCtx.destination);
+    src.onended = () => {
+      if (this.previewSourceNode === src) {
+        this.previewSourceNode = null;
+      }
+    };
+    this.previewSourceNode = src;
+    src.start();
+  }
+
   private async auditionResynatorV2Lab(
     surfCfg: UnifiedSurfaceUiConfig,
     isNeutralCompare: boolean
@@ -253,42 +273,27 @@ export class ModelConfigModal {
     if (this.previewAudioCtx.state === 'suspended') {
       await this.previewAudioCtx.resume();
     }
+    const sampleRate = this.previewAudioCtx.sampleRate;
+    const velocity01 = Math.min(1, Math.max(0, this.preview.velocity / 127));
 
-    // If the user has an active session with loaded/inspected zone(s) and is not doing neutral synthetic calibration,
-    // synthesize directly from the real zone's spectral model + PCM attack transient!
-    if (!isNeutralCompare && this.handlers.getSessionResynatorV2Stereo) {
-      const realStereo = this.handlers.getSessionResynatorV2Stereo(
-        this.preview.midiNote,
-        this.preview.velocity,
-        this.preview.hostBpm
-      );
-      if (realStereo && realStereo.left.length > 0) {
-        const audioBuf = this.previewAudioCtx.createBuffer(
-          2,
-          realStereo.left.length,
-          realStereo.sampleRate
+    try {
+      // Sesión real: el documento se construye de la zona inspeccionada y lo
+      // renderiza el MOTOR (WASM). Lo que suena es el motor, sin espejos.
+      if (!isNeutralCompare && this.handlers.getSessionResynatorV2Stereo) {
+        const realStereo = await this.handlers.getSessionResynatorV2Stereo(
+          this.preview.midiNote,
+          this.preview.velocity,
+          this.preview.hostBpm
         );
-        audioBuf.copyToChannel(new Float32Array(realStereo.left), 0);
-        audioBuf.copyToChannel(new Float32Array(realStereo.right), 1);
-
-        const src = this.previewAudioCtx.createBufferSource();
-        src.buffer = audioBuf;
-        src.connect(this.previewAudioCtx.destination);
-        src.onended = () => {
-          if (this.previewSourceNode === src) {
-            this.previewSourceNode = null;
-          }
-        };
-        this.previewSourceNode = src;
-        src.start();
-
-        toast(
-          `Resinator v2 (Muestra Real): Nota ${this.preview.midiNote} · Vel ${this.preview.velocity} · B=${((surfCfg.inharmonicityB ?? 0) * 1000).toFixed(1)}‰ · Paridad=${Math.round((surfCfg.parity ?? 0) * 100)}%`,
-          'info'
-        );
-        return;
+        if (realStereo && realStereo.left.length > 0) {
+          this.playStereoBuffer(realStereo.left, realStereo.right, realStereo.sampleRate);
+          toast(
+            `Resinator v2 (Motor): Nota ${this.preview.midiNote} · Vel ${this.preview.velocity} · B=${((surfCfg.inharmonicityB ?? 0) * 1000).toFixed(1)}‰ · Paridad=${Math.round((surfCfg.parity ?? 0) * 100)}%`,
+            'info'
+          );
+          return;
+        }
       }
-    }
 
     // Fallback: Build calibration nodes at C3 (48, soft/loud) and C5 (72, soft/loud) to demonstrate 2D Pitch × Velocity interpolation
     const makeNodeModel = (f0Hz: number, brightFactor: number): AxionikSpectralModel => {
@@ -336,80 +341,106 @@ export class ModelConfigModal {
     const c5Soft = makeNodeModel(523.25, 0.8);
     const c5Loud = makeNodeModel(523.25, 1.4);
 
-    const surface = buildUnifiedSpectralSurface({
-      regions: [
-        { id: 'c3_p', sampleRef: 'c3_p.wav', lowKey: 0, highKey: 59, rootKey: 48, lowVel: 1, highVel: 64 },
-        { id: 'c3_f', sampleRef: 'c3_f.wav', lowKey: 0, highKey: 59, rootKey: 48, lowVel: 65, highVel: 127 },
-        { id: 'c5_p', sampleRef: 'c5_p.wav', lowKey: 60, highKey: 127, rootKey: 72, lowVel: 1, highVel: 64 },
-        { id: 'c5_f', sampleRef: 'c5_f.wav', lowKey: 60, highKey: 127, rootKey: 72, lowVel: 65, highVel: 127 },
-      ],
-      primarySpectral: c3Loud,
-      spectralBySample: {
-        'c3_p.wav': c3Soft,
-        'c3_f.wav': c3Loud,
-        'c5_p.wav': c5Soft,
-        'c5_f.wav': c5Loud,
-      },
-      tempoSync: surfCfg.tempoSync,
-    });
-
-    const evaluated = evaluateUnifiedSpectralSurface(surface, {
-      midiNote: this.preview.midiNote,
-      velocity: this.preview.velocity,
-      attackShorten01: surfCfg.attackShorten01 ?? 0,
-      releaseExtendSec: surfCfg.releaseExtendSec ?? 0,
-      formantLock01: surfCfg.formantLock01 ?? 1,
-      includeOutliers: surfCfg.includeOutliers ?? false,
-      hostBpm: this.preview.hostBpm,
-    });
-
-    const baseDurSec = 1.6 * (evaluated.tempoScaleFactor ? 1 / evaluated.tempoScaleFactor : 1);
-    const totalDurSec = Math.min(8.0, Math.max(0.35, baseDurSec + (surfCfg.releaseExtendSec ?? 0) * 0.6));
-
-    const synthOut = synthesizeResynatorV2Preview({
-      frames: evaluated.frames,
-      targetF0Hz: evaluated.targetF0Hz,
-      partialCount: evaluated.partialCount,
-      startFrameIndex: evaluated.startFrameIndex,
-      sustainStartFrame: evaluated.sustainStartFrame,
-      sustainEndFrame: evaluated.sustainEndFrame,
-      sustainBehavior: evaluated.sustainBehavior,
-      modulation: evaluated.modulation,
-      shapers: {
-        inharmonicityB: surfCfg.inharmonicityB ?? 0,
-        parity: surfCfg.parity ?? 0,
-        residualMix: surfCfg.residualMix ?? 0.15,
-        formantPreserve: surfCfg.formantLock01 ?? 1,
-        spatialSpread: 0.6,
-      },
-      durationSec: totalDurSec,
-      sampleRate: this.previewAudioCtx.sampleRate,
-    });
-
-    const audioBuf = this.previewAudioCtx.createBuffer(
-      2,
-      synthOut.stereoL.length,
-      synthOut.sampleRate
-    );
-    audioBuf.copyToChannel(new Float32Array(synthOut.stereoL), 0);
-    audioBuf.copyToChannel(new Float32Array(synthOut.stereoR), 1);
-
-    const src = this.previewAudioCtx.createBufferSource();
-    src.buffer = audioBuf;
-    src.connect(this.previewAudioCtx.destination);
-    src.onended = () => {
-      if (this.previewSourceNode === src) {
-        this.previewSourceNode = null;
-      }
-    };
-    this.previewSourceNode = src;
-    src.start();
-
-    toast(
-      isNeutralCompare
-        ? `Preescucha Neutral (A/B): Nota ${this.preview.midiNote} (${evaluated.targetF0Hz} Hz) · Vel ${this.preview.velocity}`
-        : `Resinator v2 Activo: Nota ${this.preview.midiNote} (${evaluated.targetF0Hz} Hz) · B=${((surfCfg.inharmonicityB ?? 0) * 1000).toFixed(1)}‰ · Paridad=${Math.round((surfCfg.parity ?? 0) * 100)}% · TempoScale=${(evaluated.tempoScaleFactor ?? 1).toFixed(2)}x`,
-      'info'
-    );
+      // Calibración neutral: los mismos 4 nodos sintéticos C3/C5 × suave/fuerte
+      // alimentan al MOTOR a través del writer. Los sliders del laboratorio
+      // viajan en `unifiedSurfaceConfig` hasta los shapers del documento.
+      const sourceOf = (model: AxionikSpectralModel): ExpandedSpectralSource => {
+        const frames = model.frames;
+        const at = (f: number): AxionikSpectralModel['frames'][number] =>
+          frames[Math.min(Math.max(0, f), frames.length - 1)];
+        return {
+          frameCount: model.frameCount,
+          frameSpanHz: 50,
+          gridFixed: true,
+          ampsOf: (f) => Float32Array.from(at(f).amps),
+          offsetsOf: (f) => Float32Array.from(at(f).offsets),
+          f0At: (f) => at(f).f0Hz ?? 220,
+          isLayered: () => false,
+          layerCount: 0,
+          numFramesOf: () => 0,
+          ampsOfLayer: () => new Float32Array(0),
+          offsetsOfLayer: () => new Float32Array(0),
+          f0AtLayer: () => 0,
+          layerNameAt: () => '',
+          layerWeightAt: () => 0,
+          frameWeightAt: () => 0,
+        };
+      };
+      const neutralRegion = (
+        id: string,
+        sampleName: string,
+        lowKey: number,
+        highKey: number,
+        rootKey: number,
+        lowVel: number,
+        highVel: number
+      ): ExtendedRegion => ({
+        id,
+        sampleName,
+        lowKey,
+        highKey,
+        rootKey,
+        lowVel,
+        highVel,
+        detune: 0,
+        volume: 0,
+        pan: 0,
+        pitchKeytrack: 100,
+        trigger: 'attack',
+        keyFadeIn: 0,
+        keyFadeOut: 0,
+        velFadeIn: 0,
+        velFadeOut: 0,
+        fadeCurve: 'equal-power',
+        loopMode: 'loop_continuous',
+        loopStart: 0,
+        loopEnd: 0,
+        loopCrossfadeMs: 5,
+        sampleRate,
+      });
+      const doc = buildAxionikExpandedModel({
+        slot: 0,
+        modelName: 'NeutralLab',
+        expandedName: 'Neutral Lab',
+        processConfig: { ...this.handlers.getConfig(), unifiedSurfaceConfig: surfCfg },
+        spectral: sourceOf(c3Loud),
+        spectralBySample: {
+          'c3_p.wav': sourceOf(c3Soft),
+          'c3_f.wav': sourceOf(c3Loud),
+          'c5_p.wav': sourceOf(c5Soft),
+          'c5_f.wav': sourceOf(c5Loud),
+        },
+        regions: [
+          neutralRegion('c3_p', 'c3_p.wav', 0, 59, 48, 1, 64),
+          neutralRegion('c3_f', 'c3_f.wav', 0, 59, 48, 65, 127),
+          neutralRegion('c5_p', 'c5_p.wav', 60, 127, 72, 1, 64),
+          neutralRegion('c5_f', 'c5_f.wav', 60, 127, 72, 65, 127),
+        ],
+        populateAdvancedSpectralExtensions: true,
+        buildUnifiedSurface: true,
+      });
+      const totalDurSec = Math.min(8.0, Math.max(0.35, 1.6 + (surfCfg.releaseExtendSec ?? 0) * 0.6));
+      const out = await renderResynatorWasm({
+        modelJson: JSON.stringify(doc),
+        midiNote: this.preview.midiNote,
+        velocity01,
+        seconds: totalDurSec,
+        sampleRate,
+      });
+      this.playStereoBuffer(out.stereoL, out.stereoR, sampleRate);
+      const hz = midiNoteToHz(this.preview.midiNote).toFixed(1);
+      toast(
+        isNeutralCompare
+          ? `Preescucha Neutral (Motor): Nota ${this.preview.midiNote} (${hz} Hz) · Vel ${this.preview.velocity}`
+          : `Resinator v2 (Motor): Nota ${this.preview.midiNote} (${hz} Hz) · B=${((surfCfg.inharmonicityB ?? 0) * 1000).toFixed(1)}‰ · Paridad=${Math.round((surfCfg.parity ?? 0) * 100)}%`,
+        'info'
+      );
+    } catch (err) {
+      // Sin espejo al que caer: si el motor no está disponible, se dice en voz alta.
+      toast(
+        `Motor Resynator v2 no disponible: ${err instanceof Error ? err.message : String(err)}`,
+        'error'
+      );
+    }
   }
 }

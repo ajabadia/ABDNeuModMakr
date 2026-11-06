@@ -206,13 +206,13 @@ export interface CoreService {
     sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void>;
 
-  /** Synthesize stereo PCM for `zoneId` using ABDShared Resynator v2 (Unified Spectral Surface + Formant Lock + Sonic Matter Shapers). */
+  /** Synthesize stereo PCM for `zoneId` using the Resynator v2 motor (WASM). */
   synthesizeZoneResynatorV2?(
     zoneId: string,
     targetNote?: MidiNote,
     velocity?: number,
     hostBpm?: number
-  ): { left: Float32Array; right: Float32Array; sampleRate: number } | undefined;
+  ): Promise<{ left: Float32Array; right: Float32Array; sampleRate: number } | undefined>;
 
   /** Stop any active sample or resynthesis playback */
   stopAudition(): void;
