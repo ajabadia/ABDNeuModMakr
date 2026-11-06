@@ -764,3 +764,192 @@ runSecurityTestsPart5().catch((err) => {
   console.error('Security test (part 5) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 6 (red-team 2026-11-06, ola 3): decodificadores de audio. ──
+// WAV/AIFF/FLAC puros están acotados por los bytes reales, pero SF2 confía
+// en `smpl/subSize` (u32 sin acotar) + `shdr.end` (u32 sin acotar) y CAF en
+// `framesPerPacket` (multiplicador u32) + `numChannels` (u32 sin tope).
+// Bombas construidas de verdad; la de SF2 tumbaba el proceso pre-fix
+// (344 bytes → RSS +573 MB medidos).
+
+function u32le(v: number): Uint8Array {
+  const d = new DataView(new ArrayBuffer(4));
+  d.setUint32(0, v >>> 0, true);
+  return new Uint8Array(d.buffer);
+}
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((n, c) => n + c.byteLength, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const c of parts) {
+    out.set(c, p);
+    p += c.byteLength;
+  }
+  return out;
+}
+function riffChunk(id: string, data: Uint8Array): Uint8Array {
+  const head = new Uint8Array(8);
+  head.set(new TextEncoder().encode(id), 0);
+  new DataView(head.buffer).setUint32(4, data.byteLength, true);
+  return concatBytes([head, data, new Uint8Array(data.byteLength & 1)]);
+}
+function riffList(type: string, subs: Uint8Array[]): Uint8Array {
+  return riffChunk('LIST', concatBytes([new TextEncoder().encode(type), ...subs]));
+}
+function sf2Rec38(pbagNdx: number): Uint8Array {
+  const r = new Uint8Array(38);
+  new DataView(r.buffer).setUint16(24, pbagNdx, true);
+  return r;
+}
+function sf2Bag(genNdx: number): Uint8Array {
+  const r = new Uint8Array(4);
+  new DataView(r.buffer).setUint16(0, genNdx, true);
+  return r;
+}
+function sf2Gen(oper: number, amount: number): Uint8Array {
+  const r = new Uint8Array(4);
+  const v = new DataView(r.buffer);
+  v.setUint16(0, oper, true);
+  v.setUint16(2, amount, true);
+  return r;
+}
+function sf2Inst22(ibagNdx: number): Uint8Array {
+  const r = new Uint8Array(22);
+  new DataView(r.buffer).setUint16(20, ibagNdx, true);
+  return r;
+}
+function sf2Shdr(name: string, start: number, end: number, rate: number): Uint8Array {
+  const r = new Uint8Array(46);
+  r.set(new TextEncoder().encode(name.padEnd(20, ' ').slice(0, 20)), 0);
+  const v = new DataView(r.buffer);
+  v.setUint32(20, start >>> 0, true);
+  v.setUint32(24, end >>> 0, true);
+  v.setUint32(28, start >>> 0, true);
+  v.setUint32(32, end >>> 0, true);
+  v.setUint32(36, rate >>> 0, true);
+  return r;
+}
+/** `.sf2` mínimo válido con tamaños parametrizables (bomba o legítimo). */
+function buildSf2File(smplDeclared: number, smplReal: number, shdrEnd: number, rate = 44100): Uint8Array {
+  const sdta = riffList('sdta', [
+    concatBytes([new TextEncoder().encode('smpl'), u32le(smplDeclared), new Uint8Array(smplReal)]),
+  ]);
+  const pdta = riffList('pdta', [
+    riffChunk('phdr', concatBytes([sf2Rec38(0), sf2Rec38(1)])),
+    riffChunk('pbag', concatBytes([sf2Bag(0), sf2Bag(1)])),
+    riffChunk('pgen', sf2Gen(41, 0)),
+    riffChunk('inst', concatBytes([sf2Inst22(0), sf2Inst22(1)])),
+    riffChunk('ibag', concatBytes([sf2Bag(0), sf2Bag(1)])),
+    riffChunk('igen', sf2Gen(53, 0)),
+    riffChunk('shdr', concatBytes([sf2Shdr('evil', 0, shdrEnd, rate), new Uint8Array(46)])),
+  ]);
+  const chunks = concatBytes([sdta, pdta]);
+  const out = new Uint8Array(12 + chunks.byteLength);
+  out.set(new TextEncoder().encode('RIFF'), 0);
+  new DataView(out.buffer).setUint32(4, 4 + chunks.byteLength, true);
+  out.set(new TextEncoder().encode('sfbk'), 8);
+  out.set(chunks, 12);
+  return out;
+}
+function cafChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.byteLength);
+  out.set(new TextEncoder().encode(type), 0);
+  new DataView(out.buffer).setUint32(8, data.byteLength, false);
+  out.set(data, 12);
+  return out;
+}
+/** `.caf` mínimo con `desc` parametrizable (bomba o legítimo). */
+function buildCafFile(framesPerPacket: number, numChannels: number, dataLen: number): Uint8Array {
+  const desc = new Uint8Array(32);
+  const v = new DataView(desc.buffer);
+  v.setFloat64(0, 44100, false);
+  desc.set(new TextEncoder().encode('lpcm'), 8);
+  v.setUint32(16, 0, false);
+  v.setUint32(20, framesPerPacket >>> 0, false);
+  v.setUint32(24, numChannels >>> 0, false);
+  v.setUint32(28, 16, false);
+  const head = new Uint8Array(8);
+  head.set(new TextEncoder().encode('caff'), 0);
+  head[5] = 1;
+  return concatBytes([head, cafChunk('desc', desc), cafChunk('data', new Uint8Array(4 + dataLen))]);
+}
+
+async function runSecurityTestsPart6(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 6: audio decoders) ===');
+  const { decodeCaf, decodeWav, APP_MAX_AUDIO_CHANNELS } = await import('../src/core/dsp/WavDecoder.ts');
+  const { importSf2PresetToNativeCapped } = await import('../src/formats/Sf2Parser.ts');
+
+  // 19a. Bomba SF2: 344 bytes que declaran smpl=1 GB + end=100M frames
+  // (pre-fix medido: RSS 83→656 MB). La compuerta la rechaza en ~1 ms.
+  const sf2Bomb = buildSf2File(0x40000000, 8, 100_000_000);
+  assert.ok(sf2Bomb.byteLength < 1024, 'la bomba SF2 debe caber en 1 KB');
+  const t0 = Date.now();
+  assert.throws(
+    () => importSf2PresetToNativeCapped(sf2Bomb.buffer as ArrayBuffer, 0),
+    /out of bounds/,
+    'SF2 mentiroso debe rechazarse por cabecera'
+  );
+  assert.ok(Date.now() - t0 < 2000, 'el rechazo debe ser previo a asignar muestras');
+  console.log('[PASS] 19a. bomba SF2 (344 B → 100M frames) rechazada sin asignar');
+
+  // 19b. Solo `smpl` miente (shdr legítimo pequeño) → también se rechaza.
+  const sf2SmplLiar = buildSf2File(0x40000000, 8, 4);
+  assert.throws(
+    () => importSf2PresetToNativeCapped(sf2SmplLiar.buffer as ArrayBuffer, 0),
+    /smpl size/,
+    'smpl declarado > bytes reales debe rechazarse'
+  );
+  console.log('[PASS] 19b. SF2 con smpl mentiroso rechazado');
+
+  // 19c. SF2 legítimo (mismo camino de código) importa sin romperse.
+  const sf2Legit = buildSf2File(8, 8, 4);
+  const legitRes = importSf2PresetToNativeCapped(sf2Legit.buffer as ArrayBuffer, 0);
+  assert.ok(legitRes.audioFiles.length >= 1, 'SF2 legítimo debe producir audio');
+  console.log('[PASS] 19c. SF2 legítimo intacto por el mismo camino');
+
+  // 19d. Bomba CAF: 168 bytes, framesPerPacket=20M ⇒ 500M frames predichos
+  // (pre-fix: intento de reserva de GB + RangeError garantizado).
+  const cafBomb = buildCafFile(20_000_000, 2, 100);
+  assert.throws(
+    () => decodeCaf(cafBomb.buffer as ArrayBuffer),
+    /frames-per-packet|declared frames/,
+    'CAF con multiplicador absurdo debe rechazarse'
+  );
+  console.log('[PASS] 19d. bomba CAF (168 B → 500M frames) rechazada por cabecera');
+
+  // 19e. CAF con 4 G canales (bucle de millones de `push`) → rechazado.
+  const cafChBomb = buildCafFile(64, 0xffffffff, 100);
+  assert.throws(
+    () => decodeCaf(cafChBomb.buffer as ArrayBuffer),
+    /channel count/,
+    'CAF con canales absurdos debe rechazarse'
+  );
+  assert.equal(APP_MAX_AUDIO_CHANNELS, 32, 'tope documentado 32 canales');
+  console.log('[PASS] 19e. CAF con canales mentirosos rechazado');
+
+  // 19f. Controles legítimos: CAF mínimo y WAV PCM16 mínimo decodifican.
+  const cafLegit = decodeCaf(buildCafFile(1, 1, 16).buffer as ArrayBuffer);
+  assert.equal(cafLegit.numSamples, 8, 'CAF legítimo (16 B mono 16-bit → 8 frames)');
+  const fmt = new Uint8Array(16);
+  const fv = new DataView(fmt.buffer);
+  fv.setUint16(0, 1, true);
+  fv.setUint16(2, 1, true);
+  fv.setUint32(4, 44100, true);
+  fv.setUint32(8, 88200, true);
+  fv.setUint16(12, 2, true);
+  fv.setUint16(14, 16, true);
+  const wavLegit = decodeWav(
+    concatBytes([
+      new TextEncoder().encode('RIFF'), u32le(44), new TextEncoder().encode('WAVE'),
+      new TextEncoder().encode('fmt '), u32le(16), fmt,
+      new TextEncoder().encode('data'), u32le(16), new Uint8Array(16),
+    ]).buffer as ArrayBuffer
+  );
+  assert.equal(wavLegit.numSamples, 8, 'WAV legítimo intacto tras la compuerta');
+  console.log('[PASS] 19f. CAF/WAV legítimos decodifican igual que antes');
+}
+
+runSecurityTestsPart6().catch((err) => {
+  console.error('Security test (part 6) failed:', err);
+  process.exit(1);
+});

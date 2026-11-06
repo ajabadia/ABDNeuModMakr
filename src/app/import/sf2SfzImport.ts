@@ -5,7 +5,7 @@
 // go through ImportContext so this module owns no DOM singletons.
 // ─────────────────────────────────────────────────────────
 
-import { transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { MAX_SFZ_TEXT_BYTES } from '../../formats/SfzParser.ts';
 import { withLoading } from '../../ui/LoadingModal';
 import { MultiInstrumentModal } from '../../ui/MultiInstrumentModal';

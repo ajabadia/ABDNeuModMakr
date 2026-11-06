@@ -4,8 +4,8 @@ import {
   parseMName,
   parseMapScript,
   parseModelNamesCache,
-  transcodeAnyAudioToWavBuffer,
 } from '@abdsynths/shared/formats/neuron';
+import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../../ui/NeuronDbModal';
 import { toast } from '../../ui/notify';
 import { loadingModal, withLoading } from '../../ui/LoadingModal';

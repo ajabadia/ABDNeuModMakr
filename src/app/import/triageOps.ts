@@ -5,7 +5,8 @@
 // go through ImportContext so this module owns no DOM singletons.
 // ─────────────────────────────────────────────────────────
 
-import { isSupportedAudioFileName, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { isSupportedAudioFileName } from '@abdsynths/shared/formats/neuron';
+import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
 import { MAX_SFZ_TEXT_BYTES } from '../../formats/SfzParser.ts';
 import { toast } from '../../ui/notify';

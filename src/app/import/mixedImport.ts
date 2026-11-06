@@ -5,7 +5,8 @@
 // go through ImportContext so this module owns no DOM singletons.
 // ─────────────────────────────────────────────────────────
 
-import { isSupportedAudioFileName, parseMName, parseMapScript, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { isSupportedAudioFileName, parseMName, parseMapScript } from '@abdsynths/shared/formats/neuron';
+import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../../ui/NeuronDbModal';
 import { toast, confirmDialog } from '../../ui/notify';
 import { importDeducedAudioDirectoryOrPrompt } from './directoryImport.ts';

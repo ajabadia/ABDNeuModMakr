@@ -2,7 +2,7 @@
 // ABDNeuModMakr — Phase 12: SoundFont 2 Batch Extractor
 // ─────────────────────────────────────────────────────────
 
-import { listSf2Presets, importSf2PresetToNative } from '../../formats/Sf2Parser.ts';
+import { listSf2Presets, importSf2PresetToNativeCapped } from '../../formats/Sf2Parser.ts';
 import { createUniqueModelSlug } from '../modelSlug.ts';
 import type { BatchModelCandidate } from './types.ts';
 
@@ -35,7 +35,8 @@ export function extractSf2PresetsToCandidates(
     }
 
     try {
-      const imported = importSf2PresetToNative(sf2Buffer, p.index);
+      // S6.4: índices de muestra validados por cabecera antes de extraer.
+      const imported = importSf2PresetToNativeCapped(sf2Buffer, p.index);
       if (!imported.audioFiles || imported.audioFiles.length === 0) {
         continue;
       }

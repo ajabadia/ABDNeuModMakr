@@ -9,7 +9,7 @@ import { encodePcm16Wav, midiNoteToHz, synthesizeDemoWav } from '../dsp/WavDecod
 import { parseNeuronScape, parseNeuronSphere, resynthesizeNeuronModelSource } from '@abdsynths/shared/formats/neuron';
 import { createInitialSession, createZone } from '../sessionFactory.ts';
 import { cloneArticulation, cloneExtendedRegion, syncExtendedRegionsFromClassicZones } from '../extendedAdapter.ts';
-import { importSf2PresetToNative } from '../../formats/Sf2Parser.ts';
+import { importSf2PresetToNativeCapped } from '../../formats/Sf2Parser.ts';
 import type { NativeSamplerImportResult } from '../../formats/Sf2Parser.ts';
 import { importSfzToNative } from '../../formats/SfzParser.ts';
 import { buildTimeCapsuleEntries } from '../timeCapsule.ts';
@@ -289,7 +289,8 @@ export async function loadBankModel(ctx: PipelineContext, slot: number): Promise
 }
 
 export async function importSf2Buffer(ctx: PipelineContext, buffer: ArrayBuffer, presetIndex = 0): Promise<Session> {
-  const imported = importSf2PresetToNative(buffer, presetIndex);
+  // S6.4: índices de muestra validados por cabecera antes de extraer.
+  const imported = importSf2PresetToNativeCapped(buffer, presetIndex);
   return applyNativeSamplerImport(ctx, imported);
 }
 

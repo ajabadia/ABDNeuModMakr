@@ -8,7 +8,8 @@
 import type { CoreService, Session, Zone } from '../core';
 import type { BankDrawer } from '../ui/BankDrawer';
 import type { NeuronDbModal } from '../ui/NeuronDbModal';
-import { SUPPORTED_AUDIO_ACCEPT, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { SUPPORTED_AUDIO_ACCEPT } from '@abdsynths/shared/formats/neuron';
+import { transcodeAnyAudioToWavBuffer } from '../core/dsp/WavDecoder.ts';
 import { type NeuronDbModelEntry } from '../ui/NeuronDbModal';
 import { toast, confirmDialog } from '../ui/notify';
 import { consumeMigrationNotes } from '../core/sessionSchema.ts';
