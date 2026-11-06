@@ -15,13 +15,13 @@
 import {
   createSoundPresetForModel,
   createZipArchive,
-  parseZipArchive,
   serializeCanonicalMapScript,
   serializeMName,
   serializeSoundScript,
   serializeStickRec,
   type ZipEntryInput,
 } from '@abdsynths/shared/formats/neuron';
+import { parseZipArchiveCapped } from '../formats/ZipArchive.ts';
 import { basename } from './pathUtils.ts';
 import type {
   CapsuleLayerId,
@@ -562,7 +562,8 @@ export function extractTimeCapsuleFromFiles(
   for (const f of inputFiles) {
     const lowerName = f.name.toLowerCase();
     if (lowerName.endsWith('.zip') || lowerName.endsWith('.nmpack')) {
-      const unzipped = parseZipArchive(f.data);
+      // S6.1: compuerta anti-bomba por cabecera antes de inflar nada.
+      const unzipped = parseZipArchiveCapped(f.data);
       for (const u of unzipped) {
         if (isUnsafeZipPath(u.path)) continue; // S6.2 Zip-Slip: ignora entradas con .. o absolutas
         expanded.push({ name: u.path, data: u.data });

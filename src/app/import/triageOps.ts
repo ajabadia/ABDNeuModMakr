@@ -5,7 +5,8 @@
 // go through ImportContext so this module owns no DOM singletons.
 // ─────────────────────────────────────────────────────────
 
-import { isSupportedAudioFileName, parseZipArchive, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { isSupportedAudioFileName, transcodeAnyAudioToWavBuffer } from '@abdsynths/shared/formats/neuron';
+import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
 import { MAX_SFZ_TEXT_BYTES } from '../../formats/SfzParser.ts';
 import { toast } from '../../ui/notify';
 import { importDeducedAudioDirectoryOrPrompt } from './directoryImport.ts';
@@ -274,7 +275,7 @@ export function expandNestedZipBuffer(
   out: { name: string; buffer: ArrayBuffer }[],
   depth = 0
 ): void {
-  const unzipped = parseZipArchive(bytes);
+  const unzipped = parseZipArchiveCapped(bytes);
   for (const entry of unzipped) {
     const entryPath = prefix ? `${prefix}/${entry.path}` : entry.path;
     const lowerEntry = entry.path.toLowerCase();

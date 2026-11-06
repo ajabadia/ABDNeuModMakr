@@ -526,3 +526,241 @@ runSecurityTestsPart3().catch((err) => {
   console.error('Security test (part 3) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 4 (red-team 2026-11-06, ola 2): bomba ZIP real. ──
+// El vendor permite 800 MB/entrada y 1 GB total: un ZIP de ~200 KB puede
+// forzar `new Uint8Array(800MB)`. `parseZipArchiveCapped` debe rechazar por
+// cabecera ANTES de inflar (sin RAM, rápido). Bombas construidas de verdad
+// con DEFLATE (node:zlib) + estructura ZIP manual mínima.
+
+async function runSecurityTestsPart4(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 4: zip bomb) ===');
+  const {
+    parseZipArchiveCapped,
+    APP_MAX_ZIP_ENTRY_BYTES,
+    APP_MAX_ZIP_TOTAL_BYTES,
+  } = await import('../src/formats/ZipArchive.ts');
+
+  function buildDeflateZip(entries: Array<{ name: string; declaredSize: number; payload: Uint8Array }>): Uint8Array {
+    const enc = new TextEncoder();
+    const chunks: Uint8Array[] = [];
+    const centrals: Uint8Array[] = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc.encode(e.name);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true);
+      lh.setUint16(4, 20, true);
+      lh.setUint16(6, 0, true);
+      lh.setUint16(8, 8, true); // DEFLATE
+      lh.setUint16(10, 0, true);
+      lh.setUint16(12, 0, true);
+      lh.setUint32(14, 0, true); // CRC: irrelevante (el parser no lo verifica; el tope es previo)
+      lh.setUint32(18, e.payload.byteLength, true);
+      lh.setUint32(22, e.declaredSize, true);
+      lh.setUint16(26, name.length, true);
+      lh.setUint16(28, 0, true);
+      chunks.push(new Uint8Array(lh.buffer), name, e.payload);
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, 20, true);
+      cd.setUint16(6, 20, true);
+      cd.setUint16(10, 8, true);
+      cd.setUint32(20, e.payload.byteLength, true); // central: comp@20, uncomp@24
+      cd.setUint32(24, e.declaredSize, true);
+      cd.setUint16(28, name.length, true);
+      cd.setUint32(42, offset, true);
+      centrals.push(new Uint8Array(cd.buffer), name);
+      offset += 30 + name.length + e.payload.byteLength;
+    }
+    const cdStart = offset;
+    let cdSize = 0;
+    for (const c of centrals) {
+      chunks.push(c);
+      cdSize += c.byteLength;
+    }
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(8, entries.length, true);
+    eocd.setUint16(10, entries.length, true);
+    eocd.setUint32(12, cdSize, true);
+    eocd.setUint32(16, cdStart, true);
+    chunks.push(new Uint8Array(eocd.buffer));
+    const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+    const out = new Uint8Array(total);
+    let p = 0;
+    for (const c of chunks) {
+      out.set(c, p);
+      p += c.byteLength;
+    }
+    return out;
+  }
+
+  // DEFLATE real de 200 MB de ceros en streaming (~200 KB comprimidos, sin
+  // retener jamás los 200 MB en RAM): la bomba cabe en un email.
+  // OJO: DEFLATE crudo (RFC 1951, method 8), NO zlib-wrapped: `DeflateRaw`.
+  const { DeflateRaw } = await import('node:zlib');
+  function deflateZeros(bytes: number): Promise<Uint8Array> {
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const d = new DeflateRaw();
+      const parts: Uint8Array[] = [];
+      d.on('data', (c: Uint8Array) => parts.push(c));
+      d.on('end', () => {
+        const total = parts.reduce((n, c) => n + c.byteLength, 0);
+        const out = new Uint8Array(total);
+        let p = 0;
+        for (const c of parts) {
+          out.set(c, p);
+          p += c.byteLength;
+        }
+        resolve(out);
+      });
+      d.on('error', reject);
+      const chunk = Buffer.alloc(1024 * 1024, 0);
+      let left = bytes;
+      const write = (): void => {
+        while (left > 0) {
+          const n = Math.min(left, chunk.byteLength);
+          left -= n;
+          if (!d.write(n === chunk.byteLength ? chunk : chunk.subarray(0, n))) {
+            d.once('drain', write);
+            return;
+          }
+        }
+        d.end();
+      };
+      write();
+    });
+  }
+
+  // 16a. Bomba clásica: 200 MB declarados (> 100 MB/entrada) en ~200 KB reales.
+  const payload200 = await deflateZeros(200 * 1024 * 1024);
+  assert.ok(payload200.byteLength < 1024 * 1024, `la bomba debe ser pequeña (fue ${payload200.byteLength})`);
+  const bomb = buildDeflateZip([{ name: 'evil/model.bin', declaredSize: 200 * 1024 * 1024, payload: payload200 }]);
+  const t0 = Date.now();
+  assert.throws(() => parseZipArchiveCapped(bomb), /too large/, 'bomba 200 MB debe rechazarse por cabecera');
+  assert.ok(Date.now() - t0 < 2000, 'el rechazo debe ser previo a inflar (rápido, sin RAM)');
+  console.log(`[PASS] 16a. bomba DEFLATE 200 MB en ${(bomb.byteLength / 1024).toFixed(0)} KB rechazada sin inflar`);
+
+  // 16b. Bomba distribuida: 4×90 MB (cada una legal, total 360 MB > 300 MB).
+  const payload90 = payload200.subarray(0, Math.min(payload200.byteLength, 96 * 1024));
+  const distBomb = buildDeflateZip(
+    [0, 1, 2, 3].map((i) => ({ name: `part${i}.bin`, declaredSize: 90 * 1024 * 1024, payload: payload90 }))
+  );
+  assert.throws(() => parseZipArchiveCapped(distBomb), /total too large/, 'total 360 MB debe rechazarse');
+  console.log('[PASS] 16b. bomba distribuida 4×90 MB rechazada por tope total');
+
+  // 16c. Evasión por descriptor-bit: datos comprimidos que declaran 0 inflados
+  // (esquivaría el tope; `inflateRaw` crecería sin cota). Debe rechazarse.
+  const descriptorBomb = buildDeflateZip([{ name: 'd.bin', declaredSize: 0, payload: payload90 }]);
+  assert.throws(() => parseZipArchiveCapped(descriptorBomb), /indeterminate/, 'descriptor-bit debe rechazarse');
+  console.log('[PASS] 16c. evasión descriptor-bit (0 declarados + datos) rechazada');
+
+  // 16d. Control: ZIP STORE legítimo sigue pasando por la compuerta.
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const legit = createZipArchive([{ path: 'mname', data: new TextEncoder().encode('M') }]);
+  const parsed = parseZipArchiveCapped(legit);
+  assert.equal(parsed.length, 1, 'ZIP legítimo no debe romperse');
+  assert.ok(APP_MAX_ZIP_ENTRY_BYTES === 100 * 1024 * 1024, 'tope documentado 100 MB');
+  assert.ok(APP_MAX_ZIP_TOTAL_BYTES === 300 * 1024 * 1024, 'tope documentado 300 MB');
+  console.log('[PASS] 16d. ZIP legítimo intacto; topes = S6.1 documentados (100 MB / 300 MB)');
+}
+
+runSecurityTestsPart4().catch((err) => {
+  console.error('Security test (part 4) failed:', err);
+  process.exit(1);
+});
+
+// ── Parte 5 (red-team 2026-11-06, ola 2): diálogo nativo como CSRF. ──
+// `/api/fs/browse_folder` abre un diálogo del SO en el escritorio del usuario.
+// Por GET simple (`<img src="http://127.0.0.1:7860/api/fs/browse_folder">`)
+// una web hostil lo dispara SIN CORS y SIN preflight: es un efecto lateral
+// remoto. Debe exigir el mismo token que el resto de /fs/*.
+
+async function runSecurityTestsPart5(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 5: native dialog CSRF) ===');
+  const { spawn, execFileSync } = await import('node:child_process');
+  try {
+    execFileSync('python', ['--version'], { stdio: 'ignore' });
+  } catch {
+    console.log('[SKIP] 17. sin python en PATH');
+    return;
+  }
+  const port = 17863;
+  const child = spawn('python', ['bridge/server.py', '--port', String(port)], {
+    stdio: 'ignore',
+    detached: true,
+    env: { ...process.env, ABD_BRIDGE_TOKEN: 'redteam-token' },
+  });
+  const kill = (): void => {
+    try {
+      process.kill(-child.pid as number, 'SIGKILL');
+    } catch {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // noop
+      }
+    }
+  };
+  try {
+    let healthy = false;
+    for (let i = 0; i < 75; i++) {
+      try {
+        const h = await fetchWithTimeout(`http://127.0.0.1:${port}/api/health`, {}, 1000);
+        if (h.ok) {
+          healthy = true;
+          break;
+        }
+      } catch {
+        // arrancando
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.ok(healthy, 'el bridge con token debe arrancar');
+
+    // 17a. GET sin token (el vector real: <img src>) → 401, el diálogo NO se abre.
+    const getNoToken = await fetchWithTimeout(
+      `http://127.0.0.1:${port}/api/fs/browse_folder`,
+      { headers: { Origin: 'https://evil.example' } },
+      5000
+    );
+    await getNoToken.text().catch(() => '');
+    assert.equal(getNoToken.status, 401, 'GET browse_folder sin token debe dar 401');
+
+    // 17b. POST sin token → 401.
+    const postNoToken = await fetchWithTimeout(
+      `http://127.0.0.1:${port}/api/fs/browse_folder`,
+      { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: '{}' },
+      5000
+    );
+    await postNoToken.text().catch(() => '');
+    assert.equal(postNoToken.status, 401, 'POST browse_folder sin token debe dar 401');
+
+    // 17c. Token equivocado → 401.
+    const wrongToken = await fetchWithTimeout(
+      `http://127.0.0.1:${port}/api/fs/browse_folder`,
+      { headers: { 'X-Bridge-Token': 'nope' } },
+      5000
+    );
+    await wrongToken.text().catch(() => '');
+    assert.equal(wrongToken.status, 401, 'token inválido debe dar 401');
+
+    // 17d. Sin regresión: otra ruta de escritura protegida sigue dando 401 igual.
+    const otherNoToken = await fetchWithTimeout(
+      `http://127.0.0.1:${port}/api/fs/save_axionik_model`,
+      { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: '{}' },
+      5000
+    );
+    await otherNoToken.text().catch(() => '');
+    assert.equal(otherNoToken.status, 401, 'otras rutas /fs/* siguen protegidas');
+    console.log('[PASS] 17. diálogo nativo protegido por token (GET y POST sin bypass)');
+  } finally {
+    kill();
+  }
+}
+
+runSecurityTestsPart5().catch((err) => {
+  console.error('Security test (part 5) failed:', err);
+  process.exit(1);
+});

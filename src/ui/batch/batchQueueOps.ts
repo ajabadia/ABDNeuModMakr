@@ -12,7 +12,7 @@ import { discoverTriageReport, extractTriageDefinitionCandidates, indexTriageBuf
 import type { TriageExpandedFile } from '../../app/triageGate.ts';
 import { listZipSamplerPrograms, parseUniversalSampler } from '../../core/import/rawSamplerParsers.ts';
 import { applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
-import { parseZipArchive } from '@abdsynths/shared/formats/neuron';
+import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
 import { slugifyModelName } from '../../core/modelSlug.ts';
 import type { BatchModelCandidate, BatchProgressState, BatchResultSummary } from '../../core/batch/types.ts';
 import { fileExtension } from '../../core/pathUtils.ts';
@@ -80,7 +80,7 @@ export async function loadExpandedFiles(modal: BatchModalCore, inputFiles: Triag
             const ext = fileExtension(f.name);
             if (ext === 'zip') {
               try {
-                const zipEntries = parseZipArchive(new Uint8Array(f.buffer));
+                const zipEntries = parseZipArchiveCapped(new Uint8Array(f.buffer));
                 for (const entry of zipEntries) {
                   if (entry.data.byteLength > 0) {
                     expandedFiles.push({

@@ -26,6 +26,7 @@ import {
 } from '@abdsynths/shared/formats/neuron';
 import { PARAMETER_SETS } from '../index.ts';
 import { extractTimeCapsuleFromFiles } from '../timeCapsule.ts';
+import { assertZipIndexWithinCaps } from '../../formats/ZipArchive.ts';
 import type { ParsedImportRegion, ParsedSamplerPreset } from './rawSamplerParsers.ts';
 
 export interface NeuronBankModelSummary {
@@ -343,6 +344,8 @@ export async function parseNeuronBankOrModelToPreset(
       (targetModelId ? groups.find((g) => g.id === targetModelId) : undefined) ?? groups[0];
 
     if (chosenGroup && chosenGroup.id !== 'capsule:0' && groups.length > 1) {
+      // S6.1: topes por cabecera antes de inflar el grupo elegido.
+      assertZipIndexWithinCaps(chosenGroup.entries);
       fileEntries = chosenGroup.entries.map((e) => ({
         name: e.path,
         data: extractZipEntry(primaryBytes, e),

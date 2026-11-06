@@ -306,11 +306,16 @@ def open_native_folder_dialog(initial_path="", title="Seleccionar carpeta"):
 
     # Fallback on Windows via PowerShell FolderBrowserDialog if tkinter is not installed
     if os.name == 'nt':
+        # S5: los literales van entre comillas dobles PowerShell, donde `$(...)`
+        # y backticks EXPANDEN. Se sanean antes de interpolar (los valores solo
+        # son etiqueta/ruta del diálogo local, nunca código).
+        def _ps_single_quoted(v):
+            return "'" + str(v).replace("'", "''") + "'"
         ps_script = (
             "Add-Type -AssemblyName System.Windows.Forms; "
             "$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; "
-            f"$dlg.Description = {json.dumps(title)}; "
-            f"$dlg.SelectedPath = {json.dumps(start_dir)}; "
+            f"$dlg.Description = {_ps_single_quoted(title)}; "
+            f"$dlg.SelectedPath = {_ps_single_quoted(start_dir)}; "
             "$dlg.ShowNewFolderButton = $true; "
             "if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
             "Write-Output $dlg.SelectedPath }"
@@ -1142,6 +1147,11 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path in ('/api/fs/browse_folder', '/fs/browse_folder'):
+            # Abre un diálogo NATIVO: efecto lateral vía GET simple
+            # (`<img src="/api/fs/browse_folder">` desde una web hostil no
+            # necesita CORS ni preflight para dispararlo). Exige token.
+            if not self.require_auth():
+                return
             query = parse_qs(parsed.query)
             init_dir = query.get('path', [''])[0]
             dlg_title = query.get('title', ['Seleccionar carpeta'])[0]
@@ -1444,6 +1454,10 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 return
 
         if path in ('/api/fs/browse_folder', '/fs/browse_folder'):
+            # Abre un diálogo NATIVO en el escritorio del usuario: efecto
+            # lateral, así que exige la misma auth que el resto de /fs/*.
+            if not self.require_auth():
+                return
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
             if content_len > 0:
