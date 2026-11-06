@@ -1157,3 +1157,60 @@ runSecurityTestsPart9().catch((err) => {
   console.error('Security test (part 9) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 10 (red-team 2026-11-06, ola 8): bomba gzip `.adv` + discos. ──
+// `unpackAbletonAdvXml` inflaba gzip SIN tope (217 KB → 55 MB medidos sin
+// que saltase ninguna compuerta). La compuerta infla con tope (8 MB) y pasa
+// el XML como string al vendor. Los discos vintage (9 magias + 0xFF) mueren
+// en ms: documentado como verificado (bucles acotados/visited).
+
+async function runSecurityTestsPart10(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 10: adv gzip bomb) ===');
+  const { gzipSync } = await import('node:zlib');
+  const { parseUniversalSamplerCapped } = await import('../src/core/import/rawSamplerParsers.ts');
+  const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+  const advXml = (n: number) =>
+    '<Ableton><MultiSampleMap>' +
+    '<MultiSamplePart><KeyRange><Min Value="0"/><Max Value="127"/></KeyRange></MultiSamplePart>'.repeat(n) +
+    '</MultiSampleMap></Ableton>';
+
+  // 23a. Bomba gzip honesta (~11 MB desde ~40 KB, ratio ~280:1): el inflado
+  // acotado la corta sin llegar al parse (pre-fix: 55 MB en memoria, PASA).
+  const bomb = gzipSync(Buffer.from(advXml(100000)));
+  assert.ok(bomb.byteLength < 100 * 1024, 'la bomba debe caber en un email');
+  const t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil.adv', ab(bomb), new Map()),
+    /inflates too large/,
+    'gzip bomb debe morir en el inflado acotado'
+  );
+  assert.ok(Date.now() - t0 < 3000, `rechazo rápido (fue ${Date.now() - t0}ms)`);
+  console.log('[PASS] 23a. bomba gzip .adv cortada en el inflado');
+
+  // 23b. `.adv` legítimo (gzip pequeño y XML plano) intacto por el camino.
+  const okGz = gzipSync(
+    Buffer.from(
+      '<?xml version="1.0"?><Ableton><MultiSampleMap><SamplePart><KeyRange><Min Value="60"/><Max Value="60"/></KeyRange></SamplePart></MultiSampleMap></Ableton>'
+    )
+  );
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('ok.adv', ab(okGz), new Map()),
+    '.adv gzip legítimo debe pasar'
+  );
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('ok2.adv', advXml(2), new Map()),
+    '.adv plano (string) legítimo debe pasar'
+  );
+  // 23c. `.adv` plano con 20k partes (bajo 8 MB): lo corta el pre-conteo.
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil2.adv', advXml(20000), new Map()),
+    /too many region/,
+    '20k MultiSamplePart deben rechazarse pre-parse'
+  );
+  console.log('[PASS] 23b/c. .adv legítimo intacto; monstruo plano cortado');
+}
+
+runSecurityTestsPart10().catch((err) => {
+  console.error('Security test (part 10) failed:', err);
+  process.exit(1);
+});

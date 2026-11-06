@@ -51,8 +51,68 @@ const REGION_TAGS_BY_EXT: Array<{ exts: string[]; tags: string[] }> = [
   { exts: ['.nki', '.nki.xml', '.zmap', '.prt_omn'], tags: ['<zone'] },
   { exts: ['.talsmpl'], tags: ['<multisample', '<entry'] },
   { exts: ['.txprog'], tags: ['<region', '<wave', '<entry'] },
+  { exts: ['.adv'], tags: ['<multisamplepart'] },
 ];
 const FALLBACK_REGION_TAGS = ['<sample', '<zone', '<region', '<multisample', '<wave', '<entry'];
+
+/** Primer byte de gzip (1f 8b). */
+function isGzipMagic(data: ArrayBuffer): boolean {
+  if (data.byteLength < 2) return false;
+  const b = new Uint8Array(data, 0, 2);
+  return b[0] === 0x1f && b[1] === 0x8b;
+}
+
+/**
+ * S6.7c — `.adv` con límite de inflado (red-team 2026-11-06, ola 8).
+ *
+ * `unpackAbletonAdvXml` (vendor) infla gzip con `inflateRaw` SIN tope:
+ * 217 KB → 55 MB de XML medidos sin que saltase ninguna compuerta
+ * (el ISIZE del trailer ni se lee). Bomba clásica de ratio ~260:1+.
+ *
+ * Se infla aquí con `DecompressionStream` contando bytes y abortando al
+ * superar el mismo tope de texto (8 MB); si cabe se pasa el XML ya
+ * inflado como string al vendor (acepta string y no re-infla), con lo que
+ * le aplican el pre-conteo y los topes de texto/regiones igual que al
+ * resto. `DecompressionStream` ya lo usa el vendor (Kontakt/MPC-XPM) y el
+ * proyecto exige Node ≥ 18: sin riesgo nuevo de plataforma.
+ */
+async function inflateAdvGzipCapped(filename: string, data: Uint8Array<ArrayBuffer>): Promise<string> {
+  const ds = new DecompressionStream('gzip');
+  const writePromise = (async () => {
+    const writer = ds.writable.getWriter();
+    try {
+      await writer.write(data);
+    } finally {
+      await writer.close();
+    }
+  })();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    const reader = ds.readable.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(
+          `Ableton preset inflates too large (${filename}: >${MAX_SAMPLER_DEFINITION_TEXT_BYTES} bytes from ${data.byteLength} compressed)`
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    await writePromise.catch(() => undefined);
+  }
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) {
+    out.set(c, pos);
+    pos += c.byteLength;
+  }
+  return new TextDecoder('utf-8').decode(out);
+}
 
 function isTagBoundary(ch: string): boolean {
   return ch.length === 0 || !/[A-Za-z0-9_]/.test(ch);
@@ -80,7 +140,13 @@ function pickRegionTags(filename: string): string[] {
   return FALLBACK_REGION_TAGS;
 }
 
+const KNOWN_TEXT_EXTENSIONS = [
+  '.dspreset', '.nki', '.nki.xml', '.multisample', 'multisample.xml', '.talsmpl',
+  '.txprog', '.zmap', '.prt_omn', '.vstpreset.xml', '.adv', '.synx', '-entry.txt', '.exs',
+];
+
 function assertRegionTagCountSafe(filename: string, text: string): void {
+  if (!text.includes('<')) return;
   const lowerText = text.toLowerCase();
   const tags = pickRegionTags(filename);
   let total = 0;
@@ -105,14 +171,43 @@ export async function parseUniversalSamplerCapped(
   data: ArrayBuffer | string,
   ...rest: unknown[]
 ): Promise<ParsedSamplerPreset> {
+  // Nivel -1 (ola 8): `.adv` gzip se infla aquí con tope; el vendor lo
+  // recibiría sin límite. Se pasa como string para no re-inflar.
+  if (
+    typeof data !== 'string' &&
+    filename.toLowerCase().endsWith('.adv') &&
+    isGzipMagic(data)
+  ) {
+    const xml = await inflateAdvGzipCapped(filename, new Uint8Array(data));
+    assertRegionTagCountSafe(filename, xml);
+    const preset = await (
+      parseUniversalSampler as (...args: unknown[]) => Promise<{ regions?: unknown[] }>
+    )(filename, xml, ...rest);
+    const count = Array.isArray(preset?.regions) ? (preset.regions as unknown[]).length : 0;
+    if (count > MAX_SAMPLER_PRESET_REGIONS) {
+      throw new Error(
+        `Sampler preset declares too many regions (${filename}: ${count}, max ${MAX_SAMPLER_PRESET_REGIONS})`
+      );
+    }
+    return preset as ParsedSamplerPreset;
+  }
+
   let textForTagCount: string | undefined;
   if (typeof data !== 'string') {
+    const knownTextExt = KNOWN_TEXT_EXTENSIONS.some((e) => filename.toLowerCase().endsWith(e));
     if (looksLikeTextDefinition(data)) {
+      // Orden ola 6 intacto: tamaño → pre-conteo → vendor → regiones.
       if (data.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
         throw new Error(
           `Sampler definition too large (${filename}: ${data.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
         );
       }
+      textForTagCount = new TextDecoder('utf-8').decode(data);
+    } else if (knownTextExt) {
+      // Formato de texto conocido pero sin olor a texto (BOM, espacios
+      // iniciales o binario con esa extensión): pre-contar SIN compuerta
+      // de tamaño, para no romper `.nki` binarios legítimos de > 8 MB
+      // (no contienen estas etiquetas en cantidad).
       textForTagCount = new TextDecoder('utf-8').decode(data);
     }
   } else {
