@@ -15,7 +15,7 @@
 import { getAppLocale, onAppLocaleChange } from '../core/i18n.ts';
 import type { WorkingMode, Zone, ExtendedRegion } from '../core/types.ts';
 import {
-  listZipSamplerPrograms,
+  listZipSamplerProgramsCapped,
   parseUniversalSamplerCapped,
   type ParsedSamplerPreset,
 } from '../core/import/rawSamplerParsers.ts';
@@ -673,7 +673,7 @@ export class UniversalImportModal {
         preset = await parseUniversalSamplerCapped(filename, buffer, siblings);
       } else {
         if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb)$/i.test(filename)) {
-          const programs = await listZipSamplerPrograms(filename, buffer);
+          const programs = await listZipSamplerProgramsCapped(filename, buffer);
           if (programs.length > 1) {
             this.isInspecting = false;
             this.render();

@@ -1366,3 +1366,74 @@ runSecurityTestsPart12().catch((err) => {
   console.error('Security test (part 12) failed:', err);
   process.exit(1);
 });
+
+// Ola 11 — ZIP-anidado: el vendor indexaba y extraía CADA entrada del
+// `.zip`/`.xpn` sin topes propios, y las compuertas S6.7–S6.7d solo miraban
+// el fichero exterior. Un `.dspreset` con 190k etiquetas sin cerrar metido
+// en un `.xpn` de 4 MB esquivaba el pre-conteo y colgaba el hilo > 100 s
+// (cuadrático medido: 2k→93 ms, 8k→1,5 s, 20k→7,2 s); un `.xpm` gzip
+// anidado se inflaba sin tope. `assertZipContentsSafe` replica las
+// compuertas planas por entrada + recurre en zips anidados (tope prof. 3).
+
+async function runSecurityTestsPart13(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 13: nested-zip sweep) ===');
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const { gzipSync } = await import('node:zlib');
+  const { listZipSamplerProgramsCapped, parseUniversalSamplerCapped } =
+    await import('../src/core/import/rawSamplerParsers.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const ab = (u: Uint8Array) => u.buffer as ArrayBuffer;
+
+  // 26a. dspreset anidado con 190k etiquetas sin cerrar (4 MB en `.xpn`):
+  // pre-fix colgaba > 100 s; ahora muere en el pre-conteo por entrada.
+  const cpuXml = `<DecentSampler><ui/><groups><group>${'<sample rootNote="60"'.repeat(190000)}</group></groups></DecentSampler>`;
+  const cpuXpn = createZipArchive([{ path: 'cpu.dspreset', data: enc(cpuXml) }]);
+  let t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('nested.xpn', ab(cpuXpn), new Map()),
+    /pre-parse/,
+    'dspreset anidado debe morir en el pre-conteo, no colgar el hilo'
+  );
+  await assert.rejects(
+    listZipSamplerProgramsCapped('nested.xpn', ab(cpuXpn)),
+    /pre-parse/,
+    'el listado también debe barrer antes de extraer'
+  );
+  let dt = Date.now() - t0;
+  assert.ok(dt < 15000, `rechazo anidado rápido (fue ${dt}ms; pre-fix: >100000ms)`);
+  console.log('[PASS] 26a. dspreset anidado cortado sin colgar');
+
+  // 26b. `.xpm` gzip válido anidado (30k capas): el inflado anidado ya no
+  // es libre — o cabe y muere en el tope post-parse, sin amplificación.
+  const layers: string[] = [];
+  for (let i = 0; i < 30000; i++) layers.push(`{"sampleName":"s${i}.wav","rootNote":60}`);
+  const mpcJson = `{"data":{"name":"B","type":0,"bank":[{"layersv":[${layers.join(',')}]}]}}`;
+  const nestedGz = new Uint8Array(gzipSync(Buffer.from(mpcJson, 'utf8')));
+  const xpmXpn = createZipArchive([{ path: 'prog.xpm', data: nestedGz }]);
+  t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('nested2.xpn', ab(xpmXpn), new Map()),
+    /too many regions/,
+    '30k capas anidadas deben morir en el tope post-parse'
+  );
+  dt = Date.now() - t0;
+  assert.ok(dt < 30000, `resolución acotada (fue ${dt}ms)`);
+  console.log('[PASS] 26b. xpm gzip anidado acotado');
+
+  // 26c. Legítimo anidado intacto: dspreset mínimo en `.xpn` parsea y lista.
+  const tinyDs = '<?xml version="1.0"?><DecentSampler><groups><group>' +
+    '<sample path="a.wav" rootNote="60"/></group></groups></DecentSampler>';
+  const okXpn = createZipArchive([{ path: 'ok.dspreset', data: enc(tinyDs) }]);
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('ok.xpn', ab(okXpn), new Map()),
+    'dspreset mínimo anidado no debe trippear el barrido'
+  );
+  const listed = await listZipSamplerProgramsCapped('ok.xpn', ab(okXpn));
+  assert.ok(Array.isArray(listed), 'el listado anidado sigue funcionando');
+  console.log('[PASS] 26c. legítimo anidado intacto');
+}
+
+runSecurityTestsPart13().catch((err) => {
+  console.error('Security test (part 13) failed:', err);
+  process.exit(1);
+});

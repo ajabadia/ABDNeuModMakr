@@ -12,7 +12,7 @@ import { withLoading } from '../../ui/LoadingModal';
 import { MultiInstrumentModal } from '../../ui/MultiInstrumentModal';
 import { applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import {
-  listZipSamplerPrograms,
+  listZipSamplerProgramsCapped,
   parseUniversalSamplerCapped,
 } from '../../core/import/rawSamplerParsers.ts';
 
@@ -95,7 +95,7 @@ export async function importUniversalSamplerFiles(
 
     const primarySampler = universalSamplerFiles[0];
     if (universalSamplerFiles.length === 1) {
-      const programs = await listZipSamplerPrograms(primarySampler.name, primarySampler.buffer);
+      const programs = await listZipSamplerProgramsCapped(primarySampler.name, primarySampler.buffer);
       if (programs.length > 1) {
         const multiModal = new MultiInstrumentModal();
         multiModal.open({
@@ -137,7 +137,7 @@ export async function importUniversalSamplerFiles(
       folderPath: string;
     }> = [];
     for (const uf of universalSamplerFiles) {
-      const subProgs = await listZipSamplerPrograms(uf.name, uf.buffer);
+      const subProgs = await listZipSamplerProgramsCapped(uf.name, uf.buffer);
       if (subProgs.length > 0) {
         const prefix = uf.path.replace(/\.[^.]+$/, '');
         for (const sp of subProgs) {

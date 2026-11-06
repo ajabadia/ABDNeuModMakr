@@ -10,7 +10,7 @@ import { extractFolderFilesToCandidates, extractFolderLoopsToCandidates } from '
 import type { FolderFileInput } from '../../core/batch/FolderBatchExtractor.ts';
 import { discoverTriageReport, extractTriageDefinitionCandidates, indexTriageBuffers, partitionTriageSelection } from '../../app/triageGate.ts';
 import type { TriageExpandedFile } from '../../app/triageGate.ts';
-import { listZipSamplerPrograms, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
+import { listZipSamplerProgramsCapped, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
 import { applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
 import { slugifyModelName } from '../../core/modelSlug.ts';
@@ -162,7 +162,7 @@ export async function loadExpandedFiles(modal: BatchModalCore, inputFiles: Triag
                 let parsedAsContainer = false;
                 if (!['wav', 'aif', 'aiff', 'aifc', 'flac', 'mp3', 'ogg', 'oga', 'm4a', 'aac', 'opus', 'webm', 'caf'].includes(ext)) {
                   try {
-                    const diskProgs = await listZipSamplerPrograms(baseName, ef.buffer);
+                    const diskProgs = await listZipSamplerProgramsCapped(baseName, ef.buffer);
                     const progIdsToExtract = diskProgs.length > 0 ? diskProgs.map((p) => p.id) : [undefined];
                     for (let idx = 0; idx < progIdsToExtract.length; idx++) {
                       const progId = progIdsToExtract[idx];

@@ -6,9 +6,17 @@
 export * from '@abdsynths/shared/formats/sampler/rawSamplerParsers.ts';
 
 import {
+  listZipSamplerPrograms,
   parseUniversalSampler,
+  type ArchiveSamplerProgramInfo,
   type ParsedSamplerPreset,
 } from '@abdsynths/shared/formats/sampler/rawSamplerParsers.ts';
+
+import {
+  assertZipIndexWithinCaps,
+  extractZipEntry,
+  indexZipArchive,
+} from '../../formats/ZipArchive.ts';
 
 /**
  * S6.7 — compuerta anti-preset-monstruo (red-team 2026-11-06, ola 6).
@@ -172,15 +180,119 @@ function looksLikeTextDefinition(data: ArrayBuffer): boolean {
   return first === 0x3c || first === 0x7b || first === 0x5b;
 }
 
+/** Magia ZIP (`PK\x03\x04`, igual que el `isZipHeader` privado del vendor). */
+function isZipMagicBytes(data: Uint8Array): boolean {
+  return (
+    data.byteLength >= 4 &&
+    data[0] === 0x50 &&
+    data[1] === 0x4b &&
+    data[2] === 0x03 &&
+    data[3] === 0x04
+  );
+}
+
+function isGzipMagicBytes(data: Uint8Array): boolean {
+  return data.byteLength >= 2 && data[0] === 0x1f && data[1] === 0x8b;
+}
+
+const NESTED_ZIP_EXTENSIONS = ['.zip', '.xpn'];
+const MAX_NESTED_ZIP_DEPTH = 3;
+
+/**
+ * S6.7f — pre-barrido anti-ZIP-anidado (red-team 2026-11-06, ola 11).
+ *
+ * El vendor, al recibir un `.zip`/`.xpn`, indexa y extrae CADA entrada con
+ * `extractZipEntry` sin tope propio: las compuertas S6.7/S6.7b/S6.7c/S6.7d
+ * solo miraban el fichero exterior, así que un `.dspreset` con 190k
+ * etiquetas sin cerrar metido en un `.xpn` de 4 MB esquivaba el pre-conteo
+ * y colgaba el hilo > 100 s (cuadrático verificado: 2k→93 ms, 8k→1,5 s,
+ * 20k→7,2 s, 190k→horas), y un `.xpm` gzip anidado se inflaba sin tope.
+ *
+ * El barrido replica las compuertas planas por entrada (índice S6.1 +
+ * texto 8 MB + pre-conteo + inflado gzip acotado como ensayo: si cabe, el
+ * re-inflado del vendor ya está probado acotado) y recurre en `.zip`/`.xpn`
+ * anidados — justo los que el vendor recurre internamente — con tope de
+ * profundidad. Las entradas de audio se saltan: su inflado lo acotan los
+ * topes S6.1 por cabecera y su decodificación las compuertas de la ola 4.
+ */
+async function assertZipContentsSafe(
+  filename: string,
+  zipBytes: Uint8Array,
+  depth = 0,
+): Promise<void> {
+  if (depth > MAX_NESTED_ZIP_DEPTH) {
+    throw new Error(
+      `Sampler archive nested too deep (${filename}, max ${MAX_NESTED_ZIP_DEPTH})`
+    );
+  }
+  const index = indexZipArchive(zipBytes);
+  assertZipIndexWithinCaps(index);
+  for (const entry of index) {
+    const lowerPath = entry.path.toLowerCase();
+    if (NESTED_ZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+      await assertZipContentsSafe(entry.path, extractZipEntry(zipBytes, entry), depth + 1);
+      continue;
+    }
+    if (CAPPED_GZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+      const entryBytes = extractZipEntry(zipBytes, entry);
+      if (isGzipMagicBytes(entryBytes)) {
+        await inflateGzipTextCapped(entry.path, new Uint8Array(entryBytes));
+      }
+      continue;
+    }
+    if (KNOWN_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+      const entryBytes = extractZipEntry(zipBytes, entry);
+      if (
+        looksLikeTextDefinition(
+          entryBytes.buffer.slice(entryBytes.byteOffset, entryBytes.byteOffset + entryBytes.byteLength) as ArrayBuffer,
+        ) &&
+        entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES
+      ) {
+        throw new Error(
+          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+        );
+      }
+      assertRegionTagCountSafe(entry.path, new TextDecoder('utf-8').decode(entryBytes));
+    }
+  }
+}
+
+/**
+ * `listZipSamplerPrograms` con compuerta S6.7f: el listado del vendor
+ * extrae y parsea entradas (incl. gunzip de `.xpm`) sin topes; el barrido
+ * previo lo deja probadamente acotado antes de delegar.
+ */
+export async function listZipSamplerProgramsCapped(
+  filename: string,
+  data: ArrayBuffer,
+): Promise<ArchiveSamplerProgramInfo[]> {
+  const bytes = new Uint8Array(data);
+  const lowerName = filename.toLowerCase();
+  if (NESTED_ZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) || isZipMagicBytes(bytes)) {
+    await assertZipContentsSafe(filename, bytes);
+  }
+  return listZipSamplerPrograms(filename, data);
+}
+
 export async function parseUniversalSamplerCapped(
   filename: string,
   data: ArrayBuffer | string,
   ...rest: unknown[]
 ): Promise<ParsedSamplerPreset> {
+  const lowerName = filename.toLowerCase();
+  // Nivel -2 (ola 11): contenedor ZIP — barrido de entradas anidadas con
+  // los mismos topes que en plano, antes de que el vendor extraiga nada.
+  if (
+    typeof data !== 'string' &&
+    (NESTED_ZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) ||
+      isZipMagicBytes(new Uint8Array(data)))
+  ) {
+    await assertZipContentsSafe(filename, new Uint8Array(data));
+  }
+
   // Nivel -1 (olas 8–9): `gzip` de preset se infla aquí con tope; el
   // vendor lo recibiría sin límite. Se pasa como string para no re-inflar
   // (ninguna de estas rutas re-comprime: el vendor detecta gzip por magia).
-  const lowerName = filename.toLowerCase();
   if (
     typeof data !== 'string' &&
     CAPPED_GZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) &&

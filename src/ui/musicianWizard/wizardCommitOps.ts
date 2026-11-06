@@ -9,7 +9,7 @@ import { bridgeClient } from '../../core/bridge/BridgeClient.ts';
 import { decodeWav, decodeAiff, encodePcm16Wav, transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { analyzeImportPreflight, applyPreflightImportAdaptations } from '../../core/import/importPreflight.ts';
 import { isNeuronBankOrModelInput, listNeuronBankModels, parseNeuronBankOrModelToPreset } from '../../core/import/neuronBankImporter.ts';
-import { listZipSamplerPrograms, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
+import { listZipSamplerProgramsCapped, parseUniversalSamplerCapped } from '../../core/import/rawSamplerParsers.ts';
 import type { ParsedSamplerPreset } from '../../core/import/rawSamplerParsers.ts';
 import { inspectWizardMaterialFilename, runWizardCleanStep, runWizardSliceAndMapStep, sanitizeClassicModelName } from '../../core/wizard/musicianWizard.ts';
 import { MultiInstrumentModal } from '../MultiInstrumentModal.ts';
@@ -176,7 +176,7 @@ export async function handleFilesSelected(modal: WizardModalCore, files: FileLis
 
       // 3. Pre-mapped Sampler Bank (.sf2, .sfz, .dspreset, .zip, .iso, etc.)
       if (/\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|x7u|x8u|x3a)$/i.test(primary.name)) {
-        const programs = await listZipSamplerPrograms(primary.name, buffer);
+        const programs = await listZipSamplerProgramsCapped(primary.name, buffer);
         if (programs.length > 1) {
           modal.isBusy = false;
           const multi = new MultiInstrumentModal();
