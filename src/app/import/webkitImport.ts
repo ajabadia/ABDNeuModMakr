@@ -3,8 +3,11 @@ import { isTriageContainerFileName, type TriageExpandedFile } from '../triageGat
 import {
   isSupportedAudioFileName,
   parseMName,
-  parseMapScript,
 } from '@abdsynths/shared/formats/neuron';
+import {
+  APP_MAX_MAP_SCRIPT_TEXT_BYTES,
+  parseMapScriptCapped,
+} from '../../formats/ModelFormat.ts';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../../ui/NeuronDbModal';
 import { toast } from '../../ui/notify';
 import type { FolderFileInput } from '../../core/batch/FolderBatchExtractor';
@@ -152,8 +155,13 @@ export async function importFromWebkitFileList(
               item.sourceCount = scapeCount;
 
               if (mapScriptFile) {
+                if (mapScriptFile.size > APP_MAX_MAP_SCRIPT_TEXT_BYTES) {
+                  throw new Error(
+                    `map.script too large (${mapScriptFile.name}: ${mapScriptFile.size} bytes, max ${APP_MAX_MAP_SCRIPT_TEXT_BYTES})`
+                  );
+                }
                 const txt = await mapScriptFile.text();
-                const ms = parseMapScript(txt);
+                const ms = parseMapScriptCapped(txt, mapScriptFile.name);
                 item.zoneCount = ms.activeZones.length || Math.max(1, scapeCount);
                 if (ms.activeZones.length > 0) {
                   item.lowKey = ms.activeZones[0].lowKey;

@@ -5,7 +5,8 @@
 // go through ImportContext so this module owns no DOM singletons.
 // ─────────────────────────────────────────────────────────
 
-import { isSupportedAudioFileName, parseMName, parseMapScript } from '@abdsynths/shared/formats/neuron';
+import { isSupportedAudioFileName, parseMName } from '@abdsynths/shared/formats/neuron';
+import { assertMapScriptBufferSafe, parseMapScriptCapped } from '../../formats/ModelFormat.ts';
 import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { stickModesToComplexity, type NeuronDbModelEntry } from '../../ui/NeuronDbModal';
 import { toast, confirmDialog } from '../../ui/notify';
@@ -214,8 +215,9 @@ export async function importMixedFilesOrZip(
           if (base === 'mname') {
             name = parseMName(new Uint8Array(f.buffer));
           } else if (base === 'map.script') {
+            assertMapScriptBufferSafe(f.buffer, f.name);
             const txt = new TextDecoder('latin1').decode(f.buffer);
-            const ms = parseMapScript(txt);
+            const ms = parseMapScriptCapped(txt, f.name);
             zoneCount = ms.activeZones.length;
             if (ms.activeZones.length > 0) {
               lowKey = ms.activeZones[0].lowKey;

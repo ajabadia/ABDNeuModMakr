@@ -1299,3 +1299,70 @@ runSecurityTestsPart11().catch((err) => {
   console.error('Security test (part 11) failed:', err);
   process.exit(1);
 });
+
+// ── Parte 12 (red-team 2026-11-06, ola 10): map.script gigante + .dwp monstruo. ──
+// `parseMapScript` troceaba sin tope (30 MB basura → 503 ms + 225 MB RSS;
+// 1 GB tumbaría la pestaña) y `.dwp` apilaba zonas sin pre-conteo binario.
+// `decodeNcw` es inalcanzable (solo lo importa un test) y `parseDwpChunks`
+// está acotado por el buffer: verificados sin amplificación.
+
+async function runSecurityTestsPart12(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 12: map.script cap + dwp zones) ===');
+  const { APP_MAX_MAP_SCRIPT_TEXT_BYTES, assertMapScriptBufferSafe, parseMapScriptCapped } =
+    await import('../src/formats/ModelFormat.ts');
+  const { parseUniversalSamplerCapped } = await import('../src/core/import/rawSamplerParsers.ts');
+
+  // 25a. map.script de 2 MB: muere por bytes y por texto, sin trocear nada.
+  const bigText = 'x'.repeat(2 * 1024 * 1024);
+  assert.throws(
+    () => parseMapScriptCapped(bigText, 'evil-model'),
+    /map\.script too large/,
+    'texto gigante debe rechazarse antes del split'
+  );
+  assert.throws(
+    () => assertMapScriptBufferSafe(new Uint8Array(2 * 1024 * 1024), 'evil-model'),
+    /map\.script too large/,
+    'buffer gigante debe rechazarse antes de decodificar'
+  );
+  assert.ok(APP_MAX_MAP_SCRIPT_TEXT_BYTES === 1024 * 1024, 'tope 1 MB (40x del canónico)');
+  console.log('[PASS] 25a. map.script gigante cortado por bytes y por texto');
+
+  // 25b. map.script canónico intacto (formato 1027 líneas, cuenta zonas).
+  const canon = [
+    'MapVersionMajor 0', 'MapVersionMinor 9', 'MapVersionBuild 2',
+    '000LowKey 48', '000HiKey 52', '000RootKey 50', '000LowSource 1', '000HiSource 2',
+    '001LowKey 53', '001HiKey 60', '001RootKey 57', '001LowSource 3',
+  ].join('\n');
+  const ms = parseMapScriptCapped(canon, 'ok-model');
+  assert.strictEqual(ms.activeZones.length, 2, 'dos zonas activas');
+  assert.strictEqual(ms.activeZones[0].sampleLow, '000001.scape', 'mapea al .scape');
+  console.log('[PASS] 25b. map.script canónico intacto');
+
+  // 25c. `.dwp` con 100k contenedores (2,8 MB) muere en el tope post-parse;
+  // uno legítimo de 1 zona pasa. (parseDwpChunks ya es O(n) acotado.)
+  const le32 = (v: number) => [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
+  const mkContainer = () => {
+    const sub = [...le32(0x0004), ...le32(5), ...le32(0), ...[0x73, 0x2e, 0x77, 0x61, 0x76]];
+    return [...le32(0x0003), ...le32(sub.length), ...le32(0), ...sub];
+  };
+  const head = [...[0x44, 0x77, 0x50, 0x72], ...new Array(0x5a - 4).fill(0),
+    ...le32(0x0066), ...le32(4), ...le32(0), ...[0x54, 0x65, 0x73, 0x74]];
+  const evilParts = [...head];
+  for (let i = 0; i < 100000; i++) evilParts.push(...mkContainer());
+  const t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('evil.dwp', new Uint8Array(evilParts).buffer as ArrayBuffer, new Map()),
+    /too many regions/,
+    '100k zonas .dwp deben morir en el tope post-parse'
+  );
+  assert.ok(Date.now() - t0 < 5000, `rechazo rápido (fue ${Date.now() - t0}ms)`);
+  const okDwp = new Uint8Array([...head, ...mkContainer(), ...le32(0x0002), ...le32(0), ...le32(0)]);
+  const ok = await parseUniversalSamplerCapped('ok.dwp', okDwp.buffer as ArrayBuffer, new Map());
+  assert.strictEqual(ok.regions.length, 1, '.dwp de 1 zona intacto');
+  console.log('[PASS] 25c. .dwp monstruo cortado; legítimo intacto');
+}
+
+runSecurityTestsPart12().catch((err) => {
+  console.error('Security test (part 12) failed:', err);
+  process.exit(1);
+});

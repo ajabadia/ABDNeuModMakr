@@ -38,7 +38,7 @@ export interface NeuronBankModelSummary {
   detail: string;
 }
 
-const NEURON_EXT_RE = /\.(neuronikmodel|nmmodel|scape|sphere|model|nmpack)$/i;
+const NEURON_EXT_RE = /\.(neuronikmodel|nmmodel|scape|sphere|model|nmpack|axpreset)$/i;
 const NEURON_SCRIPT_NAME_RE = /^(mname|map\.script)$/i;
 
 function hasAnMagic(bytes: Uint8Array): boolean {
@@ -77,7 +77,9 @@ function looksLikeNeuronikModelJson(bytes: Uint8Array): boolean {
     sample.includes('"modern-neural"') ||
     sample.includes('"NEURONMM_TIMECAPSULE"') ||
     sample.includes('"axionik-expanded"') ||
-    (sample.includes('"partialCount"') && sample.includes('"zones"'))
+    (sample.includes('"partialCount"') && sample.includes('"zones"')) ||
+    sample.includes('"embeddedModel"') ||
+    (sample.includes('"formatVersion": 2') && sample.includes('"extendedState"'))
   );
 }
 
