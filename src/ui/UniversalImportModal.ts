@@ -576,7 +576,7 @@ export class UniversalImportModal {
         let zipFileName = filename;
         let zipBuffer = buffer;
         const zipFileCandidate = Array.from(allFiles).find((f) =>
-          /\.(zip|nmpack|model)$/i.test(f.name)
+          /\.(zip|nmpack|model|axpreset)$/i.test(f.name)
         );
         if (zipFileCandidate && zipFileCandidate !== file) {
           zipFileName = zipFileCandidate.name;
