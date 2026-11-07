@@ -116,8 +116,8 @@ async function runSecurityTests(): Promise<void> {
   );
   console.log('[PASS] 3. sampleLow traversal rechazado');
 
-  // 4. bank cover allowlist
-  assert.equal(isSafeCoverDataUrl('data:image/webp;base64,AAAA'), true);
+  // 4. bank cover allowlist (S4.1: 'AAAA' ya no vale — cabecera ilegible = inseguro; ver parte 15)
+  assert.equal(isSafeCoverDataUrl('data:image/webp;base64,AAAA'), false);
   assert.equal(isSafeCoverDataUrl('javascript:alert(1)'), false);
   assert.equal(isSafeCoverDataUrl('data:image/svg+xml;base64,AAAA'), false);
   console.log('[PASS] 4. bank cover allowlist');
@@ -1523,5 +1523,68 @@ async function runSecurityTestsPart14(): Promise<void> {
 
 runSecurityTestsPart14().catch((err) => {
   console.error('Security test (part 14) failed:', err);
+  process.exit(1);
+});
+
+// Ola 13 — bomba de descompresión vía cover: un data-URL de 66 chars
+// declaraba gigapíxeles (PNG 40000×40000 = 6,4 GB de bitmap en el
+// renderer al mostrar el cover importado) y pasaba la compuerta S4, que
+// solo miraba prefijo y longitud. S4.1 lee la cabecera (PNG IHDR@16,
+// WebP VP8/VP8L/VP8X) y topa a 2048 px (máximo del generador propio).
+
+async function runSecurityTestsPart15(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 15: cover dimensions) ===');
+  const { isSafeCoverDataUrl, MAX_COVER_DIMENSION_PX } =
+    await import('../src/core/bankService.ts');
+  assert.strictEqual(MAX_COVER_DIMENSION_PX, 2048, 'tope 2048 px = clamp del generador');
+  const b64 = (a: number[]) => Buffer.from(a).toString('base64');
+  const png = (w: number, h: number) => 'data:image/png;base64,' + b64([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
+    0x49, 0x48, 0x44, 0x52,
+    (w >>> 24) & 255, (w >>> 16) & 255, (w >>> 8) & 255, w & 255,
+    (h >>> 24) & 255, (h >>> 16) & 255, (h >>> 8) & 255, h & 255,
+    8, 2, 0, 0, 0,
+  ]);
+  const vp8 = (w: number, h: number) => {
+    const ww = w & 0x3fff, hh = h & 0x3fff;
+    return 'data:image/webp;base64,' + b64([
+      0x52, 0x49, 0x46, 0x46, 0x24, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+      0x56, 0x50, 0x38, 0x20, 0x10, 0, 0, 0,
+      0x10, 0x00, 0x00, 0x9d, 0x01, 0x2a, ww & 255, (ww >>> 8) & 255, hh & 255, (hh >>> 8) & 255,
+    ]);
+  };
+
+  // 28a. Bombas de 66–71 chars (pre-fix: `true`).
+  assert.strictEqual(isSafeCoverDataUrl(png(40000, 40000)), false, 'PNG 40000² debe rechazarse');
+  assert.strictEqual(isSafeCoverDataUrl(png(100000, 100000)), false, 'PNG 100000² debe rechazarse');
+  assert.strictEqual(isSafeCoverDataUrl(vp8(16383, 16383)), false, 'VP8 máximo debe rechazarse');
+  console.log('[PASS] 28a. bombas gigapíxel rechazadas');
+
+  // 28b. Cabeceras mutadas: truncada, ceros, dimensión 0, borde 2049.
+  assert.strictEqual(isSafeCoverDataUrl('data:image/png;base64,iVBOR'), false, 'truncada');
+  assert.strictEqual(isSafeCoverDataUrl('data:image/png;base64,' + b64(new Array(40).fill(0))), false, 'ceros');
+  assert.strictEqual(isSafeCoverDataUrl(png(0, 512)), false, 'ancho 0');
+  assert.strictEqual(isSafeCoverDataUrl(png(2049, 2049)), false, 'borde 2049');
+  assert.strictEqual(isSafeCoverDataUrl(vp8(0, 0)), false, 'VP8 cero');
+  console.log('[PASS] 28b. cabeceras mutadas rechazadas (fail-closed)');
+
+  // 28c. Legítimos intactos: PNG 1×1/512/2048 y VP8 512×300.
+  assert.strictEqual(isSafeCoverDataUrl(png(1, 1)), true, 'PNG 1×1');
+  assert.strictEqual(isSafeCoverDataUrl(png(512, 512)), true, 'PNG 512');
+  assert.strictEqual(isSafeCoverDataUrl(png(2048, 2048)), true, 'PNG 2048 (tope)');
+  assert.strictEqual(isSafeCoverDataUrl(vp8(512, 300)), true, 'VP8 512×300');
+  console.log('[PASS] 28c. legítimos intactos hasta 2048 px');
+
+  // 28d. Comportamiento previo retenido: gif/svg fuera, >700k fuera.
+  assert.strictEqual(
+    isSafeCoverDataUrl('data:image/gif;base64,R0lGODdhAQABAIAAAP///////ywAAAAAAQABAAACAkQBADs='),
+    false, 'gif fuera de allowlist'
+  );
+  assert.strictEqual(isSafeCoverDataUrl('data:image/png;base64,' + 'A'.repeat(700000)), false, 'oversize');
+  console.log('[PASS] 28d. allowlist y tope de longitud retenidos');
+}
+
+runSecurityTestsPart15().catch((err) => {
+  console.error('Security test (part 15) failed:', err);
   process.exit(1);
 });

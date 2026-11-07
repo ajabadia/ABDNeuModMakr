@@ -46,13 +46,80 @@ import { listSublibraries, createSublibrary, deleteSublibrary, moveModelToSublib
 const STORAGE_BANK_KEY = 'abd_neumodmakr_bank_v1';
 const STORAGE_SUBLIBRARIES_KEY = 'abd_neumodmakr_sublibraries_v1';
 
-/** S4: allowlist para covers persistidos — frena `javascript:` y SVG con script. */
+/**
+ * S4: allowlist para covers persistidos — frena `javascript:` y SVG con script.
+ * S4.1 (red-team 2026-11-06, ola 13): tope de dimensiones — un data-URL de
+ * 66 chars podía declarar gigapíxeles (PNG 40000×40000 = 6,4 GB de bitmap
+ * al mostrarlo en el renderer; WebP VP8 llega a 16383×16383). El generador
+ * propio limita a 2048 px (`clampCoverSize` en coverArtwork.ts); se impone
+ * lo mismo a covers importados leyendo solo la cabecera (PNG IHDR@16,
+ * WebP VP8/VP8L/VP8X). Cabecera ilegible o fuera de tope = inseguro.
+ */
+export const MAX_COVER_DIMENSION_PX = 2048;
+
+function coverHeaderDimensionsOk(headerLatin1: string): boolean {
+  const b = (i: number): number => headerLatin1.charCodeAt(i) & 0xff;
+  const u32be = (o: number): number => b(o) * 16777216 + (b(o + 1) << 16) + (b(o + 2) << 8) + b(o + 3);
+  // PNG: firma de 8 + longitud IHDR + 'IHDR' + w32 + h32.
+  if (
+    headerLatin1.length >= 24 &&
+    b(0) === 0x89 && b(1) === 0x50 && b(2) === 0x4e && b(3) === 0x47 &&
+    b(12) === 0x49 && b(13) === 0x48 && b(14) === 0x44 && b(15) === 0x52
+  ) {
+    const w = u32be(16);
+    const h = u32be(20);
+    return w > 0 && h > 0 && w <= MAX_COVER_DIMENSION_PX && h <= MAX_COVER_DIMENSION_PX;
+  }
+  // WebP: 'RIFF' + tamaño + 'WEBP' + FourCC + ...
+  if (
+    headerLatin1.length >= 30 &&
+    b(0) === 0x52 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x46 &&
+    b(8) === 0x57 && b(9) === 0x45 && b(10) === 0x42 && b(11) === 0x50
+  ) {
+    const fourcc = String.fromCharCode(b(12), b(13), b(14), b(15));
+    if (fourcc === 'VP8 ') {
+      // tag(3) + startcode(3) + w14 + h14 en el payload (offset 20).
+      const w = b(26) | ((b(27) & 0x3f) << 8);
+      const h = b(28) | ((b(29) & 0x3f) << 8);
+      return w > 0 && h > 0 && w <= MAX_COVER_DIMENSION_PX && h <= MAX_COVER_DIMENSION_PX;
+    }
+    if (fourcc === 'VP8L') {
+      // firma 0x2F + 14 bits w-1 + 14 bits h-1.
+      if (b(20) !== 0x2f) return false;
+      const bits = b(21) | (b(22) << 8) | (b(23) << 16) | (b(24) << 24);
+      const w = (bits & 0x3fff) + 1;
+      const h = ((bits >>> 14) & 0x3fff) + 1;
+      return w <= MAX_COVER_DIMENSION_PX && h <= MAX_COVER_DIMENSION_PX;
+    }
+    if (fourcc === 'VP8X') {
+      // flags(1) + reservado(3) + canvas w-1 + h-1 de 24 bits.
+      const w = (b(24) | (b(25) << 8) | (b(26) << 16)) + 1;
+      const h = (b(27) | (b(28) << 8) | (b(29) << 16)) + 1;
+      return w <= MAX_COVER_DIMENSION_PX && h <= MAX_COVER_DIMENSION_PX;
+    }
+    return false;
+  }
+  return false;
+}
+
 export function isSafeCoverDataUrl(v: unknown): v is string {
-  return (
-    typeof v === 'string' &&
-    (v.startsWith('data:image/webp;base64,') || v.startsWith('data:image/png;base64,')) &&
-    v.length <= 700_000
-  );
+  if (typeof v !== 'string') return false;
+  const comma = v.indexOf(',');
+  if (comma < 0) return false;
+  const mimeHead = v.slice(0, comma + 1);
+  if (mimeHead !== 'data:image/webp;base64,' && mimeHead !== 'data:image/png;base64,') return false;
+  if (v.length > 700_000) return false;
+  // Primeros 90 bytes bastan (VP8X necesita 30); múltiplo de 4 para `atob`.
+  const b64 = v.slice(comma + 1, comma + 121);
+  const padded = b64.slice(0, Math.floor(b64.length / 4) * 4);
+  if (padded.length < 40) return false;
+  let headerLatin1: string;
+  try {
+    headerLatin1 = atob(padded);
+  } catch {
+    return false;
+  }
+  return coverHeaderDimensionsOk(headerLatin1);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
