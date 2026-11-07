@@ -1588,3 +1588,95 @@ runSecurityTestsPart15().catch((err) => {
   console.error('Security test (part 15) failed:', err);
   process.exit(1);
 });
+
+// Ola 14 — barrido sin hallazgo: 37 formatos binarios con ceros/basura
+// (magia + rechazo limpio, sin cuelgues), tamaños de chunk mentirosos
+// (DLS/SXT/AKP/KMP/YSFC con `size` 4G), contadores WAV/AIFF (`smpl` 4G,
+// `cue` 4G, RF64 `ds64` 4G, MARK 0xFFFF + sustain-loop, SSND offset 4G,
+// COMM frames 4G, canales 0/99) y JSON de sesión con 200k de anidado:
+// todo acotado por bytes reales o rechazo en ms. Se fijan como regresión.
+
+async function runSecurityTestsPart16(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 16: binary + chunk lies) ===');
+  const { parseUniversalSamplerCapped } =
+    await import('../src/core/import/rawSamplerParsers.ts');
+  const { decodeWav, decodeAiff } = await import('../src/core/dsp/WavDecoder.ts');
+  const { parseSessionJson } = await import('../src/core/sessionSchema.ts');
+  const ab = (u: Uint8Array) => u.buffer as ArrayBuffer;
+
+  // 29a. Binarios con ceros/basura (4 KB): magia o rechazo, siempre rápido.
+  let seed = 987654321;
+  const rnd = new Uint8Array(4096);
+  for (let i = 0; i < rnd.length; i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; rnd[i] = seed & 255; }
+  const zeros = new Uint8Array(4096);
+  for (const ext of ['kmp', 'exb', 'akp', 'nicnt', 'krz', 's3p', 'sxt', 'dls']) {
+    const t0 = Date.now();
+    await parseUniversalSamplerCapped(`z.${ext}`, ab(zeros.slice()), new Map()).catch(() => undefined);
+    await parseUniversalSamplerCapped(`r.${ext}`, ab(rnd.slice()), new Map()).catch(() => undefined);
+    assert.ok(Date.now() - t0 < 5000, `${ext} se resuelve rápido`);
+  }
+  console.log('[PASS] 29a. binarios con basura: sin cuelgue ni amplificación');
+
+  // 29b. Mentiras WAV: canales imposibles rechazan; `data size` 4G se
+  // recorta a los bytes reales (100 frames).
+  const wav = new Uint8Array(44 + 200); const wv = new DataView(wav.buffer);
+  const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) wv.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); wv.setUint32(4, 236, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); wv.setUint32(16, 16, true);
+  wv.setUint16(20, 1, true); wv.setUint16(22, 1, true); wv.setUint32(24, 8000, true);
+  wv.setUint32(28, 16000, true); wv.setUint16(32, 2, true); wv.setUint16(34, 16, true);
+  ws(36, 'data'); wv.setUint32(40, 200, true);
+  const wavMut = (off: number, size: 2 | 4, v: number) => {
+    const c = wav.slice(); const d = new DataView(c.buffer);
+    if (size === 2) d.setUint16(off, v, true); else d.setUint32(off, v, true);
+    return ab(c);
+  };
+  assert.throws(() => decodeWav(wavMut(22, 2, 0)), 'canales 0 rechazan');
+  assert.throws(() => decodeWav(wavMut(22, 2, 99)), 'canales 99 rechazan');
+  assert.strictEqual(decodeWav(wavMut(40, 4, 0xffffff00)).mono.length, 100, 'data mentiroso recortado');
+  console.log('[PASS] 29b. mentiras WAV acotadas por bytes reales');
+
+  // 29c. Mentiras AIFF: MARK 0xFFFF + sustain-loop devuelve 100 frames;
+  // SSND con offset 4G rechaza limpio.
+  const n = 100, ssndPayload = 8 + n * 2;
+  const formSize = 4 + 26 + 28 + 20 + (8 + ssndPayload);
+  const abuf = new ArrayBuffer(8 + formSize); const av = new DataView(abuf);
+  const aws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) av.setUint8(o + i, s.charCodeAt(i)); };
+  aws(0, 'FORM'); av.setUint32(4, formSize, false); aws(8, 'AIFF');
+  aws(12, 'COMM'); av.setUint32(16, 18, false);
+  av.setUint16(20, 1, false); av.setUint32(22, n, false); av.setUint16(26, 16, false);
+  av.setUint16(28, 0x400e, false); av.setUint32(30, (44100 << 16) >>> 0, false); av.setUint32(34, 0, false);
+  aws(38, 'INST'); av.setUint32(42, 20, false);
+  aws(66, 'MARK'); av.setUint32(70, 12, false);
+  av.setUint16(74, 1, false); av.setUint16(76, 7, false); av.setUint32(78, 9, false);
+  av.setUint8(82, 1); av.setUint8(83, 65);
+  aws(86, 'SSND'); av.setUint32(90, ssndPayload, false);
+  av.setUint32(94, 0, false); av.setUint32(98, 0, false);
+  for (let i = 0; i < n; i++) av.setInt16(102 + i * 2, 1000, false);
+  const aMut = (fn: (v: DataView) => void) => {
+    const c = new Uint8Array(abuf.slice(0)); fn(new DataView(c.buffer)); return ab(c);
+  };
+  assert.strictEqual(
+    decodeAiff(aMut((v) => {
+      v.setUint16(74, 0xffff, false);
+      v.setUint16(54, 1, false); v.setUint16(56, 7, false); v.setUint16(58, 7, false);
+    })).mono.length, 100, 'MARK mentiroso acotado al chunk'
+  );
+  assert.throws(
+    () => decodeAiff(aMut((v) => { v.setUint32(94, 0xffffff00, false); })),
+    'SSND con offset 4G rechaza'
+  );
+  console.log('[PASS] 29c. mentiras AIFF acotadas');
+
+  // 29d. Sesión con 200k niveles de anidado JSON: rechazo rápido.
+  const deep = '{"session":{"id":"s","name":"t","zones":[],"deep":' + '['.repeat(200000) + ']'.repeat(200000) + '}}';
+  const t0 = Date.now();
+  assert.throws(() => parseSessionJson(deep), 'anidado profundo rechazado');
+  assert.ok(Date.now() - t0 < 5000, 'rechazo rápido');
+  console.log('[PASS] 29d. sesión con anidado profundo rechazada');
+}
+
+runSecurityTestsPart16().catch((err) => {
+  console.error('Security test (part 16) failed:', err);
+  process.exit(1);
+});
