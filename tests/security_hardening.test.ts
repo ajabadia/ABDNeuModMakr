@@ -2307,3 +2307,89 @@ runSecurityTestsPart23().catch((err) => {
   console.error('Security test (part 23) failed:', err);
   process.exit(1);
 });
+
+// Ola 22 — arrays sin tope en el esquema de sesión: las `zones` topan en 128
+// pero las `extendedRegions` no — 300k regiones en 21 MB de JSON pasaban el
+// parse (~0,7 s) y luego cada `pushHistory` clonaba ~80 MB y ~2,2 s POR
+// PULSACIÓN (structuredClone × 50 pasos de undo). Misma familia:
+// `customAttributes` y `tags` de extendedMetadata sin cota. S6.7p topa los
+// tres (regiones 8× las zonas; metadatos 256) con rechazo fail-closed.
+
+async function runSecurityTestsPart24(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 24: session array caps) ===');
+  const { parseSessionJson } = await import('../src/core/sessionSchema.ts');
+
+  const zone = { id: 'z1', lowKey: 0, rootKey: 60, highKey: 127, sampleLow: 'a.wav' };
+  const regions = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `r${i}`, sampleName: 'a.wav', lowKey: 0, highKey: 127, rootKey: 60,
+    }));
+
+  // 37a. 5k regiones (21 MB a escala) mueren pre-clone, rápido y planas.
+  let t0 = Date.now();
+  assert.throws(
+    () => parseSessionJson(JSON.stringify({ session: { name: 't', zones: [zone], extendedRegions: regions(5000) } })),
+    /too many extended regions/,
+    '5k regiones deben rechazarse con tope explícito'
+  );
+  assert.ok(Date.now() - t0 < 5000, 'rechazo rápido sin amplificar');
+  console.log('[PASS] 37a. extendedRegions sin tope cerradas (5k)');
+
+  // 37b. Metadatos sin tope: 300 attrs y 300 tags mueren con su tope.
+  const manyAttrs = Array.from({ length: 300 }, (_, i) => ({ tag: `t${i}`, value: 'v' }));
+  assert.throws(
+    () =>
+      parseSessionJson(
+        JSON.stringify({
+          session: {
+            name: 't',
+            zones: [zone],
+            processConfig: { extendedMetadata: { customAttributes: manyAttrs } },
+          },
+        })
+      ),
+    /too many attributes/,
+    '300 customAttributes deben rechazarse'
+  );
+  assert.throws(
+    () =>
+      parseSessionJson(
+        JSON.stringify({
+          session: {
+            name: 't',
+            zones: [zone],
+            processConfig: { extendedMetadata: { tags: Array.from({ length: 300 }, (_, i) => `tag${i}`) } },
+          },
+        })
+      ),
+    /too many tags/,
+    '300 tags deben rechazarse'
+  );
+  console.log('[PASS] 37b. customAttributes y tags topados (300)');
+
+  // 37c. Legítimo intacto: 2 regiones + metadatos normales parsean.
+  const ok = parseSessionJson(
+    JSON.stringify({
+      session: {
+        name: 'ok',
+        zones: [zone],
+        extendedRegions: regions(2),
+        processConfig: {
+          extendedMetadata: {
+            author: 'tester',
+            tags: ['pad', 'warm'],
+            customAttributes: [{ tag: 'mood', value: 'dark' }],
+          },
+        },
+      },
+    })
+  );
+  assert.equal(ok.extendedRegions?.length, 2, 'regiones honestas intactas');
+  assert.equal(ok.processConfig.extendedMetadata?.tags?.length, 2, 'tags honestos intactos');
+  console.log('[PASS] 37c. sesión honesta con regiones y metadatos intacta');
+}
+
+runSecurityTestsPart24().catch((err) => {
+  console.error('Security test (part 24) failed:', err);
+  process.exit(1);
+});

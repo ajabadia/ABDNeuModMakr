@@ -61,6 +61,16 @@ export const MAX_MODEL_NAME_MODERN = 128;
 
 /** Hard cap: at most one single-note zone per MIDI key. */
 export const MAX_ZONE_COUNT = 128;
+/**
+ * S6.7p (red-team, ola 22): las `extendedRegions` no tenían tope mientras las
+ * `zones` sí (128) — 300k regiones en 21 MB de JSON clonaban ~80 MB y ~2,2 s
+ * POR PULSACIÓN en cada `pushHistory` (structuredClone × 50 pasos). 8× las
+ * zonas da margen de sobra: en la app nacen de las zonas.
+ */
+export const MAX_EXTENDED_REGION_COUNT = 1024;
+/** Misma familia (metadatos sin tope): aunque baratos por ítem, sin cota un array gigante multiplica clones y renders. */
+export const MAX_CUSTOM_ATTRIBUTE_COUNT = 256;
+export const MAX_TAG_COUNT = 256;
 
 /** S3.2 security caps (see ABDShared Docs/architecture/SECURITY_STANDARDS.md). */
 export const MAX_ID_LENGTH = 128;
@@ -514,6 +524,12 @@ export function validateProcessConfig(raw: unknown): ProcessConfig {
     const asStr = (v: unknown): string | undefined => (typeof v === 'string' ? v.trim() : undefined);
     const customAttrs: CustomMetadataTag[] = [];
     if (Array.isArray(meta['customAttributes'])) {
+      if (meta['customAttributes'].length > MAX_CUSTOM_ATTRIBUTE_COUNT) {
+        throw fieldError(
+          'processConfig.extendedMetadata.customAttributes',
+          `too many attributes (${meta['customAttributes'].length}, max ${MAX_CUSTOM_ATTRIBUTE_COUNT})`
+        );
+      }
       for (const item of meta['customAttributes']) {
         if (isRecord(item) && typeof item['tag'] === 'string' && typeof item['value'] === 'string') {
           const t = item['tag'].trim();
@@ -536,7 +552,19 @@ export function validateProcessConfig(raw: unknown): ProcessConfig {
       ...(asStr(meta['license']) ? { license: asStr(meta['license']) } : {}),
       ...(asStr(meta['copyright']) ? { copyright: asStr(meta['copyright']) } : {}),
       ...(asStr(meta['description']) ? { description: asStr(meta['description']) } : {}),
-      ...(Array.isArray(meta['tags']) ? { tags: meta['tags'].filter((t): t is string => typeof t === 'string' && t.trim().length > 0) } : {}),
+      ...(Array.isArray(meta['tags'])
+        ? {
+            tags: (() => {
+              if (meta['tags'].length > MAX_TAG_COUNT) {
+                throw fieldError(
+                  'processConfig.extendedMetadata.tags',
+                  `too many tags (${meta['tags'].length}, max ${MAX_TAG_COUNT})`
+                );
+              }
+              return meta['tags'].filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+            })(),
+          }
+        : {}),
       ...(customAttrs.length > 0 ? { customAttributes: customAttrs } : {}),
     };
   }
@@ -599,6 +627,11 @@ export function validateSessionPayload(payload: unknown): Session {
   const now = new Date().toISOString();
 
   const extRegionsRaw = body['extendedRegions'];
+  if (Array.isArray(extRegionsRaw) && extRegionsRaw.length > MAX_EXTENDED_REGION_COUNT) {
+    throw new Error(
+      `Invalid session JSON: too many extended regions (${extRegionsRaw.length}, max ${MAX_EXTENDED_REGION_COUNT})`
+    );
+  }
   const extendedRegions: ExtendedRegion[] | undefined = Array.isArray(extRegionsRaw)
     ? extRegionsRaw
         .filter((r): r is Record<string, unknown> => isRecord(r))
