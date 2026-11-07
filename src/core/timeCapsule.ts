@@ -532,6 +532,8 @@ export interface ExtractedTimeCapsule {
   coverWebpBytes: Uint8Array | null;
   /** Top-level compatibility files (or synthesizable fallback files from 04_classic_enhanced / 02_legacy_original) for `parseModelFileSet` */
   modelParseFiles: { name: string; data: Uint8Array }[];
+  /** S6.7m: todos los ficheros tras la expansión recursiva acotada (fallback ya expandido, sin `.zip` crudos) */
+  expandedFiles: { name: string; data: Uint8Array }[];
 }
 
 function toArrayBufferCopy(u8: Uint8Array): ArrayBuffer {
@@ -559,19 +561,45 @@ export async function extractTimeCapsuleFromFiles(
       norm.includes('\0')
     );
   };
-  for (const f of inputFiles) {
-    const lowerName = f.name.toLowerCase();
-    if (lowerName.endsWith('.zip') || lowerName.endsWith('.nmpack')) {
+  // S6.7m (ola 19): expansión recursiva acotada. El `parseModelFileSet`
+  // del vendor re-expande todo `.zip` que le llegue con su `parseZipArchive`
+  // síncrono SIN topes (medido: 408 KB → 800 MB RSS en 2,3 s): un `.zip`
+  // anidado que sobreviviera aquí cruzaría la frontera sin compuerta. Por
+  // eso se expande hasta profundidad 3 y lo no-expandible se DESCARTA (nunca
+  // llega crudo al vendor); más `expandedFiles` para que el fallback de los
+  // llamadores use ficheros ya expandidos, no el `.zip` original.
+  const expandRecursive = async (
+    name: string,
+    data: Uint8Array,
+    depth: number
+  ): Promise<void> => {
+    const lowerName = name.toLowerCase();
+    if (
+      (lowerName.endsWith('.zip') || lowerName.endsWith('.nmpack')) &&
+      depth <= 3
+    ) {
       // S6.1 + S6.7l: compuerta por cabecera e inflado acotado (anti-mentira
       // de `uncompressedSize`: la salida real nunca supera el tope).
-      const unzipped = await parseZipArchiveCapped(f.data);
+      let unzipped;
+      try {
+        unzipped = await parseZipArchiveCapped(data);
+      } catch (e) {
+        // S6.7m: contenedor no expandible (corrupto o bomba) → se RECHAZA,
+        // no se recorta ni se pasa crudo al vendor (doctrina fail-closed).
+        throw new Error(
+          `Nested container '${name}' was not expanded within caps: ${(e as Error).message}`
+        );
+      }
       for (const u of unzipped) {
         if (isUnsafeZipPath(u.path)) continue; // S6.2 Zip-Slip: ignora entradas con .. o absolutas
-        expanded.push({ name: u.path, data: u.data });
+        await expandRecursive(u.path, u.data, depth + 1);
       }
-    } else {
-      expanded.push(f);
+      return;
     }
+    expanded.push({ name, data });
+  };
+  for (const f of inputFiles) {
+    await expandRecursive(f.name, f.data, 0);
   }
 
   let manifest: TimeCapsuleManifest | null = null;
@@ -721,6 +749,7 @@ export async function extractTimeCapsuleFromFiles(
   return {
     isTimeCapsule,
     manifest,
+    expandedFiles: expanded,
     provenance,
     rawSourceSamples,
     legacyOriginalFiles,

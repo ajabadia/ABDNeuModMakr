@@ -2023,3 +2023,125 @@ runSecurityTestsPart20().catch((err) => {
   console.error('Security test (part 20) failed:', err);
   process.exit(1);
 });
+
+// Ola 19 — re-expansión del vendor sin topes: `parseModelFileSet` (vendor)
+// re-expande todo `.zip` que le llegue con su `parseZipArchive` síncrono,
+// que no tiene NINGUNA compuerta (ni por cabecera ni real). Un `inner.zip`
+// anidado (408 KB que declaran 1 KB e inflan 400 MB) cruzaba la cápsula —
+// que solo expandía un nivel — y el vendor lo inflaba entero en el hilo
+// principal (medido pre-fix: 110 MB → 912 MB RSS en 2,3 s; solo paró porque
+// el contenido no era un `.scape` válido). S6.7m expande recursivamente
+// acotado en la cápsula, rechaza lo no-expandible y filtra la frontera.
+
+async function runSecurityTestsPart21(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 21: nested vendor re-expand) ===');
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const { extractTimeCapsuleFromFiles } = await import('../src/core/timeCapsule.ts');
+  const { parseNeuronBankOrModelToPreset } =
+    await import('../src/core/import/neuronBankImporter.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteLength) as ArrayBuffer;
+
+  function liarZip(name: string, declared: number, payload: Uint8Array): Uint8Array {
+    const nm = enc(name);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(8, 8, true);
+    lh.setUint32(18, payload.byteLength, true);
+    lh.setUint32(22, declared, true);
+    lh.setUint16(26, nm.length, true);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true);
+    cd.setUint16(10, 8, true);
+    cd.setUint32(20, payload.byteLength, true);
+    cd.setUint32(24, declared, true);
+    cd.setUint16(28, nm.length, true);
+    cd.setUint32(42, 0, true);
+    const cdSize = 46 + nm.length;
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(8, 1, true);
+    eocd.setUint16(10, 1, true);
+    eocd.setUint32(12, cdSize, true);
+    eocd.setUint32(16, 30 + nm.length + payload.byteLength, true);
+    const out = new Uint8Array(30 + nm.length + payload.byteLength + cdSize + 22);
+    let p = 0;
+    for (const c of [new Uint8Array(lh.buffer), nm, payload, new Uint8Array(cd.buffer), nm, new Uint8Array(eocd.buffer)]) {
+      out.set(c, p); p += c.byteLength;
+    }
+    return out;
+  }
+
+  // 34a. Mentiroso anidado (declara 1 KB, infla 120 MB) vía ruta app:
+  // rechazo explícito por salida real, sin pico de RAM del vendor.
+  const { DeflateRaw } = await import('node:zlib');
+  const payload120 = await new Promise<Uint8Array>((resolve, reject) => {
+    const d = new DeflateRaw(); const parts: Uint8Array[] = [];
+    d.on('data', (c: Uint8Array) => parts.push(c));
+    d.on('end', () => {
+      const t = parts.reduce((n, c) => n + c.byteLength, 0);
+      const o = new Uint8Array(t); let p = 0;
+      for (const c of parts) { o.set(c, p); p += c.byteLength; }
+      resolve(o);
+    });
+    d.on('error', reject);
+    const chunk = Buffer.alloc(1024 * 1024, 0x41); let left = 120 * 1024 * 1024;
+    const w = (): void => {
+      while (left > 0) { const n = Math.min(left, chunk.byteLength); left -= n; if (!d.write(chunk.subarray(0, n))) { d.once('drain', w); return; } }
+      d.end();
+    };
+    w();
+  });
+  const trap = createZipArchive([
+    { path: 'MName', data: enc('TRAPKIT01') },
+    { path: 'map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
+    { path: 'nested/inner.zip', data: liarZip('evil.scape', 1024, payload120) },
+  ]);
+  let t0 = Date.now();
+  await assert.rejects(
+    parseNeuronBankOrModelToPreset('pack.zip', ab(trap)),
+    /was not expanded within caps/,
+    'mentiroso anidado debe rechazarse en la frontera, no inflarlo el vendor'
+  );
+  assert.ok(Date.now() - t0 < 15000, 'rechazo rápido sin pico de RAM');
+  console.log('[PASS] 34a. liar anidado rechazado en la frontera (sin vendor)');
+
+  // 34b. Profundidad >3: el `.zip` superviviente choca con el filtro de la
+  // frontera en vez de llegar al vendor (aunque sea honesto).
+  let deep: Uint8Array = createZipArchive([{ path: 'MName', data: enc('DEEP') }]);
+  for (let i = 0; i < 4; i++) deep = createZipArchive([{ path: `l${i}.zip`, data: deep }]);
+  await assert.rejects(
+    parseNeuronBankOrModelToPreset('deep.zip', ab(deep)),
+    /was not expanded within caps/,
+    'zip a profundidad 4 debe chocar con el filtro de frontera'
+  );
+  console.log('[PASS] 34b. profundidad >3 muere en el filtro de frontera');
+
+  // 34c. Sin falsos positivos: `.zip` anidado honesto se expande y su
+  // contenido llega al vendor (ningún `.zip` crudo cruza la frontera).
+  const innerOk = createZipArchive([{ path: 'inner-note.txt', data: enc('hello-nested') }]);
+  const outerOk = createZipArchive([
+    { path: 'MName', data: enc('NESTEDOK') },
+    { path: 'map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
+    { path: 'nested/inner.zip', data: innerOk },
+  ]);
+  const cap = await extractTimeCapsuleFromFiles([{ name: 'ok.zip', data: outerOk }]);
+  assert.ok(
+    cap.expandedFiles.some((f) => f.name === 'inner-note.txt'),
+    'el contenido del zip anidado honesto debe expandirse'
+  );
+  assert.ok(
+    cap.modelParseFiles.every((f) => !/\.(zip|nmpack)$/i.test(f.name)),
+    'ningún contenedor crudo en modelParseFiles'
+  );
+  assert.ok(
+    cap.expandedFiles.every((f) => !/\.(zip|nmpack)$/i.test(f.name)),
+    'ningún contenedor crudo en el fallback expandedFiles'
+  );
+  console.log('[PASS] 34c. zip anidado honesto intacto; frontera sin crudos');
+}
+
+runSecurityTestsPart21().catch((err) => {
+  console.error('Security test (part 21) failed:', err);
+  process.exit(1);
+});

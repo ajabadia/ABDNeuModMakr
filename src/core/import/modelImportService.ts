@@ -400,10 +400,21 @@ export async function importModelFiles(
     data: new Uint8Array(f.buffer),
   }));
   const extracted = await extractTimeCapsuleFromFiles(byteFiles);
+  // S6.7m (ola 19): el fallback usa ficheros YA expandidos — jamás el
+  // `.zip` crudo, que el vendor re-expandiría sin topes.
   const parseInput =
     extracted.modelParseFiles.length > 0
       ? extracted.modelParseFiles
-      : byteFiles;
+      : extracted.expandedFiles;
+  // S6.7m: la frontera con el vendor nunca recibe un contenedor crudo.
+  for (const f of parseInput) {
+    const ln = f.name.toLowerCase();
+    if (ln.endsWith('.zip') || ln.endsWith('.nmpack')) {
+      throw new Error(
+        `Nested container '${f.name}' was not expanded within caps (possible nested zip-bomb)`
+      );
+    }
+  }
   const bundle = parseModelFileSet(parseInput, defaultSlot);
 
   const hasEmbeddedSamples = Boolean(

@@ -371,6 +371,16 @@ export async function parseNeuronBankOrModelToPreset(
   const filesToParse =
     capsule.modelParseFiles.length > 0 ? capsule.modelParseFiles : fileEntries;
 
+  // S6.7m (ola 19): la frontera con el vendor nunca recibe un contenedor
+  // crudo — el vendor lo re-expandiría con su `parseZipArchive` sin topes.
+  for (const f of filesToParse) {
+    const ln = f.name.toLowerCase();
+    if (ln.endsWith('.zip') || ln.endsWith('.nmpack')) {
+      throw new Error(
+        `Nested container '${f.name}' was not expanded within caps (possible nested zip-bomb)`
+      );
+    }
+  }
   const parsedModel = parseModelFileSet(filesToParse, capsule.manifest?.slot ?? 0);
 
   const audioBuffers = new Map<string, ArrayBuffer>();
