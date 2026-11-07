@@ -47,6 +47,10 @@ import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
 import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
 import { isBlockedHostname } from './security/ssrf.ts';
 import { clamp, clampInt } from './dsp/DspMath.ts';
+import {
+  coverBytesDeclaredDimensions,
+  MAX_IMPORTED_COVER_DIMENSION_PX,
+} from './coverArtwork.ts';
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
@@ -143,6 +147,29 @@ export function validateWebpDataUrl(field: string, v: unknown): string {
   }
   if (v.length > MAX_WEBP_DATA_URL_LENGTH) {
     throw fieldError(field, `too large (${v.length} chars, max ${MAX_WEBP_DATA_URL_LENGTH})`);
+  }
+  // S6.7n (ola 20): dimensiones declaradas dentro del tope — un VP8X de 30
+  // bytes puede declarar 16383×16383 (≈1 GB de bitmap al mostrarlo) y el
+  // tope de longitud no lo ve. Se lee solo la cabecera (primeros 90 bytes).
+  try {
+    const b64 = v.slice(v.indexOf(',') + 1, v.indexOf(',') + 1 + 120);
+    const head = atob(b64.slice(0, Math.floor(b64.length / 4) * 4));
+    const bytes = new Uint8Array(head.length);
+    for (let i = 0; i < head.length; i++) bytes[i] = head.charCodeAt(i);
+    const dims = coverBytesDeclaredDimensions(bytes);
+    if (
+      !dims ||
+      dims.width > MAX_IMPORTED_COVER_DIMENSION_PX ||
+      dims.height > MAX_IMPORTED_COVER_DIMENSION_PX
+    ) {
+      throw fieldError(
+        field,
+        `dimensions out of bounds (${dims ? `${dims.width}x${dims.height}` : 'unreadable'}, max ${MAX_IMPORTED_COVER_DIMENSION_PX})`
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('Invalid session JSON')) throw e;
+    throw fieldError(field, 'unreadable cover header');
   }
   return v;
 }

@@ -92,10 +92,11 @@ async function runSecurityTests(): Promise<void> {
             processConfig: {
               ...(baseSession().processConfig as object),
               coverArtwork: {
-                webpDataUrl: 'data:image/webp;base64,AAAA',
-                byteLength: 1,
-                width: 512,
-                height: 512,
+                webpDataUrl:
+                  'data:image/webp;base64,UklGRiwAAABXRUJQVlA4WAoAAAAAAAAAPwAAPwAAVlA4TA4AAAAvAAAAAAcQERGIiP4HAA==',
+                byteLength: 52,
+                width: 64,
+                height: 64,
                 originalName: 'x\".onerror=.webp',
                 updatedAt: 'now',
               },
@@ -218,7 +219,9 @@ async function runSecurityTestsPart2(): Promise<void> {
   const badZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: new Uint8Array([1, 2, 3, 4]) }]);
   const badOut = await extractTimeCapsuleFromFiles([{ name: 'evil.nmpack', data: badZip }]);
   assert.equal(badOut.coverWebpBytes, null, 'cover falso no se adopta');
-  const riffWebp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0, 0, 0, 0]);
+  // WebP mínimo real (VP8X 64×64 generado por la app): la magia sola ya no
+  // basta desde S6.7n (un RIFF sin chunks de imagen no es decodificable).
+  const riffWebp = new Uint8Array([82, 73, 70, 70, 44, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 88, 10, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 63, 0, 0, 86, 80, 56, 76, 14, 0, 0, 0, 47, 0, 0, 0, 0, 7, 16, 17, 17, 136, 136, 254, 7, 0]);
   const goodZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: riffWebp }]);
   const goodOut = await extractTimeCapsuleFromFiles([{ name: 'good.nmpack', data: goodZip }]);
   assert.ok(goodOut.coverWebpBytes && goodOut.coverWebpBytes.byteLength === riffWebp.byteLength, 'cover WebP real se adopta');
@@ -2143,5 +2146,99 @@ async function runSecurityTestsPart21(): Promise<void> {
 
 runSecurityTestsPart21().catch((err) => {
   console.error('Security test (part 21) failed:', err);
+  process.exit(1);
+});
+
+// Ola 20 — gigapíxel por declaración en portadas: la ola 13 topó los
+// data-URL de portada en carga de bank/render (`MAX_COVER_DIMENSION_PX`), pero
+// quedaron tres adopciones sin compuerta de dimensiones: el verbatim de
+// `convertImageToCoverWebp` (adoptaba el webp tal cual con width 16383 en
+// metadatos), la cápsula (`isWebpBytes` = solo magia) y `validateWebpDataUrl`
+// (solo longitud/prefijo). Un VP8X de 30 bytes declarando 16383×16383 se
+// adoptaba en las tres (medido pre-fix) → ~1 GB de bitmap al mostrarlo, y el
+// `createImageBitmap` del camino con canvas lo decodificaba entero ANTES de
+// normalizar a `targetSize`. S6.7n lee dimensiones declaradas sin decodificar
+// (WebP/PNG-IHDR/JPEG-SOF/SVG) y topa: importación ≤2048, decode ≤8192 con
+// reescalado al decodificar cuando se conoce y excede `targetSize`.
+
+async function runSecurityTestsPart22(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 22: cover declared-dimensions) ===');
+  const { createHeadlessWebpBytes, convertImageToCoverWebp, webpBytesToDataUrl } =
+    await import('../src/core/coverArtwork.ts');
+  const { extractTimeCapsuleFromFiles } = await import('../src/core/timeCapsule.ts');
+  const { validateWebpDataUrl } = await import('../src/core/sessionSchema.ts');
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  // VP8X mínimo (30 bytes) que declara 16383×16383.
+  function gigapixelWebp(): Uint8Array {
+    const out = new Uint8Array(30);
+    out.set([0x52, 0x49, 0x46, 0x46], 0);
+    new DataView(out.buffer).setUint32(4, 22, true);
+    out.set([0x57, 0x45, 0x42, 0x50], 8);
+    out.set([0x56, 0x50, 0x38, 0x58], 12);
+    new DataView(out.buffer).setUint32(16, 10, true);
+    out[20] = 0x10;
+    const w = 16383 - 1, h = 16383 - 1;
+    out[24] = w & 0xff; out[25] = (w >> 8) & 0xff; out[26] = (w >> 16) & 0xff;
+    out[27] = h & 0xff; out[28] = (h >> 8) & 0xff; out[29] = (h >> 16) & 0xff;
+    return out;
+  }
+  const giga = gigapixelWebp();
+
+  // 35a. Triple adopción cerrada: conversión, cápsula y validador de sesión.
+  await assert.rejects(
+    convertImageToCoverWebp(giga, { originalName: 'cover.webp' }),
+    /out of bounds/,
+    'verbatim no debe adoptar 16383×16383'
+  );
+  const trapZip = createZipArchive([
+    { path: 'MName', data: enc('GIGACOVER') },
+    { path: 'map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
+    { path: '05_extended_model/cover.webp', data: giga },
+  ]);
+  const cap = await extractTimeCapsuleFromFiles([{ name: 'evil.nmpack', data: trapZip }]);
+  assert.equal(cap.coverWebpBytes, null, 'la cápsula no debe adoptar el gigapíxel');
+  assert.throws(
+    () => validateWebpDataUrl('processConfig.coverArtwork.webpDataUrl', webpBytesToDataUrl(giga)),
+    /out of bounds/,
+    'la sesión no debe persistir el gigapíxel'
+  );
+  console.log('[PASS] 35a. gigapíxel declarado rechazado en conversión, cápsula y sesión');
+
+  // 35b. PNG con IHDR mentiroso (10000×10000, 70 bytes) muere pre-decode.
+  const png = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x27, 0x10, 0x00, 0x00, 0x27, 0x10,
+    0x08, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  await assert.rejects(
+    convertImageToCoverWebp(png, { originalName: 'evil.png' }),
+    /out of bounds/,
+    'PNG 10000×10000 debe morir antes de decodificar'
+  );
+  console.log('[PASS] 35b. PNG con IHDR mentiroso rechazado pre-decode');
+
+  // 35c. Sin falsos positivos: webp 512 de la app intacto en las tres vías.
+  const ok = createHeadlessWebpBytes(512, 512);
+  const convOk = await convertImageToCoverWebp(ok, { originalName: 'ok.webp' });
+  assert.equal(convOk.artwork.width, 512, 'verbatim honesto intacto');
+  const okZip = createZipArchive([
+    { path: 'MName', data: enc('NESTEDOK') },
+    { path: 'map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
+    { path: '05_extended_model/cover.webp', data: ok },
+  ]);
+  const capOk = await extractTimeCapsuleFromFiles([{ name: 'ok.nmpack', data: okZip }]);
+  assert.ok(capOk.coverWebpBytes && capOk.coverWebpBytes.length > 0, 'cápsula adopta cover honesto');
+  assert.doesNotThrow(
+    () => validateWebpDataUrl('processConfig.coverArtwork.webpDataUrl', webpBytesToDataUrl(ok)),
+    'el validador acepta cover honesto'
+  );
+  console.log('[PASS] 35c. cover honesto intacto en conversión, cápsula y sesión');
+}
+
+runSecurityTestsPart22().catch((err) => {
+  console.error('Security test (part 22) failed:', err);
   process.exit(1);
 });

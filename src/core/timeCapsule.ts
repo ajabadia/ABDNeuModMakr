@@ -46,6 +46,7 @@ import {
 } from './extendedAdapter.ts';
 import {
   dataUrlToWebpBytes,
+  isCoverBytesWithinImportCaps,
   isWebpBytes,
   parseWebpDimensions,
   webpBytesToDataUrl,
@@ -691,8 +692,10 @@ export async function extractTimeCapsuleFromFiles(
       } else if (lowerBase === 'cover.webp') {
         // S6.4: solo se adopta si son bytes WebP reales; el resto se ignora
         // (un `cover.webp` falso dentro del ZIP no llega jamás a `<img src>`).
+        // S6.7n: además con dimensiones declaradas dentro del tope — un VP8X
+        // de 30 bytes puede declarar 16383×16383 (≈1 GB de bitmap al mostrarlo).
         const candidate = new Uint8Array(f.data);
-        if (isWebpBytes(candidate)) {
+        if (isWebpBytes(candidate) && isCoverBytesWithinImportCaps(candidate)) {
           coverWebpBytes = candidate;
         }
       }

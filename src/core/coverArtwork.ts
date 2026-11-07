@@ -14,6 +14,104 @@ export const DEFAULT_COVER_SIZE_PX = 512;
 export const DEFAULT_COVER_WEBP_QUALITY = 0.88;
 
 /**
+ * S6.7n (red-team, ola 20): tope de dimensiones DECLARADAS para bytes de
+ * portada importados — un VP8X de 30 bytes puede declarar 16383×16383
+ * (≈1 GB de bitmap al mostrarlo en el renderer). El generador propio nunca
+ * supera 2048 px (`clampCoverSize`); se impone lo mismo a lo importado.
+ * Cabecera ilegible o fuera de tope = inseguro (fail-closed).
+ */
+export const MAX_IMPORTED_COVER_DIMENSION_PX = 2048;
+/** Incluso con reescalado al decodificar, nadie necesita más que esto. */
+export const MAX_DECODE_COVER_DIMENSION_PX = 8192;
+
+/** Lee dimensiones declaradas sin decodificar (barato). `null` = formato sin lector barato o cabecera ilegible. */
+export function coverBytesDeclaredDimensions(
+  bytes: Uint8Array
+): { width: number; height: number } | null {
+  // WebP: 'RIFF' + tamaño + 'WEBP' + FourCC.
+  if (isWebpBytes(bytes)) {
+    if (bytes.byteLength < 30) return null;
+    const fourcc = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+    if (fourcc === 'VP8X' && bytes.byteLength >= 30) {
+      const w = (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16)) + 1;
+      const h = (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16)) + 1;
+      return { width: w, height: h };
+    }
+    if (fourcc === 'VP8L' && bytes.byteLength >= 25 && bytes[20] === 0x2f) {
+      const bits = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 };
+    }
+    if (fourcc === 'VP8 ' && bytes.byteLength >= 30 && bytes[20] === 0x9d && bytes[21] === 0x01 && bytes[22] === 0x2a) {
+      const w = bytes[26] | ((bytes[27] & 0x3f) << 8);
+      const h = bytes[28] | ((bytes[29] & 0x3f) << 8);
+      return { width: w, height: h };
+    }
+    return null;
+  }
+  // PNG: firma de 8 + longitud IHDR + 'IHDR' + w32be + h32be.
+  if (
+    bytes.byteLength >= 24 &&
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[12] === 0x49 && bytes[13] === 0x48 && bytes[14] === 0x44 && bytes[15] === 0x52
+  ) {
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return { width: v.getUint32(16, false), height: v.getUint32(20, false) };
+  }
+  // JPEG: barrido de marcadores SOFn acotado a los primeros 64 KB (el SOF
+  // vive al principio; si no aparece, se deja al decode: la basura falla y
+  // cae al placeholder, así que no hay falso positivo).
+  if (bytes.byteLength >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const limit = Math.min(bytes.byteLength - 9, 65536);
+    let p = 2;
+    while (p < limit) {
+      if (v.getUint8(p) !== 0xff) { p++; continue; }
+      const code = v.getUint8(p + 1);
+      if (code === 0xda || code === 0xd9) break; // SOS / EOI: sin SOF a la vista
+      if (code === 0x01 || (code >= 0xd0 && code <= 0xd7)) { p += 2; continue; }
+      const segLen = v.getUint16(p + 2, false);
+      if (segLen < 2) break;
+      const isSof =
+        (code >= 0xc0 && code <= 0xcf && code !== 0xc4 && code !== 0xc8 && code !== 0xcc);
+      if (isSof && p + 9 <= bytes.byteLength) {
+        return { height: v.getUint16(p + 5, false), width: v.getUint16(p + 7, false) };
+      }
+      p += 2 + segLen;
+    }
+    return null;
+  }
+  // SVG: atributos width/height de la etiqueta raíz (solo px/adimensional;
+  // `%` es relativo y no asigna bitmap gigante por sí solo).
+  if (bytes.byteLength >= 5) {
+    const head = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.byteLength, 2048)));
+    if (/<svg[\s>]/i.test(head)) {
+      const num = (attr: string): number | null => {
+        const m = new RegExp(`${attr}\\s*=\\s*["']([\\d.]+)(px)?["']`, 'i').exec(head);
+        return m ? Number(m[1]) : null;
+      };
+      const w = num('width');
+      const h = num('height');
+      if (w !== null && h !== null) return { width: w, height: h };
+    }
+  }
+  return null;
+}
+
+/** `true` si las dimensiones declaradas caben en el tope de importación. */
+export function isCoverBytesWithinImportCaps(bytes: Uint8Array): boolean {
+  const dims = coverBytesDeclaredDimensions(bytes);
+  if (!dims) return false;
+  return (
+    Number.isFinite(dims.width) &&
+    Number.isFinite(dims.height) &&
+    dims.width > 0 &&
+    dims.height > 0 &&
+    dims.width <= MAX_IMPORTED_COVER_DIMENSION_PX &&
+    dims.height <= MAX_IMPORTED_COVER_DIMENSION_PX
+  );
+}
+
+/**
  * Checks whether a byte buffer has a valid RIFF....WEBP header.
  */
 export function isWebpBytes(bytes: Uint8Array): boolean {
@@ -194,6 +292,29 @@ export async function convertImageToCoverWebp(
     rawBytes = new Uint8Array(ab);
   }
 
+  // S6.7n: compuerta PRE-decodificación por dimensiones declaradas — un
+  // VP8X de 30 bytes (o un PNG sólido de ~100 KB) puede declarar gigapíxeles
+  // y el `createImageBitmap` de abajo asignaría el bitmap entero ANTES de que
+  // el canvas lo normalice a `targetSize`. Lo conocido y desorbitado muere
+  // aquí; lo conocido y grande se decodifica ya reescalado (sin regresión
+  // para fotos legítimas); lo desconocido sigue el camino de antes (la
+  // basura falla el decode y cae al placeholder).
+  const declaredDims = coverBytesDeclaredDimensions(rawBytes);
+  if (declaredDims) {
+    if (
+      declaredDims.width > MAX_DECODE_COVER_DIMENSION_PX ||
+      declaredDims.height > MAX_DECODE_COVER_DIMENSION_PX
+    ) {
+      throw new Error(
+        `Cover image dimensions out of bounds (${declaredDims.width}x${declaredDims.height}, max ${MAX_DECODE_COVER_DIMENSION_PX})`
+      );
+    }
+  }
+  const decodeResize =
+    declaredDims && (declaredDims.width > targetSize || declaredDims.height > targetSize)
+      ? { resizeWidth: targetSize, resizeHeight: targetSize }
+      : undefined;
+
   // Browser environment with DOM Canvas + createImageBitmap or Image
   if (typeof document !== 'undefined' && typeof HTMLCanvasElement !== 'undefined') {
     try {
@@ -204,8 +325,8 @@ export async function convertImageToCoverWebp(
       const blob =
         typeof Blob !== 'undefined' && input instanceof Blob && input.type
           ? input
-          : new Blob([rawBytes.slice().buffer], { type: mime });
-      const bitmapOrImg = await loadBrowserImageSource(blob);
+          : new Blob([new Uint8Array(rawBytes).buffer as ArrayBuffer], { type: mime });
+      const bitmapOrImg = await loadBrowserImageSource(blob, decodeResize);
       const srcW = bitmapOrImg.width || targetSize;
       const srcH = bitmapOrImg.height || targetSize;
 
@@ -245,8 +366,15 @@ export async function convertImageToCoverWebp(
     }
   }
 
-  // If input is already a valid RIFF WEBP, keep or normalize it
+  // If input is already a valid RIFF WEBP, keep or normalize it — pero con
+  // tope de importación (S6.7n): el verbatim adoptaba gigapíxeles declarados.
   if (isWebpBytes(rawBytes)) {
+    if (!isCoverBytesWithinImportCaps(rawBytes)) {
+      const d = coverBytesDeclaredDimensions(rawBytes);
+      throw new Error(
+        `Cover image dimensions out of bounds (${d ? `${d.width}x${d.height}` : 'unreadable'}, max ${MAX_IMPORTED_COVER_DIMENSION_PX})`
+      );
+    }
     const dims = parseWebpDimensions(rawBytes);
     const dataUrl = webpBytesToDataUrl(rawBytes);
     return {
@@ -301,7 +429,10 @@ function guessImageMimeFromBytes(bytes: Uint8Array, name?: string): string {
   return 'image/webp';
 }
 
-async function loadBrowserImageSource(blob: Blob): Promise<{
+async function loadBrowserImageSource(
+  blob: Blob,
+  resize?: { resizeWidth: number; resizeHeight: number }
+): Promise<{
   source: CanvasImageSource;
   width: number;
   height: number;
@@ -309,7 +440,7 @@ async function loadBrowserImageSource(blob: Blob): Promise<{
 }> {
   if (typeof createImageBitmap === 'function') {
     try {
-      const bmp = await createImageBitmap(blob);
+      const bmp = await createImageBitmap(blob, resize ?? {});
       return {
         source: bmp,
         width: bmp.width,
