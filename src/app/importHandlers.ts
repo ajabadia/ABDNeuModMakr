@@ -422,8 +422,8 @@ export class ImportHandlers {
     prefix: string,
     out: { name: string; buffer: ArrayBuffer }[],
     depth = 0
-  ): void {
-    expandNestedZipBuffer(bytes, prefix, out, depth);
+  ): Promise<void> {
+    return expandNestedZipBuffer(bytes, prefix, out, depth);
   }
 
   private async readMixedDirectoryHandleForTriage(

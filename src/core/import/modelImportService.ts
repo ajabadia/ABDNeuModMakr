@@ -399,7 +399,7 @@ export async function importModelFiles(
     name: f.name,
     data: new Uint8Array(f.buffer),
   }));
-  const extracted = extractTimeCapsuleFromFiles(byteFiles);
+  const extracted = await extractTimeCapsuleFromFiles(byteFiles);
   const parseInput =
     extracted.modelParseFiles.length > 0
       ? extracted.modelParseFiles

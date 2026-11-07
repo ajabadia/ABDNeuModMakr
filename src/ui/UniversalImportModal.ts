@@ -582,7 +582,7 @@ export class UniversalImportModal {
           zipFileName = zipFileCandidate.name;
           zipBuffer = await zipFileCandidate.arrayBuffer();
         }
-        const neuronModels = listNeuronBankModels(zipFileName, zipBuffer);
+        const neuronModels = await listNeuronBankModels(zipFileName, zipBuffer);
         if (neuronModels.length > 1) {
           this.isInspecting = false;
           this.render();

@@ -49,7 +49,7 @@ export interface WebkitImportContext extends ImportCtxHost {
     prefix: string,
     out: { name: string; buffer: ArrayBuffer }[],
     depth?: number
-  ) => void;
+  ) => Promise<void>;
 }
 
 /** Host services the mixed-content triage gate needs from ImportHandlers. */

@@ -16,17 +16,19 @@
 import {
   encodeWavPcm16,
   indexZipArchive,
-  extractZipEntry,
   parseAnChunks,
   parseMName,
-  parseMapScript,
   parseModelFileSet,
   resynthesizeNeuronModelSource,
   type ZipCentralEntry,
 } from '@abdsynths/shared/formats/neuron';
 import { PARAMETER_SETS } from '../index.ts';
 import { extractTimeCapsuleFromFiles } from '../timeCapsule.ts';
-import { assertZipIndexWithinCaps } from '../../formats/ZipArchive.ts';
+import {
+  assertZipIndexWithinCaps,
+  extractZipEntryCapped,
+} from '../../formats/ZipArchive.ts';
+import { parseMapScriptCapped } from '../../formats/ModelFormat.ts';
 import type { ParsedImportRegion, ParsedSamplerPreset } from './rawSamplerParsers.ts';
 
 export interface NeuronBankModelSummary {
@@ -236,10 +238,10 @@ function groupZipEntriesByModel(entries: readonly ZipCentralEntry[]): GroupedMod
  * Lists all models contained inside a Hartmann Neuron / Neuronik `.zip` archive
  * (e.g. a `NeuronDB` pack with multiple `Models/<NNN>.model/` folders).
  */
-export function listNeuronBankModels(
+export async function listNeuronBankModels(
   filename: string,
   buffer: ArrayBuffer
-): NeuronBankModelSummary[] {
+): Promise<NeuronBankModelSummary[]> {
   const bytes = new Uint8Array(buffer);
   if (!hasPkZipMagic(bytes)) return [];
 
@@ -263,15 +265,19 @@ export function listNeuronBankModels(
       const base = (e.path.replace(/\\/g, '/').split('/').pop() ?? e.path).toLowerCase();
       if (base === 'mname') {
         try {
-          const parsedName = parseMName(extractZipEntry(bytes, e)).trim();
+          // S6.7l: extracción acotada + `MName` es un nombre (64 KB sobran).
+          const raw = await extractZipEntryCapped(bytes, e);
+          if (raw.byteLength > 64 * 1024) continue;
+          const parsedName = parseMName(raw).trim();
           if (parsedName) modelName = parsedName;
         } catch {
           // ignore
         }
       } else if (base === 'map.script') {
         try {
-          const txt = new TextDecoder('latin1').decode(extractZipEntry(bytes, e));
-          const ms = parseMapScript(txt);
+          const raw = await extractZipEntryCapped(bytes, e);
+          const txt = new TextDecoder('latin1').decode(raw);
+          const ms = parseMapScriptCapped(txt, e.path);
           if (ms.activeZones.length > 0) regionCount = ms.activeZones.length;
         } catch {
           // ignore
@@ -280,7 +286,9 @@ export function listNeuronBankModels(
         scapeCount++;
       } else if (base.endsWith('.nmmodel') || base.endsWith('.neuronikmodel')) {
         try {
-          const json = JSON.parse(new TextDecoder().decode(extractZipEntry(bytes, e))) as {
+          const raw = await extractZipEntryCapped(bytes, e);
+          if (raw.byteLength > 8 * 1024 * 1024) continue;
+          const json = JSON.parse(new TextDecoder().decode(raw)) as {
             name?: string;
             zoneCount?: number;
             zones?: unknown[];
@@ -346,12 +354,12 @@ export async function parseNeuronBankOrModelToPreset(
       (targetModelId ? groups.find((g) => g.id === targetModelId) : undefined) ?? groups[0];
 
     if (chosenGroup && chosenGroup.id !== 'capsule:0' && groups.length > 1) {
-      // S6.1: topes por cabecera antes de inflar el grupo elegido.
+      // S6.1 + S6.7l: topes por cabecera y extracción acotada del grupo.
       assertZipIndexWithinCaps(chosenGroup.entries);
-      fileEntries = chosenGroup.entries.map((e) => ({
-        name: e.path,
-        data: extractZipEntry(primaryBytes, e),
-      }));
+      fileEntries = [];
+      for (const e of chosenGroup.entries) {
+        fileEntries.push({ name: e.path, data: await extractZipEntryCapped(primaryBytes, e) });
+      }
     } else {
       fileEntries = [{ name: filename, data: primaryBytes }];
     }
@@ -359,7 +367,7 @@ export async function parseNeuronBankOrModelToPreset(
     fileEntries = [{ name: filename, data: primaryBytes }];
   }
 
-  const capsule = extractTimeCapsuleFromFiles(fileEntries);
+  const capsule = await extractTimeCapsuleFromFiles(fileEntries);
   const filesToParse =
     capsule.modelParseFiles.length > 0 ? capsule.modelParseFiles : fileEntries;
 

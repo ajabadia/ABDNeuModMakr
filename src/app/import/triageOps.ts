@@ -270,13 +270,13 @@ async function processTriageBatch(
  * DirectoryHandle (`showDirectoryPicker`) variant: reads mixed folders carrying
  * preset containers + audio/other files so the triage gate can inspect them.
  */
-export function expandNestedZipBuffer(
+export async function expandNestedZipBuffer(
   bytes: Uint8Array,
   prefix: string,
   out: { name: string; buffer: ArrayBuffer }[],
   depth = 0
-): void {
-  const unzipped = parseZipArchiveCapped(bytes);
+): Promise<void> {
+  const unzipped = await parseZipArchiveCapped(bytes);
   for (const entry of unzipped) {
     const entryPath = prefix ? `${prefix}/${entry.path}` : entry.path;
     const lowerEntry = entry.path.toLowerCase();
@@ -290,7 +290,7 @@ export function expandNestedZipBuffer(
     if (isNestedZip) {
       const innerStem = entryPath.replace(/\.zip$/i, '');
       try {
-        expandNestedZipBuffer(entry.data, innerStem, out, depth + 1);
+        await expandNestedZipBuffer(entry.data, innerStem, out, depth + 1);
         continue;
       } catch {
         // Fall through and keep raw buffer if nested zip is corrupt
@@ -344,7 +344,7 @@ export async function readMixedDirectoryHandleForTriage(
         bytes[1] === 0x4b &&
         (bytes[2] === 0x03 || bytes[2] === 0x05);
       if (isPkZip) {
-        expandNestedZipBuffer(bytes, item.rel.replace(/\.zip$/i, ''), expanded, 1);
+        await expandNestedZipBuffer(bytes, item.rel.replace(/\.zip$/i, ''), expanded, 1);
       } else {
         expanded.push({ name: item.rel, buffer: buf });
       }

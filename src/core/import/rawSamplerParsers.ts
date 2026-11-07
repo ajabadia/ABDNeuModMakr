@@ -14,8 +14,9 @@ import {
 import { extractIso9660Entries } from '@abdsynths/shared/formats/sampler/IsoFormatIdentifier.ts';
 
 import {
+  APP_MAX_ZIP_TOTAL_BYTES,
   assertZipIndexWithinCaps,
-  extractZipEntry,
+  extractZipEntryCapped,
   indexZipArchive,
 } from '../../formats/ZipArchive.ts';
 
@@ -283,9 +284,19 @@ function isGateError(e: unknown): boolean {
     m.startsWith('Sampler preset declares too many region tags') ||
     m.startsWith('ZIP too many entries') ||
     m.startsWith('ZIP entry too large') ||
+    m.startsWith('ZIP entry inflates too large') ||
+    m.startsWith('ZIP entry out of bounds') ||
+    m.startsWith('ZIP inflate unavailable') ||
     m.startsWith('ZIP total too large') ||
     m.startsWith('ZIP entry with indeterminate size')
   );
+}
+
+/** Presupuesto de bytes REALES extraídos durante un barrido (S6.7l): aunque
+ * cada entrada muera en su tope individual, miles de entradas honestas
+ * sumarían GBs transitorios — réplica del tope S6.1 pero sobre lo medido. */
+interface SweepBudget {
+  actualTotal: number;
 }
 
 async function assertSweptEntryBytes(
@@ -293,10 +304,11 @@ async function assertSweptEntryBytes(
   entryBytes: Uint8Array,
   topFilename: string,
   depth: number,
+  budget: SweepBudget,
 ): Promise<void> {
   const lowerPath = entryPath.toLowerCase();
   if (NESTED_CONTAINER_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
-    await assertNestedContainerBytes(entryPath, entryBytes, topFilename, depth + 1);
+    await assertNestedContainerBytes(entryPath, entryBytes, topFilename, depth + 1, budget);
     return;
   }
   if (CAPPED_GZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
@@ -353,6 +365,7 @@ async function assertNestedContainerBytes(
   bytes: Uint8Array,
   topFilename: string,
   depth: number,
+  budget: SweepBudget,
 ): Promise<void> {
   if (depth > MAX_NESTED_ZIP_DEPTH) {
     throw new Error(
@@ -370,11 +383,20 @@ async function assertNestedContainerBytes(
     for (const entry of index) {
       let entryBytes: Uint8Array;
       try {
-        entryBytes = extractZipEntry(bytes, entry);
-      } catch {
+        // S6.7l: extracción acotada — un `uncompressedSize` mentiroso ya no
+        // infla GBs en el propio barrido; el total REAL también se acota.
+        entryBytes = await extractZipEntryCapped(bytes, entry);
+      } catch (e) {
+        if (isGateError(e)) throw e;
         continue; // Entrada corrupta: el vendor la salta al listar.
       }
-      await assertSweptEntryBytes(entry.path, entryBytes, topFilename, depth);
+      budget.actualTotal += entryBytes.byteLength;
+      if (budget.actualTotal > APP_MAX_ZIP_TOTAL_BYTES) {
+        throw new Error(
+          `ZIP total too large (${budget.actualTotal} actual bytes swept in ${topFilename}, max ${APP_MAX_ZIP_TOTAL_BYTES})`
+        );
+      }
+      await assertSweptEntryBytes(entry.path, entryBytes, topFilename, depth, budget);
     }
     return;
   }
@@ -387,7 +409,7 @@ async function assertNestedContainerBytes(
       return; // ISO ilegible: el vendor la ignora.
     }
     for (const [norm, fileBytes] of isoEntries) {
-      await assertSweptEntryBytes(norm, fileBytes, topFilename, depth);
+      await assertSweptEntryBytes(norm, fileBytes, topFilename, depth, budget);
     }
   }
   // Otra imagen / opaco: sin trabajo en línea en el vendor. Nada que barrer.
@@ -398,7 +420,7 @@ async function assertZipContentsSafe(
   zipBytes: Uint8Array,
   depth = 0,
 ): Promise<void> {
-  await assertNestedContainerBytes(filename, zipBytes, filename, depth);
+  await assertNestedContainerBytes(filename, zipBytes, filename, depth, { actualTotal: 0 });
 }
 
 /**

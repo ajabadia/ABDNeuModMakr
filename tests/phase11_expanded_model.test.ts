@@ -422,7 +422,7 @@ async function runPhase11Tests(): Promise<void> {
       isAxionikExpandedModel(JSON.parse(v2entry.data)),
       '11.7 stored v2 JSON must pass the guard'
     );
-    const extracted = extractTimeCapsuleFromFiles(
+    const extracted = await extractTimeCapsuleFromFiles(
       withV2.entries.map((e) => ({
         name: e.path,
         data: new TextEncoder().encode(e.data),
@@ -457,10 +457,10 @@ async function runPhase11Tests(): Promise<void> {
         name: e.path,
         data: new TextEncoder().encode(e.data),
       }));
-    const withV2 = extractTimeCapsuleFromFiles(
+    const withV2 = await extractTimeCapsuleFromFiles(
       toFiles(buildTimeCapsuleEntries({ ...base, expandedModelV2: v2doc }).entries)
     );
-    const withoutV2 = extractTimeCapsuleFromFiles(
+    const withoutV2 = await extractTimeCapsuleFromFiles(
       toFiles(buildTimeCapsuleEntries(base).entries)
     );
     assert(

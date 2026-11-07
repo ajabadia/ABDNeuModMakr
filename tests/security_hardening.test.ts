@@ -129,7 +129,7 @@ async function runSecurityTests(): Promise<void> {
   console.log('[PASS] 5. BridgeClient URL validada');
 
   // 6. Zip-Slip ignorado en timeCapsule
-  const out = extractTimeCapsuleFromFiles([{ name: 'evil.zip', data: new Uint8Array([0, 1, 2, 3]) }]);
+  const out = await extractTimeCapsuleFromFiles([{ name: 'evil.zip', data: new Uint8Array([0, 1, 2, 3]) }]);
   assert.equal(out.isTimeCapsule, false, 'zip inválido no debe detectarse como cápsula');
   console.log('[PASS] 6. timeCapsule no confunde payload inválido');
 
@@ -216,11 +216,11 @@ async function runSecurityTestsPart2(): Promise<void> {
 
   // 11. Cover del ZIP: solo bytes WebP reales se adoptan (S6.4)
   const badZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: new Uint8Array([1, 2, 3, 4]) }]);
-  const badOut = extractTimeCapsuleFromFiles([{ name: 'evil.nmpack', data: badZip }]);
+  const badOut = await extractTimeCapsuleFromFiles([{ name: 'evil.nmpack', data: badZip }]);
   assert.equal(badOut.coverWebpBytes, null, 'cover falso no se adopta');
   const riffWebp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 10, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0, 0, 0, 0]);
   const goodZip = createZipArchive([{ path: '05_extended_model/cover.webp', data: riffWebp }]);
-  const goodOut = extractTimeCapsuleFromFiles([{ name: 'good.nmpack', data: goodZip }]);
+  const goodOut = await extractTimeCapsuleFromFiles([{ name: 'good.nmpack', data: goodZip }]);
   assert.ok(goodOut.coverWebpBytes && goodOut.coverWebpBytes.byteLength === riffWebp.byteLength, 'cover WebP real se adopta');
   console.log('[PASS] 11. cover.webp revalidado (S6.4)');
 
@@ -638,7 +638,7 @@ async function runSecurityTestsPart4(): Promise<void> {
   assert.ok(payload200.byteLength < 1024 * 1024, `la bomba debe ser pequeña (fue ${payload200.byteLength})`);
   const bomb = buildDeflateZip([{ name: 'evil/model.bin', declaredSize: 200 * 1024 * 1024, payload: payload200 }]);
   const t0 = Date.now();
-  assert.throws(() => parseZipArchiveCapped(bomb), /too large/, 'bomba 200 MB debe rechazarse por cabecera');
+  await assert.rejects(parseZipArchiveCapped(bomb), /too large/, 'bomba 200 MB debe rechazarse por cabecera');
   assert.ok(Date.now() - t0 < 2000, 'el rechazo debe ser previo a inflar (rápido, sin RAM)');
   console.log(`[PASS] 16a. bomba DEFLATE 200 MB en ${(bomb.byteLength / 1024).toFixed(0)} KB rechazada sin inflar`);
 
@@ -647,19 +647,19 @@ async function runSecurityTestsPart4(): Promise<void> {
   const distBomb = buildDeflateZip(
     [0, 1, 2, 3].map((i) => ({ name: `part${i}.bin`, declaredSize: 90 * 1024 * 1024, payload: payload90 }))
   );
-  assert.throws(() => parseZipArchiveCapped(distBomb), /total too large/, 'total 360 MB debe rechazarse');
+  await assert.rejects(parseZipArchiveCapped(distBomb), /total too large/, 'total 360 MB debe rechazarse');
   console.log('[PASS] 16b. bomba distribuida 4×90 MB rechazada por tope total');
 
   // 16c. Evasión por descriptor-bit: datos comprimidos que declaran 0 inflados
   // (esquivaría el tope; `inflateRaw` crecería sin cota). Debe rechazarse.
   const descriptorBomb = buildDeflateZip([{ name: 'd.bin', declaredSize: 0, payload: payload90 }]);
-  assert.throws(() => parseZipArchiveCapped(descriptorBomb), /indeterminate/, 'descriptor-bit debe rechazarse');
+  await assert.rejects(parseZipArchiveCapped(descriptorBomb), /indeterminate/, 'descriptor-bit debe rechazarse');
   console.log('[PASS] 16c. evasión descriptor-bit (0 declarados + datos) rechazada');
 
   // 16d. Control: ZIP STORE legítimo sigue pasando por la compuerta.
   const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
   const legit = createZipArchive([{ path: 'mname', data: new TextEncoder().encode('M') }]);
-  const parsed = parseZipArchiveCapped(legit);
+  const parsed = await parseZipArchiveCapped(legit);
   assert.equal(parsed.length, 1, 'ZIP legítimo no debe romperse');
   assert.ok(APP_MAX_ZIP_ENTRY_BYTES === 100 * 1024 * 1024, 'tope documentado 100 MB');
   assert.ok(APP_MAX_ZIP_TOTAL_BYTES === 300 * 1024 * 1024, 'tope documentado 300 MB');
@@ -1872,5 +1872,154 @@ async function runSecurityTestsPart19(): Promise<void> {
 
 runSecurityTestsPart19().catch((err) => {
   console.error('Security test (part 19) failed:', err);
+  process.exit(1);
+});
+
+// Ola 18 — mentira de `uncompressedSize` vs inflado real: el `inflateRaw`
+// del vendor crece por duplicación sin cota en el bucle (el único freno es
+// el tamaño DECLARADO). Un ZIP de 146 KB que declara 1 KB pero infla 150 MB
+// pasaba todos los topes S6.1 por cabecera y se extraía entero (medido
+// pre-fix: 150 MB sin throw, en el barrido y en la expansión de triage).
+// S6.7l infla por streaming nativo con tope real de salida + tope de total
+// real, y migra a async las rutas de expansión (triage/timeCapsule/batch/
+// neuron) que tocaban el extractor sin cota.
+
+async function runSecurityTestsPart20(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 20: liar-size inflate) ===');
+  const { parseZipArchiveCapped } = await import('../src/formats/ZipArchive.ts');
+  const { listZipSamplerProgramsCapped } =
+    await import('../src/core/import/rawSamplerParsers.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+
+  // Builder mínimo con tamaños declarados arbitrarios (el vendor no lo
+  // ofrece: `createZipArchive` siempre declara lo real).
+  function liarZip(entries: Array<{ name: string; declared: number; payload: Uint8Array }>): Uint8Array {
+    const chunks: Uint8Array[] = [];
+    const centrals: Uint8Array[] = [];
+    let offset = 0;
+    for (const e of entries) {
+      const name = enc(e.name);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true);
+      lh.setUint16(4, 20, true); lh.setUint16(8, 8, true);
+      lh.setUint32(18, e.payload.byteLength, true);
+      lh.setUint32(22, e.declared, true);
+      lh.setUint16(26, name.length, true);
+      chunks.push(new Uint8Array(lh.buffer), name, e.payload);
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(10, 8, true);
+      cd.setUint32(20, e.payload.byteLength, true);
+      cd.setUint32(24, e.declared, true);
+      cd.setUint16(28, name.length, true);
+      cd.setUint32(42, offset, true);
+      centrals.push(new Uint8Array(cd.buffer), name);
+      offset += 30 + name.length + e.payload.byteLength;
+    }
+    const cdStart = offset;
+    let cdSize = 0;
+    for (const c of centrals) { chunks.push(c); cdSize += c.byteLength; }
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(8, entries.length, true);
+    eocd.setUint16(10, entries.length, true);
+    eocd.setUint32(12, cdSize, true);
+    eocd.setUint32(16, cdStart, true);
+    chunks.push(new Uint8Array(eocd.buffer));
+    const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+    const out = new Uint8Array(total);
+    let p = 0;
+    for (const c of chunks) { out.set(c, p); p += c.byteLength; }
+    return out;
+  }
+
+  // Generación por streaming (como la parte 4): cede el loop por MB para
+  // no falsear los presupuestos de tiempo de las demás partes concurrentes.
+  const { DeflateRaw } = await import('node:zlib');
+  function deflateFill(bytes: number, fill: number): Promise<Uint8Array> {
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const d = new DeflateRaw();
+      const parts: Uint8Array[] = [];
+      d.on('data', (c: Uint8Array) => parts.push(c));
+      d.on('end', () => {
+        const total = parts.reduce((n, c) => n + c.byteLength, 0);
+        const out = new Uint8Array(total);
+        let p = 0;
+        for (const c of parts) { out.set(c, p); p += c.byteLength; }
+        resolve(out);
+      });
+      d.on('error', reject);
+      const chunk = Buffer.alloc(1024 * 1024, fill);
+      let left = bytes;
+      const write = (): void => {
+        while (left > 0) {
+          const n = Math.min(left, chunk.byteLength);
+          left -= n;
+          if (!d.write(n === chunk.byteLength ? chunk : chunk.subarray(0, n))) {
+            d.once('drain', write);
+            return;
+          }
+        }
+        d.end();
+      };
+      write();
+    });
+  }
+
+  // 33a. Mentiroso ~110 KB → 110 MB: la expansión acotada muere por salida
+  // real, no por cabecera; memoria plana y rechazo rápido.
+  const big = await deflateFill(110 * 1024 * 1024, 0x41);
+  assert.ok(big.byteLength < 1024 * 1024, 'el cebo debe caber en un email');
+  const liar = liarZip([{ name: 'prog.xpm', declared: 1024, payload: big }]);
+  let t0 = Date.now();
+  await assert.rejects(
+    parseZipArchiveCapped(liar),
+    /inflates too large/,
+    'mentiroso 1 KB→150 MB debe morir por inflado real'
+  );
+  assert.ok(Date.now() - t0 < 15000, 'rechazo por streaming, sin OOM');
+  await assert.rejects(
+    listZipSamplerProgramsCapped('liar.zip', ab(liar)),
+    /inflates too large/,
+    'el barrido tampoco debe inflar la mentira'
+  );
+  console.log('[PASS] 33a. liar-size ~110 KB→110 MB cortado por salida real');
+
+  // 33b. Total REAL (no declarado): 4 entradas de 80 MB reales (1 KB
+  // declarados) superan los 300 MB al barrer. Mismo payload reutilizado.
+  const eighty = await deflateFill(80 * 1024 * 1024, 0x42);
+  const distributed = liarZip(
+    [0, 1, 2, 3].map((i) => ({ name: `p${i}.xpm`, declared: 1024, payload: eighty }))
+  );
+  t0 = Date.now();
+  await assert.rejects(
+    listZipSamplerProgramsCapped('dist.zip', ab(distributed)),
+    /too large/,
+    '360 MB reales acumulados deben morir por tope total real'
+  );
+  assert.ok(Date.now() - t0 < 30000, 'rechazo acotado en el tiempo');
+  console.log('[PASS] 33b. total real acumulado acotado (320 MB en ~300 KB)');
+
+  // 33c. Sin falsos positivos: STORE + DEFLATE honestos con bytes exactos,
+  // y el listado de bank sobre el extractor acotado sigue funcionando.
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const { listNeuronBankModels } = await import('../src/core/import/neuronBankImporter.ts');
+  const payload = enc('MNAME-DATA');
+  const okZip = createZipArchive([
+    { path: 'Models/000.model/MName', data: payload },
+    { path: 'Models/000.model/map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
+  ]);
+  const back = await parseZipArchiveCapped(okZip);
+  assert.equal(back.length, 2, 'ZIP honesto intacto');
+  const mname = back.find((e) => e.path.endsWith('MName'));
+  assert.ok(mname && Buffer.from(mname.data).equals(Buffer.from(payload)), 'bytes exactos tras inflado acotado');
+  const models = await listNeuronBankModels('b.zip', ab(okZip));
+  assert.ok(Array.isArray(models), 'listado de bank intacto sobre extracción acotada');
+  console.log('[PASS] 33c. ZIP honesto byte-exacto; bank intacto');
+}
+
+runSecurityTestsPart20().catch((err) => {
+  console.error('Security test (part 20) failed:', err);
   process.exit(1);
 });

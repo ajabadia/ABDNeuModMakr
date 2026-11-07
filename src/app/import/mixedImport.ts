@@ -58,7 +58,7 @@ export async function importMixedFilesOrZip(
         bytes[1] === 0x4b &&
         (bytes[2] === 0x03 || bytes[2] === 0x05);
       if (lower.endsWith('.zip') || lower.endsWith('.nmpack') || (lower.endsWith('.model') && isPkZip)) {
-        expandNestedZipBuffer(bytes, '', expanded, 0);
+        await expandNestedZipBuffer(bytes, '', expanded, 0);
       } else {
         expanded.push({ name: f.name, buffer: buf });
       }
@@ -334,7 +334,7 @@ export async function importMixedFilesOrZip(
         ui.ctx.refresh();
       };
 
-      const modelsInArchive = listNeuronBankModels(primaryContainer.name, primaryContainer.buffer);
+      const modelsInArchive = await listNeuronBankModels(primaryContainer.name, primaryContainer.buffer);
       if (modelsInArchive.length > 1) {
         const multiModal = new MultiInstrumentModal();
         multiModal.open({

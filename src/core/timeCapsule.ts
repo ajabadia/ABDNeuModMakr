@@ -544,9 +544,9 @@ function toArrayBufferCopy(u8: Uint8Array): ArrayBuffer {
  * Expands any `.zip` / `.nmpack` archives in `inputFiles` and extracts the 5 Time Capsule layers
  * alongside standard model files so `parseModelFileSet` never mixes `02_legacy_original` with `04_classic_enhanced`.
  */
-export function extractTimeCapsuleFromFiles(
+export async function extractTimeCapsuleFromFiles(
   inputFiles: readonly { name: string; data: Uint8Array }[]
-): ExtractedTimeCapsule {
+): Promise<ExtractedTimeCapsule> {
   const expanded: { name: string; data: Uint8Array }[] = [];
   const isUnsafeZipPath = (p: string): boolean => {
     const norm = p.replace(/\\/g, '/');
@@ -562,8 +562,9 @@ export function extractTimeCapsuleFromFiles(
   for (const f of inputFiles) {
     const lowerName = f.name.toLowerCase();
     if (lowerName.endsWith('.zip') || lowerName.endsWith('.nmpack')) {
-      // S6.1: compuerta anti-bomba por cabecera antes de inflar nada.
-      const unzipped = parseZipArchiveCapped(f.data);
+      // S6.1 + S6.7l: compuerta por cabecera e inflado acotado (anti-mentira
+      // de `uncompressedSize`: la salida real nunca supera el tope).
+      const unzipped = await parseZipArchiveCapped(f.data);
       for (const u of unzipped) {
         if (isUnsafeZipPath(u.path)) continue; // S6.2 Zip-Slip: ignora entradas con .. o absolutas
         expanded.push({ name: u.path, data: u.data });

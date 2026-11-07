@@ -1062,7 +1062,7 @@ async function runPhase6Tests(): Promise<void> {
       'Missing 05_extended_model/extended_map.json'
     );
 
-    const extracted = extractTimeCapsuleFromFiles([
+    const extracted = await extractTimeCapsuleFromFiles([
       { name: 'Capsule88.zip', data: capsuleZip },
     ]);
     assert.equal(extracted.isTimeCapsule, true);
@@ -1454,7 +1454,7 @@ async function runPhase6Tests(): Promise<void> {
       'Classic hardware Models/<NNN>.model directory must NEVER include .webp files'
     );
 
-    const extracted = extractTimeCapsuleFromFiles([{ name: 'Model142.zip', data: zipBytes }]);
+    const extracted = await extractTimeCapsuleFromFiles([{ name: 'Model142.zip', data: zipBytes }]);
     assert.equal(extracted.manifest?.hasCoverArtwork, true);
     assert.ok(extracted.coverWebpBytes !== null && isWebpBytes(extracted.coverWebpBytes!));
     assert.ok(extracted.manifest?.processConfig.coverArtwork?.webpDataUrl.startsWith('data:image/webp;base64,'));

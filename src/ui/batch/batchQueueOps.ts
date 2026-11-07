@@ -80,7 +80,7 @@ export async function loadExpandedFiles(modal: BatchModalCore, inputFiles: Triag
             const ext = fileExtension(f.name);
             if (ext === 'zip') {
               try {
-                const zipEntries = parseZipArchiveCapped(new Uint8Array(f.buffer));
+                const zipEntries = await parseZipArchiveCapped(new Uint8Array(f.buffer));
                 for (const entry of zipEntries) {
                   if (entry.data.byteLength > 0) {
                     expandedFiles.push({

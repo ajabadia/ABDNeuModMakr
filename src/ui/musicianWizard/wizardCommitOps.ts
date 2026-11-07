@@ -113,7 +113,7 @@ export async function handleFilesSelected(modal: WizardModalCore, files: FileLis
       // 1. Check if it's a Hartmann Neuron bank/model or multi-file sampler bank
       const allNames = fileArr.map((f) => f.name);
       if (isNeuronBankOrModelInput(primary.name, buffer, allNames)) {
-        const models = listNeuronBankModels(primary.name, buffer);
+        const models = await listNeuronBankModels(primary.name, buffer);
         if (models.length > 1) {
           modal.isBusy = false;
           const multi = new MultiInstrumentModal();

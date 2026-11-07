@@ -171,7 +171,7 @@ export async function runPhase35NeuronBankImportTests(): Promise<void> {
       'Should detect multi-model NeuronDB .zip by internal structure'
     );
 
-    const models = listNeuronBankModels('NeuronDB_Pack.zip', zipAb);
+    const models = await listNeuronBankModels('NeuronDB_Pack.zip', zipAb);
     assert(models.length === 2, `Expected 2 models in NeuronDB_Pack.zip, got ${models.length}`);
     assert(models[0].name === 'BASSLINE01' && models[0].slot === 0, 'First model should be BASSLINE01 (#000)');
     assert(models[1].name === 'GLASSCHOIR' && models[1].slot === 5, 'Second model should be GLASSCHOIR (#005)');

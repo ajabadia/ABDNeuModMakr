@@ -261,7 +261,7 @@ async function readMixedWebkitFilesForTriage(
         bytes[1] === 0x4b &&
         (bytes[2] === 0x03 || bytes[2] === 0x05);
       if (isPkZip) {
-        ui.expandNestedZipBuffer(bytes, k.rel.replace(/\.zip$/i, ''), expanded, 1);
+        await ui.expandNestedZipBuffer(bytes, k.rel.replace(/\.zip$/i, ''), expanded, 1);
       } else {
         expanded.push({ name: k.rel, buffer: buf });
       }
