@@ -1736,3 +1736,59 @@ runSecurityTestsPart17().catch((err) => {
   console.error('Security test (part 17) failed:', err);
   process.exit(1);
 });
+
+async function runSecurityTestsPart18() {
+  console.log('=== Security Hardening Suite (part 18: slice text amplification) ===');
+  const { parseSliceFileCapped } =
+    await import('../src/core/dsp/SliceFileParser.ts');
+  const asc = (s: string) => [...s].map((c) => c.charCodeAt(0));
+  const u32le = (v: number) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  const ab = (u: Uint8Array) => u.buffer as ArrayBuffer;
+
+  // 31a. 8 MB de líneas cortas (`0\n`×4M): antes 4 M markers (~600 MB heap).
+  let t0 = Date.now();
+  assert.throws(
+    () => parseSliceFileCapped('0\n'.repeat(4 * 1024 * 1024), 'evil.txt'),
+    /too many lines/
+  );
+  assert.ok(Date.now() - t0 < 5000, 'amplificación por líneas: rechazo rápido');
+  console.log('[PASS] 31a. texto 8 MB / 4 M líneas rechazado sin amplificar');
+
+  // 31b. RIFF >8 MB sin slices (TABs en el audio): antes decode+split entero.
+  const big = new Uint8Array(9 * 1024 * 1024);
+  big.set(asc('RIFF')); big.set(asc('WAVE'), 8);
+  big.set(asc('data'), 12);
+  for (let i = 100; i < big.length; i += 997) big[i] = 9; // TABs dispersos
+  for (let i = 200; i < big.length; i += 4999) big[i] = 10; // \n dispersos
+  t0 = Date.now();
+  assert.strictEqual(parseSliceFileCapped(ab(big), 'big.wav'), null);
+  assert.ok(Date.now() - t0 < 5000, 'fallback de buffer grande: null rápido');
+  console.log('[PASS] 31b. RIFF 9 MB sin slices → null sin decodificar');
+
+  // 31c. Chunk `cue ` truncado: antes RangeError sin capturar; ahora null.
+  const trunc = new Uint8Array([...asc('RIFF'), ...u32le(12), ...asc('WAVE'), ...asc('cue '), ...u32le(4)]);
+  t0 = Date.now();
+  assert.strictEqual(parseSliceFileCapped(ab(trunc), 'trunc.wav'), null);
+  assert.ok(Date.now() - t0 < 5000, 'truncado: null rápido');
+  // Labels legítimos por buffer intactos.
+  const labels = new TextEncoder().encode('0.0\t1.0\tA\n1.0\t2.0\tB\n');
+  const lab = parseSliceFileCapped(ab(labels), 'marks.txt');
+  assert.ok(lab && lab.sliceFrames.length === 2, 'labels legítimos intactos');
+  console.log('[PASS] 31c. chunk truncado → null; labels legítimos intactos');
+
+  // 31d. Bypass por prefijo (espacios + RIFF + atem bomba): sin cuelgue + cue 4G.
+  const atemJson = '{"value0":{"Num slices":2000000000}}';
+  const pre = new TextEncoder().encode(`  RIFF....WAVEatem \t${atemJson}\t`);
+  t0 = Date.now();
+  assert.strictEqual(parseSliceFileCapped(ab(pre), 'evil.wav'), null);
+  assert.ok(Date.now() - t0 < 5000, 'prefijo: sin cuelgue');
+  const cue4g = new Uint8Array([...asc('RIFF'), ...u32le(56), ...asc('WAVE'),
+    ...asc('cue '), ...u32le(0xffffffff)]);
+  assert.strictEqual(parseSliceFileCapped(ab(cue4g), 'c.wav'), null);
+  console.log('[PASS] 31d. prefijo + cue 4G: sin cuelgue, sin hallazgo');
+}
+
+runSecurityTestsPart18().catch((err) => {
+  console.error('Security test (part 18) failed:', err);
+  process.exit(1);
+});
