@@ -5,7 +5,7 @@
 import { createUniqueModelSlug } from '../modelSlug.ts';
 import { classifyInstrumentAndParameterSet } from '../../formats/Sf2Parser.ts';
 import type { BatchModelCandidate, BatchSlicerProfile } from './types.ts';
-import { parseSliceFile } from '../dsp/SliceFileParser.ts';
+import { parseSliceFileCapped as parseSliceFile } from '../dsp/SliceFileParser.ts';
 import { fileExtension } from '../pathUtils.ts';
 import { cloudByokClient, type CloudAiProvider } from '../ai/CloudByokClient.ts';
 

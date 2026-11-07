@@ -1680,3 +1680,59 @@ runSecurityTestsPart16().catch((err) => {
   console.error('Security test (part 16) failed:', err);
   process.exit(1);
 });
+
+// Ola 15 — CPU-DoS en parseo de slices: el vendor itera `Num slices` del
+// chunk WAV `atem` (número JSON sin tope: 2B → cuelgue >120 s) y `count`
+// de SLIC/slce/MARK en FORM/CAT (u32 sin tope: 4G → ~27 s) sin acotar por
+// los bytes reales. `parseSliceFileCapped` pre-valida (tope 4096 +
+// capacidad en bytes) y limita el fallback de texto a 8 MB.
+
+async function runSecurityTestsPart17(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 17: slice counters) ===');
+  const { parseSliceFileCapped } =
+    await import('../src/core/dsp/SliceFileParser.ts');
+  const asc = (s: string) => [...s].map((c) => c.charCodeAt(0));
+  const u32le = (v: number) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  const u32be = (v: number) => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  const ab = (u: Uint8Array) => u.buffer as ArrayBuffer;
+
+  // 30a. WAV `atem` con `Num slices` = 2B (~60 B): rechazo en ms, no cuelgue.
+  const evilJson = '{"value0":{"Num slices":2000000000}}';
+  const evilBytes = [...asc(evilJson), 0];
+  while (evilBytes.length % 2) evilBytes.push(0);
+  const evilWav = new Uint8Array([...asc('RIFF'), ...u32le(200), ...asc('WAVE'),
+    ...asc('atem'), ...u32le(evilBytes.length), ...evilBytes]);
+  let t0 = Date.now();
+  assert.throws(() => parseSliceFileCapped(ab(evilWav), 'evil.wav'), /bad slice count/);
+  assert.ok(Date.now() - t0 < 5000, 'atem mentiroso: rechazo rápido');
+  console.log('[PASS] 30a. `atem` con 2B slices rechazado sin cuelgue');
+
+  // 30b. REX2 FORM con SLIC count = 4G (20 B): rechazo en ms, no ~27 s.
+  const evilRx2 = new Uint8Array([...asc('FORM'), ...u32be(24), ...asc('REX2'),
+    ...asc('SLIC'), ...u32be(12), ...u32be(0xffffffff), ...u32be(0)]);
+  t0 = Date.now();
+  assert.throws(() => parseSliceFileCapped(ab(evilRx2), 'evil.rx2'), /bad slice count/);
+  assert.ok(Date.now() - t0 < 5000, 'SLIC mentiroso: rechazo rápido');
+  console.log('[PASS] 30b. SLIC con 4G rechazado sin cuelgue');
+
+  // 30c. Legítimo intacto: WAV con `atem` de 2 slices + texto >8 MB capado.
+  const goodJson = '{"value0":{"Num slices":2,"Slice 0":{"Start":0,"End":100},"Slice 1":{"Start":100,"End":200}}}';
+  const goodBytes = [...asc(goodJson), 0];
+  while (goodBytes.length % 2) goodBytes.push(0);
+  const goodWav = new Uint8Array([...asc('RIFF'), ...u32le(300), ...asc('WAVE'),
+    ...asc('fmt '), ...u32le(16), 1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0, 2, 0, 16, 0,
+    ...asc('data'), ...u32le(200), ...new Array(200).fill(0),
+    ...asc('atem'), ...u32le(goodBytes.length), ...goodBytes]);
+  const good = parseSliceFileCapped(ab(goodWav), 'good.wav');
+  assert.ok(good && good.sliceFrames.length === 2, 'slices legítimos intactos');
+  assert.throws(
+    () => parseSliceFileCapped('x\n'.repeat(5 * 1024 * 1024), 'big.txt'),
+    'texto de slices >8 MB rechazado'
+  );
+  console.log('[PASS] 30c. slices legítimos intactos; texto gigante capado');
+}
+
+runSecurityTestsPart17().catch((err) => {
+  console.error('Security test (part 17) failed:', err);
+  process.exit(1);
+});

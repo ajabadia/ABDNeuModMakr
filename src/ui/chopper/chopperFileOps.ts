@@ -8,7 +8,7 @@ import { extractManifestFromWavBytes } from '../../core/autoSampler/MidiAutoSamp
 import { bridgeClient } from '../../core/bridge/BridgeClient.ts';
 import { buildSlicesFromBoundaries, buildSlicesFromMidiManifest, extractBoundaryFrames, normalizePeakPcm } from '../../core/dsp/AudioSlicerEngine.ts';
 import { decompressRx2AudioCapped, isRx2Buffer } from '../../core/dsp/DwopDecompressor.ts';
-import { parseSliceFile } from '../../core/dsp/SliceFileParser.ts';
+import { parseSliceFileCapped as parseSliceFile } from '../../core/dsp/SliceFileParser.ts';
 import { decodeWav, decodeAiff, transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
 import { bindChopperKeyboard } from '../chopper/a11yKeyboard.ts';
 import type { ChopperContext } from '../chopper/types.ts';
