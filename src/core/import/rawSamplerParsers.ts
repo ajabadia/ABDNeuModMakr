@@ -11,6 +11,7 @@ import {
   type ArchiveSamplerProgramInfo,
   type ParsedSamplerPreset,
 } from '@abdsynths/shared/formats/sampler/rawSamplerParsers.ts';
+import { extractIso9660Entries } from '@abdsynths/shared/formats/sampler/IsoFormatIdentifier.ts';
 
 import {
   assertZipIndexWithinCaps,
@@ -221,7 +222,21 @@ function isGzipMagicBytes(data: Uint8Array): boolean {
   return data.byteLength >= 2 && data[0] === 0x1f && data[1] === 0x8b;
 }
 
-const NESTED_ZIP_EXTENSIONS = ['.zip', '.xpn'];
+/**
+ * S6.7k — contenedores que el vendor recurre INTERNAMENTE al listar
+ * (`listZipSamplerPrograms`: `/\\.(zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi)$/`
+ * en la rama ZIP y la misma familia en la rama ISO-9660). El barrido de la
+ * ola 11 solo recorría `.zip`/`.xpn`: un ZIP exterior con un `inner.bin`
+ * (un ZIP renombrado) o un `.iso` con un `.zip` dentro esquivaba TODAS las
+ * compuertas — el vendor extraía y parseaba el interior sin topes
+ * (red-team 2026-11-06, ola 17: 23 KB → 500k layers, 24→145 MB heap).
+ * La lista replica EXACTAMENTE la regex del vendor: ni una más (un falso
+ * positivo tiraría imports legítimos), ni una menos (un hueco es bypass).
+ */
+const NESTED_CONTAINER_EXTENSIONS = [
+  '.zip', '.xpn', '.iso', '.img', '.dsk', '.bin', '.hda', '.out',
+  '.efe', '.ede', '.gkh', '.e4b', '.esi',
+];
 const MAX_NESTED_ZIP_DEPTH = 3;
 
 /**
@@ -241,61 +256,149 @@ const MAX_NESTED_ZIP_DEPTH = 3;
  * profundidad. Las entradas de audio se saltan: su inflado lo acotan los
  * topes S6.1 por cabecera y su decodificación las compuertas de la ola 4.
  */
+/** Magia ISO-9660 (`CD001` en 0x8001, igual que `extractIso9660Entries`). */
+function isIsoMagicBytes(data: Uint8Array): boolean {
+  return (
+    data.byteLength >= 0x8006 &&
+    data[0x8001] === 0x43 &&
+    data[0x8002] === 0x44 &&
+    data[0x8003] === 0x30 &&
+    data[0x8004] === 0x30 &&
+    data[0x8005] === 0x31
+  );
+}
+
+/**
+ * Prefijos de TODOS los errores propios de compuerta: al barrer un
+ * contenedor ilegible se ignora (paridad con el vendor, que lo envuelve en
+ * `try/catch`), pero un error de compuerta sobre contenido RECONOCIDO debe
+ * propagarse siempre — si no, el `catch` lo convertiría en fail-open.
+ */
+function isGateError(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : String(e);
+  return (
+    m.startsWith('Sampler archive nested too deep') ||
+    m.startsWith('Sampler preset inflates too large') ||
+    m.startsWith('Sampler definition too large') ||
+    m.startsWith('Sampler preset declares too many region tags') ||
+    m.startsWith('ZIP too many entries') ||
+    m.startsWith('ZIP entry too large') ||
+    m.startsWith('ZIP total too large') ||
+    m.startsWith('ZIP entry with indeterminate size')
+  );
+}
+
+async function assertSweptEntryBytes(
+  entryPath: string,
+  entryBytes: Uint8Array,
+  topFilename: string,
+  depth: number,
+): Promise<void> {
+  const lowerPath = entryPath.toLowerCase();
+  if (NESTED_CONTAINER_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+    await assertNestedContainerBytes(entryPath, entryBytes, topFilename, depth + 1);
+    return;
+  }
+  if (CAPPED_GZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+    if (isGzipMagicBytes(entryBytes)) {
+      await inflateGzipTextCapped(entryPath, new Uint8Array(entryBytes));
+    } else if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+      // S6.7g: sin magia el vendor lo decodifica como texto igualmente.
+      throw new Error(
+        `Sampler definition too large (${entryPath} nested in ${topFilename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+      );
+    }
+    return;
+  }
+  if (ALWAYS_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+    if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+      throw new Error(
+        `Sampler definition too large (${entryPath} nested in ${topFilename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+      );
+    }
+    assertRegionTagCountSafe(entryPath, new TextDecoder('utf-8').decode(entryBytes));
+    return;
+  }
+  if (KNOWN_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+    if (
+      looksLikeTextDefinition(
+        entryBytes.buffer.slice(entryBytes.byteOffset, entryBytes.byteOffset + entryBytes.byteLength) as ArrayBuffer,
+      ) &&
+      entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES
+    ) {
+      throw new Error(
+        `Sampler definition too large (${entryPath} nested in ${topFilename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+      );
+    }
+    assertRegionTagCountSafe(entryPath, new TextDecoder('utf-8').decode(entryBytes));
+  }
+}
+
+/**
+ * S6.7k — despacho de contenedor anidado por CONTENIDO, no por extensión.
+ * El vendor recurre por extensión (cualquiera de
+ * `NESTED_CONTAINER_EXTENSIONS`); aquí se inspecciona la magia real:
+ * ZIP → índice + topes S6.1 + barrido por entrada; ISO-9660 → se enumeran
+ * sus ficheros (paseo lineal acotado por el tamaño de la imagen) y se les
+ * aplica la misma batería por nombre — el vendor también recurre a los
+ * contenedores que haya dentro. Otra imagen de disco (Akai/E-mu/Roland/
+ * Ensoniq/Yamaha/Casio) o contenido desconocido: el vendor solo ejecuta
+ * sniffers lineales y lista programas (sin inflados ni parses en línea),
+ * así que se acepta sin más — igual que antes se aceptaba el `.iso`.
+ * Ilegible/corrupto → se ignora (el vendor lo envuelve en try/catch);
+ * compuerta violada sobre contenido reconocido → se propaga (fail-closed).
+ */
+async function assertNestedContainerBytes(
+  name: string,
+  bytes: Uint8Array,
+  topFilename: string,
+  depth: number,
+): Promise<void> {
+  if (depth > MAX_NESTED_ZIP_DEPTH) {
+    throw new Error(
+      `Sampler archive nested too deep (${name} nested in ${topFilename}, max ${MAX_NESTED_ZIP_DEPTH})`
+    );
+  }
+  if (isZipMagicBytes(bytes)) {
+    let index;
+    try {
+      index = indexZipArchive(bytes);
+    } catch {
+      return; // No es un ZIP legible: el vendor tampoco lo indexaría.
+    }
+    assertZipIndexWithinCaps(index);
+    for (const entry of index) {
+      let entryBytes: Uint8Array;
+      try {
+        entryBytes = extractZipEntry(bytes, entry);
+      } catch {
+        continue; // Entrada corrupta: el vendor la salta al listar.
+      }
+      await assertSweptEntryBytes(entry.path, entryBytes, topFilename, depth);
+    }
+    return;
+  }
+  if (isIsoMagicBytes(bytes)) {
+    let isoEntries: Map<string, Uint8Array>;
+    try {
+      isoEntries = extractIso9660Entries(bytes);
+    } catch (e) {
+      if (isGateError(e)) throw e;
+      return; // ISO ilegible: el vendor la ignora.
+    }
+    for (const [norm, fileBytes] of isoEntries) {
+      await assertSweptEntryBytes(norm, fileBytes, topFilename, depth);
+    }
+  }
+  // Otra imagen / opaco: sin trabajo en línea en el vendor. Nada que barrer.
+}
+
 async function assertZipContentsSafe(
   filename: string,
   zipBytes: Uint8Array,
   depth = 0,
 ): Promise<void> {
-  if (depth > MAX_NESTED_ZIP_DEPTH) {
-    throw new Error(
-      `Sampler archive nested too deep (${filename}, max ${MAX_NESTED_ZIP_DEPTH})`
-    );
-  }
-  const index = indexZipArchive(zipBytes);
-  assertZipIndexWithinCaps(index);
-  for (const entry of index) {
-    const lowerPath = entry.path.toLowerCase();
-    if (NESTED_ZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
-      await assertZipContentsSafe(entry.path, extractZipEntry(zipBytes, entry), depth + 1);
-      continue;
-    }
-    if (CAPPED_GZIP_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
-      const entryBytes = extractZipEntry(zipBytes, entry);
-      if (isGzipMagicBytes(entryBytes)) {
-        await inflateGzipTextCapped(entry.path, new Uint8Array(entryBytes));
-      } else if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
-        // S6.7g: sin magia el vendor lo decodifica como texto igualmente.
-        throw new Error(
-          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
-        );
-      }
-      continue;
-    }
-    if (ALWAYS_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
-      const entryBytes = extractZipEntry(zipBytes, entry);
-      if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
-        throw new Error(
-          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
-        );
-      }
-      assertRegionTagCountSafe(entry.path, new TextDecoder('utf-8').decode(entryBytes));
-      continue;
-    }
-    if (KNOWN_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
-      const entryBytes = extractZipEntry(zipBytes, entry);
-      if (
-        looksLikeTextDefinition(
-          entryBytes.buffer.slice(entryBytes.byteOffset, entryBytes.byteOffset + entryBytes.byteLength) as ArrayBuffer,
-        ) &&
-        entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES
-      ) {
-        throw new Error(
-          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
-        );
-      }
-      assertRegionTagCountSafe(entry.path, new TextDecoder('utf-8').decode(entryBytes));
-    }
-  }
+  await assertNestedContainerBytes(filename, zipBytes, filename, depth);
 }
 
 /**
@@ -309,7 +412,14 @@ export async function listZipSamplerProgramsCapped(
 ): Promise<ArchiveSamplerProgramInfo[]> {
   const bytes = new Uint8Array(data);
   const lowerName = filename.toLowerCase();
-  if (NESTED_ZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) || isZipMagicBytes(bytes)) {
+  // S6.7k: el vendor también lista imágenes de disco (`.iso`/`.img`/…)
+  // y contenedores con magia ZIP aunque la extensión no sea `.zip` — el
+  // despacho es por contenido, no por extensión.
+  if (
+    NESTED_CONTAINER_EXTENSIONS.some((e) => lowerName.endsWith(e)) ||
+    isZipMagicBytes(bytes) ||
+    isIsoMagicBytes(bytes)
+  ) {
     await assertZipContentsSafe(filename, bytes);
   }
   return listZipSamplerPrograms(filename, data);
@@ -321,14 +431,20 @@ export async function parseUniversalSamplerCapped(
   ...rest: unknown[]
 ): Promise<ParsedSamplerPreset> {
   const lowerName = filename.toLowerCase();
-  // Nivel -2 (ola 11): contenedor ZIP — barrido de entradas anidadas con
+  // Nivel -2 (olas 11/17): contenedor — barrido de entradas anidadas con
   // los mismos topes que en plano, antes de que el vendor extraiga nada.
-  if (
-    typeof data !== 'string' &&
-    (NESTED_ZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) ||
-      isZipMagicBytes(new Uint8Array(data)))
-  ) {
-    await assertZipContentsSafe(filename, new Uint8Array(data));
+  // Despacho por contenido (ola 17): el vendor recurre a `.iso`/`.img`/
+  // `.bin`/… y a magia ZIP con otra extensión; solo la extensión nos
+  // dejaba fuera del barrido esos interiores.
+  if (typeof data !== 'string') {
+    const bytes = new Uint8Array(data);
+    if (
+      NESTED_CONTAINER_EXTENSIONS.some((e) => lowerName.endsWith(e)) ||
+      isZipMagicBytes(bytes) ||
+      isIsoMagicBytes(bytes)
+    ) {
+      await assertZipContentsSafe(filename, bytes);
+    }
   }
 
   // Nivel -1 (olas 8–9, ampliado ola 12): `gzip` de preset se infla aquí

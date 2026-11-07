@@ -1792,3 +1792,85 @@ runSecurityTestsPart18().catch((err) => {
   console.error('Security test (part 18) failed:', err);
   process.exit(1);
 });
+
+// Ola 17 — bypass del barrido ZIP-anidado por extensión de contenedor: el
+// vendor recurre en `listZipSamplerPrograms` a
+// `zip|xpn|iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi`, pero el barrido S6.7f
+// solo entraba en `.zip`/`.xpn`. Un `outer.zip` → `inner.bin` (ZIP
+// renombrado) → `bomb.xpm.gz` eludía TODAS las compuertas: 23 KB listaban
+// 500k layers (24→145 MB heap, medido pre-fix). S6.7k despacha por
+// contenido y replica la lista de extensiones del vendor.
+
+async function runSecurityTestsPart19(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 19: nested-container bypass) ===');
+  const { gzipSync } = await import('node:zlib');
+  const { listZipSamplerProgramsCapped, parseUniversalSamplerCapped } =
+    await import('../src/core/import/rawSamplerParsers.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
+
+  // 32a. Bomba MPC3-JSON (>8 MB inflados) en ZIP con extensión `.bin`:
+  // pre-fix listaba 500k layers; post-fix muere en el inflado acotado.
+  const layers: string[] = [];
+  for (let i = 0; i < 200000; i++) layers.push(`{"sampleName":"s${i}.wav","rootNote":60}`);
+  const bigJson = `{"data":{"name":"B","type":0,"bank":[{"layersv":[${layers.join(',')}]}]}}`;
+  assert.ok(bigJson.length > 8 * 1024 * 1024, 'el cebo debe superar los 8 MB');
+  const bigGz = new Uint8Array(gzipSync(Buffer.from(bigJson, 'utf8')));
+  const innerBin = createZipArchive([{ path: 'bomb.xpm', data: bigGz }]);
+  const outer = createZipArchive([
+    { path: 'inner.bin', data: innerBin },
+    { path: 'readme.txt', data: enc('hello') },
+  ]);
+  let t0 = Date.now();
+  await assert.rejects(
+    listZipSamplerProgramsCapped('outer.zip', ab(outer)),
+    /inflates too large/,
+    'bomba en .bin anidado debe morir en el inflado acotado, no listarse'
+  );
+  await assert.rejects(
+    parseUniversalSamplerCapped('outer.zip', ab(outer), new Map()),
+    /inflates too large/,
+    'la ruta de parse también debe barrer el .bin anidado'
+  );
+  assert.ok(Date.now() - t0 < 10000, 'rechazo anidado rápido');
+  console.log('[PASS] 32a. bomba xpm en contenedor .bin cortada por contenido');
+
+  // 32b. Profundidad: cadena de 5 contenedores anidados (el vendor no
+  // tiene tope) muere en `nested too deep`; 2 saltos legítimos listan.
+  const tinyJson = '{"data":{"name":"T","type":0,"bank":[{"layersv":[' +
+    '{"sampleName":"a.wav","rootNote":60},{"sampleName":"b.wav","rootNote":62}]}]}}';
+  const tinyGz = new Uint8Array(gzipSync(Buffer.from(tinyJson, 'utf8')));
+  let deep: Uint8Array = createZipArchive([{ path: 't.xpm', data: tinyGz }]);
+  for (let i = 0; i < 5; i++) deep = createZipArchive([{ path: `l${i}.bin`, data: deep }]);
+  await assert.rejects(
+    listZipSamplerProgramsCapped('deep.zip', ab(deep)),
+    /nested too deep/,
+    '5 saltos de contenedor deben morir por profundidad'
+  );
+  let two: Uint8Array = createZipArchive([{ path: 't.xpm', data: tinyGz }]);
+  for (let i = 0; i < 2; i++) two = createZipArchive([{ path: `l${i}.bin`, data: two }]);
+  const twoListed = await listZipSamplerProgramsCapped('two.zip', ab(two));
+  assert.ok(twoListed.some((p) => p.regionCount === 2), '2 saltos legítimos listan el xpm');
+  console.log('[PASS] 32b. profundidad anidada acotada; 2 saltos intactos');
+
+  // 32c. Sin falsos positivos: `.bin` basura o ISO corrupta resuelven
+  // (el vendor los ignora), y el xpm mínimo en `.bin` lista con regiones.
+  const garbage = await listZipSamplerProgramsCapped(
+    'g.zip',
+    ab(createZipArchive([{ path: 'x.bin', data: enc('nonsense'.repeat(100)) }]))
+  );
+  assert.ok(Array.isArray(garbage), '.bin ilegible no debe tirar el listado');
+  const fakeIso = new Uint8Array(0x9000);
+  fakeIso.set(enc('CD001'), 0x8001); // Magia ISO con directorios basura.
+  const isoListed = await listZipSamplerProgramsCapped('f.iso', ab(fakeIso));
+  assert.ok(Array.isArray(isoListed), 'ISO corrupta debe resolverse, no colgar');
+  const okOuter = createZipArchive([{ path: 'inner.bin', data: createZipArchive([{ path: 't.xpm', data: tinyGz }]) }]);
+  const okListed = await listZipSamplerProgramsCapped('ok.zip', ab(okOuter));
+  assert.ok(okListed.some((p) => p.regionCount === 2), 'xpm mínimo en .bin lista sus 2 regiones');
+  console.log('[PASS] 32c. contenedores opacos/legítimos intactos');
+}
+
+runSecurityTestsPart19().catch((err) => {
+  console.error('Security test (part 19) failed:', err);
+  process.exit(1);
+});
