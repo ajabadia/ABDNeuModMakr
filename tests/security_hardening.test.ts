@@ -1437,3 +1437,91 @@ runSecurityTestsPart13().catch((err) => {
   console.error('Security test (part 13) failed:', err);
   process.exit(1);
 });
+
+// Ola 12 — fuzz mutacional de prefijos sobre las compuertas nuevas: un
+// prefijo (espacios/BOM) esquivaba la compuerta de olor de 8 MB porque el
+// vendor hace `trimStart()` en varias rutas (`.xpm` acepta JSON con
+// espacios delante). 12,8 MB de JSON con 64 espacios se `JSON.parseaba`
+// entero (+195 MB RSS) y solo moría en el tope post-parse; `.grp`/` .tvpst`
+// eludían todo por no oler a texto. F7/F10/F11/F12 verificados sin hallazgo
+// (adv con prefijo devuelve preset vacío en 5 ms; dwp desplazado, map.script
+// con BOM y ncw directo rechazan limpio).
+
+async function runSecurityTestsPart14(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 14: prefix-mutation fuzz) ===');
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const { gzipSync } = await import('node:zlib');
+  const { parseUniversalSamplerCapped } =
+    await import('../src/core/import/rawSamplerParsers.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const ab = (u: Uint8Array) => u.buffer as ArrayBuffer;
+  const SP = ' '.repeat(64);
+  const BOM = '\uFEFF';
+  // ~8,5 MB JSON (200k capas): pre-fix con prefijo se parseaba entero
+  // (+100 MB RSS) y moría en regiones; post-fix muere por tamaño en ms.
+  const layers: string[] = [];
+  for (let i = 0; i < 200000; i++) layers.push(`{"sampleName":"s${i}.wav","rootNote":60}`);
+  const json = `{"data":{"name":"B","type":0,"bank":[{"layersv":[${layers.join(',')}]}]}}`;
+  assert.ok(json.length > 8 * 1024 * 1024, 'el cebo debe superar los 8 MB');
+
+  // 27a–27b. JSON `.xpm` con prefijo de espacios/BOM: olor tras prefijo.
+  for (const [tag, body] of [['espacios', SP + json], ['BOM', BOM + json]] as const) {
+    await assert.rejects(
+      parseUniversalSamplerCapped('p.xpm', ab(enc(body)), new Map()),
+      /too large/,
+      `JSON con prefijo ${tag} debe morir por tamaño, no parsearse`
+    );
+  }
+  console.log('[PASS] 27a–27b. prefijos espacios/BOM ya no eluden los 8 MB');
+
+  // 27c. Lo mismo anidado en `.xpn` (barrido S6.7f).
+  const nx = createZipArchive([{ path: 'p.xpm', data: enc(SP + json) }]);
+  await assert.rejects(
+    parseUniversalSamplerCapped('n.xpn', ab(nx), new Map()),
+    /too large/,
+    'anidado con prefijo debe morir por tamaño en el barrido'
+  );
+  console.log('[PASS] 27c. anidado con prefijo cortado en el barrido');
+
+  // 27d. `.grp` TSV de 1 MB con prefijo anidado: el vendor lo decodifica
+  // como texto sin condición, así que el tope crudo aplica (S6.7g).
+  const rows = ['File Path\tLow Midi Note\tHigh Velocity\tPitch in Hertz\tLoop Start'];
+  for (let i = 0; i < 350000; i++) rows.push(`s${i}.wav\t0\t127\t440.0\t-1`);
+  const grp = SP + rows.join('\n');
+  assert.ok(grp.length > 8 * 1024 * 1024, 'el TSV debe superar los 8 MB');
+  const gx = createZipArchive([{ path: 'g.grp', data: enc(grp) }]);
+  let t0 = Date.now();
+  await assert.rejects(
+    parseUniversalSamplerCapped('n.xpn', ab(gx), new Map()),
+    /too large/,
+    '.grp anidado debe morir por tamaño, no por regiones'
+  );
+  assert.ok(Date.now() - t0 < 5000, 'rechazo rápido');
+  console.log('[PASS] 27d. .grp anidado (texto incondicional) acotado');
+
+  // 27e. Sin falsos positivos: JSON mínimo con prefijo importa, dspreset
+  // con prefijo importa, y adv-gzip con prefijo se resuelve en ms.
+  const tiny = '{"data":{"name":"T","type":0,"bank":[{"layersv":[' +
+    '{"sampleName":"a.wav","rootNote":60},{"sampleName":"b.wav","rootNote":62}]}]}}';
+  const okXpm = await parseUniversalSamplerCapped('t.xpm', ab(enc(SP + BOM + tiny)), new Map());
+  assert.strictEqual(okXpm.regions.length, 2, 'xpm mínimo con prefijo intacto');
+  const tinyDs = '  \n' + BOM +
+    '<?xml version="1.0"?><DecentSampler><groups><group>' +
+    '<sample path="a.wav" rootNote="60"/></group></groups></DecentSampler>';
+  await assert.doesNotReject(
+    parseUniversalSamplerCapped('t.dspreset', ab(enc(tinyDs)), new Map()),
+    'dspreset con prefijo no debe trippear la compuerta'
+  );
+  const gz = new Uint8Array(gzipSync(Buffer.from('<Ableton></Ableton>', 'utf8')));
+  const prefixed = new Uint8Array(enc(SP).length + gz.length);
+  prefixed.set(enc(SP), 0); prefixed.set(gz, enc(SP).length);
+  t0 = Date.now();
+  await parseUniversalSamplerCapped('a.adv', ab(prefixed), new Map()).catch(() => undefined);
+  assert.ok(Date.now() - t0 < 5000, `adv con prefijo se resuelve rápido (fue ${Date.now() - t0}ms)`);
+  console.log('[PASS] 27e. legítimos con prefijo intactos; adv resuelve en ms');
+}
+
+runSecurityTestsPart14().catch((err) => {
+  console.error('Security test (part 14) failed:', err);
+  process.exit(1);
+});

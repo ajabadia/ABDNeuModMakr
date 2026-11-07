@@ -175,10 +175,36 @@ function assertRegionTagCountSafe(filename: string, text: string): void {
 }
 
 function looksLikeTextDefinition(data: ArrayBuffer): boolean {
-  if (data.byteLength === 0) return false;
-  const first = new Uint8Array(data, 0, 1)[0];
+  const bytes = new Uint8Array(data);
+  let i = 0;
+  // Ola 12 (fuzz mutacional): insensible a prefijos — el vendor hace
+  // `trimStart()` en varias rutas (p. ej. `.xpm` acepta JSON con espacios
+  // delante), así que la compuerta huele el primer byte significativo
+  // igual que él; si no, un prefijo esquivaba la compuerta de 8 MB.
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) i = 3;
+  while (i < bytes.length) {
+    const b = bytes[i];
+    if (b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d || b === 0x0b || b === 0x0c) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  if (i >= bytes.length) return false;
+  const first = bytes[i];
   return first === 0x3c || first === 0x7b || first === 0x5b;
 }
+
+/**
+ * S6.7g — formatos que el vendor decodifica como texto SIEMPRE (ola 12).
+ * `.grp`/`.tvpst`/`elmulti`/`patch.json` se decodifican con `TextDecoder`
+ * sin condición en el vendor, así que un prefijo (o su ausencia de olor)
+ * no cambia nada para él — pero nos esquivaba la compuerta de 8 MB. Como
+ * > 8 MB de TSV/INI/JSON son siempre >> 16384 regiones, morirían en el
+ * tope post-parse igualmente: caparlos por bytes no rompe ningún
+ * legítimo que pudiera importar.
+ */
+const ALWAYS_TEXT_EXTENSIONS = ['.grp', '.tvpst', 'elmulti', 'patch.json'];
 
 /** Magia ZIP (`PK\x03\x04`, igual que el `isZipHeader` privado del vendor). */
 function isZipMagicBytes(data: Uint8Array): boolean {
@@ -237,7 +263,22 @@ async function assertZipContentsSafe(
       const entryBytes = extractZipEntry(zipBytes, entry);
       if (isGzipMagicBytes(entryBytes)) {
         await inflateGzipTextCapped(entry.path, new Uint8Array(entryBytes));
+      } else if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+        // S6.7g: sin magia el vendor lo decodifica como texto igualmente.
+        throw new Error(
+          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+        );
       }
+      continue;
+    }
+    if (ALWAYS_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
+      const entryBytes = extractZipEntry(zipBytes, entry);
+      if (entryBytes.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+        throw new Error(
+          `Sampler definition too large (${entry.path} nested in ${filename}: ${entryBytes.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+        );
+      }
+      assertRegionTagCountSafe(entry.path, new TextDecoder('utf-8').decode(entryBytes));
       continue;
     }
     if (KNOWN_TEXT_EXTENSIONS.some((e) => lowerPath.endsWith(e))) {
@@ -290,31 +331,46 @@ export async function parseUniversalSamplerCapped(
     await assertZipContentsSafe(filename, new Uint8Array(data));
   }
 
-  // Nivel -1 (olas 8–9): `gzip` de preset se infla aquí con tope; el
-  // vendor lo recibiría sin límite. Se pasa como string para no re-inflar
-  // (ninguna de estas rutas re-comprime: el vendor detecta gzip por magia).
-  if (
-    typeof data !== 'string' &&
-    CAPPED_GZIP_EXTENSIONS.some((e) => lowerName.endsWith(e)) &&
-    isGzipMagic(data)
-  ) {
-    const xml = await inflateGzipTextCapped(filename, new Uint8Array(data));
-    assertRegionTagCountSafe(filename, xml);
-    const preset = await (
-      parseUniversalSampler as (...args: unknown[]) => Promise<{ regions?: unknown[] }>
-    )(filename, xml, ...rest);
-    const count = Array.isArray(preset?.regions) ? (preset.regions as unknown[]).length : 0;
-    if (count > MAX_SAMPLER_PRESET_REGIONS) {
+  // Nivel -1 (olas 8–9, ampliado ola 12): `gzip` de preset se infla aquí
+  // con tope; el vendor lo recibiría sin límite. Se pasa como string para
+  // no re-inflar (ninguna de estas rutas re-comprime: el vendor detecta
+  // gzip por magia). Ola 12: si NO hay magia gzip, el vendor trata estas
+  // extensiones como texto igualmente (`unpackAbletonAdvXml`/`parseMpcXpm`
+  // decodifican siempre), así que el tope crudo aplica también — si no, un
+  // prefijo cualquiera esquivaba el inflado acotado Y la compuerta de olor.
+  if (typeof data !== 'string' && CAPPED_GZIP_EXTENSIONS.some((e) => lowerName.endsWith(e))) {
+    if (!isGzipMagic(data) && data.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
       throw new Error(
-        `Sampler preset declares too many regions (${filename}: ${count}, max ${MAX_SAMPLER_PRESET_REGIONS})`
+        `Sampler definition too large (${filename}: ${data.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
       );
     }
-    return preset as ParsedSamplerPreset;
+    if (isGzipMagic(data)) {
+      const xml = await inflateGzipTextCapped(filename, new Uint8Array(data));
+      assertRegionTagCountSafe(filename, xml);
+      const preset = await (
+        parseUniversalSampler as (...args: unknown[]) => Promise<{ regions?: unknown[] }>
+      )(filename, xml, ...rest);
+      const count = Array.isArray(preset?.regions) ? (preset.regions as unknown[]).length : 0;
+      if (count > MAX_SAMPLER_PRESET_REGIONS) {
+        throw new Error(
+          `Sampler preset declares too many regions (${filename}: ${count}, max ${MAX_SAMPLER_PRESET_REGIONS})`
+        );
+      }
+      return preset as ParsedSamplerPreset;
+    }
   }
 
   let textForTagCount: string | undefined;
   if (typeof data !== 'string') {
     const knownTextExt = KNOWN_TEXT_EXTENSIONS.some((e) => filename.toLowerCase().endsWith(e));
+    const alwaysTextExt = ALWAYS_TEXT_EXTENSIONS.some((e) => filename.toLowerCase().endsWith(e));
+    if (alwaysTextExt && data.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
+      // S6.7g: el vendor lo decodifica como texto sin condición; > 8 MB
+      // moriría en el tope post-parse igualmente (>> 16384 regiones).
+      throw new Error(
+        `Sampler definition too large (${filename}: ${data.byteLength} bytes, max ${MAX_SAMPLER_DEFINITION_TEXT_BYTES})`
+      );
+    }
     if (looksLikeTextDefinition(data)) {
       // Orden ola 6 intacto: tamaño → pre-conteo → vendor → regiones.
       if (data.byteLength > MAX_SAMPLER_DEFINITION_TEXT_BYTES) {
