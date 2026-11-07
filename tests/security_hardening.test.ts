@@ -1937,42 +1937,14 @@ async function runSecurityTestsPart20(): Promise<void> {
     return out;
   }
 
-  // Generación por streaming (como la parte 4): cede el loop por MB para
-  // no falsear los presupuestos de tiempo de las demás partes concurrentes.
-  const { DeflateRaw } = await import('node:zlib');
-  function deflateFill(bytes: number, fill: number): Promise<Uint8Array> {
-    return new Promise<Uint8Array>((resolve, reject) => {
-      const d = new DeflateRaw();
-      const parts: Uint8Array[] = [];
-      d.on('data', (c: Uint8Array) => parts.push(c));
-      d.on('end', () => {
-        const total = parts.reduce((n, c) => n + c.byteLength, 0);
-        const out = new Uint8Array(total);
-        let p = 0;
-        for (const c of parts) { out.set(c, p); p += c.byteLength; }
-        resolve(out);
-      });
-      d.on('error', reject);
-      const chunk = Buffer.alloc(1024 * 1024, fill);
-      let left = bytes;
-      const write = (): void => {
-        while (left > 0) {
-          const n = Math.min(left, chunk.byteLength);
-          left -= n;
-          if (!d.write(n === chunk.byteLength ? chunk : chunk.subarray(0, n))) {
-            d.once('drain', write);
-            return;
-          }
-        }
-        d.end();
-      };
-      write();
-    });
-  }
+  // Generación de un solo `deflateRawSync` nativo (sin troceado con `drain`:
+  // el churn de promesas del troceado hambreaba el loop y falseaba los
+  // presupuestos de tiempo de las partes concurrentes).
+  const { deflateRawSync } = await import('node:zlib');
 
   // 33a. Mentiroso ~110 KB → 110 MB: la expansión acotada muere por salida
   // real, no por cabecera; memoria plana y rechazo rápido.
-  const big = await deflateFill(110 * 1024 * 1024, 0x41);
+  const big = new Uint8Array(deflateRawSync(Buffer.alloc(110 * 1024 * 1024, 0x41), { level: 1 }));
   assert.ok(big.byteLength < 1024 * 1024, 'el cebo debe caber en un email');
   const liar = liarZip([{ name: 'prog.xpm', declared: 1024, payload: big }]);
   let t0 = Date.now();
@@ -1991,7 +1963,7 @@ async function runSecurityTestsPart20(): Promise<void> {
 
   // 33b. Total REAL (no declarado): 4 entradas de 80 MB reales (1 KB
   // declarados) superan los 300 MB al barrer. Mismo payload reutilizado.
-  const eighty = await deflateFill(80 * 1024 * 1024, 0x42);
+  const eighty = new Uint8Array(deflateRawSync(Buffer.alloc(80 * 1024 * 1024, 0x42), { level: 1 }));
   const distributed = liarZip(
     [0, 1, 2, 3].map((i) => ({ name: `p${i}.xpm`, declared: 1024, payload: eighty }))
   );
@@ -2042,6 +2014,7 @@ async function runSecurityTestsPart21(): Promise<void> {
   const { extractTimeCapsuleFromFiles } = await import('../src/core/timeCapsule.ts');
   const { parseNeuronBankOrModelToPreset } =
     await import('../src/core/import/neuronBankImporter.ts');
+  const { deflateRawSync } = await import('node:zlib');
   const enc = (s: string) => new TextEncoder().encode(s);
   const ab = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteLength) as ArrayBuffer;
 
@@ -2075,26 +2048,9 @@ async function runSecurityTestsPart21(): Promise<void> {
     return out;
   }
 
-  // 34a. Mentiroso anidado (declara 1 KB, infla 120 MB) vía ruta app:
+  // 34a. Mentiroso anidado (declara 1 KB, infla 101 MB) vía ruta app:
   // rechazo explícito por salida real, sin pico de RAM del vendor.
-  const { DeflateRaw } = await import('node:zlib');
-  const payload120 = await new Promise<Uint8Array>((resolve, reject) => {
-    const d = new DeflateRaw(); const parts: Uint8Array[] = [];
-    d.on('data', (c: Uint8Array) => parts.push(c));
-    d.on('end', () => {
-      const t = parts.reduce((n, c) => n + c.byteLength, 0);
-      const o = new Uint8Array(t); let p = 0;
-      for (const c of parts) { o.set(c, p); p += c.byteLength; }
-      resolve(o);
-    });
-    d.on('error', reject);
-    const chunk = Buffer.alloc(1024 * 1024, 0x41); let left = 120 * 1024 * 1024;
-    const w = (): void => {
-      while (left > 0) { const n = Math.min(left, chunk.byteLength); left -= n; if (!d.write(chunk.subarray(0, n))) { d.once('drain', w); return; } }
-      d.end();
-    };
-    w();
-  });
+  const payload120 = new Uint8Array(deflateRawSync(Buffer.alloc(101 * 1024 * 1024, 0x41), { level: 1 }));
   const trap = createZipArchive([
     { path: 'MName', data: enc('TRAPKIT01') },
     { path: 'map.script', data: enc(';map V1\n[/* I0 M0 L0 H127 */]\n') },
@@ -2240,5 +2196,114 @@ async function runSecurityTestsPart22(): Promise<void> {
 
 runSecurityTestsPart22().catch((err) => {
   console.error('Security test (part 22) failed:', err);
+  process.exit(1);
+});
+
+// Ola 21 — presupuesto acumulado de expansión: `parseZipArchiveCapped` topa
+// cada archivo (300 MB), pero `expandNestedZipBuffer` no sumaba entre
+// anidados: 4 `.zip` honestos de 160 MB (cada entrada ≤100 MB, cada anidado
+// ≤300 MB) expandían 640 MB residentes desde 640 KB sin que nada fallara
+// (medido pre-fix: 118 MB → 1009 MB RSS). S6.7o cuenta lo EMITIDO y falla
+// ANTES de copiar al superar el tope total; el agotamiento aborta todo
+// (error propio, no se traga como zip corrupto).
+
+async function runSecurityTestsPart23(): Promise<void> {
+  console.log('=== Security Hardening Suite (part 23: cumulative expansion budget) ===');
+  const { createZipArchive } = await import('../src/formats/ZipArchive.ts');
+  const { expandNestedZipBuffer } = await import('../src/app/import/triageOps.ts');
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  function rawZip(entries: Array<{ name: string; declared: number; payload: Uint8Array }>): Uint8Array {
+    const chunks: Uint8Array[] = []; const centrals: Uint8Array[] = []; let off = 0;
+    for (const e of entries) {
+      const nm = enc(e.name);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(8, 8, true);
+      lh.setUint32(18, e.payload.byteLength, true); lh.setUint32(22, e.declared, true); lh.setUint16(26, nm.length, true);
+      chunks.push(new Uint8Array(lh.buffer), nm, e.payload);
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true); cd.setUint16(10, 8, true);
+      cd.setUint32(20, e.payload.byteLength, true); cd.setUint32(24, e.declared, true); cd.setUint16(28, nm.length, true);
+      cd.setUint32(42, off, true);
+      centrals.push(new Uint8Array(cd.buffer), nm);
+      off += 30 + nm.length + e.payload.byteLength;
+    }
+    const cdSize = centrals.reduce((n, c) => n + c.byteLength, 0);
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, entries.length, true); eocd.setUint16(10, entries.length, true);
+    eocd.setUint32(12, cdSize, true); eocd.setUint32(16, off, true);
+    const parts = [...chunks, ...centrals, new Uint8Array(eocd.buffer)];
+    const total = parts.reduce((n, c) => n + c.byteLength, 0);
+    const out = new Uint8Array(total); let p = 0;
+    for (const c of parts) { out.set(c, p); p += c.byteLength; }
+    return out;
+  }
+  // 36a. Distribuida honesta (31×10 MB en ~330 KB): muere por acumulado.
+  // Un solo payload reutilizado y generación de un solo `deflateRawSync`
+  // (las partes con presupuestos de tiempo corren en concurrencia: el
+  // troceado por streaming con `drain` quema el loop mucho más).
+  const { deflateRawSync } = await import('node:zlib');
+  const ten = new Uint8Array(deflateRawSync(Buffer.alloc(10 * 1024 * 1024, 0x42)));
+  const nested = rawZip([{ name: 'a.bin', declared: 10 * 1024 * 1024, payload: ten }]);
+  const trap = createZipArchive(Array.from({ length: 31 }, (_, i) => ({ path: `n${i}.zip`, data: nested })));
+  assert.ok(trap.byteLength < 1024 * 1024, 'el cebo distribuido cabe en un email');
+  const t0 = Date.now();
+  const outTrap: { name: string; buffer: ArrayBuffer }[] = [];
+  await assert.rejects(
+    expandNestedZipBuffer(trap, '', outTrap, 0),
+    /ZIP expansion too large/,
+    '310 MB distribuidos deben morir por presupuesto acumulado'
+  );
+  assert.ok(Date.now() - t0 < 60000, 'rechazo acotado en el tiempo');
+  console.log('[PASS] 36a. bomba distribuida 310 MB cortada por acumulado');
+
+  // 36b. Legítimo intacto: anidados pequeños se expanden enteros.
+  const inner1 = createZipArchive([{ path: 'a.txt', data: enc('hello-a') }]);
+  const inner2 = createZipArchive([{ path: 'b.txt', data: enc('hello-b') }]);
+  const okOuter = createZipArchive([
+    { path: 'top.txt', data: enc('hello-top') },
+    { path: 'n1.zip', data: inner1 },
+    { path: 'n2.zip', data: inner2 },
+  ]);
+  const outOk: { name: string; buffer: ArrayBuffer }[] = [];
+  await expandNestedZipBuffer(okOuter, 'pack', outOk, 0);
+  assert.equal(outOk.length, 3, 'los 3 ficheros honestos se expanden');
+  assert.ok(outOk.some((f) => f.name === 'pack/n1/a.txt'), 'contenido anidado con prefijo');
+  console.log('[PASS] 36b. anidados honestos intactos');
+
+  // 36c. Zip anidado corrupto (EOCD + central válidos, stream inválido: la
+  // extracción TIRA) → se conserva crudo (fallback intacto; el error de
+  // presupuesto, en cambio, aborta todo y no se traga).
+  const badCentral = (() => {
+    const nm = enc('x.bin');
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(8, 8, true);
+    lh.setUint32(18, 10, true); lh.setUint32(22, 10, true); lh.setUint16(26, nm.length, true);
+    const body = new Uint8Array(10); // ceros: stream deflate inválido
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true); cd.setUint16(10, 8, true);
+    cd.setUint32(20, 10, true); cd.setUint32(24, 10, true); cd.setUint16(28, nm.length, true);
+    cd.setUint32(42, 0, true);
+    const eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, 1, true); eocd.setUint16(10, 1, true);
+    eocd.setUint32(12, 46 + nm.length, true); eocd.setUint32(16, 30 + nm.length + 10, true);
+    const parts = [new Uint8Array(lh.buffer), nm, body, new Uint8Array(cd.buffer), nm, new Uint8Array(eocd.buffer)];
+    const total = parts.reduce((n, c) => n + c.byteLength, 0);
+    const out = new Uint8Array(total); let p = 0;
+    for (const c of parts) { out.set(c, p); p += c.byteLength; }
+    return out;
+  })();
+  const corruptOuter = createZipArchive([
+    { path: 'MName', data: enc('CORRUPT') },
+    { path: 'bad.zip', data: badCentral },
+  ]);
+  const outCorrupt: { name: string; buffer: ArrayBuffer }[] = [];
+  await expandNestedZipBuffer(corruptOuter, '', outCorrupt, 0);
+  assert.ok(outCorrupt.some((f) => f.name === 'bad.zip'), 'zip corrupto se conserva crudo');
+  console.log('[PASS] 36c. fallback de zip corrupto intacto');
+}
+
+runSecurityTestsPart23().catch((err) => {
+  console.error('Security test (part 23) failed:', err);
   process.exit(1);
 });

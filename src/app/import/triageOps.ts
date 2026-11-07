@@ -7,7 +7,10 @@
 
 import { isSupportedAudioFileName } from '@abdsynths/shared/formats/neuron';
 import { transcodeAnyAudioToWavBuffer } from '../../core/dsp/WavDecoder.ts';
-import { parseZipArchiveCapped } from '../../formats/ZipArchive.ts';
+import {
+  APP_MAX_ZIP_TOTAL_BYTES,
+  parseZipArchiveCapped,
+} from '../../formats/ZipArchive.ts';
 import { MAX_SFZ_TEXT_BYTES } from '../../formats/SfzParser.ts';
 import { toast } from '../../ui/notify';
 import { importDeducedAudioDirectoryOrPrompt } from './directoryImport.ts';
@@ -270,12 +273,27 @@ async function processTriageBatch(
  * DirectoryHandle (`showDirectoryPicker`) variant: reads mixed folders carrying
  * preset containers + audio/other files so the triage gate can inspect them.
  */
+/** Acumulador compartido de la expansión: tope S6.7o (ver abajo). */
+export interface ZipExpansionBudget {
+  total: number;
+}
+
+/** El presupuesto acumulado se agota: NO es corrupción (no se traga). */
+export class ZipExpansionBudgetError extends Error {}
+
 export async function expandNestedZipBuffer(
   bytes: Uint8Array,
   prefix: string,
   out: { name: string; buffer: ArrayBuffer }[],
-  depth = 0
+  depth = 0,
+  budget: ZipExpansionBudget = { total: 0 }
 ): Promise<void> {
+  // S6.7o (ola 21): tope ACUMULADO de la expansión. `parseZipArchiveCapped`
+  // topa cada archivo (300 MB), pero sin presupuesto global N anidados
+  // honestos de 160 MB suman gigas en `out` sin que nada falle (medido:
+  // 640 KB → 640 MB residentes sin throw). Se cuenta lo que se EMITE
+  // (bytes reales post-inflado) y se falla ANTES de copiar al superar el
+  // mismo tope total: residente ≤300 MB, transitorio ≤ ~400 MB.
   const unzipped = await parseZipArchiveCapped(bytes);
   for (const entry of unzipped) {
     const entryPath = prefix ? `${prefix}/${entry.path}` : entry.path;
@@ -290,14 +308,22 @@ export async function expandNestedZipBuffer(
     if (isNestedZip) {
       const innerStem = entryPath.replace(/\.zip$/i, '');
       try {
-        await expandNestedZipBuffer(entry.data, innerStem, out, depth + 1);
+        await expandNestedZipBuffer(entry.data, innerStem, out, depth + 1, budget);
         continue;
-      } catch {
+      } catch (e) {
+        // S6.7o: el presupuesto agotado aborta TODO (no es un zip corrupto).
+        if (e instanceof ZipExpansionBudgetError) throw e;
         // Fall through and keep raw buffer if nested zip is corrupt
       }
     }
+    if (budget.total + entry.data.byteLength > APP_MAX_ZIP_TOTAL_BYTES) {
+      throw new ZipExpansionBudgetError(
+        `ZIP expansion too large (${entryPath}: ${((budget.total + entry.data.byteLength) / 1048576).toFixed(0)} MB accumulated, max ${APP_MAX_ZIP_TOTAL_BYTES / 1048576} MB)`
+      );
+    }
     const copy = new Uint8Array(entry.data.byteLength);
     copy.set(entry.data);
+    budget.total += copy.byteLength;
     out.push({ name: entryPath, buffer: copy.buffer });
   }
 }
