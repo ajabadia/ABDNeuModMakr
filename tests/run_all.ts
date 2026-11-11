@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { spawn } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -59,6 +60,7 @@ const TEST_FILES = [
   'resynatorWasmParity.test.ts',
   'phase45_security_audit.test.ts',
   'phase46_ai_honesty_and_audio.test.ts',
+  'phase47_copilot.test.ts',
 ];
 
 interface TestResult {
@@ -74,8 +76,22 @@ async function runTestFile(file: string): Promise<TestResult> {
   const startTime = Date.now();
 
   return new Promise((resolve) => {
+    let bridgeToken = process.env.ABD_BRIDGE_TOKEN || '';
+    if (!bridgeToken) {
+      const tokenPath = path.join(__dirname, '..', 'bridge', '.bridge_token');
+      if (fs.existsSync(tokenPath)) {
+        try {
+          bridgeToken = fs.readFileSync(tokenPath, 'utf8').trim();
+        } catch {}
+      }
+    }
+
     const proc = spawn(command, args, {
       stdio: 'inherit',
+      env: {
+        ...process.env,
+        ...(bridgeToken ? { ABD_BRIDGE_TOKEN: bridgeToken } : {}),
+      },
     });
     proc.on('close', (code) => {
       resolve({

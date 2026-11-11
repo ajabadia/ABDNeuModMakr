@@ -73,11 +73,15 @@ export class CopilotOrchestrator {
   private config: CopilotOrchestratorConfig = { ...DEFAULT_COPILOT_CONFIG };
   private tools = new Map<string, CopilotToolSpec>();
   private conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  private readonly localLlm: LocalLlmClient;
+  private readonly cloudByok: CloudByokClient;
 
   constructor(
-    private readonly localLlm: LocalLlmClient,
-    private readonly cloudByok: CloudByokClient
+    localLlm: LocalLlmClient,
+    cloudByok: CloudByokClient
   ) {
+    this.localLlm = localLlm;
+    this.cloudByok = cloudByok;
     this.loadFromStorage();
   }
 
@@ -345,6 +349,15 @@ Debes responder con un único objeto JSON que cumpla esta estructura:
   ]
 }
 No inventes herramientas que no estén en la lista. Si ninguna herramienta aplica, "proposedActions" debe ser [].`;
+  }
+
+  public async executeApprovedAction(action: CopilotProposedAction): Promise<{ ok: boolean; summary: string }> {
+    const tool = this.tools.get(action.tool);
+    if (!tool) {
+      return { ok: false, summary: `Herramienta desconocida: ${action.tool}` };
+    }
+    const res = await tool.execute(action.args);
+    return { ok: res.ok, summary: res.summary };
   }
 
   public validateToolArguments(

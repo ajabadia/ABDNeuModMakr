@@ -17,6 +17,9 @@ export class TelemetryDrawer {
   private onAutoRepair: (() => void) | null = null;
   private lastSession: Session | null = null;
   private lastErrors: string[] = [];
+  private onForwardLog?: (msg: string) => void;
+  private onForwardAudit?: (session: Session, errors: string[]) => void;
+  private onForwardToggle?: () => void;
 
   constructor(container: HTMLElement, onAutoRepair?: () => void) {
     this.container = container;
@@ -66,9 +69,20 @@ export class TelemetryDrawer {
     });
   }
 
+  public setForwarders(forwarders: {
+    onLog?: (msg: string) => void;
+    onAudit?: (session: Session, errors: string[]) => void;
+    onToggle?: () => void;
+  }): void {
+    this.onForwardLog = forwarders.onLog;
+    this.onForwardAudit = forwarders.onAudit;
+    this.onForwardToggle = forwarders.onToggle;
+  }
+
   public updateAudit(session: Session, errors: string[]): void {
     this.lastSession = session;
     this.lastErrors = errors;
+    this.onForwardAudit?.(session, errors);
     if (!this.drawerElement) return;
     const box = this.drawerElement.querySelector('#telemetry-audit-box');
     if (!box) return;
@@ -181,6 +195,7 @@ export class TelemetryDrawer {
     if (this.logs.length > 500) {
       this.logs.shift();
     }
+    this.onForwardLog?.(`[${time}] ${message}`);
 
     if (this.drawerElement) {
       const stream = this.drawerElement.querySelector('#telemetry-log-stream');
@@ -203,12 +218,20 @@ export class TelemetryDrawer {
   }
 
   public toggle(): void {
+    if (this.onForwardToggle) {
+      this.onForwardToggle();
+      return;
+    }
     this.isOpen = !this.isOpen;
     this.drawerElement?.classList.toggle('is-closed', !this.isOpen);
     this.drawerElement?.classList.toggle('is-open', this.isOpen);
   }
 
   public open(): void {
+    if (this.onForwardToggle) {
+      this.onForwardToggle();
+      return;
+    }
     this.isOpen = true;
     this.drawerElement?.classList.remove('is-closed');
     this.drawerElement?.classList.add('is-open');

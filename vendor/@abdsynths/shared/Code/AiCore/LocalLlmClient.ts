@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { assertSafeLoopbackHttpUrl } from './ssrf';
-import { fetchWithTimeout, safeErrorSnippet } from './CloudByokClient';
+import { fetchWithTimeout } from './CloudByokClient';
 
 export type LocalLlmPreset = 'ollama' | 'lmstudio' | 'custom';
 

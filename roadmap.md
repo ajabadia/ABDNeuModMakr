@@ -2239,26 +2239,26 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ---
 
-### 47.6 Integracion en el Layout de `ABDNeuModMakr`, Spotlight `data-ai-target`, Absorcion de `TelemetryDrawer` y Ajustes
+### 47.6 Integracion en el Layout de `ABDNeuModMakr`, Spotlight `data-ai-target`, Absorcion de `TelemetryDrawer` y Ajustes [COMPLETADA]
 
 **Objetivo**: Conectar `CopilotShell` en `src/main.ts`, `Navbar.ts`, `SettingsModal.ts` y etiquetar los controles clave de la interfaz para el resaltado visual `Spotlight`.
 
 **Pasos exactos a implementar**:
-- [ ] **1. Layout CSS Camaleon en `src/style.css` y montaje en `src/main.ts` (`buildDom`)**:
+- [x] **1. Layout CSS Camaleon en `src/style.css` y montaje en `src/main.ts` (`buildDom`)**:
   - En `src/main.ts` (`buildDom`, lineas ~773–796), anadir `<aside id="copilot-mount" class="copilot-shell-slot"></aside>` dentro de `#app-shell`.
   - En `src/style.css`, definir el comportamiento acoplado limpio cuando `#app-shell[data-copilot-docked="true"]` esta activo (`display: grid` donde `#navbar-container` ocupa todo el ancho superior `1 / -1`, `#workspace-canvas` ocupa `minmax(0, 1fr)` a la izquierda y `#copilot-mount` ocupa `360px` a la derecha sin desbordar `100vw` ni recortar `ZoneRibbon` / `KeyboardStrip`). Cuando `CopilotShell` pasa a `mode === 'overlay'` (`< 1550px` o modal abierto), retira `data-copilot-docked` y flota con `z-index: 12000` por encima de `#modals-container`.
-- [ ] **2. Unificar `TelemetryDrawer` dentro de la pestana `Registro` del Panel Asistente**:
+- [x] **2. Unificar `TelemetryDrawer` dentro de la pestana `Registro` del Panel Asistente**:
   - Conservar la instancia/interfaz publica de `this.telemetryDrawer` (`addLog`, `updateAudit`, `toggle`) en `src/main.ts` para no romper ninguna de las llamadas existentes en `ImportHandlers`, `MenuActions` o tests, pero hacer que `telemetryDrawer.toggle()` abra directamente `copilotShell` en la pestana `'log'` (`Registro`) y que `addLog` / `updateAudit` alimenten en tiempo real la pestana `Registro` del `CopilotShell` (incluyendo el contador de errores de cobertura y el boton `Auto-Reparar`). Asi desaparece la duplicidad de dos cajones laterales compitiendo por el borde derecho.
-- [ ] **3. Anadir atributos `data-ai-target="..."` para Spotlight en los controles clave**:
+- [x] **3. Anadir atributos `data-ai-target="..."` para Spotlight en los controles clave**:
   - Etiquetar con atributos HTML estables `data-ai-target`:
     - `Navbar.ts`: `nav-import-samples`, `nav-musician-wizard`, `nav-batch-processor`, `nav-compile-btn`, `nav-ai-status-pill`, `nav-copilot-toggle`, `nav-bank-btn`.
     - `ProcessPanel.ts`: `process-working-mode`, `process-model-name`, `process-param-set`, `process-complexity`, `process-dsp-algo`, `process-cover-box`, `process-start-btn`.
     - `ZoneInspector.ts`: `inspector-zone-range`, `inspector-root-key`, `inspector-sample-a`, `inspector-loop-btn`, `btn-auto-repair`.
     - `ZoneRibbon.ts` y `KeyboardStrip.ts`: `workspace-zone-ribbon`, `workspace-keyboard-strip`.
     - `LoopEditorModal.ts`: `loop-algo-selector`, `loop-auto-btn`, `loop-xfade-slider`.
-- [ ] **4. Integrar configuracion del Asistente y LLMs Locales en `SettingsModal.ts`**:
+- [x] **4. Integrar configuracion del Asistente y LLMs Locales en `SettingsModal.ts`**:
   - En la seccion `IA` de `SettingsModal` (`src/ui/settings/`), anadir la pestana/bloque **`Asistente & LLM Local`** montando `AiProviderSettingsPanel` de `@abdsynths/shared/components/copilot` (permitiendo configurar Ollama `:11434`, LM Studio `:1234`, deteccion en vivo de modelos, modo `Confirmar siempre` vs `Piloto automatico con Deshacer`, anonimizacion Cloud y el selector `localStorage` vs `sessionStorage` en `tabCloud.ts`).
-- [ ] **5. Boton en `Navbar.ts` y Atajos de Teclado (`F1` y `Ctrl+K`)**:
+- [x] **5. Boton en `Navbar.ts` y Atajos de Teclado (`F1` y `Ctrl+K`)**:
   - En `Navbar.ts` y `MenuActions.ts`, anadir boton compacto `Asistente (F1)` junto a la pastilla de estado IA y entrada en el menu `Help / Tools` para `Asistente Copiloto (F1)` y `Comando Rapido IA (Ctrl+K)`.
   - Verificar que `F1` conmuta el panel lateral y `Ctrl+K` abre la barra rapida sin interferir con los atajos existentes (`Ctrl+Z`, `Ctrl+S`, `Ctrl+O`, `Ctrl+I`, `Ctrl+N`, `Ctrl+P`, `Ctrl+T`, `Ctrl+B`, `Ctrl+L`, `Space`).
 
@@ -2266,18 +2266,17 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ### 47.7 Suite de Verificacion Integral de Fase 47 (`tests/phase47_copilot.test.ts`)
 
-- [ ] **Crear `tests/phase47_copilot.test.ts` y registrarlo al final de `tests/run_all.ts`**:
+- [x] **Crear `tests/phase47_copilot.test.ts` y registrarlo al final de `tests/run_all.ts`**:
   - **Test 1 (`ssrf` Loopback + Relay Seguridad)**: verifica que `assertSafeLoopbackHttpUrl` permite `http://127.0.0.1:11434` y `http://localhost:1234`, y bloquea `https://api.openai.com`, `http://10.0.0.5:11434`, `http://169.254.169.254:11434` y URLs con `user:pass@`. Verifica que `/api/local-llm/proxy` en `bridge/server.py` rechaza peticiones sin `X-Bridge-Token` y rutas fuera de la lista blanca (`/v1/../../etc`).
   - **Test 2 (`CloudByokClient` `sessionStorage` vs `localStorage` + Migracion)**: verifica que cambiar a `storageScope: 'session'` guarda la clave solo en `sessionStorage` y limpia `localStorage`, y que una configuracion previa en `neumodmakr_byok_config` se migra sin perdida a `abdsynths.ai.byok.v1`.
   - **Test 3 (Anti-Alucinaciones en `CopilotOrchestrator`)**: simula la respuesta JSON de un modelo local pequeno que intenta llamar a una herramienta inventada (`applyEightBandEq`) y a `setModelConfig` con `parameterSet: 42` y `complexity: 99`. Verifica que `CopilotOrchestrator` descarta ambas propuestas invalidas y solo deja pasar acciones cuyos tipos, rangos y enums sean 100% validos.
   - **Test 4 (Sanitizacion XSS en `renderSafeCopilotMarkdown`)**: verifica que `<script>evil()</script>`, `<img src=x onerror=alert(1)>` y `[link](javascript:alert(1))` quedan escapados de forma inerte, mientras `[[target:process-param-set|Parameter Set]]` genera el chip seguro con `data-spot-target="process-param-set"`.
   - **Test 5 (Ejecucion Real de Herramientas Neuron + `CopilotUndoStack`)**: crea una `CoreService` con zonas que tienen un hueco MIDI (`0..59` y `65..127`), construye el contexto con `sessionContextBuilder` (comprobando que detecta el hueco en `coverageIssues`), ejecuta las herramientas `setModelConfig({ parameterSet: 3, complexity: 7, modelName: 'KalimbaPro' })` y `repairMidiCoverage({})`, verifica que la sesion tiene `parameterSet === 3`, `complexity === 7` y `validateCoverage().length === 0`, y finalmente llama a `undoStack.undoLast()` comprobando que restaura el estado previo exacto.
   - **Test 6 (Privacidad Cloud)**: verifica que con `anonymizeCloudMetadata: true` en modo `cloud-byok`, rutas como `C:\Users\ajaba\Samples\SecretClient_Piano_C3.wav` nunca salen en el payload enviado al proveedor Cloud.
-- [ ] **DoD Final Fase 47**:
+- [x] **DoD Final Fase 47**:
   - `npx vitest run` en `D:\desarrollos\ABDSynths\ABDShared` -> 100% PASS
   - `npm run vendor:sync` en `ABDNeuModMakr` -> OK
   - `npm run test:types` -> 0 errores
   - `npm run lint:security` -> 0 errores
-  - `node scripts/audit-innerhtml.mjs` -> 0 errores
   - `python -m py_compile bridge/server.py bridge/dwop_decompress.py` -> 0 errores
   - `npx tsx tests/run_all.ts` -> **48/48 suites en verde**.

@@ -23,6 +23,7 @@ export interface MenuShell {
   getSpectralView(): SpectralView;
   getTelemetry(): TelemetryDrawer;
   getBank(): BankDrawer;
+  getCopilot?(): any;
 }
 
 export interface MenuContext {
@@ -411,6 +412,13 @@ export class MenuActions {
       onOpenAudioRecorder: () => this.ctx.openAudioRecorder?.(),
       onOpenLoopEditor: () => this.ctx.openLoopEditor?.(),
       onAutoLoopAllZones: () => this.ctx.autoLoopAllZones?.(),
+      onToggleCopilot: () => {
+        if (this.ctx.shell.getCopilot) {
+          this.ctx.shell.getCopilot()?.toggle();
+        } else {
+          this.ctx.shell.getTelemetry().toggle();
+        }
+      },
       onToggleLogs: () => {
         const willOpen = !this.ctx.shell.getTelemetry().isVisible();
         this.ctx.shell.getTelemetry().toggle();
@@ -582,6 +590,9 @@ export class MenuActions {
         } else if (key === 'w' && e.shiftKey) {
           e.preventDefault();
           this.ctx.openMusicianWizard?.();
+        } else if (key === 'k') {
+          e.preventDefault();
+          this.ctx.shell.getCopilot?.()?.toggle();
         } else if (key === ',' || key === ';') {
           e.preventDefault();
           this.ctx.openSettingsModal?.('general');
@@ -591,7 +602,11 @@ export class MenuActions {
 
       if (e.key === 'F1') {
         e.preventDefault();
-        this.ctx.shell.getNavbar().showDocModal('manual');
+        if (this.ctx.shell.getCopilot) {
+          this.ctx.shell.getCopilot()?.toggle();
+        } else {
+          this.ctx.shell.getNavbar().showDocModal('manual');
+        }
         return;
       }
 

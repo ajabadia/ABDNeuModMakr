@@ -25,9 +25,9 @@ export interface SettingsModalHandlers {
   getCurrentLocale?: () => AppLocale;
 }
 
-export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge';
+export type SettingsModalTab = 'general' | 'ai' | 'web' | 'cloud' | 'bridge' | 'copilot';
 export type SettingsMainTab = 'general' | 'ai';
-export type AiSubTab = 'web' | 'cloud' | 'bridge';
+export type AiSubTab = 'web' | 'cloud' | 'bridge' | 'copilot';
 
 /** Todo lo mutable del modal: vive en la instancia y se comparte por referencia. */
 export interface SettingsModalState {

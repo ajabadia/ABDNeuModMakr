@@ -9,6 +9,7 @@
  * ───────────────────────────────────────────────────────── */
 
 @import '@abdsynths/shared/styles';
+@import '@abdsynths/shared/components/copilot/CopilotShell.css';
 @import '@abdsynths/midi-keyb/keyboard.css';
 
 @import './styles/00-base.css';

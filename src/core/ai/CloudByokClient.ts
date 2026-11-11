@@ -194,6 +194,10 @@ export class CloudByokClient {
       try {
         const parsed = JSON.parse(raw) as Partial<ByokConfig>;
         this.config = { ...DEFAULT_BYOK_CONFIG, ...parsed };
+        // If loaded from legacy key, migrate forward immediately
+        if (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_BYOK_LEGACY) && !localStorage.getItem(STORAGE_KEY_BYOK_SHARED) && !sessionStorage?.getItem(STORAGE_KEY_BYOK_SHARED)) {
+          this.saveConfig(this.config);
+        }
       } catch {
         this.config = { ...DEFAULT_BYOK_CONFIG };
       }

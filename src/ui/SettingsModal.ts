@@ -10,6 +10,9 @@ import type { AiAssistanceConfig } from '../core/types';
 import { bridgeClient } from '../core/bridge/BridgeClient';
 import { webNeuralEngine } from '../core/ai/WebNeuralEngine';
 import { createModalFocusTrap } from './modalFocusTrap';
+import { AiProviderSettingsPanel } from '@abdsynths/shared/components/copilot';
+import { LocalLlmClient } from '@abdsynths/shared/ai';
+import { cloudByokClient } from '../core/ai/CloudByokClient';
 import type {
   AiSubTab,
   SettingsMainTab,
@@ -212,6 +215,13 @@ export class SettingsModal {
                   <span class="subtab-tag">${es ? 'Claves Privadas del Usuario' : 'Private User Keys'}</span>
                 </div>
               </button>
+              <button type="button" class="ai-subtab-btn ${this.state.activeAiSubTab === 'copilot' ? 'is-active' : ''}" data-ai-subtab="copilot">
+                <span class="subtab-icon">${ICONS.sparkle || ICONS.ai}</span>
+                <div class="subtab-text">
+                  <span class="subtab-title">${es ? 'Asistente & LLM Local' : 'Assistant & Local LLM'}</span>
+                  <span class="subtab-tag">${es ? 'Ollama, LM Studio y Copiloto' : 'Ollama, LM Studio & Copilot'}</span>
+                </div>
+              </button>
             </div>
           `
               : ''
@@ -226,6 +236,7 @@ export class SettingsModal {
             ${this.state.activeMainTab === 'ai' && this.state.activeAiSubTab === 'web' ? renderWebTab(this.ctx(), cfg) : ''}
             ${this.state.activeMainTab === 'ai' && this.state.activeAiSubTab === 'cloud' ? renderCloudTab(this.ctx()) : ''}
             ${this.state.activeMainTab === 'ai' && this.state.activeAiSubTab === 'bridge' ? renderBridgeTab(this.ctx()) : ''}
+            ${this.state.activeMainTab === 'ai' && this.state.activeAiSubTab === 'copilot' ? '<div id="copilot-settings-mount" style="padding: 12px 0;"></div>' : ''}
           </div>
 
           <!-- Footer -->
@@ -291,6 +302,16 @@ export class SettingsModal {
           bindCloudTabEvents(this.ctx());
         } else if (this.state.activeAiSubTab === 'bridge') {
           bindBridgeTabEvents(this.ctx());
+        } else if (this.state.activeAiSubTab === 'copilot') {
+          const mount = this.state.backdropEl.querySelector<HTMLElement>('#copilot-settings-mount');
+          if (mount) {
+            const panel = new AiProviderSettingsPanel({
+              container: mount,
+              localClient: new LocalLlmClient(),
+              byokClient: cloudByokClient,
+            });
+            panel.render();
+          }
         }
       }
   }

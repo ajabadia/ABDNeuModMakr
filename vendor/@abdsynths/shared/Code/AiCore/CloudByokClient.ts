@@ -162,6 +162,10 @@ export class CloudByokClient {
     this.loadFromStorage();
   }
 
+  public isCapabilityAllowed(cap: 'text' | 'vision' | 'image' | 'audio'): boolean {
+    return this.allowedCapabilities.has(cap);
+  }
+
   public getStorageScope(): ByokStorageScope {
     return this.config.storageScope ?? 'local';
   }

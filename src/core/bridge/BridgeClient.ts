@@ -56,6 +56,9 @@ export class BridgeClient implements BridgeCore {
 
   public getBridgeToken(): string {
     try {
+      const proc = typeof globalThis !== 'undefined' ? (globalThis as Record<string, unknown>).process as { env?: Record<string, string> } | undefined : undefined;
+      const fromEnv = proc?.env?.ABD_BRIDGE_TOKEN ?? '';
+      if (fromEnv.trim().length > 0) return fromEnv.trim();
       return typeof localStorage !== 'undefined' ? (localStorage.getItem(STORAGE_KEY_TOKEN) ?? '') : '';
     } catch {
       return '';
@@ -65,7 +68,7 @@ export class BridgeClient implements BridgeCore {
   /** @internal Superficie usada por los submódulos `bridge*` vía `BridgeCore`. */
   public authHeaders(base: Record<string, string> = {}): Record<string, string> {
     try {
-      const t = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_TOKEN) : null;
+      const t = this.getBridgeToken();
       if (t && t.trim().length > 0) return { ...base, 'X-Bridge-Token': t.trim() };
     } catch { /* ignore */ }
     return base;

@@ -261,7 +261,7 @@ export class ZoneRibbon {
         : '';
 
     this.container.innerHTML = `
-      <div class="zone-ribbon-card">
+      <div class="zone-ribbon-card" data-ai-target="workspace-zone-ribbon">
         <div class="ribbon-header">
           <div class="ribbon-title">
             <span class="ribbon-caption">${tApp('zoneRibbon.headerTitle')}</span>

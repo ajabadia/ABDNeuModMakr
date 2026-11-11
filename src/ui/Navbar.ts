@@ -63,6 +63,7 @@ export interface NavbarHandlers {
   onOpenLoopEditor?: () => void;
   onAutoLoopAllZones?: () => void;
   onToggleLogs: () => void;
+  onToggleCopilot?: () => void;
   /** Coverage-pill click: always surfaces the audit (never toggles it closed). Optional for backward compat. */
   onOpenAudit?: () => void;
   onSelectTheme: (theme: string) => void;
@@ -255,7 +256,9 @@ export class AppNavbar {
       {
         name: tApp('navbar.menuHelp'),
         items: [
-          { id: 901, label: tApp('navbar.helpGuide'), action: 'manual', shortcut: 'F1' },
+          { id: 900, label: es ? 'Asistente Copiloto IA (F1)' : 'Copilot AI Assistant (F1)', action: 'toggleCopilot', shortcut: 'F1' },
+          { id: 9001, label: es ? 'Comando Rápido IA (Ctrl+K)' : 'Quick AI Command (Ctrl+K)', action: 'toggleCopilot', shortcut: 'Ctrl+K' },
+          { id: 901, label: tApp('navbar.helpGuide'), action: 'manual' },
           { id: 902, label: es ? 'Especificaciones NASAnalysis.dll y Dual-Target...' : 'NASAnalysis.dll & Dual-Target Specs...', action: 'specs' },
           { separator: true },
           { id: 9005, label: es ? 'Diagnóstico y Salud de Configuración del Sistema...' : 'System Configuration Health & Diagnostics...', action: 'openConfigHealth' },
@@ -297,11 +300,11 @@ export class AppNavbar {
         <span class="hud-label" id="hud-model-label">${tApp('navbar.hudTargetModel')}</span>
         <span class="hud-value hud-model-name" id="hud-model-name">#${initSlot} &bull; ${initName} &bull; ${initCharInfo}</span>
       </div>
-      <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" title="${initialCoverage.length === 0 ? tApp('navbar.hudMidiTooltipOk') : tApp('navbar.hudMidiTooltipErr')}">
+      <div class="hud-pill hud-coverage-pill" id="hud-coverage-pill" data-ai-target="btn-auto-repair" title="${initialCoverage.length === 0 ? tApp('navbar.hudMidiTooltipOk') : tApp('navbar.hudMidiTooltipErr')}">
         <span class="hud-icon">${initialCoverage.length === 0 ? ICONS.check : ICONS.piano}</span>
         <span class="hud-coverage-text">${initialCoverage.length === 0 ? tApp('navbar.hudMidiOk') : `${initialCoverage.length} ${tApp('navbar.hudMidiGaps')}`}</span>
       </div>
-      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" title="Algorithmic DSP mode (AI Off). Click to configure AI assistance.">
+      <div class="hud-pill hud-ai-pill is-ai-off" id="hud-ai-pill" data-ai-target="nav-ai-status-pill" title="Algorithmic DSP mode (AI Off). Click to configure AI assistance.">
         <span class="hud-ai-icon">${ICONS.ai}</span>
         <span class="hud-ai-text" id="hud-ai-text">${tApp('aiStatus.disabledBadge')}</span>
         <span class="hud-ai-chevron">${ICONS.settings}</span>
@@ -321,11 +324,14 @@ export class AppNavbar {
       <button type="button" class="btn btn-hud-icon" id="nav-btn-spectral" title="Toggle Spectral & A/B Resynthesis Inspector (Ctrl+E)">
         ${ICONS.wave}
       </button>
-      <button type="button" class="btn btn-hud-icon" id="nav-btn-bank" title="NeuronDB Bank Browser (Ctrl+B)">
+      <button type="button" class="btn btn-hud-icon" id="nav-btn-bank" data-ai-target="nav-bank-btn" title="NeuronDB Bank Browser (Ctrl+B)">
         ${ICONS.database}
       </button>
-      <button type="button" class="btn btn-hud-icon" id="nav-btn-batch" title="Batch Processor &amp; Multi-Model Queue (Ctrl+Shift+B)">
+      <button type="button" class="btn btn-hud-icon" id="nav-btn-batch" data-ai-target="nav-batch-processor" title="Batch Processor &amp; Multi-Model Queue (Ctrl+Shift+B)">
         ${ICONS.layers}
+      </button>
+      <button type="button" class="btn btn-hud-icon" id="nav-btn-copilot" data-ai-target="nav-copilot-toggle" title="Copilot Assistant (F1)">
+        ${ICONS.sparkle || ICONS.ai}
       </button>
       <button type="button" class="btn btn-hud-icon" id="nav-btn-logs" title="Validation Log Drawer (Ctrl+L)">
         ${ICONS.terminal}
@@ -421,6 +427,13 @@ export class AppNavbar {
     rightSlot.querySelector('#nav-btn-spectral')?.addEventListener('click', () => this.handlers.onToggleSpectral());
     rightSlot.querySelector('#nav-btn-bank')?.addEventListener('click', () => this.handlers.onToggleBank());
     rightSlot.querySelector('#nav-btn-batch')?.addEventListener('click', () => this.handlers.onOpenBatchModal?.());
+    rightSlot.querySelector('#nav-btn-copilot')?.addEventListener('click', () => {
+      if (this.handlers.onToggleCopilot) {
+        this.handlers.onToggleCopilot();
+      } else {
+        this.handlers.onToggleLogs();
+      }
+    });
     rightSlot.querySelector('#nav-btn-logs')?.addEventListener('click', () => this.handlers.onToggleLogs());
     this.langBtn = rightSlot.querySelector('#nav-btn-lang');
     this.langBtn?.addEventListener('click', () => {
@@ -470,6 +483,8 @@ export class AppNavbar {
     if (bankBtn) bankBtn.title = `${tApp('navbar.btnBankTitle')} (Ctrl+B)`;
     const batchBtn = this.container.querySelector<HTMLElement>('#nav-btn-batch');
     if (batchBtn) batchBtn.title = `${tApp('navbar.btnBatchTitle')} (Ctrl+Shift+B)`;
+    const copilotBtn = this.container.querySelector<HTMLElement>('#nav-btn-copilot');
+    if (copilotBtn) copilotBtn.title = `${this.currentLocale === 'es' ? 'Asistente Copiloto' : 'Copilot Assistant'} (F1)`;
     const logsBtn = this.container.querySelector<HTMLElement>('#nav-btn-logs');
     if (logsBtn) logsBtn.title = `${tApp('navbar.btnTelemetryTitle')} (Ctrl+L)`;
     const themeBtn = this.container.querySelector<HTMLElement>('#nav-btn-theme');
@@ -760,6 +775,10 @@ export class AppNavbar {
       case 'toggleZoneDrawer': this.handlers.onToggleZoneDrawer(); break;
       case 'toggleSpectral': this.handlers.onToggleSpectral(); break;
       case 'toggleBank': this.handlers.onToggleBank(); break;
+      case 'toggleCopilot':
+        if (this.handlers.onToggleCopilot) this.handlers.onToggleCopilot();
+        else this.handlers.onToggleLogs();
+        break;
       case 'toggleLogs': this.handlers.onToggleLogs(); break;
       case 'selectTheme':
         if (typeof value === 'string' && value.length > 0) {

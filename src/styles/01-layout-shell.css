@@ -287,4 +287,43 @@
   margin-right: 4px;
 }
 
+/* ── Copilot Shell Layout & Docked Grid Integration ──────── */
+.copilot-shell-slot {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+#app-shell[data-copilot-docked="true"] {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-areas:
+    "nav nav"
+    "workspace copilot";
+}
+
+#app-shell[data-copilot-docked="true"] > #navbar-container {
+  grid-area: nav;
+  width: 100%;
+}
+
+#app-shell[data-copilot-docked="true"] > #workspace-canvas {
+  grid-area: workspace;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#app-shell[data-copilot-docked="true"] > #copilot-mount {
+  grid-area: copilot;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 360px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 

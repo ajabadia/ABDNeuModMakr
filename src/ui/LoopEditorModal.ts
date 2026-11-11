@@ -379,13 +379,13 @@ export class LoopEditorModal {
 
                     <div class="loop-algo-group">
                       <label for="sel-loop-algo-picker">${es ? 'ALGORITMO:' : 'ALGORITHM:'}</label>
-                      <select id="sel-loop-algo-picker" class="form-control form-control-sm">
+                      <select id="sel-loop-algo-picker" data-ai-target="loop-algo-selector" class="form-control form-control-sm">
                         <option value="pitch_periodic" ${this.selectedAlgo === 'pitch_periodic' ? 'selected' : ''}>${es ? 'Bloqueo de Período F0 (Autocorr)' : 'F0 Period-Lock (Autocorr)'}</option>
                         <option value="ncc_zc" ${this.selectedAlgo === 'ncc_zc' ? 'selected' : ''}>${es ? 'Correlación Cruzada Normalizada (NCC)' : 'Normalized Cross-Correlation (NCC)'}</option>
                         <option value="min_seam_energy" ${this.selectedAlgo === 'min_seam_energy' ? 'selected' : ''}>${es ? 'Mínima Discontinuidad de Costura' : 'Minimum Seam Discontinuity'}</option>
                         <option value="equal_power_xfade" ${this.selectedAlgo === 'equal_power_xfade' ? 'selected' : ''}>${es ? 'Crossfade de Igual Potencia' : 'Equal-Power Crossfade'}</option>
                       </select>
-                      <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" title="${es ? 'Buscar automáticamente puntos de bucle óptimos sin clics' : 'Automatically find optimal click-free loop points'}">
+                      <button type="button" class="btn btn-sm btn-primary" id="btn-loop-run-autofind" data-ai-target="loop-auto-btn" title="${es ? 'Buscar automáticamente puntos de bucle óptimos sin clics' : 'Automatically find optimal click-free loop points'}">
                         ${ICONS.cpu} ${es ? 'Ejecutar Auto-Loop' : 'Run Auto-Loop'}
                       </button>
                     </div>
@@ -530,6 +530,7 @@ export class LoopEditorModal {
 
     // Crossfade slider
     const inpXfade = this.backdropEl.querySelector<HTMLInputElement>('#inp-loop-modal-xfade');
+    inpXfade?.setAttribute('data-ai-target', 'loop-xfade-slider');
     const lblXfade = this.backdropEl.querySelector<HTMLElement>('#lbl-loop-xfade-val');
     inpXfade?.addEventListener('input', () => {
       const v = clamp(parseInt(inpXfade.value, 10) || 0, 0, 500);

@@ -58,7 +58,7 @@ export function renderTable(ui: InspectorContext): void {
       ui.state.container.innerHTML = `
         <div class="zone-inspector-panel">
           <!-- Extended Mode 2D Multi-Region Sampler Table (1 Row per Sampler Region) -->
-          <div class="zone-table-card">
+          <div class="zone-table-card" data-ai-target="inspector-zone-range">
             <div class="zone-table-toolbar">
               <div class="key-mapping-mode-group">
                 <span class="toolbar-mode-label">${escHtml(tApp('zoneInspector.keyMapLabel'))}</span>
@@ -87,7 +87,7 @@ export function renderTable(ui: InspectorContext): void {
                     <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="${escAttr(tApp('zoneInspector.toolRecordTitle'))}">
                       ${ICONS.mic} <span>${escHtml(tApp('zoneInspector.toolRecord'))}</span>
                     </button>
-                    <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="${escAttr(tApp('zoneInspector.toolLoopEditorRegionTitle', { index: activeIndex + 1 }))}">
+                    <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" data-ai-target="inspector-loop-btn" role="menuitem" title="${escAttr(tApp('zoneInspector.toolLoopEditorRegionTitle', { index: activeIndex + 1 }))}">
                       ${ICONS.wave} <span>${escHtml(tApp('zoneInspector.toolLoopEditor'))}</span>
                     </button>
                     <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="${escAttr(tApp('zoneInspector.toolAutoLoopAllTitle'))}">
@@ -207,7 +207,7 @@ export function renderTable(ui: InspectorContext): void {
                 <button type="button" class="keymap-tools-item" id="btn-open-recorder" role="menuitem" title="${escAttr(tApp('zoneInspector.toolRecordTitle'))}">
                   ${ICONS.mic} <span>${escHtml(tApp('zoneInspector.toolRecord'))}</span>
                 </button>
-                <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" role="menuitem" title="${escAttr(tApp('zoneInspector.toolLoopEditorZoneTitle', { index: ui.state.zoneIndex + 1 }))}">
+                <button type="button" class="keymap-tools-item" id="btn-open-loop-drawer" data-ai-target="inspector-loop-btn" role="menuitem" title="${escAttr(tApp('zoneInspector.toolLoopEditorZoneTitle', { index: ui.state.zoneIndex + 1 }))}">
                   ${ICONS.wave} <span>${escHtml(tApp('zoneInspector.toolLoopEditor'))}</span>
                 </button>
                 <button type="button" class="keymap-tools-item" id="btn-autoloop-all-zones" role="menuitem" title="${escAttr(tApp('zoneInspector.toolAutoLoopAllTitle'))}">

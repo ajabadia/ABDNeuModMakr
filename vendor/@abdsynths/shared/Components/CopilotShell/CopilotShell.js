@@ -270,12 +270,24 @@ export class CopilotShell {
 
     const hostCtx = this.getHostContext ? this.getHostContext() : {};
     try {
-      const response = await this.orchestrator.handlePrompt(text, hostCtx);
-      if (response.replyText) {
-        this.appendChatMessage('assistant', response.replyText);
+      const response = this.orchestrator.processTurn
+        ? await this.orchestrator.processTurn(text, hostCtx)
+        : await this.orchestrator.handlePrompt(text, hostCtx);
+
+      const reply = response.reply || response.replyText;
+      if (reply) {
+        this.appendChatMessage('assistant', reply);
       }
-      if (response.proposedAction) {
-        this.renderProposedAction(response.proposedAction);
+      if (Array.isArray(response.highlightTargets)) {
+        for (const targetId of response.highlightTargets) {
+          highlightUiTarget(targetId);
+        }
+      }
+      const actions = response.proposedActions || (response.proposedAction ? [response.proposedAction] : []);
+      if (actions.length > 0) {
+        for (const action of actions) {
+          this.renderProposedAction(action);
+        }
       }
     } catch (err) {
       this.appendChatMessage('assistant', `Error en consulta: ${err.message || String(err)}`);

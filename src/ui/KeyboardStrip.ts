@@ -114,7 +114,7 @@ export class KeyboardStrip {
     const keyCount = 61; // 5 octaves + top C
 
     this.container.innerHTML = `
-      <div class="keyboard-strip-container">
+      <div class="keyboard-strip-container" data-ai-target="workspace-keyboard-strip">
         <div class="keyboard-toolbar">
           <div class="keyboard-hud">
             <span class="hud-label" id="kbd-range-label">${tApp('keyboardStrip.rangeLabel')}</span>

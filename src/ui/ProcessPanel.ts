@@ -357,6 +357,7 @@ export class ProcessPanel {
               type="button"
               class="btn btn-xs btn-primary"
               id="btn-header-open-wizard"
+              data-ai-target="nav-musician-wizard"
               title="${escAttr(tApp('processPanel.btnWizardTitle'))}"
             >
               ${ICONS.sparkle} ${escHtml(tApp('processPanel.btnWizard'))}
@@ -395,6 +396,7 @@ export class ProcessPanel {
             type="button"
             class="btn btn-primary btn-cta-process"
             id="btn-cta-process"
+            data-ai-target="process-start-btn"
             ${status.canGenerate ? '' : 'disabled'}
             title="${escAttr(status.tooltip)}"
           >
@@ -409,7 +411,7 @@ export class ProcessPanel {
         <!-- Informative Summary HUD -->
         <div class="process-summary-hud">
           <!-- Card 1: Model Identity & Mode -->
-          <div class="hud-card" id="hud-card-model" title="${escAttr(tApp('processPanel.railIdentityTitle'))}">
+          <div class="hud-card" id="hud-card-model" data-ai-target="process-model-name" title="${escAttr(tApp('processPanel.railIdentityTitle'))}">
             <div class="hud-card-header">
               <span class="hud-card-label">${ICONS.settings} ${escHtml(tApp('processPanel.cardIdentityTitle'))}</span>
               <button type="button" class="btn-hud-link" id="btn-hud-edit-identity">${editLabel}</button>
@@ -420,7 +422,7 @@ export class ProcessPanel {
                 <strong class="hud-model-name">${escHtml(activeName)}</strong>
               </div>
               <div class="hud-mode-row">
-                <span class="panel-badge ${isExt ? 'badge-ai-on' : 'badge-muted'}">
+                <span class="panel-badge ${isExt ? 'badge-ai-on' : 'badge-muted'}" data-ai-target="process-working-mode">
                   ${isExt ? (es ? 'MODO EXTENDIDO (HD Multi-Capa)' : 'EXTENDED MODE (HD Multi-Layer)') : (es ? 'MODO CLÁSICO (Hardware 1:1)' : 'CLASSIC MODE (1:1 Hardware)')}
                 </span>
               </div>
@@ -428,7 +430,7 @@ export class ProcessPanel {
           </div>
 
           <!-- Card 2: Engine, Complexity & Parameter Set -->
-          <div class="hud-card" id="hud-card-engine" title="${escAttr(tApp('processPanel.railEngineTitle'))}">
+          <div class="hud-card" id="hud-card-engine" data-ai-target="process-param-set" title="${escAttr(tApp('processPanel.railEngineTitle'))}">
             <div class="hud-card-header">
               <span class="hud-card-label">${ICONS.cpu} ${escHtml(tApp('processPanel.cardEngineTitle'))}</span>
               <button type="button" class="btn-hud-link" id="btn-hud-edit-engine">${editLabel}</button>
@@ -439,11 +441,11 @@ export class ProcessPanel {
                   <span class="spec-k">${es ? 'Formato:' : 'Format:'}</span>
                   <strong class="spec-v">${(this.currentConfig.targetFormat ?? 'dual').toUpperCase()}</strong>
                 </div>
-                <div class="hud-spec-pill">
+                <div class="hud-spec-pill" data-ai-target="process-dsp-algo">
                   <span class="spec-k">DSP:</span>
                   <strong class="spec-v">${this.currentConfig.dspAlgorithm === 'enhanced' ? 'Neural' : (es ? 'Clásico' : 'Legacy')}</strong>
                 </div>
-                <div class="hud-spec-pill">
+                <div class="hud-spec-pill" data-ai-target="process-complexity">
                   <span class="spec-k">${es ? 'Modos:' : 'Modes:'}</span>
                   <strong class="spec-v">L${this.currentConfig.complexity} (${recDepth}m)</strong>
                 </div>
@@ -485,7 +487,7 @@ export class ProcessPanel {
           </div>
 
           <!-- Card 4: Cover Artwork -->
-          <div class="hud-card ${!isExt ? 'is-conditioned-muted' : ''}" id="hud-card-artwork" title="${!isExt ? (es ? 'Exclusivo de Modo Extendido (HD) • Clic para inspeccionar' : 'Exclusive to Extended Mode (HD) • Click to inspect') : escAttr(tApp('processPanel.railArtworkTitle'))}">
+          <div class="hud-card ${!isExt ? 'is-conditioned-muted' : ''}" id="hud-card-artwork" data-ai-target="process-cover-box" title="${!isExt ? (es ? 'Exclusivo de Modo Extendido (HD) • Clic para inspeccionar' : 'Exclusive to Extended Mode (HD) • Click to inspect') : escAttr(tApp('processPanel.railArtworkTitle'))}">
             <div class="hud-card-header">
               <span class="hud-card-label">
                 ${ICONS.palette} ${escHtml(tApp('processPanel.cardArtworkTitle'))}

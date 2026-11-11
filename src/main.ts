@@ -50,6 +50,12 @@ import { formatKb } from './core/pathUtils.ts';
 import { createUniqueModelSlug } from './core/modelSlug';
 import { confirmDialog, toast } from './ui/notify';
 import { pwaManager } from './app/pwa';
+import { CopilotShell } from '@abdsynths/shared/components/copilot';
+import { CopilotOrchestrator, LocalLlmClient, CloudByokClient as SharedCloudByokClient } from '@abdsynths/shared/ai';
+import { getNeuronKnowledgeBase } from './core/ai/copilot/neuronManualKb';
+import { buildSessionContext } from './core/ai/copilot/sessionContextBuilder';
+import { createNeuronToolsCatalog } from './core/ai/copilot/neuronToolsCatalog';
+import { copilotUndoStack } from './core/ai/copilot/copilotUndoStack';
 
 class App {
   private core: CoreService = createCoreService();
@@ -65,6 +71,7 @@ class App {
   private keyboard!: KeyboardStrip;
   private processModal!: ProcessModal;
   private telemetryDrawer!: TelemetryDrawer;
+  private copilotShell!: CopilotShell;
   private bankDrawer!: BankDrawer;
   private neuronDbModal = new NeuronDbModal();
   private settingsModal!: SettingsModal;
@@ -598,6 +605,7 @@ class App {
         getSpectralView: () => self.spectralView,
         getTelemetry: () => self.telemetryDrawer,
         getBank: () => self.bankDrawer,
+        getCopilot: () => self.copilotShell,
       },
       get session() { return self.session; },
       set session(value: Session | null) { self.session = value; },
@@ -790,6 +798,7 @@ class App {
         </main>
 
         <div id="drawers-container"></div>
+        <aside id="copilot-mount" class="copilot-shell-slot"></aside>
         <div id="modals-container"></div>
       </div>
     `;
@@ -1443,6 +1452,99 @@ class App {
       onExport: () => this.exportDestinationModal.open(),
     });
 
+    // 7. Copilot Shell (Chameleon lateral panel + quick command bar)
+    const copilotMount = document.querySelector<HTMLElement>('#copilot-mount');
+    const appShellEl = document.querySelector<HTMLElement>('#app-shell');
+    const localLlm = new LocalLlmClient();
+    if (bridgeClient.isConnected()) {
+      localLlm.setCorsRelay((req) => bridgeClient.proxyLocalLlmRequest(req));
+    }
+    bridgeClient.subscribe(() => {
+      if (bridgeClient.isConnected()) {
+        localLlm.setCorsRelay((req) => bridgeClient.proxyLocalLlmRequest(req));
+      } else {
+        localLlm.setCorsRelay(undefined);
+      }
+    });
+
+    const neuronCatalog = createNeuronToolsCatalog(this.core, {
+      refreshUI: () => this.refreshUI(),
+      openModal: (target) => {
+        if (target === 'musician-wizard') this.musicianWizardModal.open();
+        else if (target === 'loop-editor') this.openLoopEditor();
+        else if (target === 'audio-chopper') void this.openAudioChopper();
+        else if (target === 'audio-recorder') this.audioRecorderModal.open();
+        else if (target === 'batch-processor') this.batchModal.open();
+        else if (target === 'model-config') this.modelConfigModal.open('general');
+        else if (target === 'export-destination') this.exportDestinationModal.open();
+        else if (target === 'bank-drawer') this.bankDrawer.toggle();
+        else if (target === 'settings-ai') this.settingsModal.open('copilot');
+      },
+      toggleSpectral: (visible) => {
+        if (visible && !this.isSpectralVisible) this.toggleSpectralPanel();
+        else if (!visible && this.isSpectralVisible) this.toggleSpectralPanel();
+      },
+      auditionZone: (mode) => {
+        const active = this.getActiveZone();
+        if (!active) return;
+        if (mode === 'stop') {
+          this.stopAuditionPcm();
+        } else {
+          void this.core.auditionZoneComparison(active.id, mode as any, active.rootKey);
+        }
+      },
+      openPreflight: () => {
+        void this.handleStartProcess();
+      },
+    });
+
+    const orchestrator = new CopilotOrchestrator(
+      localLlm,
+      new SharedCloudByokClient()
+    );
+    for (const t of neuronCatalog) {
+      orchestrator.registerTool(t as any);
+    }
+
+    copilotUndoStack.setRestoreHandler(async (serialized) => {
+      this.session = await this.core.loadSessionFromJson(serialized);
+      this.selectedZoneId = this.session?.zones[0]?.id ?? null;
+      this.refreshUI();
+      return true;
+    });
+
+    this.copilotShell = new CopilotShell({
+      container: copilotMount,
+      hostShellEl: appShellEl,
+      modalsRootEl: modalsMount,
+      dockMinViewportWidth: 1550,
+      orchestrator,
+      getHostContext: () => {
+        return buildSessionContext(this.core, this.resolveActiveModalName());
+      },
+      onUndoLastAction: async () => {
+        return copilotUndoStack.undoLast();
+      },
+      onExecuteAction: async (action) => {
+        return orchestrator.executeApprovedAction(action);
+      },
+      kbArticles: getNeuronKnowledgeBase('es'),
+    });
+
+    // Unify TelemetryDrawer with CopilotShell log tab
+    this.telemetryDrawer.setForwarders({
+      onLog: (msg) => {
+        this.copilotShell.addLogEntry(msg);
+      },
+      onAudit: () => {
+        this.copilotShell.refreshDeterministicHud();
+      },
+      onToggle: () => {
+        this.copilotShell.setActiveTab('log');
+        this.copilotShell.toggle(true);
+      },
+    });
+
     this.navbar.mount(
       this.session!,
       this.core.validateCoverage(),
@@ -1463,6 +1565,19 @@ class App {
         this.navbar.updateAiState(this.session.processConfig.aiConfig, bridgeClient.isConnected());
       }
     });
+  }
+
+  private resolveActiveModalName(): 'none' | 'loop-editor' | 'audio-chopper' | 'audio-recorder' | 'batch-processor' | 'musician-wizard' | 'model-config' | 'settings' {
+    const modals = document.querySelector('#modals-container');
+    if (!modals) return 'none';
+    if (modals.querySelector('.loop-editor-modal-backdrop:not(.is-hidden)')) return 'loop-editor';
+    if (modals.querySelector('.audio-chopper-backdrop:not(.is-hidden)')) return 'audio-chopper';
+    if (modals.querySelector('.audio-recorder-backdrop:not(.is-hidden)')) return 'audio-recorder';
+    if (modals.querySelector('.batch-modal-backdrop:not(.is-hidden)')) return 'batch-processor';
+    if (modals.querySelector('.wizard-modal-backdrop:not(.is-hidden)')) return 'musician-wizard';
+    if (modals.querySelector('.model-config-modal-backdrop:not(.is-hidden)')) return 'model-config';
+    if (modals.querySelector('.settings-modal-backdrop:not(.is-hidden)')) return 'settings';
+    return 'none';
   }
 
   private handleToggleAiAssistance(): void {
