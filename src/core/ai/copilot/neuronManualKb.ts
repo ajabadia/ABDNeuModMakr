@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — Hartmann Neuron Knowledge Base & System Prompt
-// 16 canonical verified articles + strict structured LLM prompt
+// ABDNeuModMakr — Application & Hartmann Neuron Manual Knowledge Base
+// Verified articles covering the application workflow, tools & synthesis
 // ─────────────────────────────────────────────────────────
 
 import type { KbArticle } from '../../../../vendor/@abdsynths/shared/Code/AiCore/kbSearch.ts';
@@ -36,17 +36,61 @@ export function getNeuronKnowledgeBase(locale: 'es' | 'en' = 'es'): KbArticle[] 
   return [
     {
       id: 'kb-workflow-start',
-      title: isEs ? 'Flujo de Trabajo Principal en 3 Pasos' : 'Core 3-Step Production Workflow',
-      tags: ['workflow', 'inicio', 'pasos', 'flujo', 'crear', 'tutorial', 'start', 'guide'],
+      title: isEs ? 'Flujo de Trabajo Principal de ABDNeuModMakr' : 'Core ABDNeuModMakr Production Workflow',
+      tags: ['workflow', 'inicio', 'pasos', 'flujo', 'crear', 'tutorial', 'start', 'guide', 'aplicacion', 'app'],
       whatItMeans: isEs
-        ? 'El flujo de trabajo principal de creación de modelos consta de 3 etapas fundamentales: importación, mapeo y compilación.'
-        : 'The core model creation workflow consists of 3 main stages: import, mapping, and compilation.',
+        ? 'El flujo de trabajo principal de ABDNeuModMakr consta de 3 etapas fundamentales: importación de audio, mapeo/edición en el espacio de trabajo y compilación final del modelo.'
+        : 'The core ABDNeuModMakr workflow consists of 3 main stages: audio import, workspace mapping/editing, and final model compilation.',
       howToFixSteps: [
-        isEs ? 'Importar muestras de audio (WAV, AIFF, SF2, SFZ) mediante Importar Muestras o con el Asistente para Músicos.' : 'Import audio samples via Import Samples or Musician Wizard.',
-        isEs ? 'Mapear y revisar las zonas MIDI 0..127, seleccionando el modo (Classic vs Extended), Parameter Set (0..9) y Complejidad (1..10).' : 'Map and review MIDI zones 0..127, picking working mode, Parameter Set and Complexity.',
-        isEs ? 'Compilar el modelo con Compilar Modelo (Ctrl+P) y exportarlo a ZIP o AxionikDB.' : 'Compile model (Ctrl+P) and export to ZIP or AxionikDB.'
+        isEs ? 'Paso 1: Importar muestras de audio (WAV, AIFF, SF2, SFZ, Akai) con Importar Muestras (Ctrl+I) o mediante el Asistente para Músicos.' : 'Step 1: Import audio samples via Import Samples (Ctrl+I) or Musician Wizard.',
+        isEs ? 'Paso 2: Organizar las zonas en la cinta interactiva (ZoneRibbon) o tabla, verificando que no haya huecos MIDI y ajustando Parameter Set y Complejidad.' : 'Step 2: Arrange zones on the interactive ZoneRibbon or table, verifying full MIDI coverage and tuning Parameter Set and Complexity.',
+        isEs ? 'Paso 3: Compilar el modelo con Compilar Modelo (Ctrl+P) y exportarlo a Cápsula del Tiempo (.zip), formatos de sampler o AxionikDB.' : 'Step 3: Compile the model (Ctrl+P) and export to Time Capsule (.zip), sampler formats or AxionikDB.'
       ],
       uiTargets: [{ targetId: 'nav-import-samples', label: 'Importar Muestras' }],
+    },
+    {
+      id: 'kb-app-navigation-shortcuts',
+      title: isEs ? 'Navegación, Interfaz y Atajos de Teclado' : 'UI Navigation, Layout & Keyboard Shortcuts',
+      tags: ['interfaz', 'navegacion', 'atajos', 'shortcuts', 'teclado', 'menu', 'panel', 'f1', 'ctrl+k'],
+      whatItMeans: isEs
+        ? 'ABDNeuModMakr organiza su espacio de trabajo en una barra superior (HUD), un panel de proceso a la izquierda, la tabla de zonas e inspector en el centro, y el panel lateral del Asistente.'
+        : 'ABDNeuModMakr organizes its workspace with a top HUD bar, left process panel, central zone table/inspector, and right Assistant panel.',
+      howToFixSteps: [
+        isEs ? 'F1: Abre o cierra el panel lateral del Asistente Copiloto.' : 'F1: Toggles the Copilot Assistant sidebar.',
+        isEs ? 'Ctrl+K: Abre la barra rápida de comandos para consultar o navegar directamente.' : 'Ctrl+K: Opens the quick command bar for instant queries and navigation.',
+        isEs ? 'Ctrl+P: Abre la compilación y exportación del modelo (Preflight).' : 'Ctrl+P: Opens model compilation and preflight.',
+        isEs ? 'Ctrl+Z / Ctrl+Y: Deshacer y Rehacer acciones de edición de zonas y parámetros.' : 'Ctrl+Z / Ctrl+Y: Undo and Redo zone edits and parameter changes.',
+        isEs ? 'Ctrl+I / Ctrl+N: Importar muestras sueltas o por convención de nombres.' : 'Ctrl+I / Ctrl+N: Import loose samples or import by name conventions.'
+      ],
+      uiTargets: [{ targetId: 'nav-copilot-toggle', label: 'Asistente (F1)' }],
+    },
+    {
+      id: 'kb-musician-wizard',
+      title: isEs ? 'Asistente para Músicos (Paso a Paso Guiado)' : 'Musician Wizard (Guided Step-by-Step)',
+      tags: ['wizard', 'asistente', 'musicos', 'guiado', 'novato', 'paso a paso', 'facil'],
+      whatItMeans: isEs
+        ? 'Un asistente paso a paso diseñado para usuarios que desean crear un instrumento listo para tocar sin lidiar con tecnicismos espectrales.'
+        : 'A step-by-step wizard designed for creating ready-to-play instruments without deep spectral synthesis configuration.',
+      howToFixSteps: [
+        isEs ? 'Abre el Asistente para Músicos desde la barra superior de herramientas.' : 'Open the Musician Wizard from the top toolbar.',
+        isEs ? 'Selecciona la intención sonora (Lead, Pad, Bajo, Teclado, Percusión).' : 'Choose your sonic intent (Lead, Pad, Bass, Keyboard, Percussion).',
+        isEs ? 'Arrastra tus muestras y el asistente configurará automáticamente el Parameter Set, la envolvente y la cobertura.' : 'Drop samples and the wizard automatically sets the Parameter Set, envelope, and key mapping.'
+      ],
+      uiTargets: [{ targetId: 'nav-musician-wizard', label: 'Asistente para Músicos' }],
+    },
+    {
+      id: 'kb-batch-processor',
+      title: isEs ? 'Procesador por Lotes (Batch Processor)' : 'Batch Processor & Multi-Model Creation',
+      tags: ['batch', 'lotes', 'carpetas', 'masivo', 'cola', 'multiple', 'varios'],
+      whatItMeans: isEs
+        ? 'Permite procesar carpetas completas con múltiples carpetas de instrumentos para generar bancos enteros de modelos de una sola vez.'
+        : 'Allows batch processing full directory trees to generate entire banks of models in a single operation.',
+      howToFixSteps: [
+        isEs ? 'Abre el Procesador por Lotes (Ctrl+B) desde el menú Modelo o la barra superior.' : 'Open Batch Processor (Ctrl+B) from Model menu or top bar.',
+        isEs ? 'Selecciona la carpeta raíz con tus subcarpetas de instrumentos.' : 'Select the root folder containing instrument subdirectories.',
+        isEs ? 'Inicia la cola para compilar todos los modelos en segundo plano sin bloquear tu trabajo.' : 'Start the queue to compile all models in the background without blocking.'
+      ],
+      uiTargets: [{ targetId: 'nav-batch-processor', label: 'Procesador por Lotes' }],
     },
     {
       id: 'kb-scape-vs-sphere',
@@ -123,7 +167,7 @@ export function getNeuronKnowledgeBase(locale: 'es' | 'en' = 'es'): KbArticle[] 
     },
     {
       id: 'kb-import-methods',
-      title: isEs ? 'Métodos de Importación de Muestras' : 'Sample Import Methods',
+      title: isEs ? 'Métodos de Importación de Muestras y Bancos' : 'Sample & Bank Import Methods',
       tags: ['import', 'importar', 'archivos', 'sf2', 'sfz', 'convencion', 'samples'],
       whatItMeans: isEs
         ? 'Se admiten archivos individuales, convenciones de nombre por notas, y formatos universales de sampler.'
@@ -140,8 +184,8 @@ export function getNeuronKnowledgeBase(locale: 'es' | 'en' = 'es'): KbArticle[] 
       title: isEs ? 'Editor Interactivo de Bucle (Waveform Loop Editor)' : 'Waveform Loop Editor & Crossfade Seam',
       tags: ['loop', 'bucle', 'crossfade', 'cruces', 'clic', 'fade', 'editor'],
       whatItMeans: isEs
-        ? 'Permite configurar el sostenido de las notas eliminando clics en las costuras.'
-        : 'Configures sustain loop points, removing audible seam clicks.',
+        ? 'Permite configurar el sostenido de las notas eliminando clics en las costuras mediante cruce por cero y fundido cruzado.'
+        : 'Configures sustain loop points, removing audible seam clicks via zero-crossing and crossfading.',
       howToFixSteps: [
         isEs ? 'Abre el Editor de Bucle (Ctrl+L) en la zona seleccionada.' : 'Open Loop Editor (Ctrl+L) for the active zone.',
         isEs ? 'Utiliza la búsqueda de cruce por cero (ncc_zc) y fundido cruzado de potencia constante.' : 'Use zero-crossing search (ncc_zc) and equal-power crossfade.'

@@ -303,6 +303,10 @@
     "workspace copilot";
 }
 
+#app-shell[data-copilot-docked="true"][data-copilot-collapsed="true"] {
+  grid-template-columns: minmax(0, 1fr) 42px !important;
+}
+
 #app-shell[data-copilot-docked="true"] > #navbar-container {
   grid-area: nav;
   width: 100%;
@@ -324,6 +328,10 @@
   width: 360px;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+#app-shell[data-copilot-docked="true"][data-copilot-collapsed="true"] > #copilot-mount {
+  width: 42px !important;
 }
 
 

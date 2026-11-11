@@ -6,7 +6,7 @@ export interface CopilotShellOptions {
   orchestrator?: any;
   getHostContext?: () => any;
   onUndoLastAction?: () => Promise<{ ok: boolean; message?: string }>;
-  onExecuteAction?: (action: any) => Promise<{ ok: boolean; message?: string }>;
+  onExecuteAction?: (action: any) => Promise<{ ok: boolean; message?: string; summary?: string }>;
   kbArticles?: any[];
 }
 
@@ -18,10 +18,12 @@ export declare class CopilotShell {
   orchestrator: any;
   activeTab: 'assistant' | 'manual' | 'log';
   isOpen: boolean;
+  isCollapsed: boolean;
 
   constructor(options?: CopilotShellOptions);
   initDom(): void;
   setupListeners(): void;
+  setCollapsed(collapsed: boolean): void;
   updateLayoutMode(): void;
   setActiveTab(tab: 'assistant' | 'manual' | 'log'): void;
   toggle(force?: boolean): void;
