@@ -230,7 +230,7 @@
 
 ---
 
-## Fase 11 — Procesado del Modo Extendido, Arquitectura AxionikDB y Nuevos Resynators (`ABDAxionikVS`) [EN CURSO / ESPECIFICADA]
+## Fase 11 — Procesado del Modo Extendido, Arquitectura AxionikDB y Nuevos Resynators (`ABDAxionikVS`) [COMPLETADA]
 
 **Objetivo**: Integración total entre ABDNeuModMakr y el sintetizador de nueva generación ABDAxionikVS mediante el repositorio canónico `AxionikDB`.
 
@@ -1947,7 +1947,7 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ---
 
-## Fase 47 — Copiloto Conversacional Hibrido (Panel Camaleon + `Ctrl+K` + Spotlight UI + Nucleo Compartido en `ABDShared`) [PLANIFICADA]
+## Fase 47 — Copiloto Conversacional Hibrido (Panel Camaleon + `Ctrl+K` + Spotlight UI + Nucleo Compartido en `ABDShared`) [COMPLETADA]
 
 **Objetivo**: Dotar a `ABDShared` (`@abdsynths/shared`) y a `ABDNeuModMakr` de un sistema de asistencia dual (100% determinista sin IA + conversacional con herramientas tipadas sobre Ollama, LM Studio y los proveedores Cloud BYOK) que nunca alucine botones ni conceptos, ilumine controles reales de la interfaz (`Spotlight`), ejecute cambios con previsualizacion y deshacer en 1 clic (`CopilotUndoStack`), y sea reutilizable directamente por `ABDAudioLab` en modo de solo lectura metrologica.
 
@@ -2264,7 +2264,7 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 ---
 
-### 47.7 Suite de Verificacion Integral de Fase 47 (`tests/phase47_copilot.test.ts`)
+### 47.7 Suite de Verificacion Integral de Fase 47 (`tests/phase47_copilot.test.ts`) [COMPLETADA]
 
 - [x] **Crear `tests/phase47_copilot.test.ts` y registrarlo al final de `tests/run_all.ts`**:
   - **Test 1 (`ssrf` Loopback + Relay Seguridad)**: verifica que `assertSafeLoopbackHttpUrl` permite `http://127.0.0.1:11434` y `http://localhost:1234`, y bloquea `https://api.openai.com`, `http://10.0.0.5:11434`, `http://169.254.169.254:11434` y URLs con `user:pass@`. Verifica que `/api/local-llm/proxy` en `bridge/server.py` rechaza peticiones sin `X-Bridge-Token` y rutas fuera de la lista blanca (`/v1/../../etc`).
