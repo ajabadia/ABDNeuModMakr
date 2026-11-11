@@ -1528,6 +1528,45 @@ class App {
       onExecuteAction: async (action) => {
         return orchestrator.executeApprovedAction(action);
       },
+      onNavigateTarget: (targetId) => {
+        if (targetId === 'nav-musician-wizard') {
+          this.musicianWizardModal.open();
+        } else if (targetId === 'nav-batch-processor') {
+          this.batchModal.open();
+        } else if (targetId === 'nav-import-samples' || targetId === 'nav-menu-file') {
+          this.imports.triggerAudioImport('samples');
+        } else if (targetId === 'process-start-btn' || targetId === 'nav-compile-btn') {
+          void this.handleStartProcess();
+        } else if (targetId === 'process-export-btn') {
+          this.exportDestinationModal.open();
+        } else if (targetId === 'process-model-name') {
+          this.modelConfigModal.open('general');
+        } else if (targetId === 'process-param-set' || targetId === 'process-complexity' || targetId === 'process-dsp-algo') {
+          this.modelConfigModal.open('articulation');
+        } else if (targetId === 'process-cover-box') {
+          this.aiCoverModal.open();
+        } else if (targetId === 'nav-ai-status-pill') {
+          this.settingsModal.open('copilot');
+        } else if (targetId === 'nav-bank-btn') {
+          this.bankDrawer.toggle();
+        } else if (targetId === 'zone-inspector-loop-btn' || targetId === 'inspector-loop-btn') {
+          this.openLoopEditor();
+        } else if (targetId === 'zone-inspector-chop-btn') {
+          void this.openAudioChopper();
+        } else if (targetId === 'zone-inspector-record-btn') {
+          this.audioRecorderModal.open();
+        } else if (targetId === 'btn-auto-repair') {
+          this.core.autoRepairCoverage();
+          this.session = this.core.getSession()!;
+          this.refreshUI();
+        } else {
+          // Native DOM click fallback if element exists
+          const el = document.querySelector<HTMLElement>(`[data-ai-target="${CSS.escape(targetId)}"]`);
+          if (el && typeof el.click === 'function') {
+            el.click();
+          }
+        }
+      },
       kbArticles: getNeuronKnowledgeBase('es'),
     });
 

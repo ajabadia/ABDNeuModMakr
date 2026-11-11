@@ -7,6 +7,7 @@ export interface CopilotShellOptions {
   getHostContext?: () => any;
   onUndoLastAction?: () => Promise<{ ok: boolean; message?: string }>;
   onExecuteAction?: (action: any) => Promise<{ ok: boolean; message?: string; summary?: string }>;
+  onNavigateTarget?: (targetId: string) => void;
   kbArticles?: any[];
 }
 

@@ -21,6 +21,7 @@ export class CopilotShell {
     this.getHostContext = options.getHostContext || (() => ({}));
     this.onUndoLastAction = options.onUndoLastAction || (async () => ({ ok: false }));
     this.onExecuteAction = options.onExecuteAction || (async () => ({ ok: false }));
+    this.onNavigateTarget = options.onNavigateTarget || null;
     this.kbArticles = options.kbArticles || [];
     this.activeTab = 'assistant'; // 'assistant' | 'manual' | 'log'
     this.pinnedFloating = false;
@@ -133,7 +134,17 @@ export class CopilotShell {
       const target = e.target.closest('.abd-copilot-spot-chip');
       if (target) {
         const spotId = target.getAttribute('data-spot-target');
-        if (spotId) highlightUiTarget(spotId);
+        if (spotId) {
+          highlightUiTarget(spotId);
+          if (typeof this.onNavigateTarget === 'function') {
+            this.onNavigateTarget(spotId);
+          } else if (typeof document !== 'undefined') {
+            const el = document.querySelector(`[data-ai-target="${CSS.escape(spotId)}"]`);
+            if (el && typeof el.click === 'function') {
+              el.click();
+            }
+          }
+        }
       }
     });
 
