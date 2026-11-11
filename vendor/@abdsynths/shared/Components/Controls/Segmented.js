@@ -54,7 +54,7 @@
  */
 
 import { IndexControl } from './indexControl.js';
-import { transitioned, announceTransition } from './transitionNotices.js';
+import { transitioned, announceTransition } from './TransitionNotices.js';
 import { arrowStepFor, clampIndex, nextEnabledIndex } from './optionIndex.js';
 
 /**

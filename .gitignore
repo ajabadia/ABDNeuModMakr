@@ -52,6 +52,7 @@ Thumbs.db
 # Python & AI Checkpoints
 __pycache__/
 *.py[cod]
+bridge/.bridge_token
 bridge/models/checkpoints/*
 !bridge/models/checkpoints/.gitkeep
 

@@ -46,7 +46,17 @@
       "types": "./Components/I18n/index.d.ts",
       "default": "./Components/I18n/index.js"
     },
+    "./components/paramGesture.js": {
+      "types": "./Components/paramGesture.d.ts",
+      "default": "./Components/paramGesture.js"
+    },
     "./components/*": "./Components/*",
+    "./components/controls/stepMatrix.js": {
+      "default": "./Components/Controls/stepMatrix.js"
+    },
+    "./components/scope/miniWaveScope.js": {
+      "default": "./Components/Scope/miniWaveScope.js"
+    },
     "./icons/*": "./Assets/icons/*",
     "./assets/*": "./Assets/*",
     "./utils": "./Utils/index.js",
@@ -65,7 +75,16 @@
     "./dsp/slicer-loops": "./Code/DspCore/SlicerLoops/index.ts",
     "./dsp/slicer-loops/*": "./Code/DspCore/SlicerLoops/*",
     "./contracts/recordingSession": "./Contracts/recordingSession.ts",
-    "./contracts/axionikExpandedModel": "./Contracts/axionikExpandedModel.ts"
+    "./contracts/axionikExpandedModel": "./Contracts/axionikExpandedModel.ts",
+    "./ai": "./Code/AiCore/index.ts",
+    "./ai/*": "./Code/AiCore/*",
+    "./dsp/acoustic-intelligence": "./Code/DspCore/AcousticIntelligence/index.ts",
+    "./dsp/acoustic-intelligence/*": "./Code/DspCore/AcousticIntelligence/*",
+    "./components/copilot": {
+      "types": "./Components/CopilotShell/index.d.ts",
+      "default": "./Components/CopilotShell/index.js"
+    },
+    "./components/copilot/*": "./Components/CopilotShell/*"
   },
   "files": [
     "Code",

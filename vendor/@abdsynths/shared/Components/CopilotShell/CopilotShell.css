@@ -1,0 +1,146 @@
+/* ─────────────────────────────────────────────────────────
+   ABDShared — CopilotShell Styles (Tokens & Chamaleon Docked/Overlay)
+   ───────────────────────────────────────────────────────── */
+
+.abd-copilot-container {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface, #1e2229);
+  color: var(--text, #f3f4f6);
+  border-left: 1px solid var(--border, #374151);
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  box-sizing: border-box;
+  overflow: hidden;
+  height: 100%;
+}
+
+.abd-copilot-container.is-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 90vw;
+  z-index: 12000;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.abd-copilot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #374151);
+  background-color: var(--surface-card, #181b20);
+}
+
+.abd-copilot-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.abd-copilot-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.abd-copilot-tab-btn.is-active {
+  background: var(--surface, #1e2229);
+  color: var(--text, #f3f4f6);
+  border-color: var(--border, #374151);
+}
+
+.abd-copilot-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.abd-copilot-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #9ca3af);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abd-copilot-icon-btn:hover {
+  color: var(--text, #f3f4f6);
+  background: var(--surface, #1e2229);
+}
+
+.abd-copilot-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  gap: 10px;
+}
+
+/* Spot chip inside markdown */
+.abd-copilot-spot-chip {
+  background: var(--surface-elevated, #2a303c);
+  border: 1px solid var(--border, #374151);
+  color: var(--accent, #60a5fa);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px;
+}
+
+.abd-copilot-spot-chip:hover {
+  border-color: var(--accent, #60a5fa);
+  background: var(--accent-subtle, rgba(96, 165, 250, 0.15));
+}
+
+/* Quick command bar (Ctrl+K) */
+.abd-copilot-quickbar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 12500;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.abd-copilot-quickbar {
+  width: 600px;
+  max-width: 92vw;
+  background: var(--surface, #1e2229);
+  border: 1px solid var(--border, #374151);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.abd-copilot-quickbar-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border, #374151);
+  color: var(--text, #f3f4f6);
+  font-size: 14px;
+  outline: none;
+}

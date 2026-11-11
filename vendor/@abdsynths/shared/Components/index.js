@@ -24,6 +24,10 @@ export { LedLadder } from './ledLadder.js';
 export { RotaryLedKnob } from './rotaryLedKnob.js';
 export { XYPad } from './xypad.js';
 export { TrajectoryStick2D } from './trajectoryStick2D.js';
+
+// Gesto de automatización de un control arrastrable, con el puente del host
+// inyectado: el mismo cableado para todos los sintetizadores.
+export { gestureFor, gestureForGroup, createParamGestures } from './paramGesture.js';
 export { ThemeSwitcher } from './themeSwitcher.js';
 export { computeFit, mountFitStage } from './fitStage.js';
 export { registerSkin, getSkin, applySkin, skinNames } from './skins/index.js';
@@ -50,6 +54,11 @@ export { createDrawer } from './drawer.js';
 // escribe valores. Es una VISTA de las rutas, y por eso vive aqui y no en
 // la familia de controles (ver la cabecera de modMatrix.js).
 export { ModMatrix } from './modMatrix.js';
+// La matriz de pasos tampoco es un control con parametro propio: es una VISTA
+// de la secuencia (que pasos, con que nota, con que probabilidad), y el host
+// decide que significa cada destino. El CSS vive en
+// styles/components/step-matrix.css.
+export { StepMatrix, midiNoteToName } from './Controls/stepMatrix.js';
 export { createOverlayFocus, focusableWithin } from './overlayFocus.js';
 export { createLcdMachine, formatValue } from './lcdMachine.js';
 export { createLcdScreen } from './lcdScreen.js';
@@ -85,6 +94,9 @@ export { TapeEchoVisual } from './tapeEchoVisual.js';
 // una intencion sin cambio, no (lo hablan Toggle, Segmented y XYPad).
 export { sameControlValue, transitioned, announceTransition } from './transitionNotices.js';
 export { announceMovement, announceSettled, createContinuousNotices } from './continuousNotices.js';
+// Contrato compartido de TEXTOS DE LCD: el aviso se compone una vez y todos los
+// consumidores (menu, panel, drawer, bridge) pintan el mismo builder.
+export { buildWriteCompletedNotice } from './lcdNotices.js';
 
 // Temas de los modulos de efecto del rack FX: el tema va por FAMILIA
 // (reverb, tape, space...) y no por efecto, porque hay 57 ids y once
@@ -106,6 +118,8 @@ export {
   createLiveSysExInspector,
   toHexByte,
   decodeSysExHeader,
+  validateSysExByte,
+  SYSEX_MAX_DATA_BYTE,
 } from './liveSysExInspector.js';
 
 // Diálogo "About..." universal y reactivo con AutoUpdater C++ / GitHub Releases
@@ -127,6 +141,10 @@ export {
 // Medición de señal VU y analizador espectral logarítmico (ABDAudioLab / ABDScope)
 export { VuMeter } from './vuMeter.js';
 export { SpectrumPlotter } from './spectrumPlotter.js';
+// Visor de onda pequeno (unas pocas decenas de pixeles): pinta las muestras
+// que le da el host o, si no hay, una onda cuadrada sintetica de idle. El
+// scope completo es '@abdsynths/shared/scope'; el analisis espectral, arriba.
+export { MiniWaveScope } from './Scope/miniWaveScope.js';
 export { HardwareRoutingDiagram } from './hardwareRoutingDiagram.js';
 export { StudioTopology } from './studioTopology.js';
 

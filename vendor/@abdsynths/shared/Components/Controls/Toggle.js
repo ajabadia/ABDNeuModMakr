@@ -16,7 +16,7 @@
  */
 
 import { applySkin, CONTROL_KIND } from './skins/index.js';
-import { announceTransition } from './transitionNotices.js';
+import { announceTransition } from './TransitionNotices.js';
 
 /**
  * Usage:

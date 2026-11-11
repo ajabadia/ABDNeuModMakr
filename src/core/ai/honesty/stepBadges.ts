@@ -10,6 +10,7 @@ function isBridgeModelAvailable(
   modelId: string
 ): boolean {
   if (!ctx.isBridgeConnected) return false;
+  if (ctx.bridgeNeuralInferenceReady === false) return false;
   if (!ctx.installedBridgeModelIds || ctx.installedBridgeModelIds.size === 0) {
     // If bridge is connected and models catalog hasn't been restricted or downloads on demand
     return true;
@@ -73,9 +74,9 @@ export function resolvePipelineStepExecutionBadge(
           shortLabel: 'FALLBACK → DSP',
           modelOrEngineName: !ctx.isBridgeConnected
             ? 'HTDemucs (Bridge desconectado → HPSS DSP)'
-            : 'HTDemucs no descargado → HPSS Mediana DSP',
+            : 'HTDemucs sin inferencia activa → HPSS Mediana DSP',
           cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA, pero el modelo local HTDemucs no está disponible. Se ejecutará Separación Mediana HPSS determinista.',
+          tooltip: 'Configurado en IA, pero la inferencia HTDemucs no está activa en Bridge. Se ejecutará Separación Mediana HPSS determinista.',
           isBatchStageGroupedLocalAi: false,
         };
       }
@@ -115,24 +116,13 @@ export function resolvePipelineStepExecutionBadge(
             isBatchStageGroupedLocalAi: true,
           };
         }
-        if (ctx.isCloudReady) {
-          return {
-            kind: 'cloud-ai',
-            iconKey: 'cloud',
-            shortLabel: 'IA CLOUD · BYOK',
-            modelOrEngineName: `${cloudName} + Band-Split De-Esser`,
-            cssClass: 'engine-badge--cloud-ai',
-            tooltip: `Ajuste adaptativo de perfil sibilante asistido por ${cloudName}.`,
-            isBatchStageGroupedLocalAi: false,
-          };
-        }
         return {
           kind: 'fallback-dsp',
           iconKey: 'alert',
           shortLabel: 'FALLBACK → DSP',
-          modelOrEngineName: 'DeepFilter no descargado → De-Esser Dinámico DSP (4.5–11 kHz)',
+          modelOrEngineName: 'DeepFilter no activo/descargado → De-Esser Dinámico DSP (4.5–11 kHz)',
           cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA, pero DeepFilterNet 3 no está descargado. Se aplicará el De-Esser dinámico determinista de banda dividida.',
+          tooltip: 'Configurado en IA, pero la inferencia DeepFilterNet 3 no está disponible. Se aplicará el De-Esser dinámico determinista de banda dividida.',
           isBatchStageGroupedLocalAi: false,
         };
       }
@@ -161,24 +151,13 @@ export function resolvePipelineStepExecutionBadge(
             isBatchStageGroupedLocalAi: true,
           };
         }
-        if (ctx.isCloudReady) {
-          return {
-            kind: 'cloud-ai',
-            iconKey: 'cloud',
-            shortLabel: 'IA CLOUD · BYOK',
-            modelOrEngineName: `${cloudName} Assisted Denoise`,
-            cssClass: 'engine-badge--cloud-ai',
-            tooltip: `Limpieza de ruido asistida por ${cloudName}.`,
-            isBatchStageGroupedLocalAi: false,
-          };
-        }
         return {
           kind: 'fallback-dsp',
           iconKey: 'alert',
           shortLabel: 'FALLBACK → DSP',
           modelOrEngineName: 'DeepFilter no disponible → Puerta Espectral + Hum 50/60 Hz DSP',
           cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA, pero DeepFilterNet 3 no está activo. Se usará Sustracción Espectral por Huella de Ruido + Filtro DC/Hum.',
+          tooltip: 'Configurado en IA, pero DeepFilterNet 3 no está activo con inferencia cableada. Se usará Sustracción Espectral por Huella de Ruido + Filtro DC/Hum determinista.',
           isBatchStageGroupedLocalAi: false,
         };
       }
@@ -196,17 +175,6 @@ export function resolvePipelineStepExecutionBadge(
     case 'upsampleMasterWave': {
       const wantsAi = aiOn && (ctx.aiConfig?.masterWave === 'ai' || ctx.aiConfig?.loopExpansion === 'ai');
       if (wantsAi) {
-        if (isBridgeModelAvailable(ctx, 'audiosr') || isBridgeModelAvailable(ctx, 'musicgen')) {
-          return {
-            kind: 'local-ai',
-            iconKey: 'ai',
-            shortLabel: 'IA LOCAL · GPU',
-            modelOrEngineName: 'AudioSR 96 kHz + MusicGen Outpainting (Bridge 7860)',
-            cssClass: 'engine-badge--local-ai',
-            tooltip: 'Super-resolución neuronal a 96 kHz (AudioSR) y expansión orgánica de muestras cortas (MusicGen). En Batch se ejecuta agrupado para todo el lote.',
-            isBatchStageGroupedLocalAi: true,
-          };
-        }
         if (ctx.isCloudReady && (cloudName === 'REPLICATE' || cloudName === 'HUGGINGFACE')) {
           return {
             kind: 'cloud-ai',
@@ -222,9 +190,9 @@ export function resolvePipelineStepExecutionBadge(
           kind: 'fallback-dsp',
           iconKey: 'alert',
           shortLabel: 'FALLBACK → DSP',
-          modelOrEngineName: 'AudioSR no descargado → Sinc Polifásico 24b/96 kHz + BWE DSP',
+          modelOrEngineName: 'Sinc Polifásico 24b/96 kHz + Excitador Armónico BWE DSP',
           cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA, pero AudioSR no está descargado ni hay clave Replicate/HF. Se ejecutará Sinc Polifásico de fase lineal + BWE armónico DSP.',
+          tooltip: 'Configurado en IA, pero la super-resolución neuronal no está activa. Se ejecutará Sinc Polifásico de fase lineal + BWE armónico DSP.',
           isBatchStageGroupedLocalAi: false,
         };
       }
@@ -270,7 +238,7 @@ export function resolvePipelineStepExecutionBadge(
           shortLabel: 'FALLBACK → DSP',
           modelOrEngineName: 'Basic Pitch no disponible → YIN/MPM + HPS & NCC Loop DSP',
           cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA, pero Basic Pitch no está disponible. Se usará el detector híbrido YIN/MPM + HPS determinista.',
+          tooltip: 'Configurado en IA, pero la inferencia de Basic Pitch no está activa. Se usará el detector híbrido YIN/MPM + HPS determinista.',
           isBatchStageGroupedLocalAi: false,
         };
       }
@@ -293,20 +261,20 @@ export function resolvePipelineStepExecutionBadge(
             kind: 'cloud-ai',
             iconKey: 'cloud',
             shortLabel: 'LLM CLOUD · BYOK',
-            modelOrEngineName: `${cloudName} + WebGPU Timbre Embeddings`,
+            modelOrEngineName: `${cloudName} + Timbre Descriptors`,
             cssClass: 'engine-badge--cloud-ai',
-            tooltip: `Clasificación semántica de categoría y Parameter Set 0..9 asistida por ${cloudName} y WebNeuralEngine.`,
+            tooltip: `Clasificación semántica de metadatos y categoría asistida por ${cloudName}.`,
             isBatchStageGroupedLocalAi: false,
           };
         }
         return {
-          kind: 'local-ai',
-          iconKey: 'ai',
-          shortLabel: 'IA LOCAL · WEBGPU',
-          modelOrEngineName: 'WebNeuralEngine Timbre Embeddings (In-Browser)',
-          cssClass: 'engine-badge--local-ai',
-          tooltip: 'Clasificación neuronal de timbre ejecutada localmente en el navegador vía WebGPU / WASM SIMD.',
-          isBatchStageGroupedLocalAi: true,
+          kind: 'dsp',
+          iconKey: 'cpu',
+          shortLabel: 'DETERMINISTA · DSP',
+          modelOrEngineName: 'Árbol de Descriptores Acústicos (Attack, Inharmonicity B, Centroid)',
+          cssClass: 'engine-badge--dsp',
+          tooltip: 'Clasificación determinista basada en tiempo de ataque, inarmonicidad B, centroide espectral y ratio de sustain.',
+          isBatchStageGroupedLocalAi: false,
         };
       }
       return {
@@ -378,24 +346,13 @@ export function resolvePipelineStepExecutionBadge(
         };
       }
       if (artPref === 'local-ai') {
-        if (isBridgeModelAvailable(ctx, 'sdturbo')) {
-          return {
-            kind: 'local-ai',
-            iconKey: 'ai',
-            shortLabel: 'IA LOCAL · GPU',
-            modelOrEngineName: 'SD-Turbo 1-Step Diffusion (Bridge 7860 · 512×512 WebP)',
-            cssClass: 'engine-badge--local-ai',
-            tooltip: 'Síntesis neuronal local en 1 paso con SD-Turbo en tu GPU. En Batch genera todas las portadas seguidas.',
-            isBatchStageGroupedLocalAi: true,
-          };
-        }
         return {
-          kind: 'fallback-dsp',
-          iconKey: 'alert',
-          shortLabel: 'FALLBACK → DSP',
-          modelOrEngineName: 'SD-Turbo no descargado → Espectrograma Acústico Procedural',
-          cssClass: 'engine-badge--fallback',
-          tooltip: 'Configurado en IA Local pero SD-Turbo no está descargado en Bridge. Se usará el renderizador Procedural Acústico.',
+          kind: 'dsp',
+          iconKey: 'cpu',
+          shortLabel: 'DETERMINISTA · DSP',
+          modelOrEngineName: 'Espectrograma Acústico Procedural F0 (Canvas 512×512 WebP)',
+          cssClass: 'engine-badge--dsp',
+          tooltip: 'Generación matemática offline instantánea renderizada a partir de los armónicos F0 reales del instrumento.',
           isBatchStageGroupedLocalAi: false,
         };
       }

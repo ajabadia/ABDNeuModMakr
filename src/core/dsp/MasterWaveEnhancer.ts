@@ -22,6 +22,7 @@ import {
 // `@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts` (SSOT), re-exported
 // here so existing imports keep working with zero behaviour change.
 import { findOptimalZeroCrossingLoop } from '@abdsynths/shared/dsp/slicer-loops/zeroCrossing.ts';
+import { bridgeClient } from '../bridge/BridgeClient.ts';
 import type {
   MasterChannelLayout,
   MasterPromotionMethod,
@@ -138,9 +139,10 @@ export class HttpAiBridgeProvider implements AudioEnhancementProvider {
       if (request.noiseProfile) {
         headers['X-Noise-Profile'] = JSON.stringify(request.noiseProfile);
       }
+      const authHeaders = bridgeClient.authHeaders(headers);
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers,
+        headers: authHeaders,
         body: wav24,
         signal: controller.signal,
       });

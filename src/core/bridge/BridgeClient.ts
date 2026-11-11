@@ -391,6 +391,29 @@ export class BridgeClient implements BridgeCore {
     return renameAxionikModel(this, libraryPath, oldSlug, newSlug, newName, timeoutMs);
   }
 
+  public async proxyLocalLlmRequest(req: {
+    baseUrl: string;
+    path: string;
+    method: 'GET' | 'POST';
+    body?: unknown;
+    signal?: AbortSignal;
+  }): Promise<{ ok: boolean; status: number; json: unknown }> {
+    const res = await fetch(`${this.url}/api/local-llm/proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.authHeaders(),
+      },
+      body: JSON.stringify(req),
+      signal: req.signal,
+    });
+    if (!res.ok) {
+      return { ok: false, status: res.status, json: await res.json().catch(() => null) };
+    }
+    const data = (await res.json()) as { ok: boolean; status: number; json: unknown };
+    return data;
+  }
+
 }
 
 /** Global singleton instance for the application */

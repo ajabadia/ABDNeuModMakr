@@ -8,7 +8,13 @@
  *
  * Compatible con todos los contratos `*_parameter_spec.json` y `sampler_voice_parameter_spec.json`
  * definidos bajo `parameter_dictionary.schema.json`.
+ *
+ * La curva `Lut` se resuelve contra el registro de tablas de firmware
+ * (`lutRegistry.js` + `lut_tables.json`): la tabla es la verdad del hardware y no se
+ * aproxima con fórmulas analíticas.
  */
+
+import { LutNotFoundError, hasLut, lutNormalizedForValue, lutValueAt } from './lutRegistry.js';
 
 export type CurveType = 'Linear' | 'Exp' | 'Pow' | 'SymBipolar' | 'PiecewiseLinear' | 'Lut' | 'None';
 
@@ -183,9 +189,14 @@ export class MidiTranslationEngine {
         }
         break;
       }
+      case 'Lut': {
+        // La tabla de firmware es la verdad: se indexa por el normalizado y se devuelve
+        // sin recortar contra domainMin/domainMax, que solo documentan sus extremos.
+        if (!meta.lutId || !hasLut(meta.lutId)) throw new LutNotFoundError(meta.lutId ?? '<sin lutId>');
+        return lutValueAt(meta.lutId, t);
+      }
       case 'Linear':
       case 'PiecewiseLinear':
-      case 'Lut':
       case 'None':
       default:
         physical = domainMin + t * (domainMax - domainMin);
@@ -200,7 +211,14 @@ export class MidiTranslationEngine {
   /** Evalúa la conversión inversa Dominio Físico -> Normalizado [0,1] */
   public static evalDomainToNormalized(meta: ParameterMeta, domainRaw: number): number {
     const { curve, domainMin, domainMax } = meta;
-    if (!Number.isFinite(domainRaw) || domainMax === domainMin) return 0.0;
+    if (!Number.isFinite(domainRaw)) return 0.0;
+
+    if (curve === 'Lut') {
+      if (!meta.lutId || !hasLut(meta.lutId)) throw new LutNotFoundError(meta.lutId ?? '<sin lutId>');
+      return lutNormalizedForValue(meta.lutId, domainRaw);
+    }
+
+    if (domainMax === domainMin) return 0.0;
 
     const lo = Math.min(domainMin, domainMax);
     const hi = Math.max(domainMin, domainMax);
@@ -244,7 +262,6 @@ export class MidiTranslationEngine {
       }
       case 'Linear':
       case 'PiecewiseLinear':
-      case 'Lut':
       case 'None':
       default:
         t = (domain - domainMin) / (domainMax - domainMin);

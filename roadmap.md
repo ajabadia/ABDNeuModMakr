@@ -1549,6 +1549,367 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 - [x] `npm run test:types && npx tsx tests/run_all.ts` en verde, incluido el nuevo `tests/phase44_persistence.test.ts` (2026-11-06: 43/43 PASS incl. phase44; `test:types` verde).
 - [ ] Manual: (a) matriz BYOK 9 proveedores, (b) bridge on/off en los 7 botones IA, (c) reload con `tempoSync` + etapas 6/7/8, (d) Vercel sin bridge (todo cae a DSP/procedural con consentimiento, sin pantallas vacías).
 
+---
+
+## 🤖 GUÍA DE EJECUCIÓN PASO A PASO PARA AGENTE EJECUTOR (`gemini 3.8 flash - low`) — FASES 45 Y 46
+
+> [!IMPORTANT]
+> **INSTRUCCIONES OBLIGATORIAS PARA EL AGENTE QUE EJECUTE LAS FASES 45 Y 46:**
+> 1. **Trabaja UNA SOLA subfase cada vez** y **en estricto orden secuencial**: `45.1` $\to$ `45.2` $\to$ `45.3` $\to$ `45.4` $\to$ `45.5` $\to$ `45.6` $\to$ `45.7` $\to$ `46.1` $\to$ `46.2` $\to$ `46.3` $\to$ `46.4` $\to$ `46.5`. **NO saltes pasos ni mezcles dos subfases en un mismo bloque de edición.**
+> 2. **Lee siempre el rango de líneas indicado** con tu herramienta de lectura de archivos **antes** de hacer cualquier reemplazo, porque los números de línea pueden desplazarse tras editar subfases anteriores.
+> 3. **No inventes nombres ni rompas firmas públicas** que no aparezcan indicadas aquí. Preserva comentarios y cabeceras existentes que sigan siendo ciertos.
+> 4. **Comprobación obligatoria al terminar CADA subfase** (no avances a la siguiente si alguno falla):
+>    - `npm run test:types`
+>    - `npm run lint:security`
+>    - `node scripts/audit-innerhtml.mjs`
+>    - `python -m py_compile bridge/server.py bridge/dwop_decompress.py` (cuando toques ficheros `.py`)
+>    - `npx tsx tests/run_all.ts`
+> 5. **Marca cada casilla `[ ]` como `[x]`** en este mismo `roadmap.md` únicamente cuando su test y los 5 comandos anteriores estén en verde.
+> 6. **Contexto transversal ya verificado con `ABDAudioLab` (`D:\desarrollos\ABDSynths\ABDAudioLab\docs\ROADMAP.md` §`HITO-AI-STUDY-01`):**
+>    - `ABDAudioLab` **NO** depende de `WebNeuralEngine.ts` ni de `AudioSR`, `MusicGen` o `SD-Turbo`. Al contrario: `ABDAudioLab` tenía una nota antigua en su `README.md` planeando reutilizar `WebNeuralEngine.ts`, y se ha bloqueado porque `WebNeuralEngine.ts` era un simulacro sin redes neuronales reales.
+>    - Lo que **SÍ** debe conservarse limpio, intacto y desacoplado para compartir en el futuro vía `ABDShared` con `ABDAudioLab` es: **(a)** `src/core/dsp/AcousticIntelligence.ts` (motor determinista real de 10 descriptores acústicos + YIN/MPM + HPS) y **(b)** `src/core/ai/CloudByokClient.ts` endurecido.
+
+---
+
+## Fase 45 — Endurecimiento Integral de Seguridad (Auditoría Red-Team Post-Ola 22) [COMPLETADA]
+
+**Objetivo**: Cerrar los vectores residuales detectados en la auditoría de código fuente sobre `bridge/server.py`, `bridge/dwop_decompress.py`, `CloudByokClient.ts`, `ModelArtworkGenerator.ts`, `MasterWaveEnhancer.ts`, `vercel.json`, `ResynatorV2Wasm.ts` y `sessionSchema.ts`.
+
+---
+
+### 45.1 Autenticación obligatoria por defecto (`X-Bridge-Token`) y envío consistente desde el cliente TS
+
+**Problema actual**:
+- En `bridge/server.py` (línea ~179 y línea ~1014), `BRIDGE_TOKEN` se genera al arrancar, pero `require_auth(self)` solo valida el token `if os.environ.get('ABD_BRIDGE_TOKEN')`. Sin esa variable de entorno, `require_auth()` devuelve `True` sin autenticar nada.
+- Además, 7 rutas `POST` y todas las rutas `GET /api/fs/*` en `bridge/server.py` ni siquiera llaman a `require_auth()`.
+- En TypeScript, `MasterWaveEnhancer.ts` y `ModelArtworkGenerator.ts` hacen `fetch` al Bridge sin incluir la cabecera `X-Bridge-Token`.
+
+**Pasos exactos a implementar**:
+- [x] **1. Token persistente y obligatorio en `bridge/server.py` (líneas ~176–185 y ~2490–2505)**:
+- [x] **2. Hacer `require_auth(self)` incondicional y constante en tiempo en `bridge/server.py` (líneas ~1014–1025)**:
+- [x] **3. Proteger TODOS los endpoints sensibles en `do_GET` y `do_POST` de `bridge/server.py`**:
+- [x] **4. Enviar `X-Bridge-Token` desde los dos clientes TS que lo omitían**:
+- [x] **5. Actualizar `tests/security_hardening.test.ts` (líneas ~440–525, `runSecurityTestsPart3`)**:
+
+---
+
+### 45.2 Confinamiento de rutas (`library_path`) y lista blanca de extensiones en `bridge/server.py`
+
+**Problema actual**:
+- En `bridge/server.py`, `safe_join(library_path, 'Models', slug)` impide escapar con `..` fuera de `library_path`, pero `library_path` lo envía el cliente en el JSON sin comprobar que pertenezca a una carpeta autorizada, `files[].path` permite cualquier extensión (`.bat`, `.ps1`, `.py`, `.dll`, `.exe`) y `duplicate_axionik_model` / `rename_axionik_model` hacen `shutil.rmtree(dest_dir)` si `overwrite=True`.
+
+**Pasos exactos a implementar**:
+- [x] **1. Raíces de librería permitidas (`resolve_allowed_library_path`) en `bridge/server.py`**:
+  - Define las raíces permitidas por defecto:
+    - `os.path.realpath(os.path.join(os.path.dirname(BASE_DIR), 'AxionikDB'))` (carpeta `AxionikDB` dentro del repo)
+    - `os.path.realpath(os.path.join(os.path.expanduser('~'), 'Documents', 'ABDSynths'))`
+    - `os.path.realpath(os.path.join(os.path.expanduser('~'), 'ABDSynths'))`
+    - Más cualquier ruta separada por `;` (Windows) o `:` (POSIX) en `os.environ.get('ABD_ALLOWED_LIBRARY_ROOTS', '')`.
+    - Más cualquier carpeta que el propio usuario haya elegido interactivamente durante esa ejecución mediante el diálogo nativo del sistema operativo en `/api/fs/browse` (guárdalas en un `set` en memoria `USER_APPROVED_DIRS` protegido por `threading.Lock()`).
+  - Crea `resolve_allowed_library_path(raw_path: str) -> Optional[str]`:
+    - Si `not raw_path or not isinstance(raw_path, str)` devuelve `None`.
+    - Si `raw_path == 'AxionikDB'` (ruta relativa usada por defecto y por `tests/security_hardening.test.ts`), resuélvela respecto a `os.path.dirname(BASE_DIR)` (`os.path.realpath(os.path.join(os.path.dirname(BASE_DIR), 'AxionikDB'))`).
+    - Comprueba con `os.path.commonpath([candidate, allowed_root]) == allowed_root` (capturando `ValueError` cuando en Windows están en unidades de disco distintas `C:` vs `D:`) que `candidate` esté dentro de al menos una raíz permitida o en `USER_APPROVED_DIRS`. Si no lo está, devuelve `None`.
+  - Usa `resolve_allowed_library_path` en **todos** los endpoints `/api/fs/*` (`scan`, `scan_axionik`, `list_sublibraries`, `save_axionik_model`, `create_sublibrary`, `delete_sublibrary`, `move_axionik_model`, `reorder_sublibrary`, `duplicate_axionik_model`, `rename_axionik_model`). Si devuelve `None`, responde HTTP `403` con `{'error': 'library_path outside allowed roots (select folder via Browse button or set ABD_ALLOWED_LIBRARY_ROOTS)'}`.
+- [x] **2. Lista blanca estricta de nombres/extensiones escribibles en `save_axionik_model` (`bridge/server.py`, líneas ~1790–1860)**:
+  - Define constante:
+    ```python
+    ALLOWED_MODEL_FILENAMES = frozenset({'MName', 'SName'})
+    ALLOWED_MODEL_EXTENSIONS = frozenset({
+        '.json', '.scape', '.sphere', '.script', '.stickrec',
+        '.wav', '.aif', '.aiff', '.flac', '.webp', '.png', '.jpg', '.jpeg', '.mid', '.txt', '.md',
+        '.nmmodel', '.neuronikmodel', '.zip', '.sfz', '.sf2', '.dspreset'
+    })
+    ```
+  - Antes de escribir cada entrada `f_entry` en `save_axionik_model`, verifica que `os.path.basename(target_file)` esté en `ALLOWED_MODEL_FILENAMES` o que `os.path.splitext(target_file)[1].lower()` esté en `ALLOWED_MODEL_EXTENSIONS`. Si no cumple, **rechaza esa entrada** (no escribas el archivo y registra un aviso en consola).
+- [x] **3. Guarda anti-borrado accidental antes de `shutil.rmtree` (`bridge/server.py`, líneas ~2185–2195 y ~2265–2275)**:
+  - Crea helper `_safe_rmtree_model_dir(dest_dir: str, lib_root: str)`: verifica que `os.path.realpath(dest_dir)` tenga como padre inmediato una carpeta llamada `'Models'` o `'Presets'` o `'Banks'` dentro de `lib_root`, que no sea igual a `lib_root`, y que `not os.path.islink(dest_dir)` antes de ejecutar `shutil.rmtree(dest_dir)`.
+
+---
+
+### 45.3 Anti-DoS de memoria/CPU en Python (`dwop_decompress.py` y cabeceras `/api/enhance`)
+
+**Problema actual**:
+- `bridge/dwop_decompress.py` confía ciegamente en `total_frames` (uint32 hasta `4.294.967.295`) y anida `parse_iff` sin límite de profundidad, acumulando `List[int]` en RAM.
+- `bridge/server.py` (`/api/enhance`, líneas ~1705–1716) convierte `X-Target-Sample-Rate` y `X-Target-Loop-Sec` sin cotas máximas, pudiendo pedir terabytes en `scipy.signal.resample`.
+- `X-Text-Prompt` se imprime crudo en `sys.stderr.write` (inyección ANSI en terminal).
+
+**Pasos exactos a implementar**:
+- [x] **1. Acotar `bridge/dwop_decompress.py` (líneas ~246–315)**:
+  - Añade constantes al inicio del módulo:
+    ```python
+    MAX_RX2_FRAMES = 50_000_000       # ~18 min @ 44.1 kHz
+    MAX_RX2_CHANNELS = 2
+    MAX_IFF_DEPTH = 8
+    MAX_WAV_OUT_BYTES = 200 * 1024 * 1024
+    ```
+  - En `parse_iff(buf, start, end, depth=0)`: si `depth > MAX_IFF_DEPTH`, lanza `ValueError('REX2 IFF nesting too deep')`; al llamar recursivamente en `CAT `, pasa `depth + 1`.
+  - Tras leer `SINF`: valida `1 <= channels <= MAX_RX2_CHANNELS`, `8000 <= sample_rate <= 192000`, `0 < total_frames <= MAX_RX2_FRAMES` y `total_frames * channels * 2 <= MAX_WAV_OUT_BYTES`. Si cualquiera falla, lanza `ValueError` descriptivo (que `server.py` captura y devuelve como HTTP `400`).
+  - Sustituye `pcm_samples: List[int] = []` por `from array import array; pcm_samples = array('h')` (consume 2 bytes por muestra en C en vez de 28+ bytes por objeto `int` de Python).
+- [x] **2. Acotar cabeceras de `/api/enhance` y sanear logs en `bridge/server.py` (líneas ~1700–1730)**:
+  - Limita `target_sr`:
+    ```python
+    try:
+        target_sr = int(self.headers.get('X-Target-Sample-Rate', '96000'))
+    except ValueError:
+        target_sr = 96000
+    target_sr = max(8000, min(192000, target_sr))
+    ```
+  - Limita `target_loop_sec`:
+    ```python
+    try:
+        target_loop_sec = float(self.headers.get('X-Target-Loop-Sec', '0'))
+        if not math.isfinite(target_loop_sec):
+            target_loop_sec = 0.0
+    except ValueError:
+        target_loop_sec = 0.0
+    target_loop_sec = max(0.0, min(60.0, target_loop_sec))
+    ```
+    *(recuerda `import math` arriba si no está importado).*
+  - Crea `_sanitize_log_str(s: str, max_len: int = 120) -> str`: elimina cualquier carácter de control (`ord(ch) < 32 or ord(ch) == 127`) y recorta a `max_len`. Aplícalo a `prompt_hdr` antes de `sys.stderr.write`.
+
+---
+
+### 45.4 Bloqueo de SSRF por redirecciones HTTP, validación de `replicate_proxy` y timeouts en `ModelArtworkGenerator.ts`
+
+**Problema actual**:
+- `urllib.request.urlopen` en `bridge/server.py` sigue redirecciones HTTP `301/302/307/308` hacia IPs privadas (`127.0.0.1`, `169.254.169.254`, `10.x.x.x`) sin revalidar el host destino.
+- `replicate_proxy` (`bridge/server.py`, línea ~1400) solo comprueba `rel_path.startswith('/v1/')`, permitiendo `/v1/../../...` o queries arbitrarias.
+- `ModelArtworkGenerator.ts` llama a `fetch(outputUrl)` y `fetch(pollUrl)` con URLs devueltas por terceros sin validar el host contra SSRF ni usar `fetchWithTimeout`.
+
+**Pasos exactos a implementar**:
+- [x] **1. Validador de IP pública y `SafeRedirectHandler` en `bridge/server.py` (cerca de línea ~220)**:
+  - Importa `ipaddress` y `socket`.
+  - Crea `assert_url_resolves_to_public_https(url: str, allowed_hosts: Optional[frozenset] = None) -> None`:
+    1. Parsea con `urlparse(url)`: exige `parsed.scheme == 'https'`, `parsed.hostname` no vacío, sin credenciales (`parsed.username is None and parsed.password is None`).
+    2. Si `allowed_hosts is not None`, exige `parsed.hostname.lower() in allowed_hosts` (para las redirecciones firmadas de CDN de HuggingFace/GitHub durante descargas, define `ALLOWED_REDIRECT_CDN_HOSTS = ALLOWED_DOWNLOAD_HOSTS | frozenset({'cdn-lfs.hf.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co', 'cas-bridge.xethub.hf.co', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'})`).
+    3. Resuelve `socket.getaddrinfo(parsed.hostname, 443, proto=socket.IPPROTO_TCP)` y para cada IP resuelta verifica con `ip_obj = ipaddress.ip_address(ip_str)` que **NO** sea `is_private`, `is_loopback`, `is_link_local`, `is_multicast`, `is_reserved` ni `is_unspecified`. Si alguna IP es interna, lanza `ValueError(f'Blocked non-public IP for {parsed.hostname}')`.
+  - Crea una subclase `_SafeHttpsRedirectHandler(urllib.request.HTTPRedirectHandler)` cuyo `redirect_request(self, req, fp, code, msg, headers, newurl)` llame a `assert_url_resolves_to_public_https(newurl, ALLOWED_REDIRECT_CDN_HOSTS)` antes de permitir la redirección, con máximo 5 saltos. Úsala con `urllib.request.build_opener(_SafeHttpsRedirectHandler())` tanto en `download_model_worker` como en `/api/models/check_url`, e impón un tope duro de bytes descargados (`MAX_MODEL_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024`).
+- [x] **2. Endurecer `/api/cloud/replicate_proxy` en `bridge/server.py` (líneas ~1391–1425)**:
+  - Valida `rel_path` contra una expresión regular estricta:
+    ```python
+    REPLICATE_PATH_RE = re.compile(r'^/v1/(?:models/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/predictions|predictions(?:/[a-zA-Z0-9_-]+)?)$')
+    ```
+    Si `not isinstance(rel_path, str) or '..' in rel_path or not REPLICATE_PATH_RE.match(rel_path)`, devuelve HTTP `400` con `{'error': 'invalid replicate path'}`.
+  - Valida que `token` no contenga `\r`, `\n` ni espacios de control (`any(ord(c) < 33 or ord(c) > 126 for c in token)` $\to$ `400`).
+- [x] **3. Validar URLs externas y añadir timeouts en `src/core/ai/ModelArtworkGenerator.ts` (líneas ~660–1005)**:
+  - Exporta/reutiliza `fetchWithTimeout` desde `src/core/ai/CloudByokClient.ts` (si es privada en `CloudByokClient.ts`, añade `export` delante de `async function fetchWithTimeout`).
+  - Importa `assertAllowedCloudBaseUrl` o `isBlockedHostname` desde `../security/ssrf.ts`, y crea en `src/core/security/ssrf.ts` un helper pequeño exportado:
+    ```ts
+    export function assertSafeExternalHttpsUrl(rawUrl: string): string {
+      let u: URL;
+      try {
+        u = new URL(rawUrl);
+      } catch {
+        throw new Error('Invalid external URL');
+      }
+      if (u.protocol !== 'https:' || u.username || u.password || isBlockedHostname(u.hostname)) {
+        throw new Error(`Blocked unsafe external URL host: ${u.hostname}`);
+      }
+      return u.toString();
+    }
+    ```
+  - En `ModelArtworkGenerator.ts`, sustituye **todos** los `fetch(...)` directos (Gemini Imagen, OpenAI DALL-E, HuggingFace, Replicate create/poll/outputUrl y Bridge) por `fetchWithTimeout(..., 45_000)`, y pasa tanto `pollUrl` (línea ~953, verificando además que `new URL(pollUrl).hostname === 'api.replicate.com'`) como `outputUrl` (línea ~977, con `assertSafeExternalHttpsUrl(outputUrl)`) antes de hacer el `fetch`.
+
+---
+
+### 45.5 `Content-Security-Policy` (CSP) en `vercel.json`, eliminación de API Key Gemini de las URLs y redacción de errores
+
+**Problema actual**:
+- `vercel.json` no declara `Content-Security-Policy`, dejando expuestas en caso de XSS las 9 claves BYOK guardadas en `localStorage`.
+- La clave de Gemini viaja en la query `?key=${apiKey}` (`CloudByokClient.ts` líneas ~325 y ~800; `ModelArtworkGenerator.ts` línea ~661), y `fetchWithTimeout` incluye `${url}` entera en el texto del `Error` cuando hay timeout, filtrando la API Key a logs/UI.
+
+**Pasos exactos a implementar**:
+- [x] **1. Redactar URLs sensibles y mover la clave de Gemini a cabecera `x-goog-api-key`**:
+  - En `src/core/ai/CloudByokClient.ts`:
+    - Crea `export function redactUrlForLog(rawUrl: string): string`: intenta `const u = new URL(rawUrl); u.search = ''; u.hash = ''; return u.toString();` (y en `catch`, corta en el primer `'?'`).
+    - En `fetchWithTimeout` (línea ~76), usa `redactUrlForLog(url)` en el mensaje `AI request timed out after ${timeoutMs}ms: ${redactUrlForLog(url)}`.
+    - En la llamada a `generativelanguage.googleapis.com` de texto (línea ~325) y en la llamada de test/validación de Gemini (línea ~800), **elimina `?key=${encodeURIComponent(apiKey)}` de la URL** y añade la cabecera HTTP `'x-goog-api-key': apiKey` en `headers`.
+  - En `src/core/ai/ModelArtworkGenerator.ts` (línea ~661, `callGeminiImagen`):
+    - **Elimina `?key=${encodeURIComponent(apiKey)}` de la URL** y envía `'x-goog-api-key': apiKey` en `headers`.
+- [x] **2. Añadir `Content-Security-Policy` compatible con WebAssembly, Workers y BYOK en `vercel.json`**:
+  - Lee `vercel.json` completo primero. En el bloque `headers` para `"source": "/(.*)"`, añade la cabecera `Content-Security-Policy` (en una sola línea sin saltos):
+    - `default-src 'self';`
+    - `script-src 'self' 'wasm-unsafe-eval';`
+    - `worker-src 'self' blob:;`
+    - `style-src 'self' 'unsafe-inline';`
+    - `img-src 'self' data: blob: https:;`
+    - `media-src 'self' data: blob:;`
+    - `font-src 'self' data:;`
+    - `connect-src 'self' http://127.0.0.1:7860 http://localhost:7860 https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.replicate.com https://openrouter.ai https://router.huggingface.co https://api-inference.huggingface.co https://api.deepseek.com https://api.groq.com https://api.mistral.ai;`
+    - `object-src 'none'; base-uri 'self'; frame-ancestors 'none';`
+  - *(Nota: se incluye `'unsafe-inline'` únicamente en `style-src` porque los canvas/barras de progreso usan atributos `style="width: ...%"`, pero `script-src` queda bloqueado sin `'unsafe-inline'` ni `'unsafe-eval'`, permitiendo solo `'wasm-unsafe-eval'` para `resynator-v2-abi1.js`). Verifica que `index.html` no tenga ningún `<script>` inline sin `src`; si lo hubiera, muévelo a un archivo `.ts`/`.js` importado).*
+
+---
+
+### 45.6 Corrección UTF-8 + cota de profundidad JSON en `ResynatorV2Wasm.ts` y saneamiento de `articulation` en `sessionSchema.ts`
+
+**Problema actual**:
+- En `src/core/dsp/ResynatorV2Wasm.ts` (línea ~124), se pasa `[options.modelJson, options.modelJson.length]` a `resynLoadModel`. En JS `.length` cuenta unidades UTF-16, mientras Emscripten codifica el argumento `'string'` en UTF-8: caracteres no ASCII (`ñ`, tildes) descuadran la longitud en bytes y truncan el JSON en C++. Además, un JSON malicioso con cientos de niveles anidados puede desbordar la pila recursiva del parser C++.
+- En `src/core/sessionSchema.ts` (líneas ~696–698), `articulation` se pasa a `cloneArticulation` sin limpiar `NaN`/`Infinity` ni validar que los sub-objetos sean objetos planos.
+
+**Pasos exactos a implementar**:
+- [x] **1. En `src/core/dsp/ResynatorV2Wasm.ts` (líneas ~100–130)**:
+  - Añade una función pura exportada `export function assertJsonDepthWithinCap(jsonText: string, maxDepth = 32): void`:
+    - Recorre el string carácter a carácter llevando `inString` (respetando escapes `\"` y `\\`) y un contador `depth` que sube en `{` o `[` y baja en `}` o `]`. Si `depth > maxDepth`, lanza `new Error(\`[resynator-wasm] JSON nesting depth exceeds cap (${maxDepth})\`)`. Si `depth < 0`, lanza error de JSON malformado.
+  - En `renderResynatorWasm`, llama a `assertJsonDepthWithinCap(options.modelJson, 32)` antes de `resynLoadModel`.
+  - Calcula la longitud real en bytes UTF-8 con `const utf8ByteLen = new TextEncoder().encode(options.modelJson).byteLength;` y pasa `[options.modelJson, utf8ByteLen]` a `mod.ccall('resynLoadModel', 'number', ['string', 'number'], [options.modelJson, utf8ByteLen])`.
+- [x] **2. En `src/core/sessionSchema.ts` (cerca de línea ~695)**:
+  - Crea una función `sanitizeArticulation(raw: unknown): SynthArticulationConfig | undefined`:
+    - Si `!isPlainObject(raw)` devuelve `undefined`.
+    - Parte de `const base = createDefaultArticulation()` (importado desde `../core/extendedAdapter.ts`).
+    - Crea un helper local `finiteClamped(val: unknown, fallback: number, min: number, max: number): number` que compruebe `typeof val === 'number' && Number.isFinite(val)` y aplique `Math.min(max, Math.max(min, val))`.
+    - Valida explícitamente cada sub-bloque (`ampEnv`, `modEnv`, `pitchEnv`, `filter`, `vibLfo`, `modLfo`, `pitchBendUpSt` en `[0, 48]`, `pitchBendDownSt` en `[0, 48]`, `polyphony` en `[1, 256]`, `glideTimeSec` en `[0, 30]`, `voiceMode` en `['poly', 'mono', 'legato']` si existe, `filter.type` en `['lpf', 'hpf', 'bpf', 'notch']`) copiando **solo** las claves conocidas con números finitos acotados. Sustituye la llamada directa a `cloneArticulation(artRaw ...)` en `validateSessionPayload` por `sanitizeArticulation(raw.articulation)`.
+
+---
+
+### 45.7 Suite de tests de verificación de Fase 45 (`tests/phase45_security_audit.test.ts`)
+
+- [x] **Crear `tests/phase45_security_audit.test.ts` y registrarlo en `tests/run_all.ts`**:
+  - Test 1: `redactUrlForLog` oculta `?key=AIzaSySecret123` y conserva origen + ruta.
+  - Test 2: `assertSafeExternalHttpsUrl` bloquea `http://`, `https://127.0.0.1/...`, `https://169.254.169.254/...`, `https://[::1]/...` y credenciales `https://user:pass@example.com`, y acepta `https://replicate.delivery/pbxt/img.webp`.
+  - Test 3: `assertJsonDepthWithinCap` acepta un documento de profundidad 12 (con llaves literales `"{[[[..."` dentro de strings JSON escapados sin falsos positivos) y rechaza un JSON con 40 niveles anidados.
+  - Test 4: `renderResynatorWasm` carga sin error de truncado UTF-8 un modelo cuyo nombre contiene caracteres multibyte (`"Órgano Ibérico Ñ — Café 🎹"`).
+  - Test 5: `parseSessionJson` sanea `articulation` con valores maliciosos (`NaN`, `Infinity`, `ampEnv: "bad"`, `__proto__`, `filter.type: "<script>"`) devolviendo números finitos acotados y enumerados limpios.
+  - Test 6 (Python CLI vía `execFileSync('python', ...)`): verifica que `decompress_rx2_bytes` en `bridge/dwop_decompress.py` rechaza al instante (< 100 ms, sin consumir RAM) un contenedor IFF `REX2` sintético con `total_frames = 0xFFFFFFFF` y otro con 12 niveles de `CAT ` anidados.
+  - Verifica que `vercel.json` es JSON válido y contiene la cabecera `Content-Security-Policy` con `script-src 'self' 'wasm-unsafe-eval'` y `object-src 'none'`.
+- [x] **DoD Fase 45**: `npm run test:types && npm run lint:security && node scripts/audit-innerhtml.mjs && npx tsx tests/run_all.ts` pasa al 100 % con 0 fallos.
+
+---
+
+## Fase 46 — Saneamiento Crítico de la Capa de IA, Corrección de Calidad de Audio y Honestidad Radical [COMPLETADA]
+
+**Objetivo**: Eliminar el *"AI Theatre"* detectado en la auditoría, corregir los **4 fallos que degradan hoy la calidad acústica** cuando el usuario activa las opciones de IA, retirar las descargas muertas de varios gigabytes que no tienen sentido en un sintetizador de resíntesis aditiva, y modernizar las llamadas Cloud BYOK que sí aportan valor real.
+
+---
+
+### 46.1 Corrección urgente de los 4 fallos de calidad acústica en Web y Bridge
+
+**Problemas actuales**:
+1. `WebNeuralEngine.classifyTimbre` (`src/core/ai/WebNeuralEngine.ts`, líneas ~179–230) reemplaza al clasificador real de 10 descriptores (`AcousticIntelligence.ts`) por 6 `if/else` rudimentarios que asignan **índices de Parameter Set (0..9) erróneos** (`6=Drums` cuando en Hartmann Neuron `8=Drums & Perc` y `6=Pads`; `2=Plucked` cuando `3=Plucked` y `2=Keyboards`).
+2. `WebNeuralEngine.detectPitch` (líneas ~132–172) usa autocorrelación submuestreada sin normalización YIN, peor que `detectPitchHybrid` de `AcousticIntelligence.ts`, y finge `provider: 'WebGPU-ONNX'` tras pedir y descartar `navigator.gpu.requestAdapter()`.
+3. `process_audio_enhancement` en `bridge/server.py` (líneas ~639–648) suma `np.sign(sig) * (sig ** 2) * 0.08` a **toda la banda** sin filtrar graves ni medios (olvidó el filtro paso-alto del comentario `# Highpass above 10 kHz`).
+4. `PipelineConditioningSteps.ts` (líneas ~757 y ~780+) y `BatchQueue.ts` (líneas ~597 y ~620+) llaman a `encodePcm16Wav(promoted.channels[0], ...)` después de promover a Master Wave 24-bit/96 kHz, **destruyendo los 24 bits y convirtiendo el estéreo/quad en mono 16-bit**.
+
+**Pasos exactos a implementar**:
+- [x] **1. Reconectar `src/core/ai/WebNeuralEngine.ts` al motor acústico determinista real y corregir sus etiquetas**:
+  - Lee `src/core/ai/WebNeuralEngine.ts` completo y `src/core/dsp/AcousticIntelligence.ts` (funciones exportadas `detectPitchYinMpm`, `extractAcousticDescriptors`, `classifyAcousticInstrument`).
+  - En `WebNeuralEngine.init()`: elimina la llamada innecesaria a `navigator.gpu.requestAdapter()` (ya que no se carga ningún modelo `onnxruntime-web` ni shader WGSL todavía). Devuelve un estado honesto:
+    ```ts
+    this.deviceStatus = {
+      isSupported: true,
+      activeProvider: 'dsp',
+      adapterName: 'Motor Acústico Determinista (YIN/MPM + HPS + 24-Bark)',
+      statusMessage: '[DSP] Análisis espectral determinista de alta precisión activo',
+    };
+    ```
+    *(Comprueba en `src/ui/` si algún componente lee `activeProvider`; ya soporta `'webgpu' | 'wasm' | 'dsp'` en la propia interfaz `WebGpuDeviceStatus` de `WebNeuralEngine.ts` línea ~16).*
+  - En `WebNeuralEngine.detectPitch(pcm, sampleRate)`:
+    - Si `pcm.length < 512`, conserva el retorno seguro `{ f0Hz: 440.0, confidence: 0.0, provider: 'Deterministic-DSP', methodUsed: 'dsp-fallback' }`.
+    - En caso normal, delega directamente en `detectPitchYinMpm(pcm, sampleRate)` de `../dsp/AcousticIntelligence.ts`. Si `f0Hz > 0`, devuelve `{ f0Hz: Number(f0Hz.toFixed(2)), confidence: clamp(harmonicity, 0, 1), provider: 'Deterministic-YIN-MPM', methodUsed: 'dsp-fallback' }` (y si `f0Hz <= 0`, usa fallback `440.0` con `confidence: 0`).
+  - En `WebNeuralEngine.classifyTimbre(pcm, sampleRate)`:
+    - Delega directamente en `classifyAcousticInstrument(pcm, sampleRate)` de `../dsp/AcousticIntelligence.ts`!
+    - Devuelve:
+      ```ts
+      return {
+        category: result.detectedCategory,
+        parameterSet: result.recommendedParameterSet, // Usa la tabla canónica real 0..9 de Hartmann Neuron!
+        confidence: result.confidence,
+        provider: 'Deterministic-AcousticClassifier',
+        methodUsed: 'dsp-fallback',
+      };
+      ```
+  - En `WebNeuralEngine.findSustainWindow(pcm, sampleRate)`: conserva el cálculo de ventana estacionaria RMS, pero etiqueta honestamente `provider: 'Deterministic-StationarityDSP'` y `methodUsed: 'dsp-fallback'`.
+  - En `WebNeuralEngine.estimateResonatorMatter(pcm, sampleRate, f0Hz)`:
+    - En lugar de dejar `inharmonicityB = 0.0001` fijo, llama a `extractAcousticDescriptors(pcm, sampleRate)` de `AcousticIntelligence.ts` para obtener `inharmonicityB` real medido sobre los parciales y calcula `residualMix = clamp(descriptors.spectralFlatness * 0.85, 0.02, 0.65)` y `entropyRoughness = clamp(1 - descriptors.harmonicity, 0.03, 0.75)`. Etiqueta `provider: 'Deterministic-BarkMatterDSP'` y `methodUsed: 'dsp-fallback'`.
+- [x] **2. Filtrar correctamente los armónicos excitados en `bridge/server.py` (`process_audio_enhancement`, líneas ~638–670)**:
+  - Antes de generar `exciter`, filtra la señal para excitar solo la banda alta y elimina el contenido por debajo de la mitad de la Nyquist original (idéntico en espíritu a `MasterWaveEnhancer.ts`):
+    ```python
+    if 'audiosr' in capabilities and target_sr > orig_sr and SCIPY_AVAILABLE and target_sr > 24000:
+        nyq_target = target_sr * 0.5
+        hp_cut = min(max(orig_sr * 0.38, 3500.0), nyq_target * 0.85)
+        sos_seed = scipy_signal.butter(4, hp_cut / nyq_target, btype='highpass', output='sos')
+        high_seed = scipy_signal.sosfiltfilt(sos_seed, resampled, axis=0)
+        nonlinear = np.tanh(high_seed * 2.5) - high_seed
+        hf_post = min(max(orig_sr * 0.46, 8000.0), nyq_target * 0.90)
+        sos_post = scipy_signal.butter(4, hf_post / nyq_target, btype='highpass', output='sos')
+        air_band = scipy_signal.sosfiltfilt(sos_post, nonlinear, axis=0)
+        resampled = np.clip(resampled + air_band * 0.12, -1.0, 1.0)
+    ```
+  - Elimina la variable muerta `flutter = ...` de la línea ~667 que no se usaba.
+- [x] **3. Preservar 24-bit y multicanal (estéreo/quad) en `PipelineConditioningSteps.ts` y `BatchQueue.ts`**:
+  - Importa `encodeWavPcm24` desde `./WavDecoder.ts` (en `PipelineConditioningSteps.ts`) y desde `../dsp/WavDecoder.ts` (en `BatchQueue.ts`).
+  - En `src/core/dsp/PipelineConditioningSteps.ts` (líneas ~730–830):
+    - Cuando el paso `upsampleMasterWave` se ejecuta (sea vía `bridgeClient.enhanceAudio` o `promoteBufferToMasterWave`), conserva **todos los canales** (`let workingChannels: Float32Array[]`) y un booleano `let use24Bit = (decoded.bitsPerSample ?? 16) > 16 || decoded.numChannels > 1;`. Si `upsampleMasterWave` corre, marca `use24Bit = true` y guarda `workingChannels = promoted.channels` (o `decEnh.channels` si vino del Bridge).
+    - Al guardar al final del Pass 1 (línea ~757): si `use24Bit || workingChannels.length > 1`, codifica con `encodeWavPcm24(workingChannels, sr, decoded.instrument)`; solo usa `encodePcm16Wav(workingChannels[0], sr, decoded.instrument)` si era originalmente 16-bit mono y no se promovió a Master Wave.
+    - **¡MUY IMPORTANTE!** Revisa justo debajo el **Pass 2 (`checklist.steps.normalize`, líneas ~764–830)**: actualmente decodifica y vuelve a llamar a `encodePcm16Wav(normBuf, ...)`, lo que machacaría los 24 bits y el estéreo recién creados en el Pass 1. Cámbialo para escalar cada canal de `dec.channels` por el mismo factor de ganancia (`gain`) y codificar con `encodeWavPcm24(scaledChannels, dec.sampleRate, dec.instrument)` cuando `(dec.bitsPerSample ?? 16) > 16 || dec.channels.length > 1` (o si `flags.upsampledMasterWave` es `true`), y `encodePcm16Wav` solo para 16-bit mono sin promover.
+  - Aplica exactamente la misma preservación de `encodeWavPcm24` + multicanal en `src/core/batch/BatchQueue.ts` (tanto en `runUpsample` líneas ~575–605 como en `runNormalize` líneas ~608–652).
+
+---
+
+### 46.2 Limpieza de modelos sin sentido acústico en `MODEL_REGISTRY` y honestidad estricta en `stepBadges.ts` / `actionDeclarations.ts`
+
+**Problema actual**:
+- `MODEL_REGISTRY` en `bridge/server.py` ofrece descargar ~7.8 GB de modelos (`audiosr` 5.89 GB, `sdturbo` 1.6 GB, `musicgen` 300 MB) que **ni se cargan en Python ni tienen sentido técnico** para un sintetizador aditivo/espectral (`.scape`/`.sphere` trabaja a 44.1 kHz / 64 parciales y Resynator v2 usa osciladores sinusoidales libres de aliasing + 24 bandas Bark < 15.5 kHz; MusicGen alucina acordes/percusión y artefactos EnCodec a 32 kHz).
+- `stepBadges.ts` y `actionDeclarations.ts` aseguran que tener una API Key de un LLM de texto (Claude/GPT/Gemini) activa *"Cloud LLM Assisted Denoise"* y *"Cloud De-Esser"*, cuando ningún LLM procesa ni puede procesar audio PCM en esas etapas.
+
+**Pasos exactos a implementar**:
+- [x] **1. Depurar `MODEL_REGISTRY` en `bridge/server.py` (líneas ~94–171)**:
+  - Elimina de `MODEL_REGISTRY` las entradas `'audiosr'`, `'musicgen'` y `'sdturbo'`.
+  - Mantén únicamente los 4 modelos ligeros que sí tienen utilidad real en flujos de sampling (`'htdemucs'`, `'deepfilter'`, `'whispertiny'`, `'basicpitch'`), y añade en cada uno el campo booleano explícito `'inference_wired': False` junto con una nota clara en `description` indicando que el conector ONNX/PyTorch está pendiente y hoy ejecuta DSP local de respaldo.
+  - En `tests/security_hardening.test.ts` (línea ~512) y `tests/phase44_persistence.test.ts` (líneas ~77–79): cambia el `model_id` de prueba `'audiosr'` por `'htdemucs'` para que sigan probando exactamente la misma validación de URL/offline sobre un ID vigente del catálogo.
+- [x] **2. Corregir `src/core/ai/honesty/stepBadges.ts` (líneas ~104–235)**:
+  - En `case 'deEsser'` (líneas ~118–128) y `case 'denoise'` (líneas ~164–174): **elimina los bloques `if (ctx.isCloudReady)`** que devolvían `${cloudName} + Band-Split De-Esser` y `${cloudName} Assisted Denoise`. Un LLM de texto en la nube no hace denoise ni de-essing de ondas PCM; si `deepfilter` no está activo con inferencia real, el badge debe caer honestamente a `'fallback-dsp'` (`FALLBACK → DSP`) cuando el usuario pidió `'ai'`, o `'dsp'` (`DETERMINISTA · DSP`) cuando está en modo `'dsp'`.
+  - En `case 'deEsser'`, `case 'denoise'`, `case 'sourceSeparation'`, `case 'upsampleMasterWave'`, `case 'pitchAndLoop'` y `case 'acousticClassifier'`: comprueba `ctx.bridgeCapabilities?.neural_inference === true` antes de mostrar un badge verde `IA LOCAL · GPU/ONNX`; mientras `neural_inference` sea `false` (o `WebNeuralEngine` esté en modo determinista), si el usuario eligió `'ai'` muestra `'fallback-dsp'` explicando en `tooltip` que se ejecuta el motor DSP determinista local sin inventar inferencia neuronal inexistente. *(Verifica en `PipelineStepEngineContext` de `src/core/ai/honesty/types.ts` si ya recibe `bridgeNeuralInferenceReady?: boolean`; si no, añádelo como opcional `bridgeNeuralInferenceReady?: boolean` con default `false`).*
+- [x] **3. Corregir `src/core/ai/honesty/actionDeclarations.ts` (líneas ~12–105) y su test en `tests/phase25_batch_autoslicer.test.ts`**:
+  - En `case 'recorder-ai-denoise'` (líneas ~35–76): elimina `hasCloudLlm` como condición que habilita `Denoise IA`. `avail` debe ser únicamente `Boolean(ctx.isBridgeConnected && ctx.isDenoiseModelReady && stageEnabled)`. Si no se cumple, `isPrimaryAvailable: false` y `requiresFallbackConsent: true`, ofreciendo con total transparencia el `Denoise determinista local (Sustracción espectral por Huella de Ruido + Filtro Hum 50/60 Hz)`.
+  - En `tests/phase25_batch_autoslicer.test.ts` (líneas ~357–385): actualiza el **Case B** pasando `isDenoiseModelReady: true`, y actualiza el **Case C** (`cloudReadyDecl`) para verificar el nuevo comportamiento honesto: tener solo `gemini-cloud` de texto **NO** finge tener un denoiser neuronal de audio (`assert.equal(cloudReadyDecl.isPrimaryAvailable, false)` y `assert.equal(cloudReadyDecl.requiresFallbackConsent, true)`).
+
+---
+
+### 46.3 Modernización de `CloudByokClient.ts` y `ModelArtworkGenerator.ts` (IA Cloud Real)
+
+**Problema actual**:
+- `CloudByokClient.ts` extrae respuestas JSON de los LLMs con una expresión regular frágil (`rawText.match(/\{[\s\S]*\}/)`), usa el endpoint antiguo deprecado de HuggingFace (`api-inference.huggingface.co`) y modelos antiguos hardcodeados (`gemini-2.0-flash`).
+
+**Pasos exactos a implementar**:
+- [x] **1. Activar modo JSON estructurado nativo en `src/core/ai/CloudByokClient.ts`**:
+  - Añade un parámetro opcional `jsonMode = false` en el método interno de despacho de texto (`callProviderText` / equivalentes por proveedor):
+    - Para proveedores compatibles con OpenAI (`openai`, `deepseek`, `groq`, `mistral`, `openrouter`): cuando `jsonMode === true`, incluye `response_format: { type: 'json_object' }` en el body JSON (si algún modelo concreto de OpenRouter devuelve HTTP 400 por no soportar `response_format`, reintenta una sola vez sin `response_format`).
+    - Para `gemini`: cuando `jsonMode === true`, incluye `generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }`.
+  - Pasa `jsonMode = true` desde las funciones que esperan JSON (`analyzeSampleMetadata`, `groupSampleFilenamesIntoInstruments`, etc.) manteniendo un parser defensivo `parseJsonObjectSafe(rawText)` que primero intente `JSON.parse(rawText.trim())`, luego quite bloques ```` ```json ... ``` ```` si vinieran, y valide que el resultado sea un objeto plano antes de leer sus campos.
+- [x] **2. Actualizar endpoints y modelos por defecto en `CloudByokClient.ts` y `ModelArtworkGenerator.ts`**:
+  - Sustituye la URL base por defecto de HuggingFace `https://api-inference.huggingface.co/models/...` por `https://router.huggingface.co/hf-inference/models/...` tanto en `CloudByokClient.ts` como en `ModelArtworkGenerator.ts` (manteniendo ambas en `vercel.json` `connect-src`).
+  - Actualiza el modelo Gemini de texto por defecto de `gemini-2.0-flash` a `gemini-2.5-flash` en `CloudByokClient.ts` (manteniendo intacta la posibilidad de que el usuario elija otro modelo si está configurado).
+
+---
+
+### 46.4 Preparación de frontera limpia de `AcousticIntelligence.ts` para `ABDShared` / `ABDAudioLab`
+
+**Contexto**: Según lo acordado en `ABDAudioLab/docs/ROADMAP.md` (`HITO-AI-STUDY-01`), `AcousticIntelligence.ts` es el módulo determinista que sí aporta valor transversal a ambos proyectos, mientras que `WebNeuralEngine.ts` nunca debe exportarse a `ABDShared`.
+
+**Pasos exactos a implementar**:
+- [x] **1. Revisar imports de `src/core/dsp/AcousticIntelligence.ts` (líneas ~1–30)**:
+  - Actualmente importa `classifyInstrumentAndParameterSet` desde `../../formats/Sf2Parser.ts` (acoplando el motor DSP acústico al parser binario SoundFont 2).
+  - Extrae la función pura de heurística de nombres `classifyInstrumentAndParameterSet` a un pequeño módulo puro sin dependencias binarias `src/core/dsp/instrumentNameHints.ts` (re-exportándola en `Sf2Parser.ts` con `export { classifyInstrumentAndParameterSet } from '../core/dsp/instrumentNameHints.ts';` para no romper ningún importador existente).
+  - Añade un comentario de cabecera arquitectónica en `src/core/ai/WebNeuralEngine.ts` advirtiendo explícitamente: `// NOTA ARQUITECTÓNICA: Fachada local de ABDNeuModMakr. NO mover a @abdsynths/shared (para descriptores acústicos compartidos con ABDAudioLab usar AcousticIntelligence.ts).`
+
+---
+
+### 46.5 Suite de tests de verificación de Fase 46 (`tests/phase46_ai_honesty_and_audio.test.ts`)
+
+- [x] **Crear `tests/phase46_ai_honesty_and_audio.test.ts` y registrarlo en `tests/run_all.ts`**:
+  - Test 1 (**Regresión de Parameter Sets en `WebNeuralEngine.classifyTimbre`**): sintetiza una señal percusiva rápida de ruido blanco con envolvente exponencial de 15 ms (`attackMs < 35`, `harmonicity` baja) y comprueba que tanto `classifyAcousticInstrument` como `webNeuralEngine.classifyTimbre` devuelven `parameterSet === 8` (`Drums & Perc`, nunca `6 = Pads`). Sintetiza un bajo senoidal + armónicos a `65.4 Hz` (`C2`) y comprueba que ambos devuelven `parameterSet === 4` (`Bass`).
+  - Test 2 (**Precisión de Pitch en `WebNeuralEngine.detectPitch`**): sintetiza una nota armónica compleja con fundamental débil y armónicos 2, 3 y 4 fuertes a `220 Hz` (`A3`) y verifica que `webNeuralEngine.detectPitch` detecta `220 Hz` ($\pm 2\text{ Hz}$, sin error de octava) y reporta `methodUsed === 'dsp-fallback'` (sin fingir `WebGPU-ONNX`).
+  - Test 3 (**Preservación de 24-bit y estéreo en `PipelineConditioningSteps`**): construye un WAV estéreo real de 24 bits con `encodeWavPcm24([left, right], 48000)` donde `left` y `right` son distintos, ejecuta `runPreFlightConditioningPipeline` con `upsampleMasterWave: true` y `normalize: true`, decodifica el `ArrayBuffer` resultante con `decodeWav` y afirma que `numChannels === 2`, `bitsPerSample === 24`, `sampleRate === 96000` y que el canal izquierdo y el derecho siguen siendo distintos (no se colapsaron a mono 16-bit).
+  - Test 4 (**Honestidad en `stepBadges` y `actionDeclarations`**): verifica que con `isCloudReady: true`, `activeTextLlmProvider: 'claude'` y `isBridgeConnected: false`, `resolvePipelineStepExecutionBadge('denoise', ctx).kind` y `resolvePipelineStepExecutionBadge('deEsser', ctx).kind` **NO** son `'cloud-ai'`, y que `resolveAiActionDeclaration('recorder-ai-denoise', ...)` devuelve `isPrimaryAvailable === false` y `requiresFallbackConsent === true`.
+  - Test 5 (**Catálogo limpio en `bridge/server.py`**): verifica (importando o inspeccionando desde Python CLI `MODEL_REGISTRY`) que `'audiosr'`, `'musicgen'` y `'sdturbo'` ya no existen en `MODEL_REGISTRY` y que todos los modelos restantes declaran `'inference_wired': False`.
+- [x] **DoD Final Fases 45 + 46**:
+  - `npm run test:types` $\to$ 0 errores
+  - `npm run lint:security` $\to$ 0 errores
+  - `node scripts/audit-innerhtml.mjs` $\to$ 0 errores
+  - `python -m py_compile bridge/server.py bridge/dwop_decompress.py` $\to$ 0 errores
+  - `npx tsx tests/run_all.ts` $\to$ 100 % suites en verde (incluidas `security_hardening`, `phase25`, `phase44`, `phase45` y `phase46`).
 
 
 
@@ -1556,3 +1917,367 @@ $$\text{WAV en Slot \#1} \xrightarrow{\text{1. Toma completa}} \mathbf{Limpiar\ 
 
 
 
+
+
+---
+
+## 🤖 GUIA DE EJECUCION PASO A PASO PARA AGENTE EJECUTOR (`gemini 3.8 flash - low`) — FASE 47 (COPILOTO HIBRIDO COMPARTIDO EN `ABDShared` + ADAPTADOR NEURON)
+
+> [!IMPORTANT]
+> **REGLAS DE HIERRO OBLIGATORIAS PARA EL AGENTE QUE EJECUTE LA FASE 47:**
+> 1. **ORDEN SECUENCIAL ESTRICTO (UNA SOLA SUBFASE POR TURNO):** Ejecuta en orden `47.1` -> `47.2` -> `47.3` -> `47.4` -> `47.5` -> `47.6` -> `47.7`. **Prohibido mezclar dos subfases en la misma pasada.**
+> 2. **LECTURA PREVIA E IDEMPOTENCIA EN `ABDShared`:** `D:\desarrollos\ABDSynths\ABDShared` es compartido con `ABDAudioLab`. Antes de crear cualquier fichero en `ABDShared`, comprueba con `read_file` si ya existe (por si la sesion paralela de `ABDAudioLab` avanzo hasta su Bloque 4). Si ya existe, respetalo y amplialo sin romper ninguna firma exportada.
+> 3. **POLITICA ESTRICTA DE ESTILO E INTERFAZ EN AMBOS REPOSITORIOS:**
+>    - **CERO EMOJIS** en todo el codigo HTML, CSS, SVG y literales TS/JS (usa exclusivamente iconos monocromos `<svg>`).
+>    - **CERO RAYAS LARGAS (`U+2014`)** y cero adjetivos comerciales vacios dentro de `ABDShared` (obligatorio para cumplir las reglas `antislop` de `ABDAudioLab`). Usa dos puntos (`:`), punto (`.`) o parentesis `()`.
+>    - **TOKENS DE TEMA OBLIGATORIOS:** Nunca hardcodees colores hexadecimales de fondo/texto en `CopilotShell.css`; usa las variables CSS de `@abdsynths/shared/styles/tokens.css` (con `var(--..., fallback)` seguro) para que funcione en las 6 familias de skins x Claro/Oscuro.
+> 4. **SEGURIDAD XSS (`audit-innerhtml.mjs` y `lint:security`):**
+>    - Prohibido `eval`, `new Function`, `document.write`, `setTimeout(string)`, `<script` en literales o `@ts-ignore`.
+>    - En cualquier asignacion `el.innerHTML = \`...\`` dentro de `src/`, cada hueco `${...}` de primer nivel debe ser un identificador simple (`${safeBodyHtml}`) o ir envuelto en `escHtml(...)` / `escAttr(...)` para pasar `node scripts/audit-innerhtml.mjs`. Jamas inyectes salida de un LLM sin pasar primero por `escHtml()`.
+> 5. **PUERTAS DE VERIFICACION AL TERMINAR CADA SUBFASE (NO AVANCES SI FALLA ALGUNA):**
+>    - En subfases `47.1` a `47.3` (`ABDShared`): ejecutar `npx vitest run` en `D:\desarrollos\ABDSynths\ABDShared`.
+>    - En subfases `47.4` a `47.7` (`ABDNeuModMakr`):
+>      1. `npm run vendor:sync` (siempre que haya cambiado algo en `ABDShared` o `scripts/vendorSync.js`)
+>      2. `npm run test:types`
+>      3. `npm run lint:security`
+>      4. `node scripts/audit-innerhtml.mjs`
+>      5. `python -m py_compile bridge/server.py` (al tocar Python)
+>      6. `npx tsx tests/run_all.ts`
+> 6. Marca cada casilla `[ ]` como `[x]` en este `roadmap.md` solo cuando todos los comandos de su subfase esten en verde.
+
+---
+
+## Fase 47 — Copiloto Conversacional Hibrido (Panel Camaleon + `Ctrl+K` + Spotlight UI + Nucleo Compartido en `ABDShared`) [PLANIFICADA]
+
+**Objetivo**: Dotar a `ABDShared` (`@abdsynths/shared`) y a `ABDNeuModMakr` de un sistema de asistencia dual (100% determinista sin IA + conversacional con herramientas tipadas sobre Ollama, LM Studio y los proveedores Cloud BYOK) que nunca alucine botones ni conceptos, ilumine controles reales de la interfaz (`Spotlight`), ejecute cambios con previsualizacion y deshacer en 1 clic (`CopilotUndoStack`), y sea reutilizable directamente por `ABDAudioLab` en modo de solo lectura metrologica.
+
+---
+
+### 47.1 Nucleo Compartido de IA y Orquestacion (`D:\desarrollos\ABDSynths\ABDShared\Code\AiCore\`) [COMPLETADA]
+
+**Objetivo**: Crear el motor agnostico de transporte LLM (Local + Cloud BYOK), seguridad SSRF, busqueda lexica BM25 local y orquestacion JSON estructurada universal en `@abdsynths/shared/ai`.
+
+**Archivos de referencia a leer antes de empezar**:
+- `d:/desarrollos/ABDSynths/ABDNeuModMakr/src/core/security/ssrf.ts`
+- `d:/desarrollos/ABDSynths/ABDNeuModMakr/src/core/ai/CloudByokClient.ts`
+- `d:/desarrollos/ABDSynths/ABDNeuModMakr/src/core/ai/honesty/types.ts` y `src/core/ai/honesty/status.ts`
+- `d:/desarrollos/ABDSynths/ABDShared/package.json`
+
+**Pasos exactos a implementar**:
+- [x] **1. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/ssrf.ts`**:
+  - Portar `isLoopbackHostname`, `isBlockedIPv4Host`, `isBlockedHostname`, `assertAllowedCloudBaseUrl` y `assertSafeExternalHttpsUrl`.
+  - Anadir `export function assertSafeLoopbackHttpUrl(rawUrl: string, allowedPorts: readonly number[] = [11434, 1234, 8080, 8000]): string`:
+    - Parsea con `new URL(rawUrl)`.
+    - Exige `u.protocol === 'http:'`, `!u.username && !u.password`, `u.hostname === '127.0.0.1' || u.hostname === 'localhost'`.
+    - Extrae el puerto explicito (`Number(u.port)`), exige entero en `1024..65535` y, si `allowedPorts.length > 0`, exige `allowedPorts.includes(port)`. Devuelve `u.origin` sin barra final. En cualquier otro caso lanza `Error` descriptivo.
+- [x] **2. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/CloudByokClient.ts`**:
+  - Portar el cliente endurecido de `ABDNeuModMakr` conservando soporte para `gemini`, `claude`, `openai`, `openrouter`, `groq`, `deepseek`, `mistral`, `replicate` y `huggingface`.
+  - **Persistencia configurable (`storageScope`)**:
+    - Anadir campo `storageScope: 'local' | 'session'` (por defecto `'local'`, con opcion elegible por el usuario `'Solo esta sesion (sessionStorage)'`).
+    - Usar clave compartida `'abdsynths.ai.byok.v1'`. Si al inicializar no existe en `sessionStorage` ni `localStorage`, comprobar si existe `'neumodmakr_byok_config'` en `localStorage` y migrar su lectura en memoria sin borrar la clave antigua (retrocompatibilidad transparente).
+  - **Filtro de capacidades por app**: aceptar en opciones del constructor `allowedCapabilities?: Array<'text' | 'vision' | 'image' | 'audio'>` para que `ABDAudioLab` filtre solo `['text', 'vision']` y oculte `replicate`, mientras `ABDNeuModMakr` conserva todos.
+  - Exportar `redactUrlForLog`, `fetchWithTimeout`, `safeErrorSnippet`, `parseJsonObjectSafe` y anadir en `generateText(prompt, opts)` soporte para `systemPrompt?: string`, `messages?: Array<{ role: 'user' | 'assistant'; content: string }>`, `jsonMode?: boolean`, `temperature?: number`, `maxTokens?: number`, `signal?: AbortSignal` y `inlineData?: { mimeType: string; base64: string }` (soportado en Gemini, Claude y OpenAI).
+- [x] **3. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/LocalLlmClient.ts`**:
+  - Cliente estandar para servidores LLM en la maquina del usuario (`Ollama` por defecto `http://127.0.0.1:11434`, `LM Studio` `http://127.0.0.1:1234`, o puerto loopback personalizado en `1024..65535` autorizado en su configuracion).
+  - Persistencia de configuracion (no contiene secretos, solo `{ preset: 'ollama' | 'lmstudio' | 'custom', baseUrl, activeModel, customPort }`) en `localStorage` bajo `'abdsynths.ai.localllm.v1'`.
+  - Soportar inyeccion opcional `setCorsRelay(relayFn)` donde `relayFn` tiene firma `(req: { baseUrl: string; path: string; method: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json: unknown }>`.
+  - Metodo `checkHealthAndListModels(timeoutMs = 2000)`:
+    1. Valida `baseUrl` con `assertSafeLoopbackHttpUrl(baseUrl, [11434, 1234, 8080, 8000, ...(customPort ? [customPort] : [])])`.
+    2. Consulta `GET /v1/models` (formato OpenAI soportado por Ollama moderno y LM Studio); si devuelve 404, consulta `GET /api/tags` (formato nativo Ollama).
+    3. Si `fetch` falla en navegador por bloqueo CORS (`TypeError` cuando `window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'`), si existe `corsRelay` reintenta transparentemente por el relay local; si no hay relay, devuelve `{ connected: false, latencyMs: 0, models: [], corsBlockedLikely: true, error: 'CORS bloqueado por el servidor local. Activa Companion Bridge o define OLLAMA_ORIGINS=*.' }`.
+  - Metodo `generateText(prompt, options)`: envia `POST /v1/chat/completions` con `messages` (`system` + historial + `user`), `temperature: options.temperature ?? 0.2`, y si `options.jsonMode === true` anade `response_format: { type: 'json_object' }` (si responde 404 en Ollama antiguo, cae a `POST /api/chat` con `format: 'json'` y `stream: false`).
+- [x] **4. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/kbSearch.ts`**:
+  - Buscador determinista BM25 ligero en TypeScript puro (< 130 lineas, cero dependencias externas):
+    ```ts
+    export interface KbArticle {
+      id: string;
+      stage?: string | number;
+      tags: string[];
+      triggerCodes?: string[];
+      title: string;
+      whatItMeans: string;
+      howToFixSteps: string[];
+      uiTargets?: Array<{ targetId: string; label: string }>;
+    }
+    export function searchKnowledgeBase(
+      articles: readonly KbArticle[],
+      query: string,
+      options?: { stage?: string | number; triggerCode?: string; limit?: number }
+    ): KbArticle[];
+    ```
+  - Normaliza tildes/minusculas (`NFD` + eliminacion de diacriticos) para que buscar `"armonicos"` o `"bucle"` encuentre `"armónicos"` y `"bucles"` al instante en 0 ms.
+- [x] **5. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/aiHonestyCore.ts`**:
+  - Portar los tipos limpios y funciones puras reutilizables (`ExecutionEngineKind`, `ExecutionEngineBadge`, `AiActionDeclaration`, `computeCanonicalAiHudStatus`) sin acoplamiento al DOM de `ABDNeuModMakr`.
+- [x] **6. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/CopilotOrchestrator.ts`**:
+  - Orquestador conversacional agnostico de dominio con esquema JSON universal unico para que hasta un modelo local 7B cuantizado en Ollama funcione sin fallos:
+    ```ts
+    export interface CopilotToolParamSpec {
+      type: 'string' | 'number' | 'boolean';
+      required?: boolean;
+      description: string;
+      enumValues?: readonly (string | number)[];
+      min?: number;
+      max?: number;
+      maxLength?: number;
+    }
+
+    export interface CopilotToolSpec {
+      name: string;
+      description: string;
+      scopes?: readonly string[]; // ej. ['global', 'zones', 'loop-editor']; si se omite, disponible siempre
+      readOnlyNavigation?: boolean; // true = abrir vista/resaltar (no muta datos)
+      destructive?: boolean; // true = exige confirmacion manual incluso en modo piloto automatico
+      params: Record<string, CopilotToolParamSpec>;
+      formatPreviewDiff?: (args: Record<string, unknown>) => string;
+      execute: (args: Record<string, unknown>) => Promise<{ ok: boolean; summary: string; undoLabel?: string }>;
+    }
+
+    export interface CopilotProposedAction {
+      id: string;
+      tool: string;
+      args: Record<string, unknown>;
+      label: string;
+      previewDiff: string;
+      readOnlyNavigation: boolean;
+      destructive: boolean;
+    }
+
+    export interface CopilotTurnResult {
+      reply: string;
+      highlightTargets: string[];
+      proposedActions: CopilotProposedAction[];
+      engineLabel: string;
+      privacyMode: 'deterministic' | 'local-private' | 'cloud-metadata';
+    }
+    ```
+  - **Reglas internas obligatorias de `CopilotOrchestrator`**:
+    1. **Recorte de herramientas por alcance (`maxTools = 6`)**: en cada turno filtra `tools` por `activeScopes` del host para no saturar modelos pequenos de Ollama/LM Studio.
+    2. **Validacion determinista estricta (`validateToolProposal`)**: cuando el LLM devuelve `proposedActions` en el JSON, `CopilotOrchestrator` comprueba que `tool` exista en el catalogo registrado, que todos los parametros `required` esten presentes, que los `enumValues` coincidan exactamente y que los numeros sean finitos dentro de `[min, max]` (recortando strings a `maxLength`). **Cualquier accion invalida o inventada por el LLM se descarta silenciosamente** antes de llegar a la UI, y cualquier `highlightTargets` se filtra contra `allowedUiTargets` del host.
+    3. **Historial acotado**: conserva como maximo los ultimos `8` mensajes (`4` pares usuario/asistente) enviados al prompt para no desbordar ventanas de 8k tokens ni encarecer llamadas Cloud.
+    4. **Anonimizacion opcional Cloud (`anonymizeCloudMetadata: boolean`)**: cuando el motor activo es `'cloud-byok'` y `anonymizeCloudMetadata === true`, reemplaza rutas locales (`C:\...`, `/Users/...`) y nombres de ficheros de usuario en el JSON de contexto por alias estables (`Sample_01.wav`, `Sample_02.wav`).
+    5. **Configuracion persistida del Copiloto (`'abdsynths.ai.copilot.v1'`)**:
+       - `engineMode: 'deterministic' | 'local-llm' | 'cloud-byok'` (default `'deterministic'`)
+       - `cloudProviderOverride?: string` (opcional: permite usar p. ej. Groq/Gemini Flash para chat aunque otro proveedor este activo para portadas)
+       - `actionExecutionMode: 'confirm-always' | 'autopilot-safe'` (default `'confirm-always'`)
+       - `anonymizeCloudMetadata: boolean` (default `false`)
+- [x] **7. Exportar y testear en `ABDShared`**:
+  - Crear `D:/desarrollos/ABDSynths/ABDShared/Code/AiCore/index.ts` re-exportando todo lo anterior.
+  - En `D:/desarrollos/ABDSynths/ABDShared/package.json`, anadir en `"exports"`:
+    ```json
+    "./ai": "./Code/AiCore/index.ts",
+    "./ai/*": "./Code/AiCore/*"
+    ```
+  - Crear `D:/desarrollos/ABDSynths/ABDShared/tests/aiCore.test.js` (Vitest) verificando: `assertSafeLoopbackHttpUrl` (acepta `http://127.0.0.1:11434`, rechaza `https://evil.com`, rechaza `http://192.168.1.5:11434`, rechaza credenciales), `redactUrlForLog`, `searchKnowledgeBase` con tildes, `validateToolProposal` descartando herramientas alucinadas y parametros fuera de rango, migracion de lectura desde `neumodmakr_byok_config` y modo `sessionStorage` vs `localStorage`.
+  - Ejecutar `npx vitest run` en `D:\desarrollos\ABDSynths\ABDShared` y confirmar 100% verde.
+
+---
+
+### 47.2 Migracion de `AcousticIntelligence` a `@abdsynths/shared/dsp/acoustic-intelligence` [COMPLETADA]
+
+**Objetivo**: Mover las funciones puras deterministas de descriptores acusticos a `ABDShared` para que tanto el Copiloto de `ABDNeuModMakr` como el Comparador A/B de `ABDAudioLab` las consuman sin duplicar codigo.
+
+**Pasos exactos a implementar**:
+- [x] **1. Crear `D:/desarrollos/ABDSynths/ABDShared/Code/DspCore/AcousticIntelligence/`**:
+- [x] **2. Registrar export en `D:/desarrollos/ABDSynths/ABDShared/package.json`**:
+- [x] **3. Test unitario en `ABDShared`**:
+
+---
+
+### 47.3 Shell Visual Reutilizable `@abdsynths/shared/components/copilot` (`ABDShared/Components/CopilotShell/`) [COMPLETADA]
+
+**Objetivo**: Construir una sola vez el componente UI completo (Panel Lateral Camaleon `Docked <-> Overlay`, Barra Rapida `Ctrl+K`, Resaltador visual `Spotlight`, Pestanas `Asistente | Manual | Registro`, Tarjetas `Action Diff + Undo` y subpanel reusable de Ajustes de Proveedores IA) en `ABDShared/Components/CopilotShell/`.
+
+**Pasos exactos a implementar**:
+- [x] **1. Crear `copilotMarkdown.js` y `copilotMarkdown.d.ts` en `D:/desarrollos/ABDSynths/ABDShared/Components/CopilotShell/`**:
+  - Implementar `escHtml` y `escAttr` locales autonomos.
+  - Implementar `renderSafeCopilotMarkdown(rawText: string): string`:
+    1. Aplica **primero** `escHtml(String(rawText ?? ''))` sobre todo el texto (neutralizando cualquier `<script>`, `<img onerror>`, HTML crudo).
+    2. Convierte bloques de codigo con triple comilla invertida, codigo inline `` `...` ``, negritas `**...**` y listas `- ...` en etiquetas seguras (`<code>`, `<strong>`, `<ul><li>`).
+    3. Convierte marcadores interactivos `[[target:ID_SEGURO|Etiqueta]]` (validando que `ID_SEGURO` cumpla `/^[a-zA-Z0-9_-]{1,64}$/`) en `<button type="button" class="abd-copilot-spot-chip" data-spot-target="${id}">${safeLabel}</button>`.
+- [x] **2. Crear `uiSpotlight.js` y `uiSpotlight.d.ts`**:
+  - `highlightUiTarget(targetId: string, durationMs = 2600): boolean`:
+    - Busca `document.querySelector(\`[data-ai-target="\${CSS.escape(targetId)}"]\`)`.
+    - Si existe y es visible (`getClientRects().length > 0`), hace `scrollIntoView({ behavior: 'smooth', block: 'nearest' })` y posiciona un anillo flotante (`<div class="abd-ai-spotlight-ring">` en `document.body` con `pointer-events: none; position: fixed; z-index: 13000`) siguiendo su `getBoundingClientRect()`, con animacion suave de pulso y limpieza automatica tras `durationMs` o al llamar `clearUiHighlight()`.
+- [x] **3. Crear `CopilotShell.css`, `CopilotShell.js` y `CopilotShell.d.ts`**:
+  - **Geometria Camaleon (`Docked` vs `Overlay`)**:
+    - Recibe en `options`: `hostShellEl: HTMLElement`, `modalsRootEl?: HTMLElement`, `dockMinViewportWidth = 1550`.
+    - Funcion `computeEffectiveLayoutMode()`:
+      - Si el usuario pulso el icono de chincheta en modo `"Flotante forzado"`, usa `'overlay'`.
+      - Si `window.innerWidth < dockMinViewportWidth`, usa `'overlay'`.
+      - Si `modalsRootEl` contiene algun dialogo/modal abierto (cualquier hijo directo o `.modal-backdrop:not(.is-hidden)`, `[role="dialog"]` con `offsetParent !== null`), pasa **automaticamente a `'overlay'`** (`position: fixed; top: 0; right: 0; bottom: 0; width: 380px; z-index: 12000`) para quedar **por encima del velo de los modales** (como `LoopEditorModal`, `AudioChopperModal` o `BatchProcessorModal`) sin quedar tapado!
+      - En escritorio ancho (`>= 1550px`) sin modales abiertos, usa `'docked'`: establece `hostShellEl.setAttribute('data-copilot-docked', 'true')` y se acopla limpio a la derecha sin tapar ningun control.
+    - Observa cambios con `window.addEventListener('resize', ...)` y un `MutationObserver` ligero sobre `modalsRootEl` (`childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden']`).
+  - **Estructura interna del Panel Lateral (3 pestanas compactas arriba)**:
+    1. **Pestana `Asistente`**:
+       - **Cabecera de Motor y Privacidad**: selector rapido de motor (`Solo Guia Determinista` | `Ollama Local` | `LM Studio Local` | `Cloud BYOK` | `Configurar...`) + pastilla honesta (`0% IA · DETERMINISTA`, `100% LOCAL`, o `METADATOS A CLOUD`).
+       - **Tarjeta Superior de Estado Determinista (siempre visible incluso con IA apagada)**: muestra `nowPlayingSummary` (2 lineas explicando el estado actual) + `nextActionChecklist` (hasta 3 items con icono SVG `check` / `pending` / `warn` y boton directo si tiene accion asociada).
+       - **Timeline de Conversacion**: mensajes renderizados con `renderSafeCopilotMarkdown` (al pasar el raton por un `.abd-copilot-spot-chip`, llama a `highlightUiTarget`; al hacer clic, enfoca o ejecuta la navegacion asociada).
+       - **Tarjetas de Accion Reversibles (`Action Diff Cards`)**: para cada `CopilotProposedAction`, muestra `label`, `previewDiff` monoespaciado y boton `[Aplicar]` (o si se auto-ejecuto en `autopilot-safe`, etiqueta `Aplicado` + boton `[Deshacer]` conectado al callback `onUndoLastAction` del host).
+       - **Pildoras Contextuales Dinamicas (`Zero-Prompt Chips`)**: encima del cuadro de texto muestra 2 o 3 botones cortos proporcionados por `getContextSnapshot().suggestedPrompts` segun lo que este abierto en pantalla.
+       - **Caja de Entrada**: `<textarea rows="2">` (`Enter` envia, `Shift+Enter` salto de linea) + boton `Enviar` / `Cancelar` (`AbortController`). Si `engineMode === 'deterministic'`, al escribir en la caja busca instantaneamente respuestas en el Manual (`kbSearch`) e informa con honestidad de que puede activar Ollama o Cloud BYOK en 1 clic para conversacion libre.
+    2. **Pestana `Manual`**:
+       - Caja de busqueda instantanea (`searchKnowledgeBase`) + fichas filtradas por la pantalla activa, con pasos numerados y chips `[[target:...]]` que iluminan donde esta cada control en la interfaz real.
+    3. **Pestana `Registro`** (unifica telemetria y auditoria en vivo):
+       - Muestra la lista de avisos de cobertura/estado activa (con boton opcional de accion rapida del host, p. ej. `Auto-Reparar Cobertura` en `ABDNeuModMakr`) seguida del flujo cronologico de eventos en vivo y un boton `[Explicar]` junto a cualquier advertencia/error que la pasa al `Asistente`.
+  - **Barra Rapida `Ctrl+K` / `Cmd+K` (`QuickCommandBar` integrada en `CopilotShell`)**:
+    - Atajo global `Ctrl+K` (o `Meta+K`) abre una barra flotante centrada en el tercio superior (`max-width: 620px; z-index: 12500`), con input focalizado, los 3 `Zero-Prompt Chips` actuales, respuesta breve o `Action Diff Card` lista para confirmar con `Enter`, `Escape` para cerrar al instante, y enlace `"Continuar en panel lateral (F1)"`.
+- [x] **4. Crear `AiProviderSettingsPanel.js` y `AiProviderSettingsPanel.d.ts` en `Components/CopilotShell/`**:
+  - Componente reutilizable de configuracion de:
+    1. **Comportamiento del Asistente Conversacional**: motor del asistente (`Determinista` / `LLM Local` / `Cloud BYOK`), modo de ejecucion de acciones (`Pedir confirmacion siempre` vs `Piloto automatico con Deshacer`) y casilla `Anonimizar nombres de muestras y rutas al usar Cloud`.
+    2. **Servidor LLM Local (`LocalLlmClient`)**: radios rapidos `Ollama (127.0.0.1:11434)` / `LM Studio (127.0.0.1:1234)` / `Puerto local personalizado`, boton `"Detectar Modelos Instalados"`, `<select>` con los modelos reales detectados, indicador de latencia y ayuda clara de 1 linea si `corsBlockedLikely === true`.
+    3. **Persistencia de Claves Cloud BYOK**: selector claro entre `'Recordar en este equipo (localStorage)'` y `'Solo esta sesion (sessionStorage, se borra al cerrar)'`.
+- [x] **5. Exportar y testear `CopilotShell` en `ABDShared`**:
+  - Crear `D:/desarrollos/ABDSynths/ABDShared/Components/CopilotShell/index.js` y `index.d.ts`.
+  - Registrar en `D:/desarrollos/ABDSynths/ABDShared/package.json` bajo `"exports"`:
+    ```json
+    "./components/copilot": {
+      "types": "./Components/CopilotShell/index.d.ts",
+      "default": "./Components/CopilotShell/index.js"
+    }
+    ```
+  - Crear test `D:/desarrollos/ABDSynths/ABDShared/tests/copilotShell.test.js` verificando `renderSafeCopilotMarkdown` contra payloads XSS (`<script>`, `<svg onload>`, `javascript:`) y renderizado de chips `[[target:...]]`.
+  - Ejecutar `npx vitest run` en `D:\desarrollos\ABDSynths\ABDShared` -> 100% PASS.
+
+---
+
+### 47.4 Sincronizacion `vendor:sync`, CSP Local en `vercel.json`, Relay Anti-CORS en `bridge/server.py` y Conexion de `ABDNeuModMakr` [COMPLETADA]
+
+**Objetivo**: Traer los nuevos modulos de `ABDShared` a `vendor/@abdsynths/shared`, abrir los puertos locales de Ollama/LM Studio en la CSP y ofrecer relay transparente anti-CORS cuando el Bridge Python este conectado.
+
+**Pasos exactos a implementar**:
+- [x] **1. Actualizar `d:/desarrollos/ABDSynths/ABDNeuModMakr/scripts/vendorSync.js` (lineas ~108–122)**:
+  - En el array `codeItems`, anadir `'AiCore'` y `path.join('DspCore', 'AcousticIntelligence')`.
+  - Ejecutar `npm run vendor:sync` y comprobar que `vendor/@abdsynths/shared/Code/AiCore`, `vendor/@abdsynths/shared/Code/DspCore/AcousticIntelligence` y `vendor/@abdsynths/shared/Components/CopilotShell` se han copiado completos.
+- [x] **2. Actualizar `Content-Security-Policy` en `d:/desarrollos/ABDSynths/ABDNeuModMakr/vercel.json` (linea ~46)**:
+  - En `connect-src`, justo despues de `http://127.0.0.1:7860 http://localhost:7860`, anadir:
+    `http://127.0.0.1:11434 http://localhost:11434 http://127.0.0.1:1234 http://localhost:1234 http://127.0.0.1:8080 http://localhost:8080`
+    manteniendo intactas todas las directivas restantes (`script-src 'self' 'wasm-unsafe-eval'`, `object-src 'none'`, etc.).
+- [x] **3. Anadir endpoint autenticado `/api/local-llm/proxy` en `d:/desarrollos/ABDSynths/ABDNeuModMakr/bridge/server.py`**:
+  - En `do_POST`, registrar la ruta `elif self.path == '/api/local-llm/proxy':` exigiendo **obligatoriamente** `if not self.check_post_origin(): return` y `if not self.require_auth(): return` (`X-Bridge-Token`).
+  - Leer JSON del body (tope `512 KB`): `{ "baseUrl": "...", "path": "...", "method": "GET" | "POST", "body": {...} }`.
+  - Validar con `urlparse(baseUrl)`:
+    - `scheme == 'http'`, `hostname in ('127.0.0.1', 'localhost')`, `port in (11434, 1234, 8080, 8000)`, sin credenciales.
+    - `path in ('/v1/models', '/api/tags', '/v1/chat/completions', '/api/chat')` (lista blanca cerrada exacta; prohibido `..` o queries arbitrarias).
+    - `method in ('GET', 'POST')`.
+  - Ejecutar la peticion local con un opener **sin redirecciones** (`HTTPRedirectHandler` que rechaza cualquier `3xx`), `timeout=60`, leer respuesta con tope `2 * 1024 * 1024` bytes y devolver `{ "ok": status < 400, "status": status, "json": parsed_json }`.
+  - En `BridgeClient.ts`, anadir metodo `proxyLocalLlmRequest(req)` que envia `X-Bridge-Token` a `/api/local-llm/proxy`, y registrarlo en la instancia compartida de `LocalLlmClient` mediante `setCorsRelay(...)` siempre que `bridgeClient.isConnected()` sea `true`.
+- [x] **4. Conectar `src/core/security/ssrf.ts`, `src/core/ai/CloudByokClient.ts` y `src/core/dsp/AcousticIntelligence.ts` en `ABDNeuModMakr`**:
+  - En `src/core/security/ssrf.ts`: re-exportar `assertSafeLoopbackHttpUrl` desde `@abdsynths/shared/ai` (o mantener paridad exacta).
+  - En `src/core/ai/CloudByokClient.ts`: exponer soporte de `storageScope` (`'local' | 'session'`) sincronizado con `'abdsynths.ai.byok.v1'` manteniendo intactos todos los metodos especificos de `ABDNeuModMakr` (`analyzeSampleMetadata`, `groupSampleFilenamesIntoInstruments`, `generateCoverPrompt`, etc.) para no romper ni un solo importador ni test existente.
+  - Ejecutar los 6 comandos de verificacion de la regla #5 antes de pasar a `47.5`.
+
+---
+
+### 47.5 Adaptador Experto Hartmann Neuron en `ABDNeuModMakr` (`src/core/ai/copilot/`) [COMPLETADA]
+
+**Objetivo**: Dotar al Copiloto del conocimiento exacto y verificado de `ABDNeuModMakr` y del sintetizador Hartmann Neuron / `ABDAxionikVS`, inyectando el estado real de la sesion y exponiendo 10 herramientas tipadas con `Undo` transaccional.
+
+> [!CAUTION]
+> **PROHIBIDO INVENTAR REGLAS DE HARTMANN NEURON:** Copia y respeta fielmente las definiciones tecnicas de abajo en `neuronManualKb.ts` y en el System Prompt. No anadas conceptos de otros sintetizadores ni inventes botones inexistentes.
+
+**Pasos exactos a implementar**:
+- [x] **1. Crear `src/core/ai/copilot/neuronManualKb.ts` (Manual Canonico Bilingue `es` / `en`)**:
+  - Exportar `getNeuronKnowledgeBase(locale: 'es' | 'en'): KbArticle[]` y `buildNeuronSystemPrompt(locale: 'es' | 'en'): string`.
+  - Incluir al menos estas **16 fichas canonicas verificadas** con sus `uiTargets` reales:
+    1. **`kb-workflow-start`**: Flujo general en 3 pasos: (1) Importar muestras WAV/AIFF/SF2/SFZ o grabar/trocear, (2) Revisar zonas MIDI `0..127` y elegir modo `Classic` vs `Extended` + `Parameter Set` + `Complexity`, (3) Compilar el modelo con `Process / Compile Model` (`Ctrl+P`) y exportarlo a `.zip` o `AxionikDB`.
+    2. **`kb-scape-vs-sphere`**: Que es un *Model* frente a un *Sound* en Hartmann Neuron: el *Model* contiene los datos espectrales analizados (`.scape` = generador/excitacion y cuerpo temporal; `.sphere` = resonador/filtrado espectral y caracter espacial). El *Sound* (`sound.script` de 445 parametros) almacena articulacion, envolventes, filtros, efectos y movimientos grabados del *Silver Stick*.
+    3. **`kb-parameter-sets`**: Tabla exacta de los **10 Parameter Sets clasicos (`0..9`)** de Hartmann Neuron (no confundir nunca sus indices):
+       - `0`: `Synth & Neutral` (leads sinteticos, ondas puras)
+       - `1`: `Strings / Winds & Brass` (cuerdas frotadas orquestales, vientos madera/metal)
+       - `2`: `Keyboards` (pianos acusticos, pianos electricos, organos, clavinet)
+       - `3`: `Plucked` (guitarras, arpas, bajos pulsados acusticos, kalimba, instrumentos etnicos de cuerda pulsada)
+       - `4`: `Bass` (bajos sinteticos y subgraves)
+       - `5`: `Winds & Voice` (voces, coros, formantes vocales, flautas solistas)
+       - `6`: `Pads & Textures` (colchones evolutivos, atmosferas)
+       - `7`: `Mallets & Bells` (marimba, vibrafono, campanas, percusion cromatica inarmonica)
+       - `8`: `Drums & Loop Factory` (baterias, percusion no tonal, bucles ritmicos)
+       - `9`: `SFX & Experimental` (efectos sonoros, drones, texturas experimentales)
+    4. **`kb-complexity-recdepth`**: Que hace `Complexity (1..10)`: controla la resolucion de tramas espectrales (`recDepth = [1, 4, 8, 12, 16, 24, 32, 42, 54, 64]`). Recomendacion acustica: usar `2..4` en percusiones cortas o bajos estaticos (ahorra RAM/CPU en hardware Neuron 2002); usar `7..10` en pads evolutivos, coros o instrumentos acusticos expresivos.
+    5. **`kb-modes-classic-extended`**: Diferencia entre `Classic Creation` y `Extended Creation` (`axionik-expanded.json` v2):
+       - `Classic`: compatible 100% bit a bit con el Hartmann Neuron hardware de 2002 y `NeuronVS` (`44.1 kHz`, hasta 64 parciales, particion contigua `0..127` sin huecos, maximo 2 franjas de velocidad `1..63` y `64..127`, nombre `MName` limitado estrictamente a **11 caracteres ASCII**).
+       - `Extended`: para `ABDAxionikVS` moderno (mapa libre 2D `Key x Velocity`, crossfades, Round-Robin, >64 parciales HD, `spectralBySample` multimuestra, anchos de banda Loris, 24 bandas Bark formanticas, residuo DDSP, transitorio hibrido PCM y salida Surround Quad 4.0 / Pseudo-Surround, con `expandedName` hasta 32+ caracteres). Exportar en modo `dual` guarda ambas capas en la Capsula del Tiempo.
+    6. **`kb-coverage-gaps`**: Errores de cobertura MIDI (`validateCoverage`): en modo Clasico el teclado `0..127` no debe tener huecos ni solapes involuntarios. Como repararlo en 1 clic con `Auto-Repair Coverage` (`[[target:btn-auto-repair|Auto-Reparar Cobertura]]`).
+    7. **`kb-import-methods`**: Cuando usar `Import Samples (Ctrl+I)`, `Import by Name (Ctrl+N)` (convencion `nombre_root_low[_v1|_v2]`), `Universal Import` (SF2, SFZ, Kontakt NKI abierto, DecentSampler, MPC XPM, discos Akai/E-mu/Roland vintage) o `Musician Wizard`.
+    8. **`kb-loop-editor`**: Como eliminar clics o zumbidos en `Waveform Loop Editor (Ctrl+L)`: algoritmos `pitch_periodic`, `ncc_zc` (correlacion cruzada en cruce por cero), `min_seam_energy` y `equal_power_xfade`, mas cuando activar la Expansion Circular de Bucles Cortos en el acondicionamiento.
+    9. **`kb-audio-chopper`**: Uso de `Audio Chopper` y `Batch Auto-Slicer` para cortar grabaciones largas o loops REX2 por transitorios/flujo espectral y repartirlos en zonas MIDI.
+    10. **`kb-recorder-autosampler`**: Uso de `Audio Recorder` (con limpieza espectral por huella de ruido determinista) y `AutoSampler MIDI` (muestreo automatico de sintetizadores hardware externos enviando notas MIDI y capturando multi-velocidad/Round-Robin).
+    11. **`kb-master-wave`**: Estandar `Master Wave (24-bit / 96 kHz)`: promocion sinc polifasica determinista + preservacion estereo/quad frente a super-resolucion Cloud BYOK opcional.
+    12. **`kb-spectral-view`**: Interpretacion de `Spectral View`: vista `Spectrogram` con hasta 64 parciales coloreados por capa clusterizada, vista `Waveform A/B` (Original vs Resintesis aditiva) y medidor RMS dBFS.
+    13. **`kb-cover-artwork`**: Portadas `cover.webp` (512x512): generador matematico `Procedural Acustico` instantaneo desde los armonicos F0 reales (0 ms, gratis y offline) frente a generacion `Cloud BYOK` (Imagen 3 / DALL-E 3 / FLUX).
+    14. **`kb-axionikdb-export`**: Guardado directo en `AxionikDB` (via Companion Bridge `:7860` con `X-Bridge-Token`), exportacion `.zip` Capsula del Tiempo de 5 capas y `Raw Sampler Export` (SFZ, DecentSampler, MPC, WAV pack).
+    15. **`kb-local-bridge-ollama`**: Configuracion de IA Local (Ollama `:11434`, LM Studio `:1234`), Companion Bridge `:7860` y privacidad de claves Cloud BYOK (`localStorage` vs `sessionStorage`).
+    16. **`kb-honesty-limits`**: Que **NO** hace `ABDNeuModMakr` (regla de abstencion honesta): no es un DAW multipista, no carga plugins VST3 de efectos externos ni tiene un secuenciador MIDI piano-roll; su mision es analizar, acondicionar, mapear y compilar modelos de resintesis neuronal e instrumentos multimuestra.
+  - **`buildNeuronSystemPrompt`**: instruye al modelo a responder **exclusivamente** en el formato JSON `{ "reply": "...", "highlightTargets": [...], "proposedActions": [...] }`, basandose unicamente en el `sessionSnapshot` adjunto y en las fichas del manual, prohibiendo inventar menus, parametros o capacidades inexistentes, e incluyendo marcadores `[[target:ID|Nombre]]` cuando mencione un control real de la lista `availableUiTargets`.
+- [x] **2. Crear `src/core/ai/copilot/copilotUndoStack.ts`**:
+  - Pila circular en memoria (`maxEntries = 10`) que guarda `{ label: string; timestamp: number; sessionJson: string }` usando la serializacion canónica de `Session` (`serializeSessionJson` / `parseSessionJson` o clon profundo validado de `Session` + referencia intacta a los `ArrayBuffer` cargados en `CoreService`).
+  - Metodos: `pushBeforeAction(label: string)`, `canUndo(): boolean`, `peekUndoLabel(): string | null`, `undoLast(): Promise<{ ok: boolean; restoredLabel?: string }>`.
+- [x] **3. Crear `src/core/ai/copilot/sessionContextBuilder.ts`**:
+  - Construye en `< 2 ms` tanto el resumen determinista para la cabecera del panel (`nowPlayingSummary`, `nextActionChecklist`, `suggestedPrompts`) como el JSON compacto `sessionSnapshot` (`<= 550 tokens`) para el LLM:
+    - Estado general: `workingMode` (`'classic' | 'extended'`), `modelName`, `expandedName`, `parameterSet` (indice + nombre humano), `complexity` + `recDepth`, `dspAlgorithm`, `zoneCount`, `extendedRegionCount`, `loadedSamplesCount`, `bridgeConnected`.
+    - Modal activo actualmente abierto en `#modals-container` (`activeModal`: `'none' | 'loop-editor' | 'audio-chopper' | 'audio-recorder' | 'batch-processor' | 'musician-wizard' | 'model-config' | 'settings'`).
+    - Resumen de la zona seleccionada (`activeZone`): `lowKey`, `rootKey`, `highKey` (con nota MIDI p. ej. `60 (C4)`), `sampleLowName`, `detectedF0Hz`, `durationSec`, `hasLoop`.
+    - Hasta las primeras 12 zonas en formato compacto (`z0: C2..E2 root=D2 sample="Cello_D2.wav"`) + recuento restante si hay mas.
+    - Errores de `core.validateCoverage()` (`coverageIssues`: huecos MIDI o solapes).
+    - Ultimas 10 lineas del registro de eventos/telemetria.
+  - Genera `suggestedPrompts` dinamicos segun el estado:
+    - Si `loadedSamplesCount === 0`: `["Como creo mi primer modelo?", "Diferencia entre Classic y Extended", "Abrir Asistente para Musicos"]`
+    - Si `coverageIssues.length > 0`: `["Reparar huecos MIDI en el teclado", "Recomendar Parameter Set y Complejidad", "Revisar zonas antes de compilar"]`
+    - Si `activeModal === 'loop-editor'`: `["Como evito clics en este bucle?", "Aplicar auto-loop a todas las zonas"]`
+    - Si todo esta listo sin errores: `["Revisar si esta optimo para compilar", "Sugerir Parameter Set segun mis muestras", "Abrir compilacion Preflight"]`
+- [x] **4. Crear `src/core/ai/copilot/neuronToolsCatalog.ts`**:
+  - Definir exactamente estas **10 herramientas seguras** (`CopilotToolSpec[]`), envolviendo toda mutacion en `undoStack.pushBeforeAction(...)` + `refreshUI()`:
+    1. `setModelConfig`: cambia `modelName` (recortado a 11 ASCII si `classic`), `expandedName` (`maxLength: 48`), `parameterSet` (`0..9` entero), `complexity` (`1..10` entero), `workingMode` (`'classic' | 'extended'`), `dspAlgorithm` (`'legacy' | 'enhanced'`).
+    2. `repairMidiCoverage`: ejecuta `core.autoRepairCoverage()` para rellenar huecos `0..127`.
+    3. `autoLoopAllZones`: ejecuta el calculo determinista de auto-loop sobre todas las zonas con muestra cargada.
+    4. `updateActiveZone`: ajusta en la zona activa `lowKey` (`0..127`), `rootKey` (`0..127`), `highKey` (`0..127`), `detuneCents` (`-100..100`), `volumeDb` (`-60..12`), `pan` (`-100..100`), verificando siempre `lowKey <= highKey`.
+    5. `selectZone`: selecciona una zona por `zoneIndex` (`0..127`). (`readOnlyNavigation: true`).
+    6. `setAiStageMode`: configura etapas de `aiConfig` (`masterWave: 'dsp' | 'ai'`, `loopExpansion: 'dsp' | 'ai'`, `separation: 'bypass' | 'htdemucs'`, `coverArtwork: 'procedural' | 'cloud-ai'`).
+    7. `openWorkspaceTool`: abre un modal o herramienta real (`target: 'musician-wizard' | 'loop-editor' | 'audio-chopper' | 'audio-recorder' | 'batch-processor' | 'model-config' | 'export-destination' | 'bank-drawer' | 'settings-ai'`). (`readOnlyNavigation: true`).
+    8. `toggleSpectralView`: muestra u oculta el analizador espectral (`visible: boolean`). (`readOnlyNavigation: true`).
+    9. `auditionActiveZone`: reproduce o detiene la preescucha de la zona activa (`mode: 'original' | 'resynthesis' | 'stop'`). (`readOnlyNavigation: true`).
+    10. `openCompilePreflight`: abre `ProcessModal` en estado preflight para que el usuario revise y lance la compilacion. (`readOnlyNavigation: true`).
+
+---
+
+### 47.6 Integracion en el Layout de `ABDNeuModMakr`, Spotlight `data-ai-target`, Absorcion de `TelemetryDrawer` y Ajustes
+
+**Objetivo**: Conectar `CopilotShell` en `src/main.ts`, `Navbar.ts`, `SettingsModal.ts` y etiquetar los controles clave de la interfaz para el resaltado visual `Spotlight`.
+
+**Pasos exactos a implementar**:
+- [ ] **1. Layout CSS Camaleon en `src/style.css` y montaje en `src/main.ts` (`buildDom`)**:
+  - En `src/main.ts` (`buildDom`, lineas ~773–796), anadir `<aside id="copilot-mount" class="copilot-shell-slot"></aside>` dentro de `#app-shell`.
+  - En `src/style.css`, definir el comportamiento acoplado limpio cuando `#app-shell[data-copilot-docked="true"]` esta activo (`display: grid` donde `#navbar-container` ocupa todo el ancho superior `1 / -1`, `#workspace-canvas` ocupa `minmax(0, 1fr)` a la izquierda y `#copilot-mount` ocupa `360px` a la derecha sin desbordar `100vw` ni recortar `ZoneRibbon` / `KeyboardStrip`). Cuando `CopilotShell` pasa a `mode === 'overlay'` (`< 1550px` o modal abierto), retira `data-copilot-docked` y flota con `z-index: 12000` por encima de `#modals-container`.
+- [ ] **2. Unificar `TelemetryDrawer` dentro de la pestana `Registro` del Panel Asistente**:
+  - Conservar la instancia/interfaz publica de `this.telemetryDrawer` (`addLog`, `updateAudit`, `toggle`) en `src/main.ts` para no romper ninguna de las llamadas existentes en `ImportHandlers`, `MenuActions` o tests, pero hacer que `telemetryDrawer.toggle()` abra directamente `copilotShell` en la pestana `'log'` (`Registro`) y que `addLog` / `updateAudit` alimenten en tiempo real la pestana `Registro` del `CopilotShell` (incluyendo el contador de errores de cobertura y el boton `Auto-Reparar`). Asi desaparece la duplicidad de dos cajones laterales compitiendo por el borde derecho.
+- [ ] **3. Anadir atributos `data-ai-target="..."` para Spotlight en los controles clave**:
+  - Etiquetar con atributos HTML estables `data-ai-target`:
+    - `Navbar.ts`: `nav-import-samples`, `nav-musician-wizard`, `nav-batch-processor`, `nav-compile-btn`, `nav-ai-status-pill`, `nav-copilot-toggle`, `nav-bank-btn`.
+    - `ProcessPanel.ts`: `process-working-mode`, `process-model-name`, `process-param-set`, `process-complexity`, `process-dsp-algo`, `process-cover-box`, `process-start-btn`.
+    - `ZoneInspector.ts`: `inspector-zone-range`, `inspector-root-key`, `inspector-sample-a`, `inspector-loop-btn`, `btn-auto-repair`.
+    - `ZoneRibbon.ts` y `KeyboardStrip.ts`: `workspace-zone-ribbon`, `workspace-keyboard-strip`.
+    - `LoopEditorModal.ts`: `loop-algo-selector`, `loop-auto-btn`, `loop-xfade-slider`.
+- [ ] **4. Integrar configuracion del Asistente y LLMs Locales en `SettingsModal.ts`**:
+  - En la seccion `IA` de `SettingsModal` (`src/ui/settings/`), anadir la pestana/bloque **`Asistente & LLM Local`** montando `AiProviderSettingsPanel` de `@abdsynths/shared/components/copilot` (permitiendo configurar Ollama `:11434`, LM Studio `:1234`, deteccion en vivo de modelos, modo `Confirmar siempre` vs `Piloto automatico con Deshacer`, anonimizacion Cloud y el selector `localStorage` vs `sessionStorage` en `tabCloud.ts`).
+- [ ] **5. Boton en `Navbar.ts` y Atajos de Teclado (`F1` y `Ctrl+K`)**:
+  - En `Navbar.ts` y `MenuActions.ts`, anadir boton compacto `Asistente (F1)` junto a la pastilla de estado IA y entrada en el menu `Help / Tools` para `Asistente Copiloto (F1)` y `Comando Rapido IA (Ctrl+K)`.
+  - Verificar que `F1` conmuta el panel lateral y `Ctrl+K` abre la barra rapida sin interferir con los atajos existentes (`Ctrl+Z`, `Ctrl+S`, `Ctrl+O`, `Ctrl+I`, `Ctrl+N`, `Ctrl+P`, `Ctrl+T`, `Ctrl+B`, `Ctrl+L`, `Space`).
+
+---
+
+### 47.7 Suite de Verificacion Integral de Fase 47 (`tests/phase47_copilot.test.ts`)
+
+- [ ] **Crear `tests/phase47_copilot.test.ts` y registrarlo al final de `tests/run_all.ts`**:
+  - **Test 1 (`ssrf` Loopback + Relay Seguridad)**: verifica que `assertSafeLoopbackHttpUrl` permite `http://127.0.0.1:11434` y `http://localhost:1234`, y bloquea `https://api.openai.com`, `http://10.0.0.5:11434`, `http://169.254.169.254:11434` y URLs con `user:pass@`. Verifica que `/api/local-llm/proxy` en `bridge/server.py` rechaza peticiones sin `X-Bridge-Token` y rutas fuera de la lista blanca (`/v1/../../etc`).
+  - **Test 2 (`CloudByokClient` `sessionStorage` vs `localStorage` + Migracion)**: verifica que cambiar a `storageScope: 'session'` guarda la clave solo en `sessionStorage` y limpia `localStorage`, y que una configuracion previa en `neumodmakr_byok_config` se migra sin perdida a `abdsynths.ai.byok.v1`.
+  - **Test 3 (Anti-Alucinaciones en `CopilotOrchestrator`)**: simula la respuesta JSON de un modelo local pequeno que intenta llamar a una herramienta inventada (`applyEightBandEq`) y a `setModelConfig` con `parameterSet: 42` y `complexity: 99`. Verifica que `CopilotOrchestrator` descarta ambas propuestas invalidas y solo deja pasar acciones cuyos tipos, rangos y enums sean 100% validos.
+  - **Test 4 (Sanitizacion XSS en `renderSafeCopilotMarkdown`)**: verifica que `<script>evil()</script>`, `<img src=x onerror=alert(1)>` y `[link](javascript:alert(1))` quedan escapados de forma inerte, mientras `[[target:process-param-set|Parameter Set]]` genera el chip seguro con `data-spot-target="process-param-set"`.
+  - **Test 5 (Ejecucion Real de Herramientas Neuron + `CopilotUndoStack`)**: crea una `CoreService` con zonas que tienen un hueco MIDI (`0..59` y `65..127`), construye el contexto con `sessionContextBuilder` (comprobando que detecta el hueco en `coverageIssues`), ejecuta las herramientas `setModelConfig({ parameterSet: 3, complexity: 7, modelName: 'KalimbaPro' })` y `repairMidiCoverage({})`, verifica que la sesion tiene `parameterSet === 3`, `complexity === 7` y `validateCoverage().length === 0`, y finalmente llama a `undoStack.undoLast()` comprobando que restaura el estado previo exacto.
+  - **Test 6 (Privacidad Cloud)**: verifica que con `anonymizeCloudMetadata: true` en modo `cloud-byok`, rutas como `C:\Users\ajaba\Samples\SecretClient_Piano_C3.wav` nunca salen en el payload enviado al proveedor Cloud.
+- [ ] **DoD Final Fase 47**:
+  - `npx vitest run` en `D:\desarrollos\ABDSynths\ABDShared` -> 100% PASS
+  - `npm run vendor:sync` en `ABDNeuModMakr` -> OK
+  - `npm run test:types` -> 0 errores
+  - `npm run lint:security` -> 0 errores
+  - `node scripts/audit-innerhtml.mjs` -> 0 errores
+  - `python -m py_compile bridge/server.py bridge/dwop_decompress.py` -> 0 errores
+  - `npx tsx tests/run_all.ts` -> **48/48 suites en verde**.

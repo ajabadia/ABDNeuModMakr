@@ -373,6 +373,57 @@
   }
 }
 
+/* Edición byte a byte */
+.sysex-byte--editable {
+  cursor: text;
+  outline: 1px dashed transparent;
+  outline-offset: -1px;
+}
+
+.sysex-byte--editable:hover,
+.sysex-byte--editable:focus-visible {
+  outline-color: rgba(0, 255, 170, 0.45);
+}
+
+/* SOF y EOX son estructurales: no se editan */
+.sysex-byte--locked {
+  cursor: not-allowed;
+}
+
+.sysex-byte--locked:hover {
+  background: transparent;
+  color: inherit;
+  transform: none;
+}
+
+.sysex-byte--editing {
+  background: rgba(0, 255, 170, 0.12);
+  outline: 1px solid var(--sysex-highlight);
+  transform: none;
+}
+
+.sysex-byte__editor {
+  width: 23px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--sysex-highlight);
+  border-radius: 3px;
+  background: #050b14;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.sysex-byte__editor--invalid {
+  border-color: var(--sysex-diff);
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--sysex-diff);
+}
+
 /* Diferencia en modo Diff A/B */
 .sysex-byte--diff {
   background-color: rgba(245, 158, 11, 0.25);

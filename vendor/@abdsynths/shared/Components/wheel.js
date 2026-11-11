@@ -43,6 +43,9 @@ const FRAMES = 101;
  *   label           text above the wheel, default 'PITCH' / 'MOD'.
  *   valueFormatter  (raw) => string readout; the same text is announced.
  *   onChange        (raw) => void, fires on user edits (not on setValue).
+ *   onDragStart / onDragEnd  for host gesture bridging (beginChangeGesture /
+ *                   endChangeGesture). Idempotent: one pair per drag, whether the
+ *                   drag comes from the sprite or from the range slider.
  *   onSettled       (raw) => void, fires ONCE per gesture when the value settles (pointerup / change); only if the final value differs from the gesture start. Keyboard steps and wheel notches settle immediately; pitch-wheel spring-back is a movement, not a settled commit.
  */
 export class Wheel {
@@ -56,6 +59,9 @@ export class Wheel {
     this._initialFrame = options.initialFrame ?? Math.floor((this.frames - 1) / 2);
     this.onChange = options.onChange || (() => {});
     this.onSettled = options.onSettled || (() => {});
+    this.onDragStart = options.onDragStart || (() => {});
+    this.onDragEnd = options.onDragEnd || (() => {});
+    this._dragOpen = false;
     this.isPitch = this.type === 'pitch';
     this.min = options.min !== undefined ? options.min : this.isPitch ? -8192 : 0;
     this.max = options.max !== undefined ? options.max : this.isPitch ? 8191 : 127;
@@ -140,15 +146,37 @@ export class Wheel {
     this.setValue(0);
   }
 
+  /**
+   * Abre el gesto del host una sola vez por arrastre. Hay dos caminos de arrastre
+   * (sprite y slider) y los dos pueden disparar el mismo pointerdown, así que el
+   * guard es lo que evita un beginChangeGesture duplicado que el host no cerraría.
+   */
+  _openDrag() {
+    if (this._dragOpen) return;
+    this._dragOpen = true;
+    this.onDragStart();
+  }
+
+  /** Cierra el gesto abierto; si no hay ninguno abierto no hace nada. */
+  _closeDrag() {
+    if (!this._dragOpen) return;
+    this._dragOpen = false;
+    this.onDragEnd();
+  }
+
   attachEvents() {
     const getRaw = () => parseInt(this.slider.value, 10);
     this._rawPrev = getRaw();
 
-    const beginGesture = () => this.notices.begin(getRaw());
+    const beginGesture = () => {
+      this._openDrag();
+      this.notices.begin(getRaw());
+    };
     const endGesture = () => {
       const cur = getRaw();
       this.notices.end(cur);
       this._rawPrev = cur;
+      this._closeDrag();
     };
 
     this.slider.addEventListener('pointerdown', beginGesture);
@@ -179,6 +207,7 @@ export class Wheel {
       startVal = getRaw();
       this._rawPrev = startVal;
       this.sprite.setPointerCapture?.(e.pointerId);
+      this._openDrag();
       this.notices.begin(startVal);
       e.preventDefault();
     };
@@ -198,6 +227,7 @@ export class Wheel {
       if (!isDragging) return;
       isDragging = false;
       this.sprite.releasePointerCapture?.(e.pointerId);
+      this._closeDrag();
       if (this.isPitch) {
         const prev = getRaw();
         this.slider.value = 0;
@@ -234,6 +264,7 @@ export class Wheel {
         // spring movement is not a settled commit: it returns to rest
         this.notices.announceMovement(prev, 0);
         this.onChange(0);
+        this._closeDrag();
       };
       this.slider.addEventListener('mouseup', resetSpring);
       this.slider.addEventListener('touchend', resetSpring);
@@ -259,6 +290,7 @@ export class Wheel {
   destroy() {
     if (this._destroyed) return;
     this._destroyed = true;
+    this._closeDrag();
     if (this.container) this.container.innerHTML = '';
   }
 }

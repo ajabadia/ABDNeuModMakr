@@ -57,6 +57,8 @@ const TEST_FILES = [
   'phase44_persistence.test.ts',
   'phase43_dictionary.test.ts',
   'resynatorWasmParity.test.ts',
+  'phase45_security_audit.test.ts',
+  'phase46_ai_honesty_and_audio.test.ts',
 ];
 
 interface TestResult {

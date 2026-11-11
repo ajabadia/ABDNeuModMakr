@@ -24,7 +24,7 @@
  * apuntando a nodos ya sustituidos: el contenedor es de uno.)
  */
 
-import { announceSettled, createContinuousNotices } from './continuousNotices.js';
+import { announceSettled, createContinuousNotices } from './ContinuousNotices.js';
 
 const FRAME_HEIGHT = 76;
 const FRAMES = 101;
@@ -169,6 +169,24 @@ export class Wheel {
     const totalRange = this.max - this.min;
     const dragLanePx = 150;
 
+  /**
+   * Abre el gesto del host una sola vez por arrastre. Hay dos caminos de arrastre
+   * (sprite y slider) y los dos pueden disparar el mismo pointerdown, así que el
+   * guard es lo que evita un beginChangeGesture duplicado que el host no cerraría.
+   */
+  _openDrag() {
+    if (this._dragOpen) return;
+    this._dragOpen = true;
+    this.onDragStart();
+  }
+
+  /** Cierra el gesto abierto; si no hay ninguno abierto no hace nada. */
+  _closeDrag() {
+    if (!this._dragOpen) return;
+    this._dragOpen = false;
+    this.onDragEnd();
+  };
+
     const onPointerDown = (e) => {
       isDragging = true;
       startY = e.clientY;
@@ -176,6 +194,7 @@ export class Wheel {
       this._rawPrev = startVal;
       this.sprite.setPointerCapture?.(e.pointerId);
       this.notices.begin(startVal);
+      this._openDrag();
       e.preventDefault();
     };
 
@@ -194,6 +213,7 @@ export class Wheel {
       if (!isDragging) return;
       isDragging = false;
       this.sprite.releasePointerCapture?.(e.pointerId);
+      this._closeDrag();
       if (this.isPitch) {
         const prev = getRaw();
         this.slider.value = 0;

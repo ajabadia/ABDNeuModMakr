@@ -20,6 +20,7 @@ import {
   decodeWav,
   decodeAiff,
   encodePcm16Wav,
+  encodeWavPcm24,
   isSupportedAudioFileName,
   transcodeAnyAudioToWavBuffer,
 } from '../dsp/WavDecoder.ts';
@@ -591,10 +592,10 @@ export class BatchQueue {
                   enableBandwidthExtension: true,
                   enableDenoiseGate: false,
                 });
-                if (promoted.channels[0] && promoted.channels[0].length > 0) {
+                if (promoted.channels && promoted.channels.length > 0 && promoted.channels[0].length > 0) {
                   ws.rawSamples.set(
                     sName,
-                    encodePcm16Wav(promoted.channels[0], promoted.result.masterSampleRate, dec.instrument)
+                    encodeWavPcm24(promoted.channels, promoted.result.masterSampleRate, dec.instrument)
                   );
                 }
               }

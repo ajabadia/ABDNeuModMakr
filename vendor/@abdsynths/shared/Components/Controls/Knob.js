@@ -21,7 +21,7 @@
 
 import { attachDrag } from './drag-core.js';
 import { applySkin, CONTROL_KIND } from './skins/index.js';
-import { announceSettled, createContinuousNotices } from './continuousNotices.js';
+import { announceSettled, createContinuousNotices } from './ContinuousNotices.js';
 import { clamp01 } from '../../Utils/number.js';
 
 const SWEEP_DEGREES = 270;   // classic knob sweep: -135..+135
@@ -107,6 +107,8 @@ export class Knob
         // saber que este mando tiene el cero en el centro.
         this.wrapper.dataset.bipolar = this.options.bipolar ? 'true' : 'false';
 
+        if (this.options.paramIndex !== undefined && this.options.paramIndex !== null)
+            this.wrapper.dataset.paramIndex = String(this.options.paramIndex);
         if (this.options.label)
         {
             this.labelEl = document.createElement('span');

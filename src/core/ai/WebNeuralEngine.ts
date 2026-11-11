@@ -1,6 +1,9 @@
 // ─────────────────────────────────────────────────────────
 // ABDNeuModMakr — WebNeuralEngine (In-Browser WebGPU & ONNX Runtime)
 //
+// NOTA ARQUITECTÓNICA: Fachada local de ABDNeuModMakr. NO mover a @abdsynths/shared
+// (para descriptores acústicos compartidos con ABDAudioLab usar AcousticIntelligence.ts).
+//
 // 100% In-Browser neural inference running on client hardware:
 //   - Tier 1: WebGPU (Direct3D12/Vulkan on user GPU, e.g. RTX 3070)
 //   - Tier 2: WebAssembly SIMD (Multi-threaded CPU fallback)
@@ -11,6 +14,12 @@
 
 import { clamp } from '../dsp/DspMath.ts';
 import type { AxionikResonatorShapers } from '@abdsynths/shared/contracts/axionikExpandedModel.ts';
+import {
+  detectPitchYinMpm,
+  classifyAcousticInstrument,
+  extractAcousticDescriptors,
+} from '../dsp/AcousticIntelligence.ts';
+import { SpectralAnalyzer } from '../dsp/SpectralAnalyzer.ts';
 
 export interface WebGpuDeviceStatus {
   isSupported: boolean;
@@ -55,10 +64,10 @@ export interface NeuralResonatorMatterResult {
 
 export class WebNeuralEngine {
   private deviceStatus: WebGpuDeviceStatus = {
-    isSupported: false,
+    isSupported: true,
     activeProvider: 'dsp',
-    adapterName: 'DSP Engine (Mathematical Fallback)',
-    statusMessage: 'WebGPU initializing...',
+    adapterName: 'Motor Acústico Determinista (YIN/MPM + HPS + 24-Bark)',
+    statusMessage: '[DSP] Análisis espectral determinista de alta precisión activo',
   };
 
   private initPromise: Promise<WebGpuDeviceStatus> | null = null;
@@ -66,58 +75,7 @@ export class WebNeuralEngine {
   public async init(): Promise<WebGpuDeviceStatus> {
     if (this.initPromise) return this.initPromise;
 
-    this.initPromise = (async () => {
-      try {
-        if (typeof navigator !== 'undefined' && 'gpu' in navigator && navigator.gpu) {
-          const adapter = await navigator.gpu.requestAdapter();
-          if (adapter) {
-            let adapterName = 'WebGPU Compatible Graphics';
-            let architecture = '';
-            let vendor = '';
-
-            try {
-              // Modern browser adapter info
-              const info = await (adapter as unknown as { requestAdapterInfo?: () => Promise<{ description?: string; architecture?: string; vendor?: string }> }).requestAdapterInfo?.();
-              if (info) {
-                adapterName = info.description || adapterName;
-                architecture = info.architecture || '';
-                vendor = info.vendor || '';
-              }
-            } catch {
-              // Standard adapter fallback
-            }
-
-            this.deviceStatus = {
-              isSupported: true,
-              activeProvider: 'webgpu',
-              adapterName,
-              architecture,
-              vendor,
-              statusMessage: `[WebGPU] Aceleracion GPU Activa (${adapterName})`,
-            };
-            return this.deviceStatus;
-          }
-        }
-
-        // WebAssembly SIMD Fallback
-        this.deviceStatus = {
-          isSupported: true,
-          activeProvider: 'wasm',
-          adapterName: 'WebAssembly SIMD (CPU Multihilo)',
-          statusMessage: '[WASM] WebAssembly SIMD Activo (CPU Local)',
-        };
-        return this.deviceStatus;
-      } catch (err) {
-        this.deviceStatus = {
-          isSupported: false,
-          activeProvider: 'dsp',
-          adapterName: 'DSP Matematico Puro (Fallback Universal)',
-          statusMessage: `[DSP] Modo DSP Local (${String(err)})`,
-        };
-        return this.deviceStatus;
-      }
-    })();
-
+    this.initPromise = Promise.resolve(this.deviceStatus);
     return this.initPromise;
   }
 
@@ -132,100 +90,51 @@ export class WebNeuralEngine {
   public async detectPitch(pcm: Float32Array, sampleRate: number): Promise<NeuralPitchResult> {
     await this.init();
 
-    // High-precision hybrid pitch fallback
-    const n = pcm.length;
-    if (n < 64) {
-      return { f0Hz: 440.0, confidence: 0.0, provider: 'WebNeural-DSP', methodUsed: 'dsp-fallback' };
+    if (pcm.length < 512) {
+      return {
+        f0Hz: 440.0,
+        confidence: 0.0,
+        provider: 'Deterministic-DSP',
+        methodUsed: 'dsp-fallback',
+      };
     }
 
-    // Normalized autocorrelation / peak-distance pitch detection
-    const maxLag = Math.min(n - 1, Math.floor(sampleRate / 30)); // 30 Hz minimum
-    const minLag = Math.max(2, Math.floor(sampleRate / 4000));   // 4000 Hz maximum
-
-    let bestLag = -1;
-    let maxCorr = -1;
-
-    for (let lag = minLag; lag < maxLag; lag++) {
-      let sum = 0;
-      let count = 0;
-      const step = Math.max(1, Math.floor((n - lag) / 256));
-      for (let i = 0; i < n - lag; i += step) {
-        sum += pcm[i] * pcm[i + lag];
-        count++;
-      }
-      const corr = count > 0 ? sum / count : 0;
-      if (corr > maxCorr) {
-        maxCorr = corr;
-        bestLag = lag;
-      }
+    const { f0Hz, harmonicity } = detectPitchYinMpm(pcm, sampleRate);
+    if (f0Hz > 0) {
+      return {
+        f0Hz: Number(f0Hz.toFixed(2)),
+        confidence: clamp(harmonicity, 0, 1),
+        provider: 'Deterministic-YIN-MPM',
+        methodUsed: 'dsp-fallback',
+      };
     }
-
-    const detectedF0 = bestLag > 0 ? sampleRate / bestLag : 440.0;
-    const provider = this.deviceStatus.activeProvider === 'webgpu' ? 'WebGPU-ONNX' : 'WASM-SIMD';
 
     return {
-      f0Hz: Number(detectedF0.toFixed(2)),
-      confidence: clamp(maxCorr * 2.0, 0.0, 1.0),
-      provider,
-      methodUsed: this.deviceStatus.activeProvider === 'webgpu' ? 'webgpu' : 'wasm',
+      f0Hz: 440.0,
+      confidence: 0.0,
+      provider: 'Deterministic-DSP',
+      methodUsed: 'dsp-fallback',
     };
   }
 
   /**
    * Neural Acoustic Timbre Classifier:
    * Maps acoustic properties directly to the Hartmann Neuron 10 Parameter Sets:
-   * 0: Default, 1: Stringed/Bowed, 2: Plucked, 3: Woodwinds, 4: Carpet, 5: Keys, 6: Drums, 7: Pads, 8: Loops, 9: Lead
+   * 0: Default, 1: Strings, 2: Keyboards, 3: Plucked, 4: Bass, 5: Keys/E-Keys, 6: Pads, 7: Mallets, 8: Drums, 9: SFX
    */
-  public async classifyTimbre(pcm: Float32Array, _sampleRate: number): Promise<NeuralTimbreResult> {
+  public async classifyTimbre(pcm: Float32Array, sampleRate: number): Promise<NeuralTimbreResult> {
     await this.init();
 
-    let zeroCrossings = 0;
-    let energySum = 0;
-    let maxAmp = 0;
-    const n = pcm.length;
-
-    for (let i = 0; i < n; i++) {
-      const absVal = Math.abs(pcm[i]);
-      energySum += absVal * absVal;
-      if (absVal > maxAmp) maxAmp = absVal;
-      if (i > 0 && ((pcm[i - 1] <= 0 && pcm[i] > 0) || (pcm[i - 1] >= 0 && pcm[i] < 0))) {
-        zeroCrossings++;
-      }
-    }
-
-    const zcr = n > 0 ? zeroCrossings / n : 0;
-    const rms = n > 0 ? Math.sqrt(energySum / n) : 0;
-    const crest = rms > 0 ? maxAmp / rms : 1;
-
-    let pSet = 0;
-    let category = 'General Synthetic';
-
-    if (zcr > 0.15 && crest > 4.0) {
-      pSet = 6;
-      category = 'Percussion & Drums';
-    } else if (crest > 3.0 && zcr < 0.06) {
-      pSet = 2;
-      category = 'Plucked / Acoustic Bells';
-    } else if (crest < 2.0 && zcr < 0.04) {
-      pSet = 7;
-      category = 'Ambient Pads & Textures';
-    } else if (zcr >= 0.04 && zcr <= 0.12) {
-      pSet = 1;
-      category = 'Stringed & Bowed Resonance';
-    } else if (rms > 0.25) {
-      pSet = 5;
-      category = 'Electric Keys & Organs';
-    } else {
-      pSet = 3;
-      category = 'Woodwinds & Reed Resonance';
-    }
+    const analyzer = new SpectralAnalyzer();
+    const descriptors = extractAcousticDescriptors(pcm, sampleRate, analyzer);
+    const result = classifyAcousticInstrument(descriptors);
 
     return {
-      category,
-      parameterSet: pSet,
-      confidence: 0.94,
-      provider: this.deviceStatus.activeProvider === 'webgpu' ? 'WebGPU-NeuralClassifier' : 'WASM-NeuralClassifier',
-      methodUsed: this.deviceStatus.activeProvider === 'webgpu' ? 'webgpu' : 'wasm',
+      category: result.detectedCategory,
+      parameterSet: result.recommendedParameterSet,
+      confidence: result.confidence,
+      provider: 'Deterministic-AcousticClassifier',
+      methodUsed: 'dsp-fallback',
     };
   }
 
@@ -289,8 +198,8 @@ export class WebNeuralEngine {
       loopStart,
       loopEnd,
       stationarityScore: clamp(1.0 - minVariance * 2.0, 0.5, 0.99),
-      provider: this.deviceStatus.activeProvider === 'webgpu' ? 'WebGPU-StationarityEngine' : 'WASM-StationarityEngine',
-      methodUsed: this.deviceStatus.activeProvider === 'webgpu' ? 'webgpu' : 'wasm',
+      provider: 'Deterministic-StationarityDSP',
+      methodUsed: 'dsp-fallback',
     };
   }
 
@@ -411,29 +320,30 @@ export class WebNeuralEngine {
     const hfRollOffDbPerOct = Number(
       clamp((highBandDb - lowBandDb) / 4.0, -18, 0).toFixed(2)
     );
-    const provider =
-      this.deviceStatus.activeProvider === 'webgpu'
-        ? 'WebGPU-DDSP-Matter'
-        : 'WASM-DDSP-Matter';
+
+    const analyzer = new SpectralAnalyzer();
+    const descriptors = extractAcousticDescriptors(pcm, sampleRate, analyzer, baseF0);
+    const measuredInharmB = descriptors.inharmonicityB > 0 ? descriptors.inharmonicityB : 0.0001;
+    const residualMix = clamp(descriptors.spectralFlatness * 0.85, 0.02, 0.65);
+    const entropyRoughness = clamp(1 - descriptors.harmonicity, 0.03, 0.75);
 
     return {
       shapers: {
-        inharmonicityB: 0.0001,
+        inharmonicityB: measuredInharmB,
         parity,
-        entropyRoughness: 0.12,
+        entropyRoughness,
         spectralShiftHz: 0,
         hfRollOffDbPerOct,
         formantShiftSt: 0,
         formantPreserve: 0.85,
-        residualMix: 0.15,
+        residualMix,
         spatialSpread: 0.5,
       },
       formantEnvelopeDb,
       residualBandsDb,
       transientDurationMs,
-      provider,
-      methodUsed:
-        this.deviceStatus.activeProvider === 'webgpu' ? 'webgpu' : 'wasm',
+      provider: 'Deterministic-BarkMatterDSP',
+      methodUsed: 'dsp-fallback',
     };
   }
 }

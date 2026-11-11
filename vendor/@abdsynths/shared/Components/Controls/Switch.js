@@ -8,7 +8,7 @@
  *   - value model: boolean;
  *   - accessible: role="switch", aria-checked, keyboard navigable (Space/Enter/Arrows).
  */
-import { announceTransition } from './transitionNotices.js';
+import { announceTransition } from './TransitionNotices.js';
 
 export class Switch {
   constructor(container, options = {}) {

@@ -96,6 +96,41 @@ export interface ResynatorWasmRenderOptions {
   urlOverride?: string;
 }
 
+export function assertJsonDepthWithinCap(jsonText: string, maxDepth = 32): void {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < jsonText.length; i++) {
+    const ch = jsonText[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{' || ch === '[') {
+      depth++;
+      if (depth > maxDepth) {
+        throw new Error(`[resynator-wasm] JSON nesting depth exceeds cap (${maxDepth})`);
+      }
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth < 0) {
+        throw new Error('[resynator-wasm] Malformed JSON: unbalanced brackets');
+      }
+    }
+  }
+}
+
 /**
  * Render offline con el MOTOR: noteOn → N bloques → noteOff → cola.
  * Devuelve estéreo entrelazado separado en L/R (mismo formato que el preview TS).
@@ -103,6 +138,7 @@ export interface ResynatorWasmRenderOptions {
 export async function renderResynatorWasm(
   options: ResynatorWasmRenderOptions
 ): Promise<{ stereoL: Float32Array; stereoR: Float32Array; peak: number }> {
+  assertJsonDepthWithinCap(options.modelJson, 32);
   const midi = options.midiNote ?? 69;
   const vel = options.velocity01 ?? 0.8;
   const seconds = options.seconds ?? 1;
@@ -116,12 +152,13 @@ export async function renderResynatorWasm(
   if ((mod.ccall('resynCreate', 'number', ['number'], [sampleRate]) as number) !== 1) {
     throw new Error(`[resynator-wasm] resynCreate falló: ${lastError()}`);
   }
+  const utf8ByteLen = new TextEncoder().encode(options.modelJson).byteLength;
   if (
     (mod.ccall(
       'resynLoadModel',
       'number',
       ['string', 'number'],
-      [options.modelJson, options.modelJson.length]
+      [options.modelJson, utf8ByteLen]
     ) as number) !== 1
   ) {
     throw new Error(`[resynator-wasm] el motor rechazó el modelo: ${lastError()}`);

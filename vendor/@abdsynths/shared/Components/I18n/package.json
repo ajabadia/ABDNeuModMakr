@@ -21,6 +21,9 @@
   "scripts": {
     "test": "vitest run"
   },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  },
   "keywords": [
     "i18n",
     "internationalization",

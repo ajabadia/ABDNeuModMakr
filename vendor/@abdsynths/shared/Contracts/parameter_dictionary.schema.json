@@ -143,7 +143,7 @@
         },
         "lutId": {
           "type": "string",
-          "description": "Identificador de tabla ROM/calibración cuando curve === 'Lut'"
+          "description": "Identificador de la tabla de firmware cuando curve === 'Lut'. Las tablas viven en lut_tables.json y se resuelven con lutRegistry.js; domainMin/domainMax deben coincidir con su primera y última entrada"
         },
         "choices": {
           "type": "array",

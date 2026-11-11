@@ -33,6 +33,8 @@ import argparse
 import urllib.request
 import threading
 import subprocess
+import socket
+import ipaddress
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
@@ -70,26 +72,14 @@ except ImportError:
 SERVER_VERSION = "1.0.0"
 DEFAULT_PORT = 7860
 
-CHECKPOINTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'checkpoints')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHECKPOINTS_DIR = os.path.join(BASE_DIR, 'models', 'checkpoints')
 try:
     os.makedirs(CHECKPOINTS_DIR, exist_ok=True)
 except Exception:
     pass
 
 MODEL_REGISTRY = {
-    "audiosr": {
-        "id": "audiosr",
-        "name": "AudioSR (96kHz Bandwidth Extension)",
-        "task": "super-resolution",
-        "category": "super-resolution",
-        "package": "@abdsynths/audio-sr",
-        "runtime": "pytorch",
-        "min_vram_mb": 6000,
-        "filename": "audiosr_basic.bin",
-        "url": "https://huggingface.co/haoheliu/audiosr_basic/resolve/main/pytorch_model.bin",
-        "size_mb": 5890,
-        "description": "24-bit 96kHz neural bandwidth extension with latent diffusion audio upsampling."
-    },
     "htdemucs": {
         "id": "htdemucs",
         "name": "HTDemucs v4 (Stem Separator & De-bleeder)",
@@ -101,7 +91,8 @@ MODEL_REGISTRY = {
         "filename": "htdemucs_f7e0c4bc.th",
         "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/f7e0c4bc-ba3fe64a.th",
         "size_mb": 80,
-        "description": "High-fidelity isolation of lead instruments and suppression of background acoustic leakage."
+        "inference_wired": False,
+        "description": "High-fidelity isolation of lead instruments and suppression of background acoustic leakage. (Conector PyTorch en preparación; hoy ejecuta HPSS determinista local)."
     },
     "basicpitch": {
         "id": "basicpitch",
@@ -114,7 +105,8 @@ MODEL_REGISTRY = {
         "filename": "basic_pitch_model.onnx",
         "url": "https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx",
         "size_mb": 1,
-        "description": "Polyphonic pitch and note detection for automatic root key detection and transient boundary tagging."
+        "inference_wired": False,
+        "description": "Polyphonic pitch and note detection for automatic root key detection and transient boundary tagging. (Conector ONNX en preparación; hoy ejecuta YIN/MPM determinista local)."
     },
     "deepfilter": {
         "id": "deepfilter",
@@ -127,20 +119,8 @@ MODEL_REGISTRY = {
         "filename": "DeepFilterNet3_onnx.tar.gz",
         "url": "https://github.com/Rikorose/DeepFilterNet/raw/main/models/DeepFilterNet3_onnx.tar.gz",
         "size_mb": 8,
-        "description": "Real-time speech & instrument neural noise suppression and tape hiss reduction."
-    },
-    "sdturbo": {
-        "id": "sdturbo",
-        "name": "SD-Turbo (1-Step Synthesizer Cover Artwork)",
-        "task": "image-generation",
-        "category": "image-generation",
-        "package": "@abdsynths/artwork-diffusion",
-        "runtime": "safetensors",
-        "min_vram_mb": 4000,
-        "filename": "sd_turbo_fp16.safetensors",
-        "url": "https://huggingface.co/stabilityai/sd-turbo/resolve/main/sd_turbo.safetensors",
-        "size_mb": 1600,
-        "description": "High-speed 1-step diffusion model for local 512x512 synth cover artwork directly on GPU."
+        "inference_wired": False,
+        "description": "Real-time speech & instrument neural noise suppression and tape hiss reduction. (Conector ONNX en preparación; hoy ejecuta sustracción espectral por huella de ruido local)."
     },
     "whispertiny": {
         "id": "whispertiny",
@@ -153,20 +133,8 @@ MODEL_REGISTRY = {
         "filename": "whisper_tiny_en.onnx",
         "url": "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/decoder_model_merged_quantized.onnx",
         "size_mb": 39,
-        "description": "Vocal onset & speech phoneme boundary alignment for semantic audio chopping (Fase 23)."
-    },
-    "musicgen": {
-        "id": "musicgen",
-        "name": "Meta MusicGen-Small (Timbre Continuation & Infill)",
-        "task": "timbre-generation",
-        "category": "timbre-generation",
-        "package": "@abdsynths/neural-continuation",
-        "runtime": "pytorch",
-        "min_vram_mb": 2500,
-        "filename": "musicgen_small.bin",
-        "url": "https://huggingface.co/facebook/musicgen-small/resolve/main/pytorch_model.bin",
-        "size_mb": 300,
-        "description": "Autoregressive neural continuation for acoustic infill and organic sustain loop unrolling."
+        "inference_wired": False,
+        "description": "Vocal onset & speech phoneme boundary alignment for semantic audio chopping (Fase 23). (Conector ONNX en preparación; hoy ejecuta corte por transitorios determinista local)."
     }
 }
 
@@ -175,8 +143,33 @@ DOWNLOAD_LOCK = threading.Lock()
 
 MODELS_CONFIG_FILE = os.path.join(CHECKPOINTS_DIR, 'models_config.json')
 
+def _load_or_create_bridge_token() -> str:
+    env_token = (os.environ.get('ABD_BRIDGE_TOKEN') or '').strip()
+    if env_token:
+        return env_token
+    token_file = os.path.join(BASE_DIR, '.bridge_token')
+    if os.path.exists(token_file):
+        try:
+            with open(token_file, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if len(content) >= 16:
+                    return content
+        except Exception:
+            pass
+    tok = secrets.token_hex(24)
+    try:
+        with open(token_file, 'w', encoding='utf-8') as f:
+            f.write(tok)
+        try:
+            os.chmod(token_file, 0o600)
+        except OSError:
+            pass
+    except Exception:
+        pass
+    return tok
+
 # --- S5 hardening: auth + traversal + allowlists (SECURITY_STANDARDS.md) ---
-BRIDGE_TOKEN = os.environ.get('ABD_BRIDGE_TOKEN') or secrets.token_hex(16)
+BRIDGE_TOKEN = _load_or_create_bridge_token()
 ALLOWED_ORIGINS = frozenset([
     'http://localhost:8388',
     'http://127.0.0.1:8388',
@@ -190,17 +183,146 @@ ALLOWED_DOWNLOAD_HOSTS = frozenset([
     'github.com',
     'dl.fbaipublicfiles.com',
 ])
+ALLOWED_REDIRECT_CDN_HOSTS = ALLOWED_DOWNLOAD_HOSTS | frozenset({
+    'cdn-lfs.hf.co',
+    'cdn-lfs-us-1.hf.co',
+    'cdn-lfs-eu-1.hf.co',
+    'cas-bridge.xethub.hf.co',
+    'objects.githubusercontent.com',
+    'release-assets.githubusercontent.com'
+})
+MAX_MODEL_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
+
+def assert_url_resolves_to_public_https(url: str, allowed_hosts=None) -> None:
+    """Verifica que la URL use https, sin credenciales, host allowlistado y que resuelva únicamente a IPs públicas globales."""
+    try:
+        parsed = urlparse(url)
+    except Exception as ex:
+        raise ValueError(f'Invalid URL format: {ex}')
+    if parsed.scheme != 'https':
+        raise ValueError('Only HTTPS protocol is allowed')
+    if not parsed.hostname:
+        raise ValueError('URL missing hostname')
+    if parsed.username or parsed.password:
+        raise ValueError('User credentials in URL are prohibited')
+    
+    hostname = parsed.hostname.lower()
+    if allowed_hosts is not None and hostname not in allowed_hosts:
+        raise ValueError(f'Host "{hostname}" is not in the allowed hosts list')
+    
+    try:
+        addr_info = socket.getaddrinfo(hostname, 443, proto=socket.IPPROTO_TCP)
+    except Exception as ex:
+        raise ValueError(f'Could not resolve hostname {hostname}: {ex}')
+    
+    for item in addr_info:
+        sockaddr = item[4]
+        ip_str = sockaddr[0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or
+            ip_obj.is_multicast or ip_obj.is_reserved or ip_obj.is_unspecified):
+            raise ValueError(f'Blocked non-public IP ({ip_str}) for host {hostname}')
+
+class _SafeHttpsRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Limitar saltos y verificar resolución pública
+        assert_url_resolves_to_public_https(newurl, ALLOWED_REDIRECT_CDN_HOSTS)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+REPLICATE_PATH_RE = re.compile(r'^/v1/(?:models/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/predictions|predictions(?:/[a-zA-Z0-9_-]+)?)$')
 SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9\-_]{0,63}$')
 SUBLIBRARY_RE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_\. ]{0,63}$')
 # S5.4: ningún POST puede pedir más de 150 MB (el endpoint más pesado,
 # `/api/enhance` con audio crudo, ya topaba ahí; el resto pide mucho menos).
 MAX_POST_BODY_BYTES = 150 * 1024 * 1024
 
+USER_APPROVED_DIRS = set()
+USER_APPROVED_LOCK = threading.Lock()
+
+ALLOWED_MODEL_FILENAMES = frozenset({'MName', 'SName', 'manifest.json', 'provenance.json', 'map.script', 'sound.script', 'sound.stickrec'})
+ALLOWED_MODEL_EXTENSIONS = frozenset({
+    '.json', '.scape', '.sphere', '.script', '.stickrec',
+    '.wav', '.aif', '.aiff', '.flac', '.webp', '.png', '.jpg', '.jpeg', '.mid', '.txt', '.md',
+    '.nmmodel', '.neuronikmodel', '.zip', '.sfz', '.sf2', '.dspreset'
+})
+
+def get_allowed_library_roots():
+    repo_root = os.path.realpath(os.path.dirname(BASE_DIR))
+    roots = [
+        os.path.realpath(os.path.join(repo_root, 'AxionikDB')),
+        os.path.realpath(os.path.join(os.path.expanduser('~'), 'Documents', 'ABDSynths')),
+        os.path.realpath(os.path.join(os.path.expanduser('~'), 'ABDSynths')),
+    ]
+    env_roots = os.environ.get('ABD_ALLOWED_LIBRARY_ROOTS', '').strip()
+    if env_roots:
+        sep = ';' if sys.platform.startswith('win') else ':'
+        for r in env_roots.split(sep):
+            if r.strip():
+                roots.append(os.path.realpath(r.strip()))
+    with USER_APPROVED_LOCK:
+        roots.extend(USER_APPROVED_DIRS)
+    return roots
+
+def resolve_allowed_library_path(raw_path: str):
+    if not raw_path or not isinstance(raw_path, str):
+        return None
+    repo_root = os.path.realpath(os.path.dirname(BASE_DIR))
+    if raw_path == 'AxionikDB' or raw_path.strip() == 'AxionikDB':
+        candidate = os.path.realpath(os.path.join(repo_root, 'AxionikDB'))
+    else:
+        candidate = os.path.realpath(raw_path)
+    
+    for allowed_root in get_allowed_library_roots():
+        try:
+            if os.path.commonpath([candidate, allowed_root]) == allowed_root:
+                return candidate
+        except ValueError:
+            # En Windows, drives distintos (C: vs D:) lanzan ValueError
+            continue
+    return None
+
 def is_safe_slug(v):
     return isinstance(v, str) and bool(SLUG_RE.match(v))
 
 def is_safe_sublibrary(v):
     return isinstance(v, str) and bool(SUBLIBRARY_RE.match(v.strip())) and not '..' in v
+
+def _safe_rmtree_model_dir(dest_dir: str, lib_root: str) -> bool:
+    """Verifica que dest_dir resida estrictamente dentro de <lib_root>/Models/ o <lib_root>/Banks/<sublib>/ antes de borrarlo."""
+    if not dest_dir or not lib_root:
+        return False
+    norm_dest = os.path.realpath(dest_dir)
+    norm_lib = os.path.realpath(lib_root)
+    # No permitir enlaces simbólicos como directorio raíz del modelo a borrar
+    if os.path.islink(dest_dir):
+        return False
+    # Debe ser subdirectorio de Models o Banks
+    models_root = os.path.realpath(os.path.join(norm_lib, 'Models'))
+    banks_root = os.path.realpath(os.path.join(norm_lib, 'Banks'))
+    in_models = False
+    in_banks = False
+    try:
+        in_models = (os.path.commonpath([norm_dest, models_root]) == models_root and norm_dest != models_root)
+    except ValueError:
+        pass
+    try:
+        in_banks = (os.path.commonpath([norm_dest, banks_root]) == banks_root and norm_dest != banks_root)
+    except ValueError:
+        pass
+    if not (in_models or in_banks):
+        return False
+    shutil.rmtree(norm_dest)
+    return True
+
+def _sanitize_log_str(s: str, max_len: int = 120) -> str:
+    """Elimina cualquier carácter de control y recorta a max_len."""
+    if not s or not isinstance(s, str):
+        return ""
+    cleaned = "".join(ch for ch in s if ord(ch) >= 32 and ord(ch) != 127)
+    return cleaned[:max_len]
 
 def safe_join(base, *parts):
     joined = os.path.abspath(os.path.join(base, *parts))
@@ -359,13 +481,15 @@ def download_model_worker(model_id):
         }
 
     try:
+        assert_url_resolves_to_public_https(download_url, ALLOWED_DOWNLOAD_HOSTS)
+        opener = urllib.request.build_opener(_SafeHttpsRedirectHandler())
         req = urllib.request.Request(
             download_url,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
         )
-        with urllib.request.urlopen(req, timeout=30) as resp, open(tmp_path, "wb") as f_out:
+        with opener.open(req, timeout=30) as resp, open(tmp_path, "wb") as f_out:
             total = int(resp.headers.get("Content-Length", model_info["size_mb"] * 1024 * 1024))
             downloaded = 0
             chunk_size = 256 * 1024  # 256 KB chunks for high-speed transfer
@@ -380,6 +504,8 @@ def download_model_worker(model_id):
                     break
                 f_out.write(chunk)
                 downloaded += len(chunk)
+                if downloaded > MAX_MODEL_DOWNLOAD_BYTES:
+                    raise ValueError(f"Download exceeded maximum size ({MAX_MODEL_DOWNLOAD_BYTES} bytes)")
 
                 now = time.time()
                 if now - last_time >= 0.5:
@@ -441,7 +567,7 @@ def get_system_capabilities():
         "memory-management"
     ]
     if gpu_available:
-        caps.extend(["cuda-acceleration", "audiosr-ready", "demucs-ready"])
+        caps.extend(["cuda-acceleration", "demucs-ready"])
 
     return {
         "status": "ok",
@@ -639,11 +765,23 @@ def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0,
         if 'audiosr' in capabilities or 'harmonic-bwe' in capabilities:
             # Subtle quadratic exciter on top frequencies to generate smooth air harmonics
             nyquist = current_sr / 2.0
-            if nyquist > 22000:
+            if nyquist > 22000 and HAS_SCIPY:
+                orig_sr = src_sr if src_sr != current_sr else (current_sr // 2)
+                hp_cut = min(max(orig_sr * 0.38, 3500.0), nyquist * 0.85)
+                sos_seed = scipy.signal.butter(4, hp_cut / nyquist, btype='highpass', output='sos')
+                hf_post = min(max(orig_sr * 0.46, 8000.0), nyquist * 0.90)
+                sos_post = scipy.signal.butter(4, hf_post / nyquist, btype='highpass', output='sos')
+
                 for ch in range(num_channels):
-                    # Highpass above 10 kHz
                     sig = audio[:, ch]
-                    exciter = np.sign(sig) * (sig ** 2) * 0.08
+                    high_seed = scipy.signal.sosfiltfilt(sos_seed, sig)
+                    nonlinear = np.tanh(high_seed * 2.5) - high_seed
+                    air_band = scipy.signal.sosfiltfilt(sos_post, nonlinear)
+                    audio[:, ch] = np.clip(sig + air_band * 0.12, -1.0, 1.0)
+            elif nyquist > 22000:
+                for ch in range(num_channels):
+                    sig = audio[:, ch]
+                    exciter = np.sign(sig) * (sig ** 2) * 0.04
                     audio[:, ch] = np.clip(sig + exciter, -1.0, 1.0)
 
         # 4. Loop Expansion / Outpainting if target_loop_sec > 0 and loop exists
@@ -662,9 +800,8 @@ def process_audio_enhancement(input_bytes, target_sr=96000, target_loop_sec=0.0,
                 
                 for rep in range(repeats):
                     part = loop_body.copy()
-                    # Apply micro-pitch/formant breathing: +/- 0.3% organic flutter across repetitions
+                    # Apply micro-pitch/formant breathing across repetitions
                     if rep > 0:
-                        flutter = 1.0 + 0.003 * np.sin(2.0 * np.pi * rep / repeats)
                         fade_len = min(len(part) // 4, int(0.04 * current_sr))
                         # Equal-power crossfade at seams
                         if fade_len > 1:
@@ -1012,9 +1149,23 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def require_auth(self):
-        if os.environ.get('ABD_BRIDGE_TOKEN') and self.headers.get('X-Bridge-Token') != BRIDGE_TOKEN:
+        provided = (self.headers.get('X-Bridge-Token') or '').strip()
+        if not provided or not secrets.compare_digest(provided, BRIDGE_TOKEN):
             err = json.dumps({'error': 'unauthorized (missing/invalid X-Bridge-Token)'}).encode('utf-8')
             self.send_response(401)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+            return False
+        return True
+
+    def check_get_origin(self):
+        origin = self.headers.get('Origin', '')
+        if origin and origin not in ALLOWED_ORIGINS:
+            err = json.dumps({'error': 'forbidden origin'}).encode('utf-8')
+            self.send_response(403)
             self.send_cors_headers()
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(err)))
@@ -1036,6 +1187,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if not self.require_auth():
             return
 
         if path in ('/api/memory/status', '/memory/status'):
@@ -1156,6 +1310,10 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             init_dir = query.get('path', [''])[0]
             dlg_title = query.get('title', ['Seleccionar carpeta'])[0]
             res = open_native_folder_dialog(init_dir, dlg_title)
+            chosen_folder = res.get('folder') if isinstance(res, dict) else None
+            if chosen_folder and os.path.isdir(chosen_folder):
+                with USER_APPROVED_LOCK:
+                    USER_APPROVED_DIRS.add(os.path.realpath(chosen_folder))
             body = json.dumps(res).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
@@ -1167,7 +1325,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
         if path in ('/api/fs/scan', '/fs/scan'):
             query = parse_qs(parsed.query)
-            target_dir = query.get('path', [os.getcwd()])[0]
+            raw_target_dir = query.get('path', [os.getcwd()])[0]
+            target_dir = resolve_allowed_library_path(raw_target_dir)
+            if target_dir is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
             
             results = []
             if os.path.exists(target_dir) and os.path.isdir(target_dir):
@@ -1207,7 +1375,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
         if path in ('/api/fs/scan_axionik', '/fs/scan_axionik', '/api/fs/list_sublibraries', '/fs/list_sublibraries'):
             query = parse_qs(parsed.query)
-            target_dir = query.get('path', [os.path.join(os.getcwd(), 'AxionikDB')])[0]
+            raw_target = query.get('path', [os.path.join(os.getcwd(), 'AxionikDB')])[0]
+            target_dir = resolve_allowed_library_path(raw_target)
+            if target_dir is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
             models_dir = os.path.join(target_dir, 'Models') if os.path.exists(os.path.join(target_dir, 'Models')) else target_dir
             banks_dir = os.path.join(target_dir, 'Banks')
 
@@ -1387,6 +1565,133 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(err)
             return
+        if not self.require_auth():
+            return
+
+        if path in ('/api/local-llm/proxy', '/local-llm/proxy'):
+            # Relay seguro anti-CORS para Ollama / LM Studio locales
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+            base_url = str(payload.get('baseUrl', '')).strip()
+            req_path = str(payload.get('path', '')).strip()
+            method = str(payload.get('method', 'GET')).upper()
+            req_body = payload.get('body', None)
+
+            if method not in ('GET', 'POST'):
+                err = json.dumps({'error': 'method must be GET or POST'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            try:
+                parsed_u = urlparse(base_url)
+                if parsed_u.scheme != 'http' or parsed_u.username or parsed_u.password:
+                    raise ValueError('invalid scheme or credentials')
+                if parsed_u.hostname not in ('127.0.0.1', 'localhost'):
+                    raise ValueError('host must be loopback')
+                port = parsed_u.port or 80
+                if port not in (11434, 1234, 8080, 8000):
+                    raise ValueError('port not allowed')
+            except Exception as e:
+                err = json.dumps({'error': f'invalid baseUrl: {str(e)}'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            allowed_paths = ('/v1/models', '/api/tags', '/v1/chat/completions', '/api/chat')
+            if req_path not in allowed_paths:
+                err = json.dumps({'error': f'path {req_path} not in allowed whitelist'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
+            target_url = f"{parsed_u.scheme}://{parsed_u.hostname}:{port}{req_path}"
+            post_data = None
+            req_headers = {
+                'User-Agent': 'ABDNeuModMakr-Bridge-LocalLlm/1.0',
+                'Accept': 'application/json'
+            }
+            if method == 'POST':
+                req_headers['Content-Type'] = 'application/json'
+                post_data = json.dumps(req_body or {}).encode('utf-8')
+
+            try:
+                # Opener sin redirecciones (rechaza 3xx)
+                class NoRedirect(urllib.request.HTTPRedirectHandler):
+                    def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+                        return None
+
+                opener = urllib.request.build_opener(NoRedirect)
+                preq = urllib.request.Request(target_url, data=post_data, headers=req_headers, method=method)
+                with opener.open(preq, timeout=60) as resp:
+                    resp_status = resp.status
+                    resp_bytes = resp.read(2 * 1024 * 1024)
+                    try:
+                        resp_json = json.loads(resp_bytes.decode('utf-8'))
+                    except Exception:
+                        resp_json = {'raw': resp_bytes.decode('utf-8', errors='replace')}
+                    
+                    res_body = json.dumps({
+                        'ok': resp_status < 400,
+                        'status': resp_status,
+                        'json': resp_json
+                    }).encode('utf-8')
+
+                    self.send_response(200)
+                    self.send_cors_headers()
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(res_body)))
+                    self.end_headers()
+                    self.wfile.write(res_body)
+                    return
+            except urllib.error.HTTPError as he:
+                err_bytes = he.read(64 * 1024)
+                try:
+                    err_json = json.loads(err_bytes.decode('utf-8'))
+                except Exception:
+                    err_json = {'error': err_bytes.decode('utf-8', errors='replace')}
+                res_body = json.dumps({
+                    'ok': False,
+                    'status': he.code,
+                    'json': err_json
+                }).encode('utf-8')
+                self.send_response(200)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(res_body)))
+                self.end_headers()
+                self.wfile.write(res_body)
+                return
+            except Exception as ex:
+                res_body = json.dumps({
+                    'ok': False,
+                    'status': 502,
+                    'error': str(ex)
+                }).encode('utf-8')
+                self.send_response(502)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(res_body)))
+                self.end_headers()
+                self.wfile.write(res_body)
+                return
 
         if path in ('/api/cloud/replicate_proxy', '/cloud/replicate_proxy'):
             content_len = int(self.headers.get('Content-Length', 0))
@@ -1397,8 +1702,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             rel_path = str(payload.get('path', '/v1/account')).strip()
-            if not rel_path.startswith('/v1/'):
-                err = json.dumps({'error': 'Only /v1/* Replicate paths are allowed'}).encode('utf-8')
+            if not isinstance(rel_path, str) or '..' in rel_path or not REPLICATE_PATH_RE.match(rel_path):
+                err = json.dumps({'error': 'invalid replicate path'}).encode('utf-8')
                 self.send_response(400)
                 self.send_cors_headers()
                 self.send_header('Content-Type', 'application/json')
@@ -1409,6 +1714,15 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             method = str(payload.get('method', 'GET')).upper()
             token = str(payload.get('token', '')).strip()
+            if any(ord(c) < 33 or ord(c) > 126 for c in token):
+                err = json.dumps({'error': 'invalid replicate token'}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
             req_body = payload.get('body', None)
             target_url = f"https://api.replicate.com{rel_path}"
 
@@ -1649,11 +1963,13 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 return
 
             try:
+                assert_url_resolves_to_public_https(check_url, ALLOWED_DOWNLOAD_HOSTS)
+                opener = urllib.request.build_opener(_SafeHttpsRedirectHandler())
                 req = urllib.request.Request(
                     check_url,
                     headers={'User-Agent': 'ABDNeuModMakr/1.0', 'Range': 'bytes=0-1024'}
                 )
-                with urllib.request.urlopen(req, timeout=7) as resp:
+                with opener.open(req, timeout=7) as resp:
                     status_code = resp.getcode()
                     content_range = resp.headers.get('Content-Range')
                     total_bytes = None
@@ -1704,20 +2020,25 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             try:
                 target_sr = int(self.headers.get('X-Target-Sample-Rate', '96000'))
             except ValueError:
-                pass
+                target_sr = 96000
+            target_sr = max(8000, min(192000, target_sr))
 
             target_loop_sec = 0.0
             try:
                 target_loop_sec = float(self.headers.get('X-Target-Loop-Sec', '0'))
+                if not math.isfinite(target_loop_sec):
+                    target_loop_sec = 0.0
             except ValueError:
-                pass
+                target_loop_sec = 0.0
+            target_loop_sec = max(0.0, min(60.0, target_loop_sec))
 
             caps_hdr = self.headers.get('X-Capabilities', '')
             capabilities = [c.strip() for c in caps_hdr.split(',') if c.strip()]
 
             prompt_hdr = self.headers.get('X-Text-Prompt', '')
             if prompt_hdr:
-                sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] Neural Timbre Guidance Prompt: '{prompt_hdr}'\n")
+                safe_prompt = _sanitize_log_str(prompt_hdr, 120)
+                sys.stderr.write(f"[{time.strftime('%H:%M:%S')}] Neural Timbre Guidance Prompt: '{safe_prompt}'\n")
 
             noise_profile = None
             noise_profile_hdr = self.headers.get('X-Noise-Profile', '')
@@ -1763,7 +2084,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             slug = payload.get('slug', 'model')
             sublibrary = payload.get('sublibrary', 'Default')
             if not is_safe_sublibrary(sublibrary):
@@ -1803,6 +2135,11 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 full_dest = safe_join(target_model_dir, *rel_path.replace('\\', '/').split('/'))
                 if full_dest is None:
                     continue
+                fname = os.path.basename(full_dest)
+                _, fext = os.path.splitext(fname.lower())
+                if fname not in ALLOWED_MODEL_FILENAMES and fext not in ALLOWED_MODEL_EXTENSIONS:
+                    continue
+
                 os.makedirs(os.path.dirname(full_dest), exist_ok=True)
                 if 'content_b64' in f_item:
                     if len(f_item['content_b64']) > 70 * 1024 * 1024:
@@ -1843,7 +2180,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             sub_name = (payload.get('name') or payload.get('sublibrary_name') or '').strip()
             desc = payload.get('description', f'Sub-library: {sub_name}')
             order = payload.get('order', 10)
@@ -1910,7 +2258,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             sub_name = (payload.get('name') or payload.get('sublibrary_name') or '').strip()
 
             if not is_safe_sublibrary(sub_name) or sub_name.lower() == 'default':
@@ -1994,7 +2353,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             slug = payload.get('slug', '')
             target_sub = (payload.get('target_sublibrary') or 'Default').strip()
             source_sub = (payload.get('source_sublibrary') or '').strip()
@@ -2099,7 +2469,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             sub_name = (payload.get('sublibrary') or 'Default').strip()
             ordered_slugs = payload.get('ordered_slugs', [])
 
@@ -2149,7 +2530,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             source_slug = payload.get('source_slug', '')
             new_slug = payload.get('new_slug', '')
             new_name = payload.get('new_name', '')
@@ -2186,7 +2578,15 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 return
 
             if os.path.exists(dest_dir):
-                shutil.rmtree(dest_dir)
+                if not _safe_rmtree_model_dir(dest_dir, library_path):
+                    err = json.dumps({'error': 'Cannot safely remove destination directory'}).encode('utf-8')
+                    self.send_response(400)
+                    self.send_cors_headers()
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
+                    return
             shutil.copytree(src_dir, dest_dir)
 
             # Update manifest.json in new folder
@@ -2228,7 +2628,18 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
                 except Exception:
                     pass
-            library_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            raw_lib_path = payload.get('library_path', os.path.join(os.getcwd(), 'AxionikDB'))
+            library_path = resolve_allowed_library_path(raw_lib_path)
+            if library_path is None:
+                err = json.dumps({'error': 'library_path outside allowed roots'}).encode('utf-8')
+                self.send_response(403)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+                return
+
             old_slug = payload.get('old_slug', '')
             new_slug = payload.get('new_slug', '')
             new_name = payload.get('new_name', '')
@@ -2266,7 +2677,15 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             if src_dir != dest_dir:
                 if os.path.exists(dest_dir):
-                    shutil.rmtree(dest_dir)
+                    if not _safe_rmtree_model_dir(dest_dir, library_path):
+                        err = json.dumps({'error': 'Cannot safely remove destination directory'}).encode('utf-8')
+                        self.send_response(400)
+                        self.send_cors_headers()
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Content-Length', str(len(err)))
+                        self.end_headers()
+                        self.wfile.write(err)
+                        return
                 os.rename(src_dir, dest_dir)
 
             manifest_path = os.path.join(dest_dir, 'manifest.json')
@@ -2491,10 +2910,7 @@ def run_server(port=DEFAULT_PORT):
     print(f"  Device: {caps['device']} ({caps['gpu_name']})")
     print(f"  Libraries: NumPy={caps['libraries']['numpy']} SoundFile={caps['libraries']['soundfile']} Torch={caps['libraries']['torch']}")
     print(f"  Listening on: http://127.0.0.1:{server_address[1]}")
-    if os.environ.get('ABD_BRIDGE_TOKEN'):
-        print("  Auth: X-Bridge-Token enforced (ABD_BRIDGE_TOKEN).")
-    else:
-        print(f"  Auth: generated token {BRIDGE_TOKEN} (send as X-Bridge-Token; set ABD_BRIDGE_TOKEN to pin).")
+    print(f"  [TOKEN] X-Bridge-Token ACTIVO (obligatorio): {BRIDGE_TOKEN} (guardado en bridge/.bridge_token — pégalo una vez en Settings → Companion Bridge)")
     print("  Compatible with Vercel Web & Local UI. Press Ctrl+C to stop.")
     print("=" * 64)
 

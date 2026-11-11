@@ -1,6 +1,6 @@
 {
-    "engineHash":  "sha256:1c1cf1635de7427f24847d754b119640d995814199c9f56b95668a2bdad0dea2",
-    "builtAtUtc":  "2026-11-06T11:58:12.0276335Z",
+    "engineHash":  "sha256:416167968bd6f15904f68e8b2e19d698b803e66ec8b7e87c91dc4abd2101f9c9",
+    "builtAtUtc":  "2026-11-08T09:01:19.5830581Z",
     "sources":  [
                     "Source/DSP/Extended/ResynatorV2Wasm.cpp",
                     "Source/DSP/Extended/AxionikExpandedSynthesizer.h",

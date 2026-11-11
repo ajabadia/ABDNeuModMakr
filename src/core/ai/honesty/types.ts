@@ -102,4 +102,5 @@ export interface PipelineStepEngineContext {
   isCloudReady: boolean;
   cloudProviderLabel?: string | null;
   dspAlgorithm?: 'legacy' | 'enhanced';
+  bridgeNeuralInferenceReady?: boolean;
 }

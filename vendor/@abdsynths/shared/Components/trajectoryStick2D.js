@@ -60,6 +60,8 @@ export class TrajectoryStick2D {
       onLayerChange: null,
       onPositionChange: null,
       onChange: null,
+      onDragStart: null,
+      onDragEnd: null,
       onOpenExpanded: null,
       ...options,
     };
@@ -222,6 +224,9 @@ export class TrajectoryStick2D {
     this.handlePointerDown = (e) => {
       this.isDragging = true;
       this.stickAreaEl.setPointerCapture(e.pointerId);
+      // Un arrastre de stick emite un onChange por muestra: el host necesita
+      // una sola pareja begin/end para que el DAW lo trate como UN gesto.
+      this.options.onDragStart?.();
       this.handlePointerMove(e);
     };
 
@@ -241,6 +246,7 @@ export class TrajectoryStick2D {
           const ry = Number.isFinite(this.options.restY) ? this.options.restY : 0.5;
           this.setPosition(this.activeLayer, rx, ry, true);
         }
+        this.options.onDragEnd?.();
       }
     };
 
@@ -443,15 +449,15 @@ export class TrajectoryStick2D {
   }
 
   setLabels(labels = {}) {
-    if (!this.container) return;
+    if (!this.container || !labels) return;
     const pn = this.container.querySelector('.pole-n');
     const ps = this.container.querySelector('.pole-s');
     const pw = this.container.querySelector('.pole-w');
     const pe = this.container.querySelector('.pole-e');
-    if (pn && labels.north !== undefined) pn.textContent = labels.north;
-    if (ps && labels.south !== undefined) ps.textContent = labels.south;
-    if (pw && labels.west !== undefined) pw.textContent = labels.west;
-    if (pe && labels.east !== undefined) pe.textContent = labels.east;
+    if (pn && labels.north !== undefined) pn.textContent = String(labels.north).trim();
+    if (ps && labels.south !== undefined) ps.textContent = String(labels.south).trim();
+    if (pw && labels.west !== undefined) pw.textContent = String(labels.west).trim();
+    if (pe && labels.east !== undefined) pe.textContent = String(labels.east).trim();
   }
 
   getCoordinates(layerIdx = this.activeLayer) {
@@ -495,18 +501,6 @@ export class TrajectoryStick2D {
     } else if (typeof arg1 === 'object') {
       this.setPosition(this.activeLayer, arg1.x, arg1.y, notify);
     }
-  }
-
-  setLabels(labels) {
-    if (!labels) return;
-    const n = this.container.querySelector('.pole-n');
-    const s = this.container.querySelector('.pole-s');
-    const w = this.container.querySelector('.pole-w');
-    const e = this.container.querySelector('.pole-e');
-    if (n && labels.north) n.textContent = labels.north.trim();
-    if (s && labels.south) s.textContent = labels.south.trim();
-    if (w && labels.west) w.textContent = labels.west.trim();
-    if (e && labels.east) e.textContent = labels.east.trim();
   }
 
   updatePuckPosition() {

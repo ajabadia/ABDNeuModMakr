@@ -1,5 +1,25 @@
 {
-  "schemaVersion": "1.0.0",
+  "$schema": "./parameter_dictionary.schema.json",
+  "schemaVersion": "2.0.0",
+  "id": "korg_ms2000",
+  "displayName": "Korg MS2000",
+  "topology": "multi_part",
+  "parts": [
+    {
+      "id": "t1",
+      "name": "Timbre 1",
+      "scope": "part",
+      "cardinality": 1,
+      "idPrefix": ""
+    },
+    {
+      "id": "t2",
+      "name": "Timbre 2",
+      "scope": "part",
+      "cardinality": 1,
+      "idPrefix": "t2"
+    }
+  ],
   "synthName": "ABDMS2000",
   "version": "1.0.0",
   "parameters": [
@@ -14,7 +34,9 @@
       "type": "continuous",
       "skew": 1,
       "unit": "dB",
-      "sysex": false
+      "sysex": false,
+      "semanticRole": "MasterVolume",
+      "scope": "global"
     },
     {
       "id": "synthMode",
@@ -30,7 +52,8 @@
         "microKORG",
         "Advanced"
       ],
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "voiceMode",
@@ -45,7 +68,64 @@
         "Mono",
         "Poly",
         "Unison"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 39,
+        "bitMask": 192,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
+    },
+    {
+      "id": "triggerMode",
+      "name": "Trigger Mode",
+      "group": "Voice",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "type": "choice",
+      "choices": [
+        "Single",
+        "Multi"
+      ],
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 39,
+        "bitMask": 8,
+        "bitShift": 3,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
+    },
+    {
+      "name": "Key Priority",
+      "group": "Voice",
+      "cc": null,
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "type": "choice",
+      "choices": [
+        "Last",
+        "Low",
+        "High",
+        "Last"
+      ],
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 39,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "KeyPriority",
+      "id": "keyPriority"
     },
     {
       "id": "unisonDetune",
@@ -56,7 +136,15 @@
       "max": 99,
       "default": 10,
       "type": "integer",
-      "unit": "cents"
+      "unit": "cents",
+      "binaryPacking": {
+        "byteOffset": 40,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "unisonSpread",
@@ -67,7 +155,8 @@
       "max": 1,
       "default": 0.5,
       "type": "continuous",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "portamentoTime",
@@ -83,7 +172,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 53,
+        "bitMask": 127,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "portamentoOn",
@@ -94,7 +191,8 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "osc1Wave",
@@ -114,7 +212,16 @@
         "DWGS",
         "Noise",
         "AudioIn"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 45,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "Osc1Waveform",
+      "scope": "part"
     },
     {
       "id": "osc1DwgsWave",
@@ -124,7 +231,15 @@
       "min": 0,
       "max": 511,
       "default": 0,
-      "type": "integer"
+      "type": "integer",
+      "binaryPacking": {
+        "byteOffset": 48,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "osc1Ctrl1",
@@ -139,7 +254,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 46,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "osc1Ctrl2",
@@ -154,7 +277,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 47,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "osc2Wave",
@@ -169,7 +300,16 @@
         "Saw",
         "Square",
         "Triangle"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 50,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "semanticRole": "Osc2Waveform",
+      "scope": "part"
     },
     {
       "id": "osc2ModType",
@@ -184,8 +324,16 @@
         "Off",
         "Ring",
         "Sync",
-        "CrossMod"
-      ]
+        "Ring+Sync"
+      ],
+      "binaryPacking": {
+        "byteOffset": 50,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "osc2Semitone",
@@ -196,7 +344,16 @@
       "max": 24,
       "default": 0,
       "type": "integer",
-      "unit": "st"
+      "unit": "st",
+      "binaryPacking": {
+        "byteOffset": 51,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "semanticRole": "Osc2TransposeSemis",
+      "scope": "part"
     },
     {
       "id": "osc2Tune",
@@ -207,7 +364,18 @@
       "max": 50,
       "default": 0,
       "type": "integer",
-      "unit": "cents"
+      "unit": "cents",
+      "binaryPacking": {
+        "byteOffset": 52,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "curve": "SymBipolar",
+      "semanticRole": "Osc2DetuneCents",
+      "scope": "part"
     },
     {
       "id": "mixOsc1Level",
@@ -223,7 +391,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 54,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "mixOsc2Level",
@@ -239,7 +415,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 55,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "mixNoiseLevel",
@@ -255,7 +439,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 56,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "filterType",
@@ -271,7 +463,15 @@
         "LPF12",
         "BPF12",
         "HPF12"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 57,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "filterCutoff",
@@ -291,7 +491,16 @@
       "curveP1": 6.907755,
       "domainMin": 20,
       "domainMax": 20000,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 58,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterCutoff",
+      "scope": "part"
     },
     {
       "id": "filterResonance",
@@ -307,7 +516,16 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 59,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterResonance",
+      "scope": "part"
     },
     {
       "id": "filterEg1Int",
@@ -320,9 +538,19 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 60,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "semanticRole": "FilterEnvAmount",
+      "scope": "part"
     },
     {
       "id": "filterKeyTrack",
@@ -335,9 +563,18 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 62,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "ampLevel",
@@ -353,7 +590,16 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 63,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpLevel",
+      "scope": "part"
     },
     {
       "id": "ampPan",
@@ -366,10 +612,20 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 64,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "semanticRole": "AmpPan",
+      "scope": "part"
     },
     {
       "id": "ampDistortion",
@@ -379,7 +635,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 65,
+        "bitMask": 1,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "ampKeyTrack",
@@ -392,9 +656,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 67,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "eg1Attack",
@@ -411,7 +684,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 68,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvAttack",
+      "scope": "part"
     },
     {
       "id": "eg1Decay",
@@ -428,7 +710,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 69,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvDecay",
+      "scope": "part"
     },
     {
       "id": "eg1Sustain",
@@ -443,7 +734,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 70,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvSustain",
+      "scope": "part"
     },
     {
       "id": "eg1Release",
@@ -460,7 +760,36 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 71,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvRelease",
+      "scope": "part"
+    },
+    {
+      "id": "eg1Reset",
+      "name": "EG1 Reset on Retrigger",
+      "group": "EG1",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 39,
+        "bitMask": 16,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "Eg1Reset"
     },
     {
       "id": "eg2Attack",
@@ -477,7 +806,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 72,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvAttack",
+      "scope": "part"
     },
     {
       "id": "eg2Decay",
@@ -494,7 +832,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 73,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvDecay",
+      "scope": "part"
     },
     {
       "id": "eg2Sustain",
@@ -509,7 +856,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 74,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvSustain",
+      "scope": "part"
     },
     {
       "id": "eg2Release",
@@ -526,7 +882,36 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 75,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvRelease",
+      "scope": "part"
+    },
+    {
+      "id": "eg2Reset",
+      "name": "EG2 Reset on Retrigger",
+      "group": "EG2",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 39,
+        "bitMask": 32,
+        "bitShift": 5,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "Eg2Reset"
     },
     {
       "id": "lfo1Wave",
@@ -542,7 +927,15 @@
         "Square",
         "Triangle",
         "SampleHold"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 76,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo1Freq",
@@ -557,12 +950,20 @@
       "unit": "Hz",
       "wire": "CC",
       "wireCodec": "Value",
-      "curve": "Exp",
-      "curveP0": 0.035,
-      "curveP1": 7.5,
-      "domainMin": 0.01,
-      "domainMax": 20,
-      "smoothing": "Log"
+      "curve": "Lut",
+      "domainMin": 0.0457763671875,
+      "domainMax": 36.609649658203125,
+      "smoothing": "Logarithmic",
+      "binaryPacking": {
+        "byteOffset": 77,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "lutId": "ms2000_lfo1_hz",
+      "semanticRole": "Lfo1RateHz",
+      "scope": "part"
     },
     {
       "id": "lfo1KeySync",
@@ -577,7 +978,15 @@
         "Off",
         "Timbre",
         "Voice"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 76,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo1TempoSync",
@@ -587,7 +996,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 78,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo1SyncNote",
@@ -614,7 +1031,15 @@
         "1/64",
         "1/64T",
         "1/128"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 78,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo2Wave",
@@ -630,7 +1055,15 @@
         "Square",
         "Sine",
         "SampleHold"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 79,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo2Freq",
@@ -645,12 +1078,20 @@
       "unit": "Hz",
       "wire": "CC",
       "wireCodec": "Value",
-      "curve": "Exp",
-      "curveP0": 0.035,
-      "curveP1": 7.5,
-      "domainMin": 0.01,
-      "domainMax": 20,
-      "smoothing": "Log"
+      "curve": "Lut",
+      "domainMin": 0.0457763671875,
+      "domainMax": 194.90432739257812,
+      "smoothing": "Logarithmic",
+      "binaryPacking": {
+        "byteOffset": 80,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "lutId": "ms2000_lfo2_hz",
+      "semanticRole": "Lfo2RateHz",
+      "scope": "part"
     },
     {
       "id": "lfo2KeySync",
@@ -665,7 +1106,15 @@
         "Off",
         "Timbre",
         "Voice"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 79,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo2TempoSync",
@@ -675,7 +1124,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 81,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "lfo2SyncNote",
@@ -702,7 +1159,15 @@
         "1/64",
         "1/64T",
         "1/128"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 81,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "eqLowFreq",
@@ -724,7 +1189,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 3,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 28,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "eqLowGain",
@@ -738,10 +1211,19 @@
       "unit": "dB",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -12,
       "domainMax": 12,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 29,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "global"
     },
     {
       "id": "eqHighFreq",
@@ -763,7 +1245,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 3,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 26,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "eqHighGain",
@@ -777,10 +1267,19 @@
       "unit": "dB",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -12,
       "domainMax": 12,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 27,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "global"
     },
     {
       "id": "modFxOn",
@@ -790,7 +1289,8 @@
       "min": 0,
       "max": 1,
       "default": 1,
-      "type": "boolean"
+      "type": "boolean",
+      "scope": "global"
     },
     {
       "id": "modFxType",
@@ -805,7 +1305,15 @@
         "ChorusFlanger",
         "Ensemble",
         "Phaser"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 25,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "modFxSpeed",
@@ -824,7 +1332,15 @@
       "curveP1": 6.620073,
       "domainMin": 0.02,
       "domainMax": 15,
-      "smoothing": "Log"
+      "smoothing": "Logarithmic",
+      "binaryPacking": {
+        "byteOffset": 23,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "modFxDepth",
@@ -841,7 +1357,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 24,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "modFxFeedback",
@@ -857,7 +1381,8 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 127,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "scope": "global"
     },
     {
       "id": "delayOn",
@@ -867,7 +1392,8 @@
       "min": 0,
       "max": 1,
       "default": 1,
-      "type": "boolean"
+      "type": "boolean",
+      "scope": "global"
     },
     {
       "id": "delayType",
@@ -882,7 +1408,15 @@
         "Stereo",
         "Cross",
         "LeftRight"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 22,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "delayTime",
@@ -900,7 +1434,15 @@
       "curveP1": 0.5,
       "domainMin": 0.001,
       "domainMax": 1.4,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 20,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "delayDepth",
@@ -915,7 +1457,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 21,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "delayFeedback",
@@ -930,7 +1480,56 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 21,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
+    },
+    {
+      "id": "delayTempoSync",
+      "name": "Delay Tempo Sync",
+      "group": "DelayFX",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "scope": "global"
+    },
+    {
+      "id": "delaySyncNote",
+      "name": "Delay Sync Note",
+      "group": "DelayFX",
+      "cc": null,
+      "min": 0,
+      "max": 14,
+      "default": 8,
+      "type": "choice",
+      "choices": [
+        "1/32",
+        "1/24",
+        "1/16",
+        "1/12",
+        "3/32",
+        "1/8",
+        "1/6",
+        "3/16",
+        "1/4",
+        "1/3",
+        "3/8",
+        "1/2",
+        "2/3",
+        "3/4",
+        "1/1"
+      ],
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpOn",
@@ -940,7 +1539,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 32,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "arpType",
@@ -958,7 +1565,15 @@
         "Alt2",
         "Random",
         "Trigger"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 33,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "arpRange",
@@ -968,7 +1583,15 @@
       "min": 1,
       "max": 4,
       "default": 1,
-      "type": "integer"
+      "type": "integer",
+      "binaryPacking": {
+        "byteOffset": 33,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "arpGate",
@@ -983,7 +1606,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 34,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "arpLatch",
@@ -993,7 +1624,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 32,
+        "bitMask": 64,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "arpResolution",
@@ -1021,7 +1660,64 @@
         "2/1",
         "3/1",
         "4/1"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 35,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
+    },
+    {
+      "id": "arpSwing",
+      "name": "Arpeggiator Swing",
+      "group": "Arp",
+      "cc": null,
+      "min": -100,
+      "max": 100,
+      "default": 0,
+      "type": "integer",
+      "unit": "%",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 36,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Signed2sComplement"
+      },
+      "scope": "global"
+    },
+    {
+      "id": "arpKeySync",
+      "name": "Arp Key Sync",
+      "group": "Arp",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "scope": "global"
+    },
+    {
+      "id": "arpTarget",
+      "name": "Arp Target Timbre",
+      "group": "Arp",
+      "cc": null,
+      "min": 0,
+      "max": 2,
+      "default": 0,
+      "type": "choice",
+      "choices": [
+        "Both",
+        "Timbre 1",
+        "Timbre 2"
+      ],
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpLastStep",
@@ -1032,7 +1728,8 @@
       "max": 8,
       "default": 8,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep1",
@@ -1043,7 +1740,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep2",
@@ -1054,7 +1752,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep3",
@@ -1065,7 +1764,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep4",
@@ -1076,7 +1776,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep5",
@@ -1087,7 +1788,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep6",
@@ -1098,7 +1800,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep7",
@@ -1109,7 +1812,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "arpStep8",
@@ -1120,7 +1824,8 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "global"
     },
     {
       "id": "modSeqResolution",
@@ -1148,7 +1853,15 @@
         "2/1",
         "3/1",
         "4/1"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 90,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "assignablePedal",
@@ -1158,7 +1871,8 @@
       "min": 0,
       "max": 127,
       "default": 0,
-      "type": "integer"
+      "type": "integer",
+      "scope": "global"
     },
     {
       "id": "assignableSwitch",
@@ -1168,7 +1882,8 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "scope": "global"
     },
     {
       "id": "patch1Source",
@@ -1188,7 +1903,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 82,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch1Destination",
@@ -1208,7 +1931,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 82,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch1Intensity",
@@ -1221,9 +1952,18 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 83,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "patch2Source",
@@ -1243,7 +1983,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 84,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch2Destination",
@@ -1263,7 +2011,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 84,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch2Intensity",
@@ -1276,9 +2032,18 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 85,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "patch3Source",
@@ -1298,7 +2063,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 86,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch3Destination",
@@ -1318,7 +2091,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 86,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch3Intensity",
@@ -1331,9 +2112,18 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 87,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "patch4Source",
@@ -1353,7 +2143,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 88,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch4Destination",
@@ -1373,7 +2171,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 88,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "patch4Intensity",
@@ -1386,9 +2192,18 @@
       "type": "integer",
       "wire": "CC",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 89,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "modSeqOn",
@@ -1399,7 +2214,15 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 90,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "modSeqType",
@@ -1416,7 +2239,15 @@
         "Bounce",
         "Random"
       ],
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 91,
+        "bitMask": 12,
+        "bitShift": 2,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "synthVocoderMode",
@@ -1427,7 +2258,8 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderCarrierSrc",
@@ -1442,7 +2274,8 @@
         "Synth",
         "External"
       ],
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderFormantShift",
@@ -1460,7 +2293,15 @@
         "+1",
         "+2"
       ],
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 60,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderHpfLevel",
@@ -1471,7 +2312,15 @@
       "max": 127,
       "default": 64,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 56,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderGateSense",
@@ -1482,7 +2331,15 @@
       "max": 127,
       "default": 50,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 61,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderDirectLevel",
@@ -1493,7 +2350,15 @@
       "max": 127,
       "default": 0,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 66,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel1",
@@ -1504,7 +2369,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel2",
@@ -1515,7 +2381,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel3",
@@ -1526,7 +2393,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel4",
@@ -1537,7 +2405,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel5",
@@ -1548,7 +2417,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel6",
@@ -1559,7 +2429,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel7",
@@ -1570,7 +2441,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel8",
@@ -1581,7 +2453,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel9",
@@ -1592,7 +2465,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel10",
@@ -1603,7 +2477,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel11",
@@ -1614,7 +2489,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel12",
@@ -1625,7 +2501,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel13",
@@ -1636,7 +2513,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel14",
@@ -1647,7 +2525,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel15",
@@ -1658,7 +2537,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandLevel16",
@@ -1669,7 +2549,8 @@
       "max": 127,
       "default": 127,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "timbreMode",
@@ -1685,7 +2566,8 @@
         "Split",
         "Layer"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "global"
     },
     {
       "id": "timbreVoices",
@@ -1701,7 +2583,15 @@
         "2+2",
         "3+1"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 16,
+        "bitMask": 192,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "splitPoint",
@@ -1712,7 +2602,15 @@
       "max": 127,
       "default": 60,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 18,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "global"
     },
     {
       "id": "scaleKey",
@@ -1737,7 +2635,15 @@
         "A#",
         "B"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 17,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "scaleType",
@@ -1760,7 +2666,15 @@
         "Scale 8",
         "User Scale"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 17,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "global"
     },
     {
       "id": "filterVelo",
@@ -1774,9 +2688,18 @@
       "sysex": true,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 61,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "ampVelo",
@@ -1790,9 +2713,18 @@
       "sysex": true,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 66,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "seqLastStep",
@@ -1803,7 +2735,15 @@
       "max": 16,
       "default": 16,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 91,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "seqRunMode",
@@ -1818,7 +2758,15 @@
         "1Shot",
         "Loop"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 90,
+        "bitMask": 64,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "seqKeySync",
@@ -1834,7 +2782,15 @@
         "Timbre",
         "Voice"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 91,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "seq1Dest",
@@ -1878,7 +2834,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Motion",
@@ -1893,7 +2850,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step1",
@@ -1904,7 +2862,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step2",
@@ -1915,7 +2874,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step3",
@@ -1926,7 +2886,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step4",
@@ -1937,7 +2898,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step5",
@@ -1948,7 +2910,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step6",
@@ -1959,7 +2922,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step7",
@@ -1970,7 +2934,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step8",
@@ -1981,7 +2946,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step9",
@@ -1992,7 +2958,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step10",
@@ -2003,7 +2970,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step11",
@@ -2014,7 +2982,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step12",
@@ -2025,7 +2994,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step13",
@@ -2036,7 +3006,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step14",
@@ -2047,7 +3018,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step15",
@@ -2058,7 +3030,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq1Step16",
@@ -2069,7 +3042,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Dest",
@@ -2113,7 +3087,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Motion",
@@ -2128,7 +3103,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step1",
@@ -2139,7 +3115,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step2",
@@ -2150,7 +3127,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step3",
@@ -2161,7 +3139,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step4",
@@ -2172,7 +3151,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step5",
@@ -2183,7 +3163,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step6",
@@ -2194,7 +3175,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step7",
@@ -2205,7 +3187,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step8",
@@ -2216,7 +3199,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step9",
@@ -2227,7 +3211,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step10",
@@ -2238,7 +3223,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step11",
@@ -2249,7 +3235,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step12",
@@ -2260,7 +3247,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step13",
@@ -2271,7 +3259,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step14",
@@ -2282,7 +3271,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step15",
@@ -2293,7 +3283,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq2Step16",
@@ -2304,7 +3295,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Dest",
@@ -2348,7 +3340,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Motion",
@@ -2363,7 +3356,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step1",
@@ -2374,7 +3368,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step2",
@@ -2385,7 +3380,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step3",
@@ -2396,7 +3392,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step4",
@@ -2407,7 +3404,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step5",
@@ -2418,7 +3416,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step6",
@@ -2429,7 +3428,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step7",
@@ -2440,7 +3440,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step8",
@@ -2451,7 +3452,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step9",
@@ -2462,7 +3464,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step10",
@@ -2473,7 +3476,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step11",
@@ -2484,7 +3488,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step12",
@@ -2495,7 +3500,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step13",
@@ -2506,7 +3512,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step14",
@@ -2517,7 +3524,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step15",
@@ -2528,7 +3536,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "seq3Step16",
@@ -2539,7 +3548,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2VoiceMode",
@@ -2554,7 +3564,64 @@
         "Mono",
         "Poly",
         "Unison"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 147,
+        "bitMask": 192,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
+    },
+    {
+      "id": "t2TriggerMode",
+      "name": "Timbre 2 Trigger Mode",
+      "group": "Timbre 2",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "type": "choice",
+      "choices": [
+        "Single",
+        "Multi"
+      ],
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 147,
+        "bitMask": 8,
+        "bitShift": 3,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
+    },
+    {
+      "name": "Timbre 2 Key Priority",
+      "group": "Timbre 2",
+      "cc": null,
+      "min": 0,
+      "max": 3,
+      "default": 0,
+      "type": "choice",
+      "choices": [
+        "Last",
+        "Low",
+        "High",
+        "Last"
+      ],
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 147,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "KeyPriority",
+      "id": "t2KeyPriority"
     },
     {
       "id": "t2UnisonDetune",
@@ -2565,7 +3632,15 @@
       "max": 99,
       "default": 10,
       "type": "integer",
-      "unit": "cents"
+      "unit": "cents",
+      "binaryPacking": {
+        "byteOffset": 148,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2PortamentoTime",
@@ -2581,7 +3656,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 161,
+        "bitMask": 127,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Osc1Wave",
@@ -2601,7 +3684,16 @@
         "DWGS",
         "Noise",
         "AudioIn"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 153,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "Osc1Waveform",
+      "scope": "part"
     },
     {
       "id": "t2Osc1DwgsWave",
@@ -2611,7 +3703,15 @@
       "min": 0,
       "max": 511,
       "default": 0,
-      "type": "integer"
+      "type": "integer",
+      "binaryPacking": {
+        "byteOffset": 156,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Osc1Ctrl1",
@@ -2626,7 +3726,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 154,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Osc1Ctrl2",
@@ -2641,7 +3749,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 155,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Osc2Wave",
@@ -2656,7 +3772,16 @@
         "Saw",
         "Square",
         "Triangle"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 158,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "semanticRole": "Osc2Waveform",
+      "scope": "part"
     },
     {
       "id": "t2Osc2ModType",
@@ -2672,7 +3797,15 @@
         "Ring",
         "Sync",
         "CrossMod"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 158,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Osc2Semitone",
@@ -2683,7 +3816,16 @@
       "max": 24,
       "default": 0,
       "type": "integer",
-      "unit": "st"
+      "unit": "st",
+      "binaryPacking": {
+        "byteOffset": 159,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "semanticRole": "Osc2TransposeSemis",
+      "scope": "part"
     },
     {
       "id": "t2Osc2Tune",
@@ -2694,7 +3836,18 @@
       "max": 50,
       "default": 0,
       "type": "integer",
-      "unit": "cents"
+      "unit": "cents",
+      "binaryPacking": {
+        "byteOffset": 160,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "curve": "SymBipolar",
+      "semanticRole": "Osc2DetuneCents",
+      "scope": "part"
     },
     {
       "id": "t2MixOsc1Level",
@@ -2710,7 +3863,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 162,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2MixOsc2Level",
@@ -2726,7 +3887,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 163,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2MixNoiseLevel",
@@ -2742,7 +3911,15 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 164,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2FilterType",
@@ -2758,7 +3935,15 @@
         "LPF12",
         "BPF12",
         "HPF12"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 165,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2FilterCutoff",
@@ -2778,7 +3963,16 @@
       "curveP1": 6.907755,
       "domainMin": 20,
       "domainMax": 20000,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 166,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterCutoff",
+      "scope": "part"
     },
     {
       "id": "t2FilterResonance",
@@ -2794,7 +3988,16 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 167,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterResonance",
+      "scope": "part"
     },
     {
       "id": "t2FilterEg1Int",
@@ -2807,9 +4010,19 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 168,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "semanticRole": "FilterEnvAmount",
+      "scope": "part"
     },
     {
       "id": "t2FilterKeyTrack",
@@ -2822,9 +4035,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 170,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2FilterVelo",
@@ -2838,9 +4060,18 @@
       "sysex": true,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 169,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2AmpLevel",
@@ -2856,7 +4087,16 @@
       "curve": "Linear",
       "domainMin": 0,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 171,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpLevel",
+      "scope": "part"
     },
     {
       "id": "t2AmpPan",
@@ -2869,10 +4109,20 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
       "domainMax": 1,
-      "smoothing": "Linear"
+      "smoothing": "Linear",
+      "binaryPacking": {
+        "byteOffset": 172,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "semanticRole": "AmpPan",
+      "scope": "part"
     },
     {
       "id": "t2AmpDistortion",
@@ -2882,7 +4132,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 173,
+        "bitMask": 1,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2AmpKeyTrack",
@@ -2895,9 +4153,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 175,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2AmpVelo",
@@ -2911,9 +4178,18 @@
       "sysex": true,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 174,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2Eg1Attack",
@@ -2930,7 +4206,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 176,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvAttack",
+      "scope": "part"
     },
     {
       "id": "t2Eg1Decay",
@@ -2947,7 +4232,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 177,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvDecay",
+      "scope": "part"
     },
     {
       "id": "t2Eg1Sustain",
@@ -2962,7 +4256,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 178,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvSustain",
+      "scope": "part"
     },
     {
       "id": "t2Eg1Release",
@@ -2979,7 +4282,36 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 179,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "FilterEnvRelease",
+      "scope": "part"
+    },
+    {
+      "id": "t2Eg1Reset",
+      "name": "Timbre 2 EG1 Reset",
+      "group": "Timbre 2",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 147,
+        "bitMask": 16,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "Eg1Reset"
     },
     {
       "id": "t2Eg2Attack",
@@ -2996,7 +4328,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 180,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvAttack",
+      "scope": "part"
     },
     {
       "id": "t2Eg2Decay",
@@ -3013,7 +4354,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 181,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvDecay",
+      "scope": "part"
     },
     {
       "id": "t2Eg2Sustain",
@@ -3028,7 +4378,16 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 182,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvSustain",
+      "scope": "part"
     },
     {
       "id": "t2Eg2Release",
@@ -3045,7 +4404,36 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 183,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "semanticRole": "AmpEnvRelease",
+      "scope": "part"
+    },
+    {
+      "id": "t2Eg2Reset",
+      "name": "Timbre 2 EG2 Reset",
+      "group": "Timbre 2",
+      "cc": null,
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "type": "boolean",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 147,
+        "bitMask": 32,
+        "bitShift": 5,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part",
+      "semanticRole": "Eg2Reset"
     },
     {
       "id": "t2Lfo1Wave",
@@ -3061,7 +4449,15 @@
         "Square",
         "Triangle",
         "SampleHold"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 184,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo1Freq",
@@ -3073,7 +4469,20 @@
       "default": 30,
       "type": "integer",
       "skew": 0.4,
-      "unit": "Hz"
+      "unit": "Hz",
+      "binaryPacking": {
+        "byteOffset": 185,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "curve": "Lut",
+      "domainMin": 0.0457763671875,
+      "domainMax": 36.609649658203125,
+      "lutId": "ms2000_lfo1_hz",
+      "semanticRole": "Lfo1RateHz",
+      "scope": "part"
     },
     {
       "id": "t2Lfo1KeySync",
@@ -3088,7 +4497,15 @@
         "Off",
         "Timbre",
         "Voice"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 184,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo1TempoSync",
@@ -3098,7 +4515,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 186,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo1SyncNote",
@@ -3125,7 +4550,15 @@
         "1/64",
         "1/64T",
         "1/128"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 186,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo2Wave",
@@ -3141,7 +4574,15 @@
         "Square",
         "Sine",
         "SampleHold"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 187,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo2Freq",
@@ -3153,7 +4594,20 @@
       "default": 50,
       "type": "integer",
       "skew": 0.4,
-      "unit": "Hz"
+      "unit": "Hz",
+      "binaryPacking": {
+        "byteOffset": 188,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "curve": "Lut",
+      "domainMin": 0.0457763671875,
+      "domainMax": 194.90432739257812,
+      "lutId": "ms2000_lfo2_hz",
+      "semanticRole": "Lfo2RateHz",
+      "scope": "part"
     },
     {
       "id": "t2Lfo2KeySync",
@@ -3168,7 +4622,15 @@
         "Off",
         "Timbre",
         "Voice"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 187,
+        "bitMask": 48,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo2TempoSync",
@@ -3178,7 +4640,15 @@
       "min": 0,
       "max": 1,
       "default": 0,
-      "type": "boolean"
+      "type": "boolean",
+      "binaryPacking": {
+        "byteOffset": 189,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Lfo2SyncNote",
@@ -3205,7 +4675,15 @@
         "1/64",
         "1/64T",
         "1/128"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 189,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch1Source",
@@ -3225,7 +4703,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 190,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch1Destination",
@@ -3245,7 +4731,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 190,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch1Intensity",
@@ -3258,9 +4752,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 191,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2Patch2Source",
@@ -3280,7 +4783,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 192,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch2Destination",
@@ -3300,7 +4811,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 192,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch2Intensity",
@@ -3313,9 +4832,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 193,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2Patch3Source",
@@ -3335,7 +4863,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 194,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch3Destination",
@@ -3355,7 +4891,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 194,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch3Intensity",
@@ -3368,9 +4912,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 195,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2Patch4Source",
@@ -3390,7 +4943,15 @@
         "KBD Track",
         "Pitch Bend",
         "Mod Wheel"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 196,
+        "bitMask": 15,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch4Destination",
@@ -3410,7 +4971,15 @@
         "Amp",
         "Pan",
         "LFO2 Freq"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 196,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Patch4Intensity",
@@ -3423,9 +4992,18 @@
       "type": "integer",
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 197,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2ModSeqOn",
@@ -3436,7 +5014,15 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 198,
+        "bitMask": 128,
+        "bitShift": 7,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2ModSeqType",
@@ -3453,7 +5039,15 @@
         "Bounce",
         "Random"
       ],
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 199,
+        "bitMask": 12,
+        "bitShift": 2,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2ModSeqResolution",
@@ -3481,7 +5075,15 @@
         "2/1",
         "3/1",
         "4/1"
-      ]
+      ],
+      "binaryPacking": {
+        "byteOffset": 198,
+        "bitMask": 31,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2SeqLastStep",
@@ -3492,7 +5094,15 @@
       "max": 16,
       "default": 16,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 199,
+        "bitMask": 240,
+        "bitShift": 4,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "t2SeqRunMode",
@@ -3507,7 +5117,15 @@
         "1Shot",
         "Loop"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 198,
+        "bitMask": 64,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2SeqKeySync",
@@ -3523,7 +5141,15 @@
         "Timbre",
         "Voice"
       ],
-      "sysex": true
+      "sysex": true,
+      "binaryPacking": {
+        "byteOffset": 199,
+        "bitMask": 3,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2Seq1Dest",
@@ -3567,7 +5193,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Motion",
@@ -3582,7 +5209,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step1",
@@ -3593,7 +5221,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step2",
@@ -3604,7 +5233,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step3",
@@ -3615,7 +5245,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step4",
@@ -3626,7 +5257,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step5",
@@ -3637,7 +5269,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step6",
@@ -3648,7 +5281,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step7",
@@ -3659,7 +5293,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step8",
@@ -3670,7 +5305,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step9",
@@ -3681,7 +5317,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step10",
@@ -3692,7 +5329,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step11",
@@ -3703,7 +5341,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step12",
@@ -3714,7 +5353,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step13",
@@ -3725,7 +5365,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step14",
@@ -3736,7 +5377,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step15",
@@ -3747,7 +5389,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq1Step16",
@@ -3758,7 +5401,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Dest",
@@ -3802,7 +5446,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Motion",
@@ -3817,7 +5462,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step1",
@@ -3828,7 +5474,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step2",
@@ -3839,7 +5486,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step3",
@@ -3850,7 +5498,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step4",
@@ -3861,7 +5510,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step5",
@@ -3872,7 +5522,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step6",
@@ -3883,7 +5534,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step7",
@@ -3894,7 +5546,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step8",
@@ -3905,7 +5558,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step9",
@@ -3916,7 +5570,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step10",
@@ -3927,7 +5582,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step11",
@@ -3938,7 +5594,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step12",
@@ -3949,7 +5606,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step13",
@@ -3960,7 +5618,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step14",
@@ -3971,7 +5630,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step15",
@@ -3982,7 +5642,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq2Step16",
@@ -3993,7 +5654,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Dest",
@@ -4037,7 +5699,8 @@
         "Patch3 Int",
         "Patch4 Int"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Motion",
@@ -4052,7 +5715,8 @@
         "Step",
         "Smooth"
       ],
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step1",
@@ -4063,7 +5727,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step2",
@@ -4074,7 +5739,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step3",
@@ -4085,7 +5751,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step4",
@@ -4096,7 +5763,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step5",
@@ -4107,7 +5775,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step6",
@@ -4118,7 +5787,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step7",
@@ -4129,7 +5799,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step8",
@@ -4140,7 +5811,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step9",
@@ -4151,7 +5823,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step10",
@@ -4162,7 +5835,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step11",
@@ -4173,7 +5847,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step12",
@@ -4184,7 +5859,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step13",
@@ -4195,7 +5871,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step14",
@@ -4206,7 +5883,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step15",
@@ -4217,7 +5895,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "t2Seq3Step16",
@@ -4228,7 +5907,8 @@
       "max": 63,
       "default": 0,
       "type": "integer",
-      "sysex": true
+      "sysex": true,
+      "scope": "part"
     },
     {
       "id": "vocoderHpfGate",
@@ -4239,7 +5919,15 @@
       "max": 1,
       "default": 1,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 50,
+        "bitMask": 1,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderThreshold",
@@ -4250,7 +5938,15 @@
       "max": 127,
       "default": 12,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 57,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderCutoff",
@@ -4264,9 +5960,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 58,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "vocoderResonance",
@@ -4282,7 +5987,15 @@
       "wireCodec": "Value",
       "curve": "Linear",
       "domainMin": 0,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 59,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderModSource",
@@ -4303,7 +6016,15 @@
         "Pitch Bend",
         "Mod Wheel"
       ],
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 62,
+        "bitMask": 7,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderModInt",
@@ -4317,9 +6038,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 67,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "vocoderEfSense",
@@ -4330,7 +6060,15 @@
       "max": 127,
       "default": 64,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 64,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Unsigned"
+      },
+      "scope": "part"
     },
     {
       "id": "vocoderHold",
@@ -4341,7 +6079,8 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan1",
@@ -4352,7 +6091,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan2",
@@ -4363,7 +6103,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan3",
@@ -4374,7 +6115,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan4",
@@ -4385,7 +6127,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan5",
@@ -4396,7 +6139,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan6",
@@ -4407,7 +6151,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan7",
@@ -4418,7 +6163,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan8",
@@ -4429,7 +6175,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan9",
@@ -4440,7 +6187,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan10",
@@ -4451,7 +6199,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan11",
@@ -4462,7 +6211,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan12",
@@ -4473,7 +6223,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan13",
@@ -4484,7 +6235,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan14",
@@ -4495,7 +6247,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan15",
@@ -4506,7 +6259,8 @@
       "max": 63,
       "default": -22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "vocoderBandPan16",
@@ -4517,7 +6271,8 @@
       "max": 63,
       "default": 22,
       "type": "integer",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "pitchTranspose",
@@ -4532,9 +6287,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -24,
-      "domainMax": 24
+      "domainMax": 24,
+      "binaryPacking": {
+        "byteOffset": 43,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "pitchTune",
@@ -4549,9 +6313,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -50,
-      "domainMax": 50
+      "domainMax": 50,
+      "binaryPacking": {
+        "byteOffset": 41,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "pitchBendRange",
@@ -4566,9 +6339,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -12,
-      "domainMax": 12
+      "domainMax": 12,
+      "binaryPacking": {
+        "byteOffset": 42,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "vibratoInt",
@@ -4582,9 +6364,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 44,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "ampGate",
@@ -4595,7 +6386,15 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 65,
+        "bitMask": 64,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2PitchTranspose",
@@ -4610,9 +6409,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -24,
-      "domainMax": 24
+      "domainMax": 24,
+      "binaryPacking": {
+        "byteOffset": 151,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2PitchTune",
@@ -4627,9 +6435,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -50,
-      "domainMax": 50
+      "domainMax": 50,
+      "binaryPacking": {
+        "byteOffset": 149,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2PitchBendRange",
@@ -4644,9 +6461,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -12,
-      "domainMax": 12
+      "domainMax": 12,
+      "binaryPacking": {
+        "byteOffset": 150,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2VibratoInt",
@@ -4660,9 +6486,18 @@
       "sysex": false,
       "wire": "None",
       "wireCodec": "Bipolar",
-      "curve": "Linear",
+      "curve": "SymBipolar",
       "domainMin": -1,
-      "domainMax": 1
+      "domainMax": 1,
+      "binaryPacking": {
+        "byteOffset": 152,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Offset64"
+      },
+      "wireZeroCenter": 64,
+      "scope": "part"
     },
     {
       "id": "t2AmpGate",
@@ -4673,7 +6508,15 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 173,
+        "bitMask": 64,
+        "bitShift": 6,
+        "byteSize": 1,
+        "encoding": "Bit"
+      },
+      "scope": "part"
     },
     {
       "id": "t2PortamentoOn",
@@ -4684,7 +6527,8 @@
       "max": 1,
       "default": 0,
       "type": "boolean",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     },
     {
       "id": "t2UnisonSpread",
@@ -4695,7 +6539,8 @@
       "max": 1,
       "default": 0.5,
       "type": "continuous",
-      "sysex": false
+      "sysex": false,
+      "scope": "part"
     }
   ]
 }

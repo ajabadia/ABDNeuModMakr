@@ -11,7 +11,6 @@ import {
   computeNoiseProfile,
   dcBlock,
   detectSilenceRanges,
-  normalizePeak,
   peakAmplitude,
 } from '@abdsynths/shared/dsp/take/takeDsp.ts';
 import { reduceNoiseWithProfile } from '@abdsynths/shared/dsp/take/NoiseReductionDsp.ts';
@@ -25,7 +24,7 @@ import { generateModelArtwork, type ArtworkProvider } from '../ai/ModelArtworkGe
 import { bridgeClient } from '../bridge/BridgeClient.ts';
 import { snapFrameToNearestZeroCrossing } from './LoopEditorTools.ts';
 import { promoteBufferToMasterWave } from './MasterWaveEnhancer.ts';
-import { decodeWav, encodePcm16Wav } from './WavDecoder.ts';
+import { decodeWav, encodePcm16Wav, encodeWavPcm24 } from './WavDecoder.ts';
 import type {
   AiAssistanceConfig,
   KeyMappingMode,
@@ -704,11 +703,14 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
     }
 
     // Step 7: Upsample to Master Wave (24-bit / 96.000 Hz + BWE + Short Loop Expansion for Chromatic)
+    let masterWaveOutputBuffer: ArrayBuffer | null = null;
     if (checklist.steps.upsampleMasterWave && (!skipDone || !flags.upsampledMasterWave)) {
       let upsampledViaAi = false;
       if (aiConfig?.enabled && aiConfig.masterWave === 'ai' && bridgeOnline) {
         try {
-          const tempWav = encodePcm16Wav(working, sr, decoded.instrument);
+          const tempWav = decoded.channels.length > 1
+            ? encodeWavPcm24(decoded.channels, sr, decoded.instrument)
+            : encodePcm16Wav(working, sr, decoded.instrument);
           const enhanced = await bridgeClient.enhanceAudio(new Uint8Array(tempWav), {
             targetSampleRate: 96000,
             capabilities: ['resample-96k', 'harmonic-bwe'],
@@ -721,6 +723,7 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
           if (aiDec.mono && aiDec.mono.length > 64) {
             working = new Float32Array(aiDec.mono);
             sr = aiDec.sampleRate;
+            masterWaveOutputBuffer = aiBuf;
             upsampledViaAi = true;
             modified = true;
           }
@@ -730,7 +733,9 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
       }
       if (!upsampledViaAi) {
         try {
-          const tempWav = encodePcm16Wav(working, sr, decoded.instrument);
+          const tempWav = decoded.channels.length > 1
+            ? encodeWavPcm24(decoded.channels, sr, decoded.instrument)
+            : encodePcm16Wav(working, sr, decoded.instrument);
           const promoted = await promoteBufferToMasterWave(tempWav, sName, 'zone-cond', {
             promotionMethod: 'dsp-enhanced',
             channelLayout: 'original',
@@ -740,9 +745,14 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
             enableBandwidthExtension: true,
             enableDenoiseGate: false,
           });
-          if (promoted.channels[0] && promoted.channels[0].length > 0) {
+          if (promoted.channels && promoted.channels.length > 0 && promoted.channels[0].length > 0) {
             working = new Float32Array(promoted.channels[0]);
             sr = promoted.result.masterSampleRate;
+            masterWaveOutputBuffer = encodeWavPcm24(
+              promoted.channels,
+              promoted.result.masterSampleRate,
+              decoded.instrument
+            );
             modified = true;
           }
         } catch {
@@ -754,7 +764,7 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
     }
 
     if (modified) {
-      const encoded = encodePcm16Wav(working, sr, decoded.instrument);
+      const encoded = masterWaveOutputBuffer ?? encodePcm16Wav(working, sr, decoded.instrument);
       samples.set(sName, encoded);
       onSampleEnhanced?.(sName, encoded);
     }
@@ -772,8 +782,12 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
         if (skipDone && flags.normalized) continue;
         try {
           const dec = decodeWav(ab);
-          if (dec.mono && dec.mono.length > 0) {
-            const pk = peakAmplitude(dec.mono);
+          if (dec.channels && dec.channels.length > 0) {
+            let pk = 0;
+            for (const ch of dec.channels) {
+              const chPk = peakAmplitude(ch);
+              if (chPk > pk) pk = chPk;
+            }
             if (pk > maxKitPeak) maxKitPeak = pk;
             targets.push({ name: sName, decoded: dec });
           }
@@ -785,14 +799,20 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
       if (maxKitPeak > 1e-5 && Math.abs(maxKitPeak - targetPeakLin) > 1e-3) {
         const groupGain = targetPeakLin / maxKitPeak;
         for (const t of targets) {
-          const scaled = new Float32Array(t.decoded.mono.length);
-          for (let i = 0; i < scaled.length; i++) {
-            scaled[i] = Math.max(-1, Math.min(1, t.decoded.mono[i] * groupGain));
-          }
-          const encoded = encodePcm16Wav(scaled, t.decoded.sampleRate, t.decoded.instrument);
+          const scaledChannels = t.decoded.channels.map((ch) => {
+            const out = new Float32Array(ch.length);
+            for (let i = 0; i < out.length; i++) {
+              out[i] = Math.max(-1, Math.min(1, ch[i] * groupGain));
+            }
+            return out;
+          });
+          const flags = ensureFlags(t.name);
+          const use24 = (t.decoded.bitsPerSample ?? 16) > 16 || scaledChannels.length > 1 || flags.upsampledMasterWave;
+          const encoded = use24
+            ? encodeWavPcm24(scaledChannels, t.decoded.sampleRate, t.decoded.instrument)
+            : encodePcm16Wav(scaledChannels[0], t.decoded.sampleRate, t.decoded.instrument);
           samples.set(t.name, encoded);
           onSampleEnhanced?.(t.name, encoded);
-          const flags = ensureFlags(t.name);
           flags.normalized = true;
           flags.updatedAt = nowIso;
         }
@@ -805,9 +825,25 @@ export async function executeCanonicalPhase1SampleConditioning(params: {
         if (skipDone && flags.normalized) continue;
         try {
           const dec = decodeWav(ab);
-          if (dec.mono && dec.mono.length > 0) {
-            const norm = normalizePeak(dec.mono, -1.0);
-            const encoded = encodePcm16Wav(norm, dec.sampleRate, dec.instrument);
+          if (dec.channels && dec.channels.length > 0 && dec.channels[0].length > 0) {
+            let maxPeak = 0;
+            for (const ch of dec.channels) {
+              const chPk = peakAmplitude(ch);
+              if (chPk > maxPeak) maxPeak = chPk;
+            }
+            const targetPeakLin = Math.pow(10, -1.0 / 20);
+            const gain = maxPeak > 1e-5 ? targetPeakLin / maxPeak : 1.0;
+            const scaledChannels = dec.channels.map((ch) => {
+              const out = new Float32Array(ch.length);
+              for (let i = 0; i < out.length; i++) {
+                out[i] = Math.max(-1, Math.min(1, ch[i] * gain));
+              }
+              return out;
+            });
+            const use24 = (dec.bitsPerSample ?? 16) > 16 || scaledChannels.length > 1 || flags.upsampledMasterWave;
+            const encoded = use24
+              ? encodeWavPcm24(scaledChannels, dec.sampleRate, dec.instrument)
+              : encodePcm16Wav(scaledChannels[0], dec.sampleRate, dec.instrument);
             samples.set(sName, encoded);
             onSampleEnhanced?.(sName, encoded);
             flags.normalized = true;

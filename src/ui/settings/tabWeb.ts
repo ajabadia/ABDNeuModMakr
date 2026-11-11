@@ -52,7 +52,7 @@ export function renderWebTab(ctx: SettingsModalContext, cfg: AiAssistanceConfig)
             <div class="stage-info">
               <h4 class="stage-title">
                 ${isEs ? 'Estándar Master Wave (24-bit / 96 kHz)' : 'Master Wave Standard (24-bit / 96 kHz)'} · ${escHtml(MUSICIAN_TERMS.bwe)}
-                ${!cfg.enabled ? enableAiBadge : renderLocalModelStatusPill(ctx, 'audiosr', 'AudioSR')}
+                ${!cfg.enabled ? enableAiBadge : `<span class="cond-reason-badge is-extended-only">SINC 24b/96k + BWE</span>`}
               </h4>
               <p class="stage-desc text-muted">${isEs ? 'Conversión de frecuencia de muestreo de alta fidelidad y reconstrucción de armónicos superiores.' : 'High-fidelity sample rate conversion and upper harmonic reconstruction.'}</p>
             </div>
@@ -68,8 +68,8 @@ export function renderWebTab(ctx: SettingsModalContext, cfg: AiAssistanceConfig)
             <label class="stage-opt ${cfg.masterWave === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-master-wave" value="ai" ${cfg.masterWave === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} ${isEs ? 'Extensión Neuronal (AudioSR · GPU Local / Replicate)' : 'Neural Extension (AudioSR · Local GPU / Replicate)'}</strong>
-                <small>${isEs ? 'Difusión latente que genera armónicos ultra-agudos realistas hasta 48 kHz Nyquist.' : 'Latent diffusion generating realistic ultra-high harmonics up to 48 kHz Nyquist.'}</small>
+                <strong>${ICONS.ai} ${isEs ? 'Extensión Neuronal (Cloud / Replicate BYOK)' : 'Neural Extension (Cloud / Replicate BYOK)'}</strong>
+                <small>${isEs ? 'Super-resolución neuronal en la nube para armónicos ultra-agudos hasta 48 kHz Nyquist.' : 'Neural super-resolution in the cloud for ultra-high harmonics up to 48 kHz Nyquist.'}</small>
               </span>
             </label>
           </div>
@@ -119,7 +119,7 @@ export function renderWebTab(ctx: SettingsModalContext, cfg: AiAssistanceConfig)
             <div class="stage-info">
               <h4 class="stage-title">
                 ${isEs ? 'Expansión Orgánica de Bucles Cortos' : 'Organic Short Loop Expansion'}
-                ${!cfg.enabled ? enableAiBadge : renderLocalModelStatusPill(ctx, 'musicgen', 'MusicGen-Small')}
+                ${!cfg.enabled ? enableAiBadge : `<span class="cond-reason-badge is-extended-only">DSP CIRCULAR</span>`}
               </h4>
               <p class="stage-desc text-muted">${isEs ? 'Desenrolla bucles cortos para crear un sustain natural y no cíclico sin zumbidos.' : 'Unroll short loops to create natural, non-cyclic sustain without buzzing.'}</p>
             </div>
@@ -135,8 +135,8 @@ export function renderWebTab(ctx: SettingsModalContext, cfg: AiAssistanceConfig)
             <label class="stage-opt ${cfg.loopExpansion === 'ai' ? 'is-selected' : ''}">
               <input type="radio" name="opt-loop-expansion" value="ai" ${cfg.loopExpansion === 'ai' ? 'checked' : ''} />
               <span class="opt-body">
-                <strong>${ICONS.ai} ${isEs ? 'Outpainting Neuronal (MusicGen-Small · GPU Local)' : 'Neural Outpainting (MusicGen-Small · Local GPU)'}</strong>
-                <small>${isEs ? 'Continuación autorregresiva generativa para un sustain tímbrico natural.' : 'Generative autoregressive continuation for natural timbral sustain.'}</small>
+                <strong>${ICONS.ai} ${isEs ? 'Outpainting Neuronal (Replicate / Cloud BYOK)' : 'Neural Outpainting (Replicate / Cloud BYOK)'}</strong>
+                <small>${isEs ? 'Continuación generativa en la nube para un sustain tímbrico extendido.' : 'Generative cloud continuation for extended timbral sustain.'}</small>
               </span>
             </label>
           </div>
@@ -302,25 +302,18 @@ export function renderWebTab(ctx: SettingsModalContext, cfg: AiAssistanceConfig)
                     ? enableAiBadge
                     : coverArt === 'cloud-ai'
                       ? `<span class="cond-reason-badge ${isCloudReady ? 'is-extended-only' : ''}">${isCloudReady ? `${ICONS.check} CLOUD ${escHtml(cloudProv)} ${isEs ? 'ACTIVO' : 'ACTIVE'}` : (isEs ? 'SIN API KEY CLOUD' : 'NO CLOUD API KEY')}</span>`
-                      : renderLocalModelStatusPill(ctx, 'sdturbo', 'SD-Turbo')
+                      : `<span class="cond-reason-badge is-extended-only">${ICONS.check} PROCEDURAL ACÚSTICO</span>`
                 }
               </h4>
               <p class="stage-desc text-muted">${isEs ? 'Generación automática de portada durante la compilación individual y por lotes cuando un modelo no tiene portada propia.' : 'Automatic cover generation during Single &amp; Batch model compilation when a model has no custom cover.'}</p>
             </div>
           </div>
           <div class="stage-options">
-            <label class="stage-opt ${coverArt === 'procedural' ? 'is-selected' : ''}">
-              <input type="radio" name="opt-cover-artwork" value="procedural" ${coverArt === 'procedural' ? 'checked' : ''} />
+            <label class="stage-opt ${coverArt === 'procedural' || coverArt === 'local-ai' ? 'is-selected' : ''}">
+              <input type="radio" name="opt-cover-artwork" value="procedural" ${coverArt === 'procedural' || coverArt === 'local-ai' ? 'checked' : ''} />
               <span class="opt-body">
                 <strong>${ICONS.cpu} ${isEs ? 'Acústico Procedural (Espectrograma DSP)' : 'Procedural Acoustic (DSP Spectrogram)'}</strong>
                 <small>${isEs ? 'Arte matemático offline instantáneo renderizado a partir de los armónicos F0 reales del instrumento.' : 'Instant offline mathematical artwork rendered from the instrument\'s real F0 harmonics.'}</small>
-              </span>
-            </label>
-            <label class="stage-opt ${coverArt === 'local-ai' ? 'is-selected' : ''}">
-              <input type="radio" name="opt-cover-artwork" value="local-ai" ${coverArt === 'local-ai' ? 'checked' : ''} />
-              <span class="opt-body">
-                <strong>${ICONS.ai} ${isEs ? 'Difusión en GPU Local (SD-Turbo · Bridge 7860)' : 'Local GPU Diffusion (SD-Turbo · Bridge 7860)'}</strong>
-                <small>${isEs ? 'Síntesis neuronal de imagen en 1 paso en tu GPU con coste cero en la nube.' : '1-step local neural image synthesis on your GPU with zero cloud cost.'}</small>
               </span>
             </label>
             <label class="stage-opt ${coverArt === 'cloud-ai' ? 'is-selected' : ''}">

@@ -21,7 +21,7 @@ import { clamp } from './DspMath.ts';
 import { FftEngine, createWindowTable } from './FftEngine.ts';
 import { SpectralModelData } from './GridIndicator.ts';
 import type { AudioInput, SpectralAnalyzer } from './SpectralAnalyzer.ts';
-import { classifyInstrumentAndParameterSet } from '../../formats/Sf2Parser.ts';
+import { classifyInstrumentAndParameterSet } from './instrumentNameHints.ts';
 
 function toMonoChannel(audio: AudioInput): Float32Array {
   if (audio instanceof Float32Array) return audio;
@@ -364,8 +364,9 @@ export function extractAcousticDescriptors(
     gridResid >= 0 ? clamp(1.0 - gridResid / 160.0, 0, 1) : yin.harmonicity * 0.6;
   const pitchConfidence = clamp(0.55 * yin.harmonicity + 0.45 * residQuality, 0, 1);
   const isPercussiveOrNoise =
-    (yin.harmonicity < 0.26 && spectralFlatness > 0.18) ||
-    (pitchConfidence < 0.24 && zeroCrossingRate > 0.22);
+    (yin.harmonicity < 0.35 && spectralFlatness > 0.08) ||
+    (pitchConfidence < 0.30 && zeroCrossingRate > 0.15) ||
+    (zeroCrossingRate > 0.32);
 
   const { midiNote, centOffset } = hzToMidiAndCents(detectedF0Hz);
 
@@ -521,6 +522,8 @@ export function classifyAcousticSample(
     descriptors,
   };
 }
+
+export const classifyAcousticInstrument = classifyAcousticSample;
 
 /**
  * 7.3 Applies the Phase 7 Classic Enhanced DSP algorithm to a SpectralModelData:

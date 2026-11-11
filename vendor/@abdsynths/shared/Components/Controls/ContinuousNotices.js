@@ -22,7 +22,7 @@
  *
  * Uso en un control continuo:
  *
- *   import { createContinuousNotices } from './continuousNotices.js';
+ *   import { createContinuousNotices } from './ContinuousNotices.js';
  *
  *   this.notices = createContinuousNotices({
  *     onMovement: (v) => handleMovement(v),
@@ -47,7 +47,7 @@
  * `announceMovement` sigue avisando por paso y `end` no hace nada.
  */
 
-import { announceTransition, sameControlValue } from './transitionNotices.js';
+import { announceTransition, sameControlValue } from './TransitionNotices.js';
 
 export { sameControlValue };
 

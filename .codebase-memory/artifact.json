@@ -1,0 +1,11 @@
+{
+    "schema_version": 2,
+    "commit": "aea51fd4454cf3c8e0437c7bcd63ac517b27f413",
+    "indexed_at": "2026-11-11T08:36:11Z",
+    "project": "D-desarrollos-ABDSynths-ABDNeuModMakr",
+    "nodes": 3991,
+    "edges": 15415,
+    "original_size": 14811136,
+    "compressed_size": 3454423,
+    "compression_level": 9
+}

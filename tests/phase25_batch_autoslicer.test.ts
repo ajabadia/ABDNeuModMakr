@@ -364,24 +364,25 @@ test('resolveAiActionDeclaration enforces AI Denoise readiness (DeepFilterNet 3 
   assert.equal(disabledDecl.isPrimaryAvailable, false);
   assert.equal(disabledDecl.requiresFallbackConsent, true);
 
-  // Case B: Local DeepFilterNet 3 stage enabled + Bridge connected -> ready without fallback consent
+  // Case B: Local DeepFilterNet 3 stage enabled + Bridge connected + model ready -> ready without fallback consent
   const bridgeReadyDecl = resolveAiActionDeclaration('recorder-ai-denoise', {
     isBridgeConnected: true,
+    isDenoiseModelReady: true,
     isCloudReady: false,
     aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG, enabled: true, denoise: 'ai' },
   });
   assert.equal(bridgeReadyDecl.isPrimaryAvailable, true);
   assert.equal(bridgeReadyDecl.requiresFallbackConsent, false);
 
-  // Case C: Cloud BYOK LLM API key configured -> ready without fallback consent
+  // Case C: Cloud BYOK LLM API key configured does NOT fake audio denoiser -> requires fallback consent
   const cloudReadyDecl = resolveAiActionDeclaration('recorder-ai-denoise', {
     isBridgeConnected: false,
     isCloudReady: true,
     activeTextLlmProvider: 'gemini-cloud',
     aiConfig: { ...DEFAULT_AI_ASSISTANCE_CONFIG, enabled: false, denoise: 'dsp' },
   });
-  assert.equal(cloudReadyDecl.isPrimaryAvailable, true);
-  assert.equal(cloudReadyDecl.requiresFallbackConsent, false);
+  assert.equal(cloudReadyDecl.isPrimaryAvailable, false);
+  assert.equal(cloudReadyDecl.requiresFallbackConsent, true);
 });
 
 // 12. Melodic Phrase Slicing in REX / Groove Loop + Chromatic mode (repeated notes & chronological .mid)

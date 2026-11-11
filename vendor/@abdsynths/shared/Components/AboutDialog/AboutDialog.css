@@ -180,6 +180,10 @@
   transition: transform var(--transition-fast, 0.15s) ease, box-shadow var(--transition-fast, 0.15s) ease;
 }
 
+.btn-update-avail[hidden] {
+  display: none !important;
+}
+
 .btn-update-avail:hover {
   transform: translateY(-1px);
   box-shadow: 0 0 20px rgba(56, 239, 125, 0.6);

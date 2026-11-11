@@ -21,6 +21,8 @@ export class MultiStageShaperPad {
   /**
    * @param {HTMLElement|string} container
    * @param {object} [options]
+   *   onDragStart / onDragEnd  for host gesture bridging: dragging a handle opens
+   *                   the gesture and releasing it closes it, default none.
    */
   constructor(container, options = {}) {
     this.container = typeof container === 'string'
@@ -256,6 +258,7 @@ export class MultiStageShaperPad {
 
       this.activeHandle = parseInt(handleGroup.getAttribute('data-handle') || '0', 10);
       this.isDragging = true;
+      if (typeof this.options.onDragStart === 'function') this.options.onDragStart();
       e.target.setPointerCapture(e.pointerId);
     };
 
@@ -304,6 +307,7 @@ export class MultiStageShaperPad {
       if (this.isDragging) {
         this.isDragging = false;
         this.activeHandle = null;
+        if (typeof this.options.onDragEnd === 'function') this.options.onDragEnd();
         try {
           e.target.releasePointerCapture(e.pointerId);
         } catch (_) {}

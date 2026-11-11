@@ -124,6 +124,9 @@ export const SHARED_EN = {
     checkingUpdates: 'Checking for updates...',
     newVersionAvailable: 'New version available: {version}',
     upToDate: 'You are running the latest version.',
+    updateCheckFailed: 'Could not check for updates. Check your connection and retry.',
+    updateCheckTimeout: 'The update check timed out. Check your connection and retry.',
+    retryCheck: 'RETRY',
     close: 'CLOSE',
   },
 

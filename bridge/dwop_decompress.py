@@ -5,7 +5,13 @@ References clean-room specifications from chirashi (MIT) and Paketti (MIT).
 import struct
 import io
 import wave
+from array import array
 from typing import List, Tuple, Optional, Dict, Any
+
+MAX_RX2_FRAMES = 50_000_000       # ~18 min @ 44.1 kHz
+MAX_RX2_CHANNELS = 2
+MAX_IFF_DEPTH = 8
+MAX_WAV_OUT_BYTES = 200 * 1024 * 1024
 
 class BitReader:
     def __init__(self, data: bytes):
@@ -231,8 +237,10 @@ def decompress_rx2(data: bytes) -> Dict[str, Any]:
     dwop_offset = 0
     dwop_size = 0
 
-    def parse_iff(start: int, end: int):
+    def parse_iff(start: int, end: int, depth: int = 0):
         nonlocal dwop_offset, dwop_size
+        if depth > MAX_IFF_DEPTH:
+            raise ValueError('REX2 IFF nesting too deep')
         off = start
         while off + 8 <= end and off + 8 <= len(data):
             chunk_id = data[off:off+4]
@@ -261,23 +269,38 @@ def decompress_rx2(data: bytes) -> Dict[str, Any]:
                     dwop_offset = off
                     dwop_size = chunk_sz
             elif chunk_id == b'CAT ' and chunk_sz >= 4:
-                parse_iff(off + 4, off + chunk_sz)
+                parse_iff(off + 4, off + chunk_sz, depth + 1)
 
             off += chunk_sz
             if off & 1:
                 off += 1
 
-    parse_iff(12, len(data))
+    parse_iff(12, len(data), 0)
 
     if dwop_size == 0 or info['total_frames'] == 0:
         raise ValueError("No DWOP/SDAT audio chunk or 0 frames found in REX2")
 
-    dec = DwopDecompressor(data[dwop_offset:dwop_offset+dwop_size])
     channels = info['channels']
     bit_depth = info['bit_depth']
+    sample_rate = info['sample_rate']
     total_frames = info['total_frames']
 
-    pcm_samples: List[int] = []
+    if not (1 <= channels <= MAX_RX2_CHANNELS):
+        raise ValueError(f"Invalid channels in REX2: {channels}")
+    if not (8000 <= sample_rate <= 192000):
+        raise ValueError(f"Invalid sample rate in REX2: {sample_rate}")
+    if not (0 < total_frames <= MAX_RX2_FRAMES):
+        raise ValueError(f"Invalid total frames in REX2: {total_frames}")
+    bytes_per_sample = bit_depth // 8
+    if total_frames * channels * bytes_per_sample > MAX_WAV_OUT_BYTES:
+        raise ValueError(f"Decompressed audio exceeds maximum output size ({MAX_WAV_OUT_BYTES} bytes)")
+
+    dec = DwopDecompressor(data[dwop_offset:dwop_offset+dwop_size])
+
+    if bit_depth == 16:
+        pcm_samples = array('h')
+    else:
+        pcm_samples = []
 
     if channels == 1:
         for _ in range(total_frames):
@@ -302,7 +325,7 @@ def decompress_rx2(data: bytes) -> Dict[str, Any]:
         wav_file.setsampwidth(bit_depth // 8)
         wav_file.setframerate(info['sample_rate'])
         if bit_depth == 16:
-            packed_frames = struct.pack(f'<{len(pcm_samples)}h', *pcm_samples)
+            packed_frames = pcm_samples.tobytes()
         else: # 24-bit
             # Pack 3-byte integers
             b_list = bytearray()

@@ -26,6 +26,7 @@ export type CloudAiProvider =
 export interface ByokConfig {
   enabled: boolean;
   provider: CloudAiProvider;
+  storageScope?: 'local' | 'session';
   replicateToken?: string;
   huggingfaceToken?: string;
   geminiApiKey?: string;
@@ -44,6 +45,7 @@ export interface CloudTextGenerationOptions {
   systemPrompt?: string;
   model?: string;
   provider?: CloudAiProvider;
+  jsonMode?: boolean;
 }
 
 export interface CloudTextGenerationResult {
@@ -54,7 +56,66 @@ export interface CloudTextGenerationResult {
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }
 
-const STORAGE_KEY_BYOK = 'neumodmakr_byok_config';
+/**
+ * Parser defensivo para respuestas JSON de LLMs.
+ * Limpia bloques de código markdown si los hubiera y valida que el retorno sea un objeto plano no nulo.
+ */
+export function parseJsonObjectSafe<T = Record<string, unknown>>(rawText: string): T | null {
+  const trimmed = rawText.trim();
+  if (!trimmed) return null;
+
+  // 1. Intentar parse directo
+  try {
+    const direct = JSON.parse(trimmed) as unknown;
+    if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+      return direct as T;
+    }
+  } catch {
+    // Continuar con extracción
+  }
+
+  // 2. Extraer de bloque de markdown ```json ... ``` o ``` ... ```
+  const mdMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (mdMatch && mdMatch[1]) {
+    try {
+      const parsed = JSON.parse(mdMatch[1].trim()) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as T;
+      }
+    } catch {
+      // Continuar con regex de llaves
+    }
+  }
+
+  // 3. Fallback a primera aparición de { ... }
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as T;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// const STORAGE_KEY_BYOK = 'neumodmakr_byok_config';
+
+export function redactUrlForLog(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    u.search = '';
+    u.hash = '';
+    return u.toString();
+  } catch {
+    const idx = rawUrl.indexOf('?');
+    return idx >= 0 ? rawUrl.slice(0, idx) : rawUrl;
+  }
+}
 
 /**
  * S4.2: todo `fetch` a proveedores IA lleva timeout explícito.
@@ -73,7 +134,7 @@ export async function fetchWithTimeout(
   };
   eventTarget?.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(() => {
-    ctrl.abort(new Error(`AI request timed out after ${timeoutMs} ms: ${url}`));
+    ctrl.abort(new Error(`AI request timed out after ${timeoutMs}ms: ${redactUrlForLog(url)}`));
   }, timeoutMs);
   try {
     // `globalThis.fetch` en tiempo de llamada (no capturado): testeable y sin
@@ -104,22 +165,39 @@ const DEFAULT_BYOK_CONFIG: ByokConfig = {
   preferredCloudModel: 'audiosr',
 };
 
+const STORAGE_KEY_BYOK_LEGACY = 'neumodmakr_byok_config';
+const STORAGE_KEY_BYOK_SHARED = 'abdsynths.ai.byok.v1';
+
 export class CloudByokClient {
-  private config: ByokConfig = { ...DEFAULT_BYOK_CONFIG };
+  private config: ByokConfig = { ...DEFAULT_BYOK_CONFIG, storageScope: 'local' };
 
   constructor() {
     this.loadFromStorage();
   }
 
+  public getStorageScope(): 'local' | 'session' {
+    return this.config.storageScope === 'session' ? 'session' : 'local';
+  }
+
   public loadFromStorage(): ByokConfig {
-    if (typeof localStorage === 'undefined') return { ...this.config };
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_BYOK);
-      if (raw) {
+    let raw: string | null = null;
+    if (typeof sessionStorage !== 'undefined') {
+      raw = sessionStorage.getItem(STORAGE_KEY_BYOK_SHARED);
+    }
+    if (!raw && typeof localStorage !== 'undefined') {
+      raw = localStorage.getItem(STORAGE_KEY_BYOK_SHARED);
+      if (!raw) {
+        raw = localStorage.getItem(STORAGE_KEY_BYOK_LEGACY);
+      }
+    }
+    if (raw) {
+      try {
         const parsed = JSON.parse(raw) as Partial<ByokConfig>;
         this.config = { ...DEFAULT_BYOK_CONFIG, ...parsed };
+      } catch {
+        this.config = { ...DEFAULT_BYOK_CONFIG };
       }
-    } catch {
+    } else {
       this.config = { ...DEFAULT_BYOK_CONFIG };
     }
     return { ...this.config };
@@ -127,11 +205,24 @@ export class CloudByokClient {
 
   public saveConfig(newConfig: Partial<ByokConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem(STORAGE_KEY_BYOK, JSON.stringify(this.config));
-      } catch {
-        // quota safety
+    const scope = this.getStorageScope();
+    const str = JSON.stringify(this.config);
+
+    if (scope === 'session') {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(STORAGE_KEY_BYOK_SHARED, str);
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY_BYOK_SHARED);
+        localStorage.removeItem(STORAGE_KEY_BYOK_LEGACY);
+      }
+    } else {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_BYOK_SHARED, str);
+        localStorage.setItem(STORAGE_KEY_BYOK_LEGACY, str);
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(STORAGE_KEY_BYOK_SHARED);
       }
     }
   }
@@ -139,11 +230,11 @@ export class CloudByokClient {
   public clearConfig(): void {
     this.config = { ...DEFAULT_BYOK_CONFIG };
     if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_KEY_BYOK);
-      } catch {
-        // quota safety
-      }
+      localStorage.removeItem(STORAGE_KEY_BYOK_SHARED);
+      localStorage.removeItem(STORAGE_KEY_BYOK_LEGACY);
+    }
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(STORAGE_KEY_BYOK_SHARED);
     }
   }
 
@@ -322,8 +413,13 @@ export class CloudByokClient {
 
       if (provider === 'gemini') {
         const res = await fetchWithTimeout(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanToken)}`,
-          { method: 'GET' }
+          'https://generativelanguage.googleapis.com/v1beta/models',
+          {
+            method: 'GET',
+            headers: {
+              'x-goog-api-key': cleanToken,
+            },
+          }
         );
         if (res.ok) {
           return { success: true, message: 'Google Gemini API Key verificada correctamente.' };
@@ -511,6 +607,7 @@ export class CloudByokClient {
     const maxTokens = options?.maxTokens ?? 350;
     const temperature = options?.temperature ?? 0.7;
     const systemPrompt = options?.systemPrompt;
+    const jsonMode = Boolean(options?.jsonMode);
 
     // 1. Anthropic Claude (v1/messages)
     if (provider === 'claude') {
@@ -567,7 +664,17 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
-      const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+      const requestPayload: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        requestPayload.response_format = { type: 'json_object' };
+      }
+
+      let res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -575,13 +682,23 @@ export class CloudByokClient {
           'HTTP-Referer': 'https://abd-neumodmakr.vercel.app',
           'X-Title': 'ABDNeuModMakr Neural Synthesizer',
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       });
+
+      // Si el modelo específico de OpenRouter rechaza response_format (HTTP 400), reintentar una vez sin él
+      if (!res.ok && res.status === 400 && jsonMode) {
+        delete requestPayload.response_format;
+        res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'HTTP-Referer': 'https://abd-neumodmakr.vercel.app',
+            'X-Title': 'ABDNeuModMakr Neural Synthesizer',
+          },
+          body: JSON.stringify(requestPayload),
+        });
+      }
 
       if (!res.ok) {
         const errText = await safeErrorSnippet(res);
@@ -613,18 +730,23 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
+      const requestPayload: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        requestPayload.response_format = { type: 'json_object' };
+      }
+
       const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) {
@@ -657,18 +779,23 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
+      const requestPayload: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        requestPayload.response_format = { type: 'json_object' };
+      }
+
       const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) {
@@ -701,18 +828,23 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
+      const requestPayload: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        requestPayload.response_format = { type: 'json_object' };
+      }
+
       const res = await fetchWithTimeout('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) {
@@ -745,18 +877,23 @@ export class CloudByokClient {
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
       messages.push({ role: 'user', content: prompt });
 
+      const requestPayload: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        requestPayload.response_format = { type: 'json_object' };
+      }
+
       const res = await fetchWithTimeout('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) {
@@ -784,23 +921,30 @@ export class CloudByokClient {
 
     // 7. Google Gemini
     if (provider === 'gemini') {
-      const model = options?.model ?? 'gemini-2.0-flash';
+      const model = options?.model ?? 'gemini-2.5-flash';
+      const generationConfig: Record<string, unknown> = {
+        maxOutputTokens: maxTokens,
+        temperature,
+      };
+      if (jsonMode) {
+        generationConfig.responseMimeType = 'application/json';
+      }
       const body: Record<string, unknown> = {
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: maxTokens,
-          temperature,
-        },
+        generationConfig,
       };
       if (systemPrompt) {
         body.systemInstruction = { parts: [{ text: systemPrompt }] };
       }
 
       const res = await fetchWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(token)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': token,
+          },
           body: JSON.stringify(body),
         }
       );
@@ -894,10 +1038,10 @@ export class CloudByokClient {
         maxTokens: 200,
         temperature: 0.4,
         systemPrompt,
+        jsonMode: true,
       });
-      const match = result.text.match(/\{[\s\S]*\}/);
-      if (!match) return null;
-      const parsed = JSON.parse(match[0]) as { tags?: string[]; notes?: string };
+      const parsed = parseJsonObjectSafe<{ tags?: unknown[]; notes?: unknown }>(result.text);
+      if (!parsed) return null;
       return {
         tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [],
         notes: String(parsed.notes || '').trim(),
@@ -931,13 +1075,12 @@ export class CloudByokClient {
         maxTokens: 1200,
         temperature: 0.1,
         systemPrompt,
+        jsonMode: true,
       });
-      const match = result.text.match(/\{[\s\S]*\}/);
-      if (!match) return null;
-      const parsed = JSON.parse(match[0]) as {
+      const parsed = parseJsonObjectSafe<{
         instruments?: Array<{ name?: string; files?: string[] }>;
-      };
-      if (!Array.isArray(parsed.instruments) || parsed.instruments.length === 0) {
+      }>(result.text);
+      if (!parsed || !Array.isArray(parsed.instruments) || parsed.instruments.length === 0) {
         return null;
       }
       const validGroups = parsed.instruments

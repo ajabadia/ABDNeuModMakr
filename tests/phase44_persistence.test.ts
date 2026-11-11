@@ -74,9 +74,9 @@ async function main() {
   assert.deepEqual(await getModels(offlineCore), []);
   assert.equal(await getMemoryStatus(offlineCore), null);
   assert.equal(await clearMemoryCache(offlineCore), null);
-  const prog = await getModelProgress(offlineCore, 'audiosr');
+  const prog = await getModelProgress(offlineCore, 'htdemucs');
   assert.equal(prog.status, 'offline');
-  await assert.rejects(() => downloadModel(offlineCore, 'audiosr'), /offline/);
+  await assert.rejects(() => downloadModel(offlineCore, 'htdemucs'), /offline/);
   console.log('ok 44.3b');
   console.log('--- Fase44.4: endpoint validators coinciden (loopback ok, privada bloqueada) ---');
   assert.equal(validateBridgeUrl('http://127.0.0.1:7860/'), 'http://127.0.0.1:7860');

@@ -35,8 +35,8 @@ import {
     envelopeLinePath,
     envelopeNeedlePath,
     envelopePoints,
-} from './envelopeCurve.js';
-import { ENVELOPE_HANDLES, HANDLE_NAMES, attachEnvelopeHandle } from './envelopeGestures.js';
+} from './EnvelopeCurve.js';
+import { ENVELOPE_HANDLES, HANDLE_NAMES, attachEnvelopeHandle } from './EnvelopeGestures.js';
 import { clamp01 } from '../../Utils/number.js';
 
 

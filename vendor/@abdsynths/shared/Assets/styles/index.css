@@ -17,6 +17,7 @@
  *   components/fx.css         -- modulos de efecto y sus temas por familia
  *   components/envelope.css   -- EnvelopePad: curva ADSR compartida
  *   components/bank.css       -- BankManagerModal: contenedor modal universal
+ *   components/step-matrix.css -- StepMatrix: matriz de pasos y filas de tracker
  *
  * Structure:
  *   tokens.css          -- 120+ design tokens
@@ -58,3 +59,4 @@
 @import './components/catalog-browser.css';     /* Catalog & Model Browser: navegadores de modelos/tablas de ondas estilo ABDMS2000 */
 @import './components/midi-learn.css';          /* MIDI Learn & CC/NRPN Mapping Matrix (N:M) */
 @import './components/live-sysex-inspector.css'; /* LiveSysExInspector: inspector reactivo de tramas MIDI SysEx */
+@import './components/step-matrix.css';          /* StepMatrix: matriz de pasos / filas de tracker */

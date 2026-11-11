@@ -68,3 +68,46 @@ export function isBlockedHostname(host: string): boolean {
   }
   return isBlockedIPv4Host(h);
 }
+
+export function assertSafeExternalHttpsUrl(rawUrl: string): string {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid external URL');
+  }
+  if (u.protocol !== 'https:') {
+    throw new Error(`Only HTTPS is allowed, got ${u.protocol}`);
+  }
+  if (u.username || u.password) {
+    throw new Error('Credentials in external URL are forbidden');
+  }
+  if (isLoopbackHostname(u.hostname) || isBlockedHostname(u.hostname)) {
+    throw new Error(`Blocked unsafe external URL host: ${u.hostname}`);
+  }
+  return u.toString();
+}
+
+export function assertSafeLoopbackHttpUrl(rawUrl: string, allowedPorts = [11434, 1234, 8080, 8000]): string {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid loopback URL');
+  }
+  if (u.protocol !== 'http:') {
+    throw new Error(`Only HTTP is allowed for local loopback, got ${u.protocol}`);
+  }
+  if (u.username || u.password) {
+    throw new Error('Credentials in loopback URL are forbidden');
+  }
+  const host = u.hostname.toLowerCase();
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1' && host !== '[::1]') {
+    throw new Error(`Host must be loopback (127.0.0.1 or localhost), got: ${u.hostname}`);
+  }
+  const port = u.port ? Number.parseInt(u.port, 10) : 80;
+  if (!allowedPorts.includes(port)) {
+    throw new Error(`Port ${port} is not in allowed loopback ports: ${allowedPorts.join(', ')}`);
+  }
+  return u.origin;
+}

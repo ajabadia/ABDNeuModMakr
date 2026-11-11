@@ -43,7 +43,7 @@ import type {
   WorkingMode,
   Zone,
 } from './types.ts';
-import { cloneArticulation, cloneExtendedRegion } from './extendedAdapter.ts';
+import { cloneExtendedRegion, createDefaultArticulation } from './extendedAdapter.ts';
 import { DEFAULT_MASTER_WAVE_CONFIG } from './dsp/MasterWaveEnhancer.ts';
 import { isBlockedHostname } from './security/ssrf.ts';
 import { clamp, clampInt } from './dsp/DspMath.ts';
@@ -51,6 +51,100 @@ import {
   coverBytesDeclaredDimensions,
   MAX_IMPORTED_COVER_DIMENSION_PX,
 } from './coverArtwork.ts';
+
+function finiteClamped(val: unknown, fallback: number, min: number, max: number): number {
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    return Math.min(max, Math.max(min, val));
+  }
+  return fallback;
+}
+
+export function sanitizeArticulation(raw: unknown): SynthArticulationConfig | undefined {
+  if (!isRecord(raw)) return undefined;
+  const base = createDefaultArticulation();
+
+  const sanitizeDahdsr = (sub: unknown, fallbackEnv: typeof base.ampEnv) => {
+    if (!isRecord(sub)) return { ...fallbackEnv };
+    return {
+      delaySec: finiteClamped(sub['delaySec'], fallbackEnv.delaySec, 0, 30),
+      attackSec: finiteClamped(sub['attackSec'], fallbackEnv.attackSec, 0, 30),
+      holdSec: finiteClamped(sub['holdSec'], fallbackEnv.holdSec, 0, 30),
+      decaySec: finiteClamped(sub['decaySec'], fallbackEnv.decaySec, 0, 30),
+      sustainLevel: finiteClamped(sub['sustainLevel'], fallbackEnv.sustainLevel, 0, 1),
+      releaseSec: finiteClamped(sub['releaseSec'], fallbackEnv.releaseSec, 0, 30),
+    };
+  };
+
+  const sanitizeLfo = (sub: unknown, fallbackLfo: typeof base.vibLfo) => {
+    if (!isRecord(sub)) return { ...fallbackLfo };
+    return {
+      enabled: Boolean(sub['enabled']),
+      delaySec: finiteClamped(sub['delaySec'], fallbackLfo.delaySec, 0, 30),
+      freqHz: finiteClamped(sub['freqHz'], fallbackLfo.freqHz, 0.01, 100),
+      toPitchCents: finiteClamped(sub['toPitchCents'], fallbackLfo.toPitchCents, -2400, 2400),
+      toFilterCents: finiteClamped(sub['toFilterCents'], fallbackLfo.toFilterCents, -9600, 9600),
+      toVolumeDb: finiteClamped(sub['toVolumeDb'], fallbackLfo.toVolumeDb, -48, 48),
+      waveform: finiteClamped(sub['waveform'], fallbackLfo.waveform ?? 0, 0, 5),
+    };
+  };
+
+  const sanitizeFilter = (sub: unknown, fallbackFilter: typeof base.filter) => {
+    if (!isRecord(sub)) return { ...fallbackFilter };
+    const rawType = String(sub['type'] || 'lpf').toLowerCase();
+    const type: 'lpf' | 'hpf' | 'bpf' | 'notch' = ['lpf', 'hpf', 'bpf', 'notch'].includes(rawType)
+      ? (rawType as 'lpf' | 'hpf' | 'bpf' | 'notch')
+      : 'lpf';
+    return {
+      enabled: Boolean(sub['enabled']),
+      type,
+      cutoffHz: finiteClamped(sub['cutoffHz'], fallbackFilter.cutoffHz, 20, 24000),
+      resonanceDb: finiteClamped(sub['resonanceDb'], fallbackFilter.resonanceDb, 0, 40),
+      envToFilterCents: finiteClamped(sub['envToFilterCents'], fallbackFilter.envToFilterCents, -9600, 9600),
+      velToFilterCents: finiteClamped(sub['velToFilterCents'], fallbackFilter.velToFilterCents, -9600, 9600),
+      keytrackCents: finiteClamped(sub['keytrackCents'], fallbackFilter.keytrackCents, -2400, 2400),
+    };
+  };
+
+  const out: SynthArticulationConfig = {
+    ampEnvEnabled: Boolean(raw['ampEnvEnabled']),
+    ampEnv: sanitizeDahdsr(raw['ampEnv'], base.ampEnv),
+    modEnvEnabled: Boolean(raw['modEnvEnabled']),
+    modEnv: sanitizeDahdsr(raw['modEnv'], base.modEnv),
+    modEnvToPitchCents: finiteClamped(raw['modEnvToPitchCents'], 0, -4800, 4800),
+    filter: sanitizeFilter(raw['filter'], base.filter),
+    vibLfo: sanitizeLfo(raw['vibLfo'], base.vibLfo),
+    modLfo: sanitizeLfo(raw['modLfo'], base.modLfo),
+    bakeEnvelopeIntoWave: Boolean(raw['bakeEnvelopeIntoWave']),
+  };
+
+  if (raw['pitchEnv'] && isRecord(raw['pitchEnv'])) {
+    const pe = raw['pitchEnv'] as Record<string, unknown>;
+    out.pitchEnv = {
+      enabled: Boolean(pe['enabled']),
+      env: sanitizeDahdsr(pe['env'], base.ampEnv),
+      depthCents: finiteClamped(pe['depthCents'], 0, -4800, 4800),
+      ...(pe['velModDepth'] !== undefined ? { velModDepth: finiteClamped(pe['velModDepth'], 0, -4800, 4800) } : {}),
+    };
+  }
+
+  if (raw['pitchBendUpSt'] !== undefined) {
+    out.pitchBendUpSt = finiteClamped(raw['pitchBendUpSt'], 2, 0, 48);
+  }
+  if (raw['pitchBendDownSt'] !== undefined) {
+    out.pitchBendDownSt = finiteClamped(raw['pitchBendDownSt'], 2, 0, 48);
+  }
+  if (raw['polyphony'] !== undefined) {
+    out.polyphony = Math.round(finiteClamped(raw['polyphony'], 16, 1, 256));
+  }
+  if (raw['glideTimeSec'] !== undefined) {
+    out.glideTimeSec = finiteClamped(raw['glideTimeSec'], 0, 0, 30);
+  }
+  if (typeof raw['voiceMode'] === 'string' && ['poly', 'mono', 'legato'].includes(raw['voiceMode'])) {
+    out.voiceMode = raw['voiceMode'] as 'poly' | 'mono' | 'legato';
+  }
+
+  return out;
+}
 
 export const SESSION_MAGIC = 'NEURONMM_SESSION';
 export const SESSION_SCHEMA_VERSION = '1.2.0';
@@ -693,9 +787,7 @@ export function validateSessionPayload(payload: unknown): Session {
     : undefined;
 
   const artRaw = body['articulation'];
-  const articulation: SynthArticulationConfig | undefined = isRecord(artRaw)
-    ? cloneArticulation(artRaw as unknown as SynthArticulationConfig)
-    : undefined;
+  const articulation: SynthArticulationConfig | undefined = sanitizeArticulation(artRaw);
 
   const detectedRaw = body['detectedInstrumentCategory'];
   const detectedInstrumentCategory =

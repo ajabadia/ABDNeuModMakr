@@ -9,6 +9,8 @@
  *  - Resaltado micro-animado de mutaciones byte a byte (pulse highlight).
  *  - Comparación diferencial Diff A/B con conteo de discrepancias.
  *  - Exportación directa de archivo binario .syx.
+ *  - Edición byte a byte validada antes de escribir (SOF/EOX bloqueados,
+ *    datos de 7 bits) con notificación a suscriptores.
  *  - Copia rápida al portapapeles (Hex string o Array literal).
  *  - Desglose semántico de cabecera MIDI (Manufacturer, Device ID, Model, EOX).
  *  - Soporte flotante (arrastrable / desacoplable) o incrustado en contenedor.
@@ -21,6 +23,82 @@
  */
 export function toHexByte(byte) {
   return (byte & 0xff).toString(16).padStart(2, '0').toUpperCase();
+}
+
+/**
+ * Techo de un byte de DATOS MIDI. El protocolo reserva el bit 7 para los
+ * estados (F0/F7 y mensajes de canal), asi que todo byte interior de una trama
+ * SysEx debe caber en 7 bits.
+ */
+export const SYSEX_MAX_DATA_BYTE = 0x7f;
+
+/**
+ * Valida un cambio de byte ANTES de aplicarlo. Es la unica puerta de entrada a
+ * la edicion: la usan tanto `setByte()` como el editor de la rejilla, de modo
+ * que API y UI no pueden divergir.
+ *
+ * Reglas:
+ *  - el indice tiene que ser un entero dentro de la trama;
+ *  - el byte 0 (SOF, F0) y el ultimo (EOX, F7) son estructurales y no se editan;
+ *  - el valor tiene que ser un entero 0x00-0x7F (byte de datos de 7 bits).
+ *
+ * Un byte de datos que ya venga corrupto (>0x7F) sigue siendo editable: es
+ * justo el caso en que se quiere reparar la trama.
+ *
+ * @param {Uint8Array|Array<number>} buffer
+ * @param {number} index
+ * @param {number} value
+ * @returns {{ok: boolean, index: number, value?: number, previous?: number, reason?: string, message?: string}}
+ */
+export function validateSysExByte(buffer, index, value) {
+  const length = buffer && typeof buffer.length === 'number' ? buffer.length : 0;
+  const shown = Number.isInteger(value) ? `0x${toHexByte(value & 0xff)}` : String(value);
+
+  if (length === 0) {
+    return { ok: false, index, reason: 'empty-buffer', message: 'Búfer SysEx vacío' };
+  }
+
+  if (!Number.isInteger(index) || index < 0 || index >= length) {
+    return {
+      ok: false,
+      index,
+      reason: 'out-of-range',
+      message: `Índice ${index} fuera de la trama (0..${length - 1})`,
+    };
+  }
+
+  if (!Number.isInteger(value)) {
+    return { ok: false, index, reason: 'not-integer', message: `«${value}» no es un byte entero` };
+  }
+
+  if (index === 0) {
+    return {
+      ok: false,
+      index,
+      reason: 'reserved-sof',
+      message: 'El byte 0 es el SOF (F0) y no se edita',
+    };
+  }
+
+  if (index === length - 1) {
+    return {
+      ok: false,
+      index,
+      reason: 'reserved-eox',
+      message: 'El último byte es el EOX (F7) y no se edita',
+    };
+  }
+
+  if (value < 0 || value > SYSEX_MAX_DATA_BYTE) {
+    return {
+      ok: false,
+      index,
+      reason: 'not-7bit',
+      message: `${shown} no es un byte de datos MIDI (0x00-0x7F)`,
+    };
+  }
+
+  return { ok: true, index, value, previous: buffer[index] };
 }
 
 /**
@@ -89,6 +167,7 @@ export class LiveSysExInspector {
    * @param {Function}    [options.onExport]     Callback al exportar (blob, filename).
    * @param {Function}    [options.onClose]      Callback al cerrar u ocultar.
    * @param {Function}    [options.onOpen]       Callback al abrir o mostrar.
+   * @param {Function}    [options.onByteEdited] Callback al editar un byte: ({ index, previous, value, buffer }).
    */
   constructor(options = {}) {
     this.options = {
@@ -109,6 +188,13 @@ export class LiveSysExInspector {
     this.feedbackTimeout = null;
     this.isMinimized = false;
     this.isDestroyed = false;
+
+    // Edición byte a byte
+    this.byteEditListeners = new Set();
+    this._editing = null;
+    if (typeof options.onByteEdited === 'function') {
+      this.byteEditListeners.add(options.onByteEdited);
+    }
 
     // Elementos DOM
     this.rootEl = null;
@@ -280,6 +366,11 @@ export class LiveSysExInspector {
     // --- Body (Rejilla Hex) ---
     this.bodyEl = document.createElement('div');
     this.bodyEl.className = 'sysex-inspector__body';
+
+    // Delegación de eventos de edición: una sola pareja de listeners sobrevive
+    // a los re-render de la rejilla.
+    this.bodyEl.addEventListener('click', (e) => this._onByteCellClick(e));
+    this.bodyEl.addEventListener('keydown', (e) => this._onByteCellKeyDown(e));
 
     // --- Footer ---
     this.footerEl = document.createElement('div');
@@ -513,6 +604,9 @@ export class LiveSysExInspector {
    */
   _onKeyDown(e) {
     if (e.key === 'Escape' && this.isOpen()) {
+      // Mientras se edita un byte, Escape cancela la edición (lo gestiona el
+      // propio campo); no debe cerrar la ventana.
+      if (this._editing) return;
       e.stopPropagation();
       this.hide();
     }
@@ -586,6 +680,237 @@ export class LiveSysExInspector {
   }
 
   /**
+   * Metadatos de un byte de la trama: valor, papel estructural y si es editable.
+   * @param {number} index
+   * @returns {{index: number, value: number|null, role: 'sof'|'eox'|'data'|'none', editable: boolean, min: number, max: number, reason: string|null}}
+   */
+  getByteMeta(index) {
+    const length = this.buffer.length;
+    const inRange = Number.isInteger(index) && index >= 0 && index < length;
+
+    if (!inRange) {
+      return {
+        index,
+        value: null,
+        role: 'none',
+        editable: false,
+        min: 0,
+        max: SYSEX_MAX_DATA_BYTE,
+        reason: length === 0 ? 'Búfer vacío' : `Índice fuera de la trama (0..${length - 1})`,
+      };
+    }
+
+    const value = this.buffer[index];
+    const role = index === 0 ? 'sof' : index === length - 1 ? 'eox' : 'data';
+    const corrupt = role === 'data' && value > SYSEX_MAX_DATA_BYTE;
+
+    return {
+      index,
+      value,
+      role,
+      editable: role === 'data',
+      min: 0,
+      max: SYSEX_MAX_DATA_BYTE,
+      reason:
+        role === 'sof'
+          ? 'Byte de inicio SOF (F0): estructural'
+          : role === 'eox'
+            ? 'Byte de fin EOX (F7): estructural'
+            : corrupt
+              ? 'El valor actual supera 0x7F; se puede corregir editándolo'
+              : null,
+    };
+  }
+
+  /**
+   * Suscribe un callback a las ediciones de byte. Devuelve la función para
+   * darse de baja.
+   * @param {(payload: {index: number, previous: number, value: number, buffer: Uint8Array}) => void} cb
+   * @returns {() => boolean}
+   */
+  onByteEdited(cb) {
+    if (typeof cb !== 'function') return () => false;
+    this.byteEditListeners.add(cb);
+    return () => this.byteEditListeners.delete(cb);
+  }
+
+  /**
+   * Escribe un byte de la trama. Valida antes de tocar nada: si el byte es
+   * estructural, el índice está fuera de rango o el valor no es un dato de 7
+   * bits, no modifica el búfer y devuelve el motivo.
+   * @param {number} index
+   * @param {number} value
+   * @returns {{ok: boolean, index: number, value?: number, previous?: number, changed?: boolean, reason?: string, message?: string}}
+   */
+  setByte(index, value) {
+    if (this.isDestroyed) {
+      return { ok: false, index, reason: 'destroyed', message: 'El inspector está destruido' };
+    }
+
+    const check = validateSysExByte(this.buffer, index, value);
+    if (!check.ok) {
+      this.showFeedback(`Byte rechazado: ${check.message}`);
+      return check;
+    }
+
+    const previous = this.buffer[index];
+    if (previous === value) {
+      return { ok: true, index, value, previous, changed: false };
+    }
+
+    this.buffer[index] = value;
+    if (this.prevBuffer && this.prevBuffer.length === this.buffer.length) {
+      this.prevBuffer[index] = value;
+    }
+    this.mutatedIndices.add(index);
+    this._scheduleMutationClear();
+    this.render();
+
+    const payload = { index, previous, value, buffer: this.getBuffer() };
+    this.byteEditListeners.forEach((fn) => {
+      try {
+        fn(payload);
+      } catch (err) {
+        // Un suscriptor roto no debe romper la edición ni el resto de suscriptores.
+        console.error('[LiveSysExInspector] onByteEdited lanzó un error:', err);
+      }
+    });
+
+    return { ok: true, index, value, previous, changed: true };
+  }
+
+  /**
+   * Abre el editor en línea sobre una celda de byte.
+   * @param {HTMLElement} cell
+   * @param {number} index
+   * @returns {boolean} true si el editor se abrió
+   */
+  _beginByteEdit(cell, index) {
+    if (!cell || typeof document === 'undefined') return false;
+    const meta = this.getByteMeta(index);
+    if (!meta.editable) return false;
+
+    this._cancelByteEdit();
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'sysex-byte__editor';
+    input.maxLength = 2;
+    input.value = toHexByte(meta.value);
+    input.spellcheck = false;
+    input.setAttribute('inputmode', 'text');
+    input.setAttribute('aria-label', `Valor hexadecimal para el byte ${index} (00-7F)`);
+
+    cell.textContent = '';
+    cell.appendChild(input);
+    cell.classList.add('sysex-byte--editing');
+
+    this._editing = { input, cell, index, original: meta.value };
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this._commitByteEdit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this._cancelByteEdit();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      if (this._editing && this._editing.input === input) {
+        this._cancelByteEdit();
+      }
+    });
+
+    input.focus();
+    input.select();
+    return true;
+  }
+
+  /**
+   * Aplica el valor tecleado. Si no es un hex `00`-`7F` válido, deja el editor
+   * abierto marcado en error en lugar de escribir un byte dudoso.
+   * @returns {boolean} true si el byte se aplicó
+   */
+  _commitByteEdit() {
+    const state = this._editing;
+    if (!state) return false;
+
+    const raw = state.input.value.trim();
+    if (!/^[0-9a-fA-F]{1,2}$/.test(raw)) {
+      this.showFeedback('Byte rechazado: escribe dos dígitos hex (00-7F)');
+      this._markEditorInvalid(state);
+      return false;
+    }
+
+    const parsed = parseInt(raw, 16);
+
+    // Se suelta el editor antes de escribir: setByte() re-renderiza la rejilla y
+    // el blur del campo desmontado no debe cancelar lo ya aplicado.
+    this._editing = null;
+    const result = this.setByte(state.index, parsed);
+
+    if (!result.ok) {
+      this._editing = state;
+      this._markEditorInvalid(state);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Descarta la edición en curso y restaura el valor original de la celda.
+   * @returns {boolean} true si había algo que cancelar
+   */
+  _cancelByteEdit() {
+    const state = this._editing;
+    if (!state) return false;
+    this._editing = null;
+    state.cell.classList.remove('sysex-byte--editing');
+    state.cell.textContent = toHexByte(state.original);
+    return true;
+  }
+
+  /** Marca el campo como inválido sin cerrar la edición. */
+  _markEditorInvalid(state) {
+    if (!state || !state.input) return;
+    state.input.classList.add('sysex-byte__editor--invalid');
+    state.input.focus();
+    state.input.select();
+  }
+
+  /** Click en una celda editable. */
+  _onByteCellClick(e) {
+    if (this._editing) return;
+    const cell = e.target.closest ? e.target.closest('.sysex-byte--editable') : null;
+    if (!cell) return;
+    this._beginByteEdit(cell, Number(cell.dataset.offset));
+  }
+
+  /** Teclado sobre una celda editable (accesibilidad: Enter o F2). */
+  _onByteCellKeyDown(e) {
+    if (this._editing) return;
+    if (e.key !== 'Enter' && e.key !== 'F2') return;
+    const cell = e.target.closest ? e.target.closest('.sysex-byte--editable') : null;
+    if (!cell) return;
+    e.preventDefault();
+    this._beginByteEdit(cell, Number(cell.dataset.offset));
+  }
+
+  /** Programa la limpieza del pulso de mutación (800 ms). */
+  _scheduleMutationClear() {
+    if (this.mutatedIndices.size === 0) return;
+    clearTimeout(this.mutationTimeout);
+    this.mutationTimeout = setTimeout(() => {
+      this.mutatedIndices.clear();
+      this._clearMutationClasses();
+    }, 800);
+  }
+
+  /**
    * Monta el inspector en un contenedor del DOM.
    * @param {HTMLElement} target
    * @returns {this}
@@ -627,6 +952,11 @@ export class LiveSysExInspector {
    */
   updateBuffer(newBuffer) {
     if (this.isDestroyed) return;
+
+    // Una trama nueva invalida la edición en curso: el byte que se estaba
+    // tecleando ya no pertenece al estado mostrado.
+    if (this._editing) this._cancelByteEdit();
+
     const incoming = new Uint8Array(newBuffer || 0);
 
     // Detección de mutaciones byte a byte
@@ -645,13 +975,7 @@ export class LiveSysExInspector {
     this.render();
 
     // Limpieza de animación tras 800ms
-    if (this.mutatedIndices.size > 0) {
-      clearTimeout(this.mutationTimeout);
-      this.mutationTimeout = setTimeout(() => {
-        this.mutatedIndices.clear();
-        this._clearMutationClasses();
-      }, 800);
-    }
+    this._scheduleMutationClear();
   }
 
   /**
@@ -852,6 +1176,20 @@ export class LiveSysExInspector {
           else if (byteIdx === len - 1 && val === 0xf7) span.classList.add('sysex-byte--eof');
           else if (byteIdx === 1) span.classList.add('sysex-byte--mfg');
 
+          // Edición byte a byte: SOF y EOX quedan bloqueados, el resto se edita
+          const meta = this.getByteMeta(byteIdx);
+          if (meta.editable) {
+            span.classList.add('sysex-byte--editable');
+            span.setAttribute('role', 'button');
+            span.setAttribute('tabindex', '0');
+            span.setAttribute('aria-label', `Byte ${byteIdx}, ${toHexByte(val)}, editable`);
+            span.title = `Clic o Enter para editar el byte ${byteIdx} (00-7F)`;
+          } else {
+            span.classList.add('sysex-byte--locked');
+            span.setAttribute('aria-disabled', 'true');
+            if (meta.reason) span.title = meta.reason;
+          }
+
           // Mutación en vivo
           if (this.mutatedIndices.has(byteIdx)) {
             span.classList.add('sysex-byte--mutated');
@@ -862,7 +1200,9 @@ export class LiveSysExInspector {
             const valA = this.snapshotA[byteIdx];
             if (valA !== undefined && val !== valA) {
               span.classList.add('sysex-byte--diff');
-              span.title = `Offset ${byteIdx}: A (0x${toHexByte(valA)}) → B (0x${toHexByte(val)})`;
+              span.title =
+                `Offset ${byteIdx}: A (0x${toHexByte(valA)}) → B (0x${toHexByte(val)})` +
+                (meta.editable ? ' · Clic o Enter para editar' : '');
             }
           }
 
@@ -898,6 +1238,8 @@ export class LiveSysExInspector {
    */
   destroy() {
     this.isDestroyed = true;
+    if (this._editing) this._cancelByteEdit();
+    this.byteEditListeners.clear();
     if (this.isDetached) {
       this.dock();
     }

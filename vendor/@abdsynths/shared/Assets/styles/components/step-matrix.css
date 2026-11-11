@@ -1,0 +1,232 @@
+/*
+ * ABDSharedAssets — step matrix / tracker rows.
+ *
+ * Companion of Components/Controls/stepMatrix.js. Everything is themed through
+ * the global tokens (styles/tokens.css): --color-accent, --color-panel-surface,
+ * --color-text-muted... The literal fallbacks keep the component usable
+ * standalone (demo pages, tests) without importing the token system.
+ *
+ * The row state is carried by classes the component writes: .step-row-disabled
+ * (step turned off) and .step-triggered (LED flash while the step plays), plus
+ * .active on the selected destination button.
+ */
+
+/* ── Container ─────────────────────────────────────────────────────────────── */
+
+.step-matrix-wrap {
+    width: 100%;
+    overflow-x: auto;
+    background: var(--color-panel-surface, rgba(20, 26, 34, 0.9));
+    border: 1px solid var(--color-panel-border, rgba(126, 155, 181, 0.25));
+    border-radius: var(--radius-md, 6px);
+}
+
+.step-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: var(--text-xs, 10px);
+    color: var(--color-text-main, #dfe8f2);
+}
+
+.step-matrix-table thead th {
+    position: sticky;
+    top: 0;
+    padding: var(--space-1, 3px) var(--space-2, 6px);
+    font-size: var(--text-2xs, 8px);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-text-muted, #7e9bb5);
+    background: var(--color-panel-surface-elevated, rgba(28, 36, 46, 0.95));
+    border-bottom: 1px solid var(--color-panel-border, rgba(126, 155, 181, 0.25));
+    white-space: nowrap;
+}
+
+/* ── Rows ──────────────────────────────────────────────────────────────────── */
+
+.step-matrix-row {
+    border-bottom: 1px solid var(--color-border-subtle, rgba(126, 155, 181, 0.12));
+    transition: background-color 120ms linear;
+}
+
+.step-matrix-row:last-child { border-bottom: none; }
+
+.step-matrix-row:hover { background: var(--color-panel-surface-elevated, rgba(28, 36, 46, 0.55)); }
+
+.step-row-disabled .td-note,
+.step-row-disabled .td-val,
+.step-row-disabled .td-prob,
+.step-row-disabled .td-delay,
+.step-row-disabled .td-mut,
+.step-row-disabled .td-amt {
+    opacity: 0.45;
+}
+
+.step-matrix-row.step-triggered {
+    background: var(--color-accent-dim, rgba(0, 195, 255, 0.16));
+}
+
+.step-matrix-row td {
+    padding: var(--space-1, 3px) var(--space-2, 6px);
+    vertical-align: middle;
+    text-align: center;
+}
+
+/* ── Step number and trigger LED ───────────────────────────────────────────── */
+
+.step-num-badge {
+    display: inline-block;
+    min-width: 2.2em;
+    padding: 1px 4px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-muted, #7e9bb5);
+    background: var(--color-bg-elev, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--color-border-subtle, rgba(126, 155, 181, 0.18));
+    border-radius: var(--radius-sm, 3px);
+}
+
+.step-trig-led {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-trig-off, rgba(126, 155, 181, 0.28));
+    box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.6);
+    transition: background-color 60ms linear, box-shadow 60ms linear;
+}
+
+.step-trig-led.active {
+    background: var(--color-accent, #00c3ff);
+    box-shadow: 0 0 6px var(--color-accent, #00c3ff);
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────────────── */
+
+.step-toggle-input {
+    width: 13px;
+    height: 13px;
+    accent-color: var(--color-accent, #00c3ff);
+    cursor: pointer;
+}
+
+.step-note-wrap,
+.step-val-wrap,
+.step-prob-wrap,
+.step-delay-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 2px);
+}
+
+.step-note-input,
+.step-delay-input,
+.step-amt-input {
+    width: 3.4em;
+    padding: 1px 3px;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-main, #dfe8f2);
+    text-align: center;
+    background: var(--color-input-bg, rgba(0, 0, 0, 0.45));
+    border: 1px solid var(--color-border, rgba(126, 155, 181, 0.22));
+    border-radius: var(--radius-sm, 3px);
+}
+
+.step-amt-input { width: 4em; }
+
+.step-note-input:focus-visible,
+.step-delay-input:focus-visible,
+.step-amt-input:focus-visible,
+.step-mut-select:focus-visible,
+.step-val-slider:focus-visible,
+.step-prob-slider:focus-visible {
+    outline: 1px solid var(--color-accent, #00c3ff);
+    outline-offset: 1px;
+}
+
+.step-note-label {
+    min-width: 2.2em;
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-muted, #7e9bb5);
+    text-align: left;
+}
+
+.step-unit {
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-dim, #5c7285);
+}
+
+/* ── Segmented destination picker ──────────────────────────────────────────── */
+
+.step-segmented-group {
+    display: inline-flex;
+    border: 1px solid var(--color-border, rgba(126, 155, 181, 0.22));
+    border-radius: var(--radius-sm, 3px);
+    overflow: hidden;
+}
+
+.step-seg-btn {
+    padding: 2px 6px;
+    font-family: inherit;
+    font-size: var(--text-2xs, 8px);
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted, #7e9bb5);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--color-border-subtle, rgba(126, 155, 181, 0.18));
+    cursor: pointer;
+}
+
+.step-seg-btn:last-child { border-right: none; }
+
+.step-seg-btn:hover { color: var(--color-text-main, #dfe8f2); }
+
+.step-seg-btn.active {
+    color: var(--color-bg-base, #0a0e14);
+    background: var(--color-accent, #00c3ff);
+}
+
+.step-seg-btn:focus-visible {
+    outline: 1px solid var(--color-accent, #00c3ff);
+    outline-offset: -2px;
+}
+
+/* ── Sliders and readouts ──────────────────────────────────────────────────── */
+
+.step-val-slider,
+.step-prob-slider {
+    width: 68px;
+    height: 3px;
+    accent-color: var(--color-accent, #00c3ff);
+    cursor: pointer;
+}
+
+.step-val-output,
+.step-prob-output {
+    min-width: 2.6em;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-main, #dfe8f2);
+    text-align: right;
+}
+
+.step-mut-select {
+    padding: 1px 3px;
+    font-family: var(--font-sans, system-ui, sans-serif);
+    font-size: var(--text-2xs, 8px);
+    color: var(--color-text-main, #dfe8f2);
+    background: var(--color-input-bg, rgba(0, 0, 0, 0.45));
+    border: 1px solid var(--color-border, rgba(126, 155, 181, 0.22));
+    border-radius: var(--radius-sm, 3px);
+    cursor: pointer;
+}
+
+/* ── Narrow panels: the table scrolls horizontally, never squashes ─────────── */
+
+@media (max-width: 720px) {
+    .step-matrix-table { font-size: var(--text-2xs, 8px); }
+    .step-val-slider,
+    .step-prob-slider { width: 48px; }
+}

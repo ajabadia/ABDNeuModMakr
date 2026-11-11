@@ -13,9 +13,11 @@
 
 import { convertImageToCoverWebp } from '../coverArtwork.ts';
 import type { ModelCoverArtwork } from '../types.ts';
-import { cloudByokClient } from './CloudByokClient.ts';
+import { cloudByokClient, fetchWithTimeout } from './CloudByokClient.ts';
+import { bridgeClient } from '../bridge/BridgeClient.ts';
 import { generateProceduralArtwork } from './ProceduralAcousticArtwork.ts';
 import { delay } from '../asyncUtils.ts';
+import { assertSafeExternalHttpsUrl } from '../security/ssrf.ts';
 
 export type ArtworkStylePreset =
   | 'cyberpunk'
@@ -658,7 +660,7 @@ async function generateWithGeminiImagen(
     throw new Error('Google Gemini API Key is missing. Please configure it in Settings (BYOK).');
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(key)}`;
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict';
   const body = {
     instances: [{ prompt }],
     parameters: {
@@ -668,11 +670,14 @@ async function generateWithGeminiImagen(
     },
   };
 
-  const res = await fetch(endpoint, {
+  const res = await fetchWithTimeout(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': key,
+    },
     body: JSON.stringify(body),
-  });
+  }, 45_000);
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -708,7 +713,7 @@ async function generateWithOpenAiDallE(
     throw new Error('OpenAI API Key is missing. Please configure it in Settings (BYOK).');
   }
 
-  const res = await fetch('https://api.openai.com/v1/images/generations', {
+  const res = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
@@ -721,7 +726,7 @@ async function generateWithOpenAiDallE(
       size: '1024x1024',
       response_format: 'b64_json',
     }),
-  });
+  }, 45_000);
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -757,7 +762,7 @@ async function generateWithOpenRouter(
     throw new Error('OpenRouter API Key is missing. Please configure it in Settings (BYOK).');
   }
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
@@ -770,7 +775,7 @@ async function generateWithOpenRouter(
       messages: [{ role: 'user', content: prompt }],
       modalities: ['image', 'text'],
     }),
-  });
+  }, 45_000);
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -884,15 +889,15 @@ async function generateWithHuggingFace(
     throw new Error('Hugging Face User Token is missing. Please configure it in Settings (BYOK).');
   }
 
-  const endpoint = 'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell';
-  const res = await fetch(endpoint, {
+  const endpoint = 'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell';
+  const res = await fetchWithTimeout(endpoint, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ inputs: prompt }),
-  });
+  }, 45_000);
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -950,7 +955,18 @@ async function generateWithReplicate(
     urls?: { get?: string };
   };
 
-  const getUrl = prediction.urls?.get || `/v1/predictions/${prediction.id}`;
+  let getUrl = prediction.urls?.get || `/v1/predictions/${prediction.id}`;
+  if (getUrl.startsWith('http://') || getUrl.startsWith('https://')) {
+    try {
+      const parsedGetUrl = new URL(getUrl);
+      if (parsedGetUrl.hostname !== 'api.replicate.com') {
+        throw new Error(`Unsafe replicate poll host: ${parsedGetUrl.hostname}`);
+      }
+      getUrl = parsedGetUrl.pathname + parsedGetUrl.search;
+    } catch (e) {
+      throw new Error(`Invalid replicate poll URL: ${e}`);
+    }
+  }
 
   // Poll prediction (max 45 seconds)
   const maxAttempts = 15;
@@ -969,12 +985,13 @@ async function generateWithReplicate(
     prediction = (await pollRes.json()) as typeof prediction;
   }
 
-  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-  if (!outputUrl) {
+  const rawOutputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  if (!rawOutputUrl) {
     throw new Error('Replicate generation timed out or returned no output URL.');
   }
 
-  const imgRes = await fetch(outputUrl);
+  const outputUrl = assertSafeExternalHttpsUrl(rawOutputUrl);
+  const imgRes = await fetchWithTimeout(outputUrl, {}, 45_000);
   if (!imgRes.ok) {
     throw new Error(`Failed to download output image from Replicate: HTTP ${imgRes.status}`);
   }
@@ -994,18 +1011,18 @@ async function generateWithCompanionBridge(
   request: ArtworkGenerationRequest,
   prompt: string
 ): Promise<ModelCoverArtwork> {
-  const bridgeUrl = 'http://127.0.0.1:7860/api/generate-artwork';
+  const bridgeUrl = `${bridgeClient.getUrl()}/api/generate-artwork`;
 
-  const res = await fetch(bridgeUrl, {
+  const res = await fetchWithTimeout(bridgeUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: bridgeClient.authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       prompt,
       style: request.style,
       model_name: request.modelName,
       parameter_set: request.parameterSet ?? 0,
     }),
-  });
+  }, 30_000);
 
   if (!res.ok) {
     throw new Error(`Companion Bridge returned HTTP ${res.status}. Check if bridge/server.py is running.`);

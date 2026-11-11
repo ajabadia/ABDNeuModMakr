@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────
 
 export * from '@abdsynths/shared/formats/sampler/Sf2Parser.ts';
+export { classifyInstrumentAndParameterSet } from '../core/dsp/instrumentNameHints.ts';
 
 import {
   importSf2PresetToNative,

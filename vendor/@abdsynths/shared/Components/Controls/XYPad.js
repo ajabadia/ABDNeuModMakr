@@ -32,7 +32,7 @@
  *   pad.getValue();                      // -> { x, y }
  */
 
-import { announceSettled, createContinuousNotices } from './continuousNotices.js';
+import { announceSettled, createContinuousNotices } from './ContinuousNotices.js';
 import { clamp01 } from '../../Utils/number.js';
 
 

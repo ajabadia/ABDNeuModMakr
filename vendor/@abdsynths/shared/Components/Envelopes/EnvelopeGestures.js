@@ -18,7 +18,7 @@
  *   detach();   // destroy() del control
  */
 
-import { ENVELOPE_VIEWBOX } from './envelopeCurve.js';
+import { ENVELOPE_VIEWBOX } from './EnvelopeCurve.js';
 import { clamp01 } from '../../Utils/number.js';
 
 

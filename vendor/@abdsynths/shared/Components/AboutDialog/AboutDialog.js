@@ -59,6 +59,7 @@ export class AboutDialog {
     this.versionTextEl = null;
     this.focusContract = null;
     this.isChecking = false;
+    this.resultTimeout = null;
 
     this._mount();
     this._wireListeners();
@@ -106,6 +107,7 @@ export class AboutDialog {
               <span class="abd-about-status">${this._escape(this.options.statusText)}</span>
               <div class="abd-about-action" hidden>
                 <a class="btn-glow btn-sm btn-update-avail abd-btn-download-update" href="#" target="_blank" rel="noopener noreferrer">DOWNLOAD UPDATE</a>
+                <button type="button" class="btn-glow btn-sm abd-btn-retry-update" hidden>RETRY</button>
               </div>
             </div>
           </div>
@@ -129,6 +131,7 @@ export class AboutDialog {
             <div class="about-update-status abd-about-status"></div>
             <div class="about-update-action abd-about-action" hidden>
               <a class="btn-glow btn-sm btn-update-avail abd-btn-download-update" href="#" target="_blank" rel="noopener noreferrer">DOWNLOAD UPDATE</a>
+              <button type="button" class="btn-glow btn-sm abd-btn-retry-update" hidden>RETRY</button>
             </div>
           </div>
 
@@ -142,6 +145,7 @@ export class AboutDialog {
     this.actionEl = this.rootEl.querySelector('.abd-about-action');
     this.downloadBtn = this.rootEl.querySelector('.abd-btn-download-update');
     this.versionTextEl = this.rootEl.querySelector('.abd-about-version');
+    this.retryBtn = this.rootEl.querySelector('.abd-btn-retry-update');
 
     this.focusContract = createOverlayFocus({
       root: this.rootEl,
@@ -163,6 +167,9 @@ export class AboutDialog {
 
     const checkBtn = this.rootEl.querySelector('.abd-btn-check-updates');
     checkBtn?.addEventListener('click', () => this.checkForUpdates());
+
+    const retryBtn = this.rootEl.querySelector('.abd-btn-retry-update');
+    retryBtn?.addEventListener('click', () => this.checkForUpdates());
 
     const backend = this.options.getJuceBackend?.();
     if (backend && typeof backend.addEventListener === 'function') {
@@ -216,48 +223,75 @@ export class AboutDialog {
   checkForUpdates() {
     if (this.isChecking) return;
     this.isChecking = true;
+    this._clearResultTimeout();
 
     if (this.statusEl) {
       this.statusEl.className = 'about-update-status abd-about-status warning';
       this.statusEl.textContent = 'Checking for updates...';
     }
-    if (this.actionEl) this.actionEl.hidden = true;
+    this._hideActions();
 
     const backend = this.options.getJuceBackend?.();
-    if (backend && (typeof backend.checkForUpdates === 'function' || typeof backend.emitEvent === 'function')) {
-      if (typeof backend.checkForUpdates === 'function') {
-        backend.checkForUpdates();
-      } else {
-        backend.emitEvent('checkForUpdates', {});
-      }
-      setTimeout(() => { this.isChecking = false; }, 2000);
-    } else {
-      const apiUrl = `https://api.github.com/repos/${this.options.repo}/releases/latest`;
-      fetch(apiUrl, { headers: { Accept: 'application/vnd.github.v3+json' } })
-        .then(res => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))
-        .then(rel => {
-          this.isChecking = false;
-          const remoteTag = rel.tag_name || this.options.version;
-          const isNewer = this._isNewerVersion(remoteTag, this.options.version);
-          this.renderUpdateResult({
-            currentVersion: this.options.version,
-            latestVersion: remoteTag,
-            isUpdateAvailable: isNewer,
-            downloadUrl: rel.html_url || `https://github.com/${this.options.repo}/releases`
-          });
-        })
-        .catch(() => {
-          this.isChecking = false;
-          this.renderUpdateResult({
-            currentVersion: this.options.version,
-            latestVersion: this.options.version,
-            isUpdateAvailable: false
-          });
-        });
+
+    // Solo se delega en el backend si expone un chequeo propio. Un `emitEvent`
+    // suelto no basta: el puente no tiene handler para 'checkForUpdates', la
+    // consulta se queda muda y es justo como se acababa afirmando "al dia".
+    if (backend && typeof backend.checkForUpdates === 'function') {
+      backend.checkForUpdates();
+      this._armResultTimeout(this.options.backendResultTimeoutMs ?? 15000);
+      return;
     }
+
+    if (typeof fetch !== 'function') {
+      if (backend && typeof backend.emitEvent === 'function') {
+        backend.emitEvent('checkForUpdates', {});
+        this._armResultTimeout(this.options.backendResultTimeoutMs ?? 15000);
+        return;
+      }
+      this.isChecking = false;
+      this.renderUpdateError('unsupported');
+      return;
+    }
+
+    const apiUrl = `https://api.github.com/repos/${this.options.repo}/releases/latest`;
+    const timeoutMs = this.options.fetchTimeoutMs ?? 10000;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => { controller?.abort(); }, timeoutMs);
+
+    fetch(apiUrl, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+      signal: controller ? controller.signal : undefined,
+    })
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then(rel => {
+        clearTimeout(timer);
+        const remoteTag = rel.tag_name || this.options.version;
+        const isNewer = this._isNewerVersion(remoteTag, this.options.version);
+        this.renderUpdateResult({
+          currentVersion: this.options.version,
+          latestVersion: remoteTag,
+          isUpdateAvailable: isNewer,
+          downloadUrl: rel.html_url || `https://github.com/${this.options.repo}/releases`
+        });
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        this.isChecking = false;
+        this.renderUpdateError(err && err.name === 'AbortError' ? 'timeout' : 'network');
+      });
   }
 
   renderUpdateResult(data) {
+    // El AutoUpdater contesta checkFailed/errorMessage cuando la consulta no
+    // llego a completarse: eso es un fallo, no un "al dia".
+    if (data && data.checkFailed) {
+      this.renderUpdateError(/timeout/i.test(data.errorMessage || '') ? 'timeout' : 'network');
+      if (this.statusEl && data.errorMessage) this.statusEl.textContent = data.errorMessage;
+      return;
+    }
+
+    this._clearResultTimeout();
+    this.isChecking = false;
     if (!this.statusEl) return;
     const curVer = (data && data.currentVersion) || this.options.version;
     if (this.versionTextEl) {
@@ -269,6 +303,8 @@ export class AboutDialog {
       this.statusEl.textContent = `New version available: ${data.latestVersion || 'latest'}`;
       if (this.actionEl && this.downloadBtn) {
         this.actionEl.hidden = false;
+        this.downloadBtn.hidden = false;
+        if (this.retryBtn) this.retryBtn.hidden = true;
         this.downloadBtn.textContent = `DOWNLOAD ${data.latestVersion || 'UPDATE'}`;
         this.downloadBtn.href = data.downloadUrl || `https://github.com/${this.options.repo}/releases/latest`;
         this.downloadBtn.onclick = (e) => {
@@ -284,7 +320,55 @@ export class AboutDialog {
     } else {
       this.statusEl.className = 'about-update-status abd-about-status';
       this.statusEl.textContent = 'You are running the latest version.';
-      if (this.actionEl) this.actionEl.hidden = true;
+      this._hideActions();
+    }
+  }
+
+  /**
+   * Estado de fallo del chequeo (sin red, timeout, HTTP no-ok o backend mudo).
+   * Nunca se declara "al dia" cuando la consulta no ha llegado a completarse.
+   */
+  renderUpdateError(reason = 'network') {
+    this._clearResultTimeout();
+    this.isChecking = false;
+    if (!this.statusEl) return;
+
+    const fallback = 'Could not check for updates. Check your connection and retry.';
+    const messages = {
+      timeout: this.options.timeoutMessage || 'The update check timed out. Check your connection and retry.',
+      network: this.options.errorMessage || fallback,
+      unsupported: this.options.errorMessage || fallback,
+    };
+
+    this.statusEl.className = 'about-update-status abd-about-status error';
+    this.statusEl.textContent = messages[reason] || fallback;
+    if (this.actionEl) this.actionEl.hidden = false;
+    if (this.downloadBtn) this.downloadBtn.hidden = true;
+    if (this.retryBtn) {
+      this.retryBtn.hidden = false;
+      this.retryBtn.textContent = this.options.retryLabel || 'RETRY';
+    }
+  }
+
+  _hideActions() {
+    if (this.actionEl) this.actionEl.hidden = true;
+    if (this.downloadBtn) this.downloadBtn.hidden = true;
+    if (this.retryBtn) this.retryBtn.hidden = true;
+  }
+
+  _armResultTimeout(ms) {
+    this._clearResultTimeout();
+    this.resultTimeout = setTimeout(() => {
+      this.resultTimeout = null;
+      if (!this.isChecking) return;
+      this.renderUpdateError('timeout');
+    }, ms);
+  }
+
+  _clearResultTimeout() {
+    if (this.resultTimeout) {
+      clearTimeout(this.resultTimeout);
+      this.resultTimeout = null;
     }
   }
 
@@ -310,6 +394,7 @@ export class AboutDialog {
   }
 
   destroy() {
+    this._clearResultTimeout();
     if (this.focusContract) {
       this.focusContract.detach();
     }

@@ -123,6 +123,9 @@ export const SHARED_ES = {
     checkingUpdates: 'Buscando actualizaciones...',
     newVersionAvailable: 'Nueva versión disponible: {version}',
     upToDate: 'Estás ejecutando la última versión.',
+    updateCheckFailed: 'No se pudo comprobar si hay actualizaciones. Revisa la conexión y reinténtalo.',
+    updateCheckTimeout: 'La comprobación tardó demasiado. Revisa la conexión y reinténtalo.',
+    retryCheck: 'REINTENTAR',
     close: 'CERRAR',
   },
 

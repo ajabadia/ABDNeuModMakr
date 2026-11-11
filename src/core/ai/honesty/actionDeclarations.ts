@@ -34,27 +34,20 @@ export function resolveAiActionDeclaration(
 
     case 'recorder-ai-denoise': {
       const stageEnabled = Boolean(ctx.aiConfig?.enabled && ctx.aiConfig?.denoise === 'ai');
-      const hasBridgeDenoise = ctx.isBridgeConnected && (ctx.isDenoiseModelReady !== false) && stageEnabled;
-      const hasCloudLlm = Boolean(ctx.isCloudReady || ctx.activeTextLlmProvider);
-      const avail = hasBridgeDenoise || hasCloudLlm;
-      const llmLabel = ctx.activeTextLlmProvider ? ctx.activeTextLlmProvider.toUpperCase() : 'Cloud BYOK';
-      const primary = hasBridgeDenoise
-        ? 'DeepFilterNet 3 (Modelo IA local habilitado en Etapa 5 + Companion Bridge)'
-        : hasCloudLlm
-          ? `Denoise asistido por IA (${llmLabel} API Key configurada + DeepFilter/Bridge)`
-          : 'DeepFilterNet 3 (Etapa 5 AI Denoise) o API Key de LLM potente (Claude/GPT-4o/Gemini)';
+      const avail = Boolean(ctx.isBridgeConnected && ctx.isDenoiseModelReady && stageEnabled);
+      const primary = 'DeepFilterNet 3 (Modelo IA local habilitado en Etapa 5 + Companion Bridge)';
       const fallback = 'Denoise determinista local (Sustracción espectral por Huella de Ruido + Filtro Hum 50/60 Hz)';
 
       let missingReason = '';
-      if (!stageEnabled && !hasCloudLlm) {
+      if (!stageEnabled) {
         missingReason =
-          '• La Etapa 5 "AI Denoise (DeepFilterNet 3)" no está habilitada en Settings → IA (actualmente en modo DSP/Bypass), y tampoco hay una API Key de un LLM potente configurada en Cloud BYOK.';
-      } else if (!ctx.isBridgeConnected && !hasCloudLlm) {
+          '• La Etapa 5 "AI Denoise (DeepFilterNet 3)" no está habilitada en Settings → IA (actualmente en modo DSP/Bypass).';
+      } else if (!ctx.isBridgeConnected) {
         missingReason =
-          '• El Companion Bridge local (DeepFilterNet 3, puerto 7860) no está conectado y no hay una API Key de LLM potente configurada en Cloud BYOK.';
-      } else if (ctx.isDenoiseModelReady === false && !hasCloudLlm) {
+          '• El Companion Bridge local (DeepFilterNet 3, puerto 7860) no está conectado.';
+      } else if (!ctx.isDenoiseModelReady) {
         missingReason =
-          '• El modelo DeepFilterNet 3 (deepfilter) no está descargado/habilitado en Companion Bridge y no hay una API Key de LLM potente configurada.';
+          '• El modelo DeepFilterNet 3 (deepfilter) no tiene inferencia neuronal activa o no está listo en Companion Bridge.';
       }
 
       return {
@@ -62,15 +55,15 @@ export function resolveAiActionDeclaration(
         primaryEngine: primary,
         fallbackEngine: fallback,
         isPrimaryAvailable: avail,
-        buttonLabel: avail ? 'Denoise IA (DeepFilter / Cloud)' : 'Denoise IA (No habilitado → DSP)',
-        buttonTooltip: `Motor IA: ${primary}. Requiere tener habilitado AI Denoise (DeepFilterNet 3) o API Key de LLM potente configurada. Alternativa: ${fallback}.`,
+        buttonLabel: avail ? 'Denoise IA (DeepFilterNet 3)' : 'Denoise IA (No disponible → DSP)',
+        buttonTooltip: `Motor IA: ${primary}. Requiere modelo DeepFilterNet 3 activo en Companion Bridge. Alternativa: ${fallback}.`,
         requiresFallbackConsent: !avail,
-        consentTitle: 'Modelo Denoise IA no habilitado o sin API Key — ¿Usar Denoise DSP?',
+        consentTitle: 'Modelo Denoise IA no disponible — ¿Usar Denoise DSP?',
         consentMessage:
-          `Para ejecutar Denoise por IA se comprueba que el modelo "DeepFilterNet 3" (Etapa 5: AI Denoise) esté habilitado o que exista una API Key de un LLM potente configurada:\n\n` +
+          `Para ejecutar Denoise por IA se requiere que el modelo neuronal "DeepFilterNet 3" esté disponible en el Companion Bridge local:\n\n` +
           `${missingReason}\n\n` +
           `Alternativa disponible: ${fallback}.\n\n` +
-          `¿Quieres aplicar la alternativa DSP local ahora o cancelar para habilitar el modelo / API Key en Settings?`,
+          `¿Quieres aplicar la alternativa DSP local ahora o cancelar para iniciar el Companion Bridge?`,
         consentConfirmLabel: 'Usar Denoise DSP local',
       };
     }

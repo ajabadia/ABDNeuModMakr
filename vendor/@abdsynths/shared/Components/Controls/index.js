@@ -4,21 +4,22 @@
  */
 
 export { attachDrag } from './drag-core.js';
-export { Knob } from './knob.js';
-export { Slider } from './slider.js';
-export { Select } from './select.js';
-export { Segmented } from './segmented.js';
-export { Switch } from './switch.js';
-export { Toggle } from './toggle.js';
-export { Wheel } from './wheel.js';
-export { XYPad } from './xypad.js';
+export { Knob } from './Knob.js';
+export { Slider } from './Slider.js';
+export { Select } from './Select.js';
+export { Segmented } from './Segmented.js';
+export { Switch } from './Switch.js';
+export { Toggle } from './Toggle.js';
+export { Wheel } from './Wheel.js';
+export { XYPad } from './XYPad.js';
 export { TrajectoryStick2D } from '../trajectoryStick2D.js';
-export { NumberBox } from './numberbox.js';
-export { FilmstripFader } from './filmstripFader.js';
-export { SilverFilmstripKnob } from './silverFilmstripKnob.js';
-export { EffectLEDButton } from './effectLEDButton.js';
-export { PeakLED } from './peakLED.js';
-export { TapeEchoVisual } from './tapeEchoVisual.js';
-export { sameControlValue, transitioned, announceTransition } from './transitionNotices.js';
-export { announceMovement, announceSettled, createContinuousNotices } from './continuousNotices.js';
+export { NumberBox } from './NumberBox.js';
+export { FilmstripFader } from './FilmstripFader.js';
+export { SilverFilmstripKnob } from './SilverFilmstripKnob.js';
+export { EffectLEDButton } from './EffectLEDButton.js';
+export { PeakLED } from './PeakLED.js';
+export { TapeEchoVisual } from './TapeEchoVisual.js';
+export { StepMatrix, midiNoteToName } from './stepMatrix.js';
+export { sameControlValue, transitioned, announceTransition } from './TransitionNotices.js';
+export { announceMovement, announceSettled, createContinuousNotices } from './ContinuousNotices.js';
 export { registerSkin, getSkin, applySkin, skinNames } from './skins/index.js';

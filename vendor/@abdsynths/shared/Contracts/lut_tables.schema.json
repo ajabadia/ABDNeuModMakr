@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://abdsynths.dev/schemas/lut_tables.schema.json",
+  "title": "ABDSynths Firmware LUT Tables Schema (v1.0)",
+  "description": "Tablas LUT de firmware indexadas por lutId, consumidas por los parámetros con curve: 'Lut'. Cada entrada declara su unidad física, su procedencia en la ROM y la escala que convierte los enteros crudos en magnitudes físicas.",
+  "type": "object",
+  "required": ["schemaVersion", "luts"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "type": ["string", "integer"] },
+    "description": { "type": "string" },
+    "derivation": {
+      "type": "string",
+      "description": "Expresión que convierte un entero de la tabla en la magnitud física declarada en 'unit'"
+    },
+    "luts": {
+      "type": "object",
+      "description": "Mapa lutId -> tabla. El lutId es el que referencian los parámetros con curve: 'Lut'",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/definitions/lutTable" }
+    }
+  },
+  "definitions": {
+    "lutTable": {
+      "type": "object",
+      "required": ["unit", "length", "increments"],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "description": "Unidad física de los valores resultantes (Hz, s, dB, ...)"
+        },
+        "description": { "type": "string" },
+        "length": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Número de entradas; el índice i corresponde al valor normalizado i / (length - 1)"
+        },
+        "scaling": {
+          "type": "object",
+          "description": "Escala que convierte los enteros crudos de la tabla en magnitudes físicas. Ausente cuando 'increments' ya está en la unidad física.",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["phase_increment"],
+              "description": "phase_increment: incremento de fase Q(qBits) del DSP; value = inc * sampleRateHz / 2^qBits"
+            },
+            "qBits": { "type": "integer", "minimum": 1 },
+            "sampleRateHz": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "description": "Trazabilidad de la tabla: firmware, offset, formato de palabra y comprobaciones cruzadas",
+          "properties": {
+            "firmware": { "type": "string" },
+            "romOffset": { "type": "string" },
+            "dspAddress": { "type": "string" },
+            "wordFormat": { "type": "string" },
+            "crossCheckedWith": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "increments": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "Enteros crudos de la tabla en el orden del índice de knob (0..length-1)"
+        }
+      }
+    }
+  }
+}
