@@ -1555,6 +1555,18 @@ class App {
           void this.openAudioChopper();
         } else if (targetId === 'zone-inspector-record-btn') {
           this.audioRecorderModal.open();
+        } else if (targetId === 'zone-inspector-mw-btn') {
+          this.inspector.openDrawer();
+        } else if (targetId === 'zone-inspector-split-btn') {
+          const splitBtn = document.querySelector<HTMLElement>('#btn-split-zone');
+          splitBtn?.click();
+        } else if (targetId === 'nav-spectral-btn') {
+          this.toggleSpectralPanel();
+        } else if (targetId === 'nav-theme-btn') {
+          const themeBtn = document.querySelector<HTMLElement>('#nav-btn-theme');
+          themeBtn?.click();
+        } else if (targetId === 'nav-settings-btn') {
+          this.settingsModal.open('general');
         } else if (targetId === 'btn-auto-repair') {
           this.core.autoRepairCoverage();
           this.session = this.core.getSession()!;

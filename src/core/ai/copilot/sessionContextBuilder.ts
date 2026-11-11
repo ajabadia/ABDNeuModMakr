@@ -4,8 +4,15 @@
 // ─────────────────────────────────────────────────────────
 
 import type { CoreService } from '../../CoreService.ts';
+import type { KbArticle } from '../../../../vendor/@abdsynths/shared/Code/AiCore/kbSearch.ts';
+import { CANONICAL_UI_TARGETS, buildNeuronSystemPrompt, getNeuronKnowledgeBase } from './neuronManualKb.ts';
 
 export interface HostContextSnapshot {
+  activeScope?: string;
+  systemPromptBase: string;
+  knowledgeBase: readonly KbArticle[];
+  sessionSnapshot: Record<string, unknown>;
+  allowedUiTargets: readonly string[];
   nowPlayingSummary: string;
   nextActionChecklist: Array<{ text: string; done: boolean; targetSpot?: string }>;
   suggestedPrompts: string[];
@@ -144,28 +151,35 @@ export function buildSessionContext(core: CoreService, activeModalName = 'none')
     ? 'Sesión vacía. Importa archivos WAV/AIFF o abre el Asistente para Músicos.'
     : `Modelo "${config?.modelName || 'Model'}" (${workingMode.toUpperCase()}) con ${zones.length} zonas en Parameter Set ${pSet} (${PARAMETER_SET_NAMES[pSet]}).`;
 
+  const stateSnapshot = {
+    workingMode,
+    modelName: config?.modelName || 'Model',
+    expandedName: config?.expandedName || '',
+    parameterSet: pSet,
+    parameterSetName: PARAMETER_SET_NAMES[pSet] || 'Unknown',
+    complexity: cVal,
+    recDepth: rDepth,
+    dspAlgorithm: config?.dspAlgorithm || 'enhanced',
+    zoneCount: zones.length,
+    extendedRegionCount: extRegions.length,
+    loadedSamplesCount: loadedSamples,
+    bridgeConnected: false,
+    coverageIssuesCount: covErrors,
+    activeZone: activeZoneData,
+    zonesOverview,
+    activeModal: activeModalName,
+  };
+
   return {
+    activeScope: activeModalName !== 'none' ? activeModalName : 'global',
+    systemPromptBase: buildNeuronSystemPrompt('es'),
+    knowledgeBase: getNeuronKnowledgeBase('es'),
+    sessionSnapshot: stateSnapshot,
+    allowedUiTargets: CANONICAL_UI_TARGETS,
     nowPlayingSummary,
     nextActionChecklist,
     suggestedPrompts,
-    stateSnapshot: {
-      workingMode,
-      modelName: config?.modelName || 'Model',
-      expandedName: config?.expandedName || '',
-      parameterSet: pSet,
-      parameterSetName: PARAMETER_SET_NAMES[pSet] || 'Unknown',
-      complexity: cVal,
-      recDepth: rDepth,
-      dspAlgorithm: config?.dspAlgorithm || 'enhanced',
-      zoneCount: zones.length,
-      extendedRegionCount: extRegions.length,
-      loadedSamplesCount: loadedSamples,
-      bridgeConnected: false,
-      coverageIssuesCount: covErrors,
-      activeZone: activeZoneData,
-      zonesOverview,
-      activeModal: activeModalName,
-    },
+    stateSnapshot,
     acousticSnapshot: {
       detectedF0Hz: activeZoneData?.detectedF0Hz,
       instrumentClass: PARAMETER_SET_NAMES[pSet],

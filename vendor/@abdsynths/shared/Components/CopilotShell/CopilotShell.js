@@ -398,11 +398,30 @@ export class CopilotShell {
   searchManual(query) {
     const resEl = this.container?.querySelector('#copilot-manual-results');
     if (!resEl) return;
-    const q = (query || '').toLowerCase().trim();
+    const norm = (str) => String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const stopWords = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'al', 'en', 'con', 'por', 'para', 'que', 'como', 'mi', 'tu', 'su', 'es', 'son', 'the', 'is', 'in', 'to', 'for', 'of', 'how', 'what']);
+    const qRaw = norm(query).trim();
+    const qTokens = (qRaw.match(/[a-z0-9_]{2,}/g) || []).filter((w) => !stopWords.has(w));
     const articles = this.kbArticles || [];
-    const matched = !q
-      ? articles
-      : articles.filter((a) => (a.title + ' ' + (a.tags || a.keywords || []).join(' ') + ' ' + (a.whatItMeans || a.content || '')).toLowerCase().includes(q));
+
+    let matched = articles;
+    if (qRaw) {
+      const terms = qTokens.length > 0 ? qTokens : [qRaw];
+      const scored = articles.map((a) => {
+        const titleNorm = norm(a.title);
+        const tagsNorm = norm((a.tags || a.keywords || []).join(' '));
+        const bodyNorm = norm((a.whatItMeans || a.content || '') + ' ' + (a.howToFixSteps || []).join(' '));
+        let score = 0;
+        for (const t of terms) {
+          const stem = t.length > 4 ? t.replace(/(ciones|ando|iendo|ar|er|ir|es|s|o|a|e)$/, '') : t;
+          if (titleNorm.includes(t) || (stem.length >= 4 && titleNorm.includes(stem))) score += 3;
+          if (tagsNorm.includes(t) || (stem.length >= 4 && tagsNorm.includes(stem))) score += 2.5;
+          if (bodyNorm.includes(t) || (stem.length >= 4 && bodyNorm.includes(stem))) score += 1;
+        }
+        return { a, score };
+      });
+      matched = scored.filter((item) => item.score > 0).sort((x, y) => y.score - x.score).map((item) => item.a);
+    }
 
     if (matched.length === 0) {
       resEl.innerHTML = '<div class="copilot-empty">No se encontraron articulos en el manual.</div>';

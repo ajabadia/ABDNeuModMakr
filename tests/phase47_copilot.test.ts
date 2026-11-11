@@ -446,6 +446,45 @@ async function run(): Promise<void> {
     );
   });
 
+  // ─────────────────────────────────────────────────────────
+  // Test 7: Busqueda Natural en Manual KB + Contexto Determinista
+  // ─────────────────────────────────────────────────────────
+  await test('Test 7 — Natural Language Manual Search (BM25 + Stemming) & Deterministic Turn', async () => {
+    const origLocal = globalThis.localStorage;
+    const mockLocal = new MemoryStorage();
+    Object.defineProperty(globalThis, 'localStorage', { value: mockLocal, configurable: true });
+
+    try {
+      const pipeline = new WebAudioPipeline();
+      await pipeline.init();
+      await pipeline.newSession('TestModel');
+
+      const ctx = buildSessionContext(pipeline, 'es');
+      assert.ok(Array.isArray(ctx.knowledgeBase) && ctx.knowledgeBase.length >= 25, 'Must include comprehensive knowledgeBase');
+
+      const localClient = new LocalLlmClient();
+      const cloudClient = new SharedCloudByokClient();
+      const orchestrator = new CopilotOrchestrator(localClient, cloudClient);
+
+      // 1. Query: "¿Cómo creo mi primer modelo?"
+      const turn1 = await orchestrator.processTurn('¿Cómo creo mi primer modelo?', ctx);
+      assert.ok(!turn1.reply.includes('No encontré artículos exactos'), 'Must find articles for "¿Cómo creo mi primer modelo?"');
+      assert.ok(turn1.highlightTargets.length > 0, 'Must return highlightTargets for "¿Cómo creo mi primer modelo?"');
+
+      // 2. Query: "Diferencia entre Classic y Extended"
+      const turn2 = await orchestrator.processTurn('Diferencia entre Classic y Extended', ctx);
+      assert.ok(!turn2.reply.includes('No encontré artículos exactos'), 'Must find articles for "Diferencia entre Classic y Extended"');
+      assert.ok(turn2.reply.toLowerCase().includes('classic') || turn2.reply.toLowerCase().includes('clásico'), 'Must match Classic vs Extended KB article');
+
+      // 3. Query: "quitar chasquido en el bucle"
+      const turn3 = await orchestrator.processTurn('quitar chasquido en el bucle', ctx);
+      assert.ok(!turn3.reply.includes('No encontré artículos exactos'), 'Must find articles for "quitar chasquido en el bucle"');
+      assert.ok(turn3.highlightTargets.includes('zone-inspector-loop-btn'), 'Must highlight zone-inspector-loop-btn for chasquido/bucle');
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: origLocal, configurable: true });
+    }
+  });
+
   console.log(`\nPhase 47 Verification: ${passed} passed, ${failed} failed.`);
   if (failed > 0) {
     process.exit(1);
