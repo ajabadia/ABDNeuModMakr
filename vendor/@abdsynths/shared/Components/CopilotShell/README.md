@@ -14,7 +14,11 @@ El componente `CopilotShell` (`@abdsynths/shared/components/copilot`) proporcion
    - `Asistente`: Chat contextual, estado del sistema, fichas rapidas y acciones sugeridas con confirmacion.
    - `Manual`: Consulta de la base de conocimiento integrada (busqueda BM25) con enlaces interactivos a controles.
    - `Registro`: Historial de operaciones, logs y boton de deshacer ultima accion (`Undo`).
-4. **Sistema Spotlight y Navegacion Guiada**:
+4. **Soporte Completo de Internacionalizacion (i18n)**:
+   - Todos los botones, pestanas, etiquetas HUD, placeholders, mensajes del sistema y textos de estado del panel utilizan las claves canonicas `copilot.*` de `@abdsynths/shared/Components/I18n`.
+   - Se actualiza reactivamente mediante el metodo `.applyI18n()` al conmutar el idioma en la aplicacion anfitriona (`setLocale()`), actualizando tanto la interfaz del shell como los articulos del manual suministrados (`kbArticles`).
+   - El diccionario compartido incluye paridad 1:1 en espanol (`SHARED_ES.copilot`) e ingles (`SHARED_EN.copilot`) para todas las cadenas de la asistencia.
+5. **Sistema Spotlight y Navegacion Guiada**:
    - Cualquier elemento del DOM etiquetado con `data-ai-target="target-id"` puede ser resaltado visualmente con un anillo animado de foco mediante `highlightUiTarget(targetId)`.
    - Soporte para enlaces en markdown: `[[target:target-id|Etiqueta del Control]]` o propiedad `uiTargets` en articulos del manual.
    - Soporte para navegacion activa mediante `onNavigateTarget(targetId)`.
@@ -32,6 +36,9 @@ const copilot = new CopilotShell({
   hostShellEl: document.getElementById('app-shell'),
   modalsRootEl: document.getElementById('modals-container'),
   dockMinViewportWidth: 1550,
+
+  // Motor i18n reactivo opcional (por defecto detecta window.__audiolab_i18n)
+  i18n: myI18nInstance,
 
   // Orquestador y contexto (Opcional, puede operar 100% determinista sin IA)
   orchestrator: myCopilotOrchestrator,
@@ -55,6 +62,14 @@ const copilot = new CopilotShell({
   // Articulos de la base de conocimiento de la app (KbArticle[])
   kbArticles: myKnowledgeBase
 });
+
+// Reactividad de idioma:
+// Al cambiar el idioma en la aplicacion, invocar:
+copilot.applyI18n();
+
+// Si la aplicacion dispone de base de conocimiento bilingue (ES / EN):
+copilot.kbArticles = getAppKnowledgeBase(currentLocale);
+copilot.searchManual(''); // Refresca la vista del manual en el idioma activo
 ```
 
 ---
