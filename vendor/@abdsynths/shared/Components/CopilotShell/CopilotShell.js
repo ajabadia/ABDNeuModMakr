@@ -7,6 +7,7 @@
 import { renderSafeCopilotMarkdown } from './copilotMarkdown.js';
 import { highlightUiTarget, clearUiHighlight } from './uiSpotlight.js';
 import { CONTROL_ICONS } from '../icons.js';
+import { SHARED_LOCALES } from '../I18n/index.js';
 
 const CHEVRON_RIGHT_SVG = (CONTROL_ICONS && CONTROL_ICONS.chevronRight) || `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
 const CHEVRON_LEFT_SVG = (CONTROL_ICONS && CONTROL_ICONS.chevronLeft) || `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -23,6 +24,7 @@ export class CopilotShell {
     this.onExecuteAction = options.onExecuteAction || (async () => ({ ok: false }));
     this.onNavigateTarget = options.onNavigateTarget || null;
     this.kbArticles = options.kbArticles || [];
+    this.i18n = options.i18n || (typeof window !== 'undefined' && window.__audiolab_i18n ? window.__audiolab_i18n : null);
     this.activeTab = 'assistant'; // 'assistant' | 'manual' | 'log'
     this.pinnedFloating = false;
     this.isOpen = true;
@@ -38,34 +40,56 @@ export class CopilotShell {
     }
   }
 
+  t(key, fallback = '') {
+    if (this.i18n && typeof this.i18n.t === 'function') {
+      const res = this.i18n.t(key);
+      if (res && res !== key) return res;
+    }
+    // Fallback directly to SHARED_LOCALES using window.__audiolab_i18n or localStorage
+    let loc = 'es';
+    try {
+      if (this.i18n && typeof this.i18n.getLocale === 'function') loc = this.i18n.getLocale();
+      else if (typeof localStorage !== 'undefined') loc = localStorage.getItem('abdaudiolab.locale') || localStorage.getItem('abdsynths.locale') || 'es';
+    } catch (_) {}
+    const dict = SHARED_LOCALES[loc] || SHARED_LOCALES.es;
+    const parts = key.split('.');
+    let cur = dict;
+    for (const p of parts) {
+      if (cur && typeof cur === 'object' && p in cur) cur = cur[p];
+      else { cur = null; break; }
+    }
+    if (typeof cur === 'string') return cur;
+    return fallback || key;
+  }
+
   initDom() {
     if (!this.container) return;
     this.container.innerHTML = `
       <div class="abd-copilot-container ${this.isCollapsed ? 'is-collapsed-rail' : ''}" id="abd-copilot-panel">
         <!-- Collapsed Rail View -->
         <div class="abd-copilot-rail ${this.isCollapsed ? '' : 'is-hidden'}" id="abd-copilot-rail">
-          <button type="button" class="abd-copilot-rail-btn" id="btn-copilot-expand-rail" title="Expandir Asistente">
+          <button type="button" class="abd-copilot-rail-btn" id="btn-copilot-expand-rail" title="${this.t('copilot.expandRail', 'Expandir Asistente')}">
             ${CHEVRON_LEFT_SVG}
           </button>
-          <div class="abd-copilot-rail-label">ASISTENTE</div>
+          <div class="abd-copilot-rail-label" id="copilot-rail-label">${this.t('copilot.railLabel', 'ASISTENTE')}</div>
         </div>
 
         <!-- Expanded Full View -->
         <div class="abd-copilot-full-wrap ${this.isCollapsed ? 'is-hidden' : ''}" id="abd-copilot-full-wrap">
           <div class="abd-copilot-header">
             <div class="abd-copilot-tabs">
-              <button type="button" class="abd-copilot-tab-btn is-active" data-tab="assistant">Asistente</button>
-              <button type="button" class="abd-copilot-tab-btn" data-tab="manual">Manual</button>
-              <button type="button" class="abd-copilot-tab-btn" data-tab="log">Registro</button>
+              <button type="button" class="abd-copilot-tab-btn is-active" data-tab="assistant" id="tab-btn-assistant">${this.t('copilot.tabAssistant', 'Asistente')}</button>
+              <button type="button" class="abd-copilot-tab-btn" data-tab="manual" id="tab-btn-manual">${this.t('copilot.tabManual', 'Manual')}</button>
+              <button type="button" class="abd-copilot-tab-btn" data-tab="log" id="tab-btn-log">${this.t('copilot.tabLog', 'Registro')}</button>
             </div>
             <div class="abd-copilot-actions">
-              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-collapse" title="Colapsar hacia la derecha">
+              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-collapse" title="${this.t('copilot.collapse', 'Colapsar hacia la derecha')}">
                 ${CHEVRON_RIGHT_SVG}
               </button>
-              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-pin" title="Fijar modo flotante">
+              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-pin" title="${this.t('copilot.pin', 'Fijar modo flotante')}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v10m0 0l4-4m-4 4L8 8m-4 8h16"/></svg>
               </button>
-              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-close" title="Cerrar panel">
+              <button type="button" class="abd-copilot-icon-btn" id="btn-copilot-close" title="${this.t('copilot.close', 'Cerrar panel')}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
             </div>
@@ -77,18 +101,18 @@ export class CopilotShell {
               <div id="copilot-proposed-action-area"></div>
               <div id="copilot-zero-chips" class="copilot-chips-row"></div>
               <div class="copilot-input-row">
-                <textarea id="copilot-input-text" placeholder="Haz una consulta o escribe un comando..."></textarea>
-                <button type="button" id="copilot-btn-send">Enviar</button>
+                <textarea id="copilot-input-text" placeholder="${this.t('copilot.inputPlaceholder', 'Haz una consulta o escribe un comando...')}"></textarea>
+                <button type="button" id="copilot-btn-send">${this.t('copilot.send', 'Enviar')}</button>
               </div>
             </div>
             <div id="abd-copilot-tab-manual" class="abd-copilot-tab-content is-hidden">
-              <input type="text" id="copilot-manual-search" placeholder="Buscar en el manual (BM25)..." />
+              <input type="text" id="copilot-manual-search" placeholder="${this.t('copilot.searchManualPlaceholder', 'Buscar en el manual (BM25)...')}" />
               <div id="copilot-manual-results" class="copilot-manual-list"></div>
             </div>
             <div id="abd-copilot-tab-log" class="abd-copilot-tab-content is-hidden">
               <div class="copilot-log-actions">
-                <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-undo-last">Deshacer ultima accion</button>
-                <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-clear-log">Limpiar registro</button>
+                <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-undo-last">${this.t('copilot.undoLastAction', 'Deshacer última acción')}</button>
+                <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-clear-log">${this.t('copilot.clearLog', 'Limpiar registro')}</button>
               </div>
               <div id="copilot-log-entries" class="copilot-log-list"></div>
             </div>
@@ -96,6 +120,57 @@ export class CopilotShell {
         </div>
       </div>
     `;
+  }
+
+  applyI18n() {
+    const panel = this.container?.querySelector('#abd-copilot-panel');
+    if (!panel) return;
+
+    const expandBtn = panel.querySelector('#btn-copilot-expand-rail');
+    if (expandBtn) expandBtn.title = this.t('copilot.expandRail', 'Expandir Asistente');
+
+    const railLabel = panel.querySelector('#copilot-rail-label');
+    if (railLabel) railLabel.textContent = this.t('copilot.railLabel', 'ASISTENTE');
+
+    const tabAssistant = panel.querySelector('#tab-btn-assistant');
+    if (tabAssistant) tabAssistant.textContent = this.t('copilot.tabAssistant', 'Asistente');
+
+    const tabManual = panel.querySelector('#tab-btn-manual');
+    if (tabManual) tabManual.textContent = this.t('copilot.tabManual', 'Manual');
+
+    const tabLog = panel.querySelector('#tab-btn-log');
+    if (tabLog) tabLog.textContent = this.t('copilot.tabLog', 'Registro');
+
+    const collapseBtn = panel.querySelector('#btn-copilot-collapse');
+    if (collapseBtn) collapseBtn.title = this.t('copilot.collapse', 'Colapsar hacia la derecha');
+
+    const pinBtn = panel.querySelector('#btn-copilot-pin');
+    if (pinBtn) pinBtn.title = this.t('copilot.pin', 'Fijar modo flotante');
+
+    const closeBtn = panel.querySelector('#btn-copilot-close');
+    if (closeBtn) closeBtn.title = this.t('copilot.close', 'Cerrar panel');
+
+    const inputArea = panel.querySelector('#copilot-input-text');
+    if (inputArea) inputArea.placeholder = this.t('copilot.inputPlaceholder', 'Haz una consulta o escribe un comando...');
+
+    const sendBtn = panel.querySelector('#copilot-btn-send');
+    if (sendBtn) sendBtn.textContent = this.t('copilot.send', 'Enviar');
+
+    const manualInput = panel.querySelector('#copilot-manual-search');
+    if (manualInput) manualInput.placeholder = this.t('copilot.searchManualPlaceholder', 'Buscar en el manual (BM25)...');
+
+    const undoBtn = panel.querySelector('#btn-copilot-undo-last');
+    if (undoBtn) undoBtn.textContent = this.t('copilot.undoLastAction', 'Deshacer última acción');
+
+    const clearLogBtn = panel.querySelector('#btn-copilot-clear-log');
+    if (clearLogBtn) clearLogBtn.textContent = this.t('copilot.clearLog', 'Limpiar registro');
+
+    this.refreshDeterministicHud();
+    if (this.activeTab === 'manual') {
+      this.searchManual(manualInput?.value || '');
+    } else if (this.activeTab === 'log') {
+      this.renderLogEntries();
+    }
   }
 
   setupListeners() {
@@ -277,22 +352,22 @@ export class CopilotShell {
     const ctx = this.getHostContext ? this.getHostContext() : {};
     const state = ctx.stateSnapshot || {};
     const audio = ctx.acousticSnapshot || {};
-    const model = state.modelName || 'Ninguno';
+    const model = state.modelName || this.t('copilot.none', 'Ninguno');
     const zoneCount = state.zoneCount || 0;
     const audioF0 = audio.detectedF0Hz ? `${Math.round(audio.detectedF0Hz)} Hz` : 'N/A';
     const ins = audio.instrumentClass || 'Synth & Neutral';
 
     el.innerHTML = `
       <div class="copilot-hud-row">
-        <span class="copilot-hud-label">Modelo:</span>
+        <span class="copilot-hud-label">${this.t('copilot.modelLabel', 'Modelo:')}</span>
         <span class="copilot-hud-val"><span class="abd-copilot-spot-chip" data-spot-target="process-model-name">${model}</span></span>
-        <span class="copilot-hud-label">Zonas:</span>
+        <span class="copilot-hud-label">${this.t('copilot.zonesLabel', 'Zonas:')}</span>
         <span class="copilot-hud-val">${zoneCount}</span>
       </div>
       <div class="copilot-hud-row">
-        <span class="copilot-hud-label">F0 detectado:</span>
+        <span class="copilot-hud-label">${this.t('copilot.f0Label', 'F0 detectado:')}</span>
         <span class="copilot-hud-val">${audioF0}</span>
-        <span class="copilot-hud-label">Instrumento:</span>
+        <span class="copilot-hud-label">${this.t('copilot.instrumentLabel', 'Instrumento:')}</span>
         <span class="copilot-hud-val">${ins}</span>
       </div>
     `;
@@ -326,7 +401,7 @@ export class CopilotShell {
     this.addLogEntry(`Consulta: ${text}`);
 
     if (!this.orchestrator) {
-      this.appendChatMessage('assistant', 'Modo sin IA activo. Puedes consultar el manual en la pestaña correspondiente o realizar comandos directos.');
+      this.appendChatMessage('assistant', this.t('copilot.noAiModeMessage', 'Modo sin IA activo. Puedes consultar el manual en la pestaña correspondiente o realizar comandos directos.'));
       return;
     }
 
@@ -363,11 +438,11 @@ export class CopilotShell {
 
     area.innerHTML = `
       <div class="copilot-proposed-card">
-        <div class="copilot-proposed-title">Accion sugerida: <strong>${action.actionName || action.tool}</strong></div>
+        <div class="copilot-proposed-title">${this.t('copilot.suggestedAction', 'Acción sugerida:')} <strong>${action.actionName || action.tool}</strong></div>
         <div class="copilot-proposed-desc">${renderSafeCopilotMarkdown(action.description || action.label || 'Deseas ejecutar esta operacion?')}</div>
         <div class="copilot-proposed-btns">
-          <button type="button" class="abd-copilot-btn-primary" id="btn-copilot-action-exec">Ejecutar</button>
-          <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-action-cancel">Descartar</button>
+          <button type="button" class="abd-copilot-btn-primary" id="btn-copilot-action-exec">${this.t('copilot.execute', 'Ejecutar')}</button>
+          <button type="button" class="abd-copilot-btn-secondary" id="btn-copilot-action-cancel">${this.t('copilot.dismiss', 'Descartar')}</button>
         </div>
       </div>
     `;
@@ -380,7 +455,7 @@ export class CopilotShell {
         this.addLogEntry(`Ejecutando accion: ${act.actionName || act.tool}`);
         try {
           const res = await this.onExecuteAction(act);
-          this.appendChatMessage('assistant', `Accion completada: ${act.actionName || act.tool}. ${res?.summary || res?.message || ''}`);
+          this.appendChatMessage('assistant', `${this.t('copilot.actionExecuted', 'Acción completada:')} ${act.actionName || act.tool}. ${res?.summary || res?.message || ''}`);
           this.refreshDeterministicHud();
         } catch (err) {
           this.appendChatMessage('assistant', `Fallo al ejecutar accion: ${err.message || String(err)}`);
@@ -391,7 +466,7 @@ export class CopilotShell {
     area.querySelector('#btn-copilot-action-cancel')?.addEventListener('click', () => {
       this.pendingAction = null;
       area.innerHTML = '';
-      this.appendChatMessage('assistant', 'Accion descartada por el usuario.');
+      this.appendChatMessage('assistant', this.t('copilot.actionDismissed', 'Acción descartada por el usuario.'));
     });
   }
 
@@ -424,7 +499,7 @@ export class CopilotShell {
     }
 
     if (matched.length === 0) {
-      resEl.innerHTML = '<div class="copilot-empty">No se encontraron articulos en el manual.</div>';
+      resEl.innerHTML = `<div class="copilot-empty">${this.t('copilot.noManualArticles', 'No se encontraron artículos en el manual.')}</div>`;
       return;
     }
 
@@ -460,7 +535,7 @@ export class CopilotShell {
     const el = this.container?.querySelector('#copilot-log-entries');
     if (!el) return;
     if (this.logEntries.length === 0) {
-      el.innerHTML = '<div class="copilot-empty">Sin eventos registrados.</div>';
+      el.innerHTML = `<div class="copilot-empty">${this.t('copilot.noLogEntries', 'Sin eventos registrados.')}</div>`;
       return;
     }
     el.innerHTML = this.logEntries.map((e) => `<div class="copilot-log-row">${renderSafeCopilotMarkdown(e)}</div>`).join('');

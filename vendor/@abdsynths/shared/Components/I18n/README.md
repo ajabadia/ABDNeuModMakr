@@ -5,7 +5,7 @@ Motor universal reactivo de internacionalización (i18n) en **2 capas** para la 
 - **Cero dependencias externas:** JavaScript ESM puro (navegador, Node.js, Web Workers, Electron).
 - **Ultraligero:** < 25 KB desempaquetado.
 - **Arquitectura en 2 capas:**
-  - **Capa 1 (Core):** Vocabulario común y transversal (`common`, `navbar`, `settings`, `calibration`, `hardwareDumps`, `midiLearn`).
+  - **Capa 1 (Core):** Vocabulario común y transversal (`common`, `copilot`, `navbar`, `settings`, `calibration`, `hardwareDumps`, `midiLearn`).
   - **Capa 2 (Sintetizador / App):** Diccionario propio y específico fusionado limpiamente sobre el core mediante `createSynthI18n()`.
 - **Enlace declarativo al DOM:** Soporte nativo para atributos `data-i18n`, `data-i18n-title`, `data-i18n-placeholder`.
 - **Persistencia unificada:** Clave estándar `abdsynths.locale` en `localStorage`.

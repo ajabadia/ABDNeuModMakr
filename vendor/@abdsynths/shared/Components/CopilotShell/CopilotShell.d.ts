@@ -9,6 +9,7 @@ export interface CopilotShellOptions {
   onExecuteAction?: (action: any) => Promise<{ ok: boolean; message?: string; summary?: string }>;
   onNavigateTarget?: (targetId: string) => void;
   kbArticles?: any[];
+  i18n?: any;
 }
 
 export declare class CopilotShell {
@@ -23,6 +24,7 @@ export declare class CopilotShell {
 
   constructor(options?: CopilotShellOptions);
   initDom(): void;
+  applyI18n(): void;
   setupListeners(): void;
   setCollapsed(collapsed: boolean): void;
   updateLayoutMode(): void;
