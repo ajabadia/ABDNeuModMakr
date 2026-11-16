@@ -8,3 +8,4 @@ export * from './LocalLlmClient';
 export * from './kbSearch';
 export * from './aiHonestyCore';
 export * from './CopilotOrchestrator';
+export * from './ModelRegistry';

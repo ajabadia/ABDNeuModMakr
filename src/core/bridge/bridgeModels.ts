@@ -6,6 +6,8 @@
 // ─────────────────────────────────────────────────────────
 
 import { type BridgeCore, type BridgeModelInfo } from './bridgeTypes.ts';
+import type { SharedCatalogStatusPayload } from '../../../vendor/@abdsynths/shared/Code/AiCore/ModelRegistry.ts';
+import { listCatalogModelsForApp } from '../../../vendor/@abdsynths/shared/Code/AiCore/ModelRegistry.ts';
 
 /**
  * Fetches the registered AI models, their local installation status and download progress.
@@ -265,4 +267,113 @@ export async function checkModelUrl(core: BridgeCore,
   } catch (err) {
     return { reachable: false, error: String(err) };
   }
+}
+
+function offlineWorkdirPayload(): SharedCatalogStatusPayload & { ok: boolean } {
+  return {
+    ok: false,
+    offline: true,
+    workdir: {
+      models_root: '',
+      source: 'offline',
+      exists: false,
+      writable: false,
+      free_gb: null,
+    },
+    models: listCatalogModelsForApp('abdneumodmakr'),
+  };
+}
+
+export async function getModelsWorkdir(
+  core: BridgeCore,
+  timeoutMs = 5000
+): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+  if (!core.isConnected()) return offlineWorkdirPayload();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${core.getUrl()}/api/models/workdir`, {
+      method: 'GET',
+      headers: core.authHeaders({ Accept: 'application/json' }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return offlineWorkdirPayload();
+    return (await res.json()) as SharedCatalogStatusPayload & { ok?: boolean };
+  } catch {
+    return offlineWorkdirPayload();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function postModelsWorkdir(
+  core: BridgeCore,
+  body: Record<string, unknown>,
+  timeoutMs = 8000
+): Promise<SharedCatalogStatusPayload & { ok?: boolean; path?: string; cancelled?: boolean }> {
+  if (!core.isConnected()) return offlineWorkdirPayload();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${core.getUrl()}/api/models/workdir`, {
+      method: 'POST',
+      headers: core.authHeaders({
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      }),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = (await res.json().catch(() => ({}))) as SharedCatalogStatusPayload & {
+      ok?: boolean;
+      error?: string;
+      path?: string;
+      cancelled?: boolean;
+    };
+    if (!res.ok) {
+      return {
+        ...offlineWorkdirPayload(),
+        offline: false,
+        ok: false,
+        error: data.error || `HTTP ${res.status}`,
+      };
+    }
+    return data;
+  } catch (err) {
+    return {
+      ...offlineWorkdirPayload(),
+      error: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function setModelsWorkdir(
+  core: BridgeCore,
+  path: string,
+  timeoutMs = 15000
+): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+  return postModelsWorkdir(core, { action: 'set', path }, timeoutMs);
+}
+
+export async function resetModelsWorkdir(
+  core: BridgeCore,
+  timeoutMs = 8000
+): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+  return postModelsWorkdir(core, { action: 'reset' }, timeoutMs);
+}
+
+export async function browseModelsWorkdir(
+  core: BridgeCore,
+  timeoutMs = 120000
+): Promise<string | null> {
+  const res = await postModelsWorkdir(core, { action: 'browse' }, timeoutMs);
+  return res.path && !res.cancelled ? res.path : null;
+}
+
+export async function openModelsWorkdir(core: BridgeCore, timeoutMs = 5000): Promise<void> {
+  await postModelsWorkdir(core, { action: 'open' }, timeoutMs);
 }

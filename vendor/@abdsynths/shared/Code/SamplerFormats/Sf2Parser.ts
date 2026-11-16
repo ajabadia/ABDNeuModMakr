@@ -12,8 +12,10 @@
 import type {
   AudioFilePayload,
   CustomMetadataTag,
+  DahdsrEnvelope,
   ExtendedModelMetadata,
   ExtendedRegion,
+  RegionFilterConfig,
   Sf2PresetOption,
   SynthArticulationConfig,
   Zone,
@@ -350,6 +352,31 @@ function parseSf2Structure(buffer: ArrayBuffer): ParsedSf2Archive {
 
   if (smplOffset < 0 || shdrs.length === 0 || insts.length === 0) {
     throw new Error('Invalid SF2 file: missing sdta/smpl or pdta chunks');
+  }
+
+  // S6.4 bounds verification: validate declared smpl length & shdr frame/rate bounds
+  const availableSmplBytes = Math.max(0, buffer.byteLength - smplOffset);
+  if (smplByteLength > availableSmplBytes + 64) {
+    throw new Error(
+      `SF2: smpl size out of bounds (${smplByteLength} declared, ${availableSmplBytes} available)`,
+    );
+  }
+  const maxSmplFrames = Math.floor(availableSmplBytes / 2) + 64;
+  for (const s of shdrs) {
+    if (s.start === 0 && s.end === 0 && s.sampleRate === 0) continue;
+    for (const [label, val] of [
+      ['start', s.start],
+      ['end', s.end],
+      ['startLoop', s.startLoop],
+      ['endLoop', s.endLoop],
+    ] as const) {
+      if (val > maxSmplFrames) {
+        throw new Error(`SF2: shdr ${label} out of bounds (${val} > ${maxSmplFrames} frames)`);
+      }
+    }
+    if (s.sampleRate < 4000 || s.sampleRate > 384000) {
+      throw new Error(`SF2: shdr sample rate out of bounds (${s.sampleRate} Hz)`);
+    }
   }
 
   return {
@@ -714,32 +741,64 @@ export function importSf2PresetToNative(
     collectInstrumentZones(Math.min(pIdx, sf2.insts.length - 2), 0, 127, 1, 127, new Map());
   }
 
-  // ── Extract global SynthArticulationConfig from average/first zone generators ──
+  const extractZoneVolEnv = (gens: Map<number, GenRecord>): { hasCustom: boolean; env: DahdsrEnvelope } => {
+    const getS = (op: number, defVal: number) => (gens.has(op) ? gens.get(op)!.sAmount : defVal);
+    const hasCustom =
+      gens.has(33) || gens.has(34) || gens.has(35) || gens.has(36) || gens.has(37) || gens.has(38);
+    const delayV = timecentsToSeconds(getS(33, -12000), 0, 10);
+    const attackV = timecentsToSeconds(getS(34, -12000), 0.002, 12);
+    const holdV = timecentsToSeconds(getS(35, -12000), 0, 10);
+    const decayV = timecentsToSeconds(getS(36, -12000), 0.005, 15);
+    const sustainCb = Math.max(0, Math.min(1000, getS(37, 0)));
+    const sustainLevel = Math.max(0, Math.min(1, 1 - sustainCb / 1000));
+    const releaseV = timecentsToSeconds(getS(38, -12000), 0.01, 15);
+    return {
+      hasCustom,
+      env: {
+        delaySec: Number(delayV.toFixed(4)),
+        attackSec: Number(attackV.toFixed(4)),
+        holdSec: Number(holdV.toFixed(4)),
+        decaySec: Number(decayV.toFixed(4)),
+        sustainLevel: Number(sustainLevel.toFixed(3)),
+        releaseSec: Number(releaseV.toFixed(4)),
+      },
+    };
+  };
+
+  const extractZoneFilter = (
+    gens: Map<number, GenRecord>,
+    modToFilter: number,
+  ): { filterActive: boolean; filter: RegionFilterConfig } => {
+    const getS = (op: number, defVal: number) => (gens.has(op) ? gens.get(op)!.sAmount : defVal);
+    const filterFcCents = getS(8, 13500);
+    const filterQCb = Math.max(0, getS(9, 0));
+    const cutoffHz = absCentsToHz(filterFcCents, 20, 20000);
+    const filterActive = filterFcCents < 13400 || filterQCb > 0 || Math.abs(modToFilter) > 0;
+    return {
+      filterActive,
+      filter: {
+        enabled: filterActive,
+        type: 'lpf',
+        poles: 2,
+        cutoffHz: Math.round(cutoffHz),
+        resonanceDb: Number((filterQCb / 10).toFixed(1)),
+        envToFilterCents: modToFilter,
+        velToFilterCents: 0,
+        keytrackCents: 0,
+      },
+    };
+  };
+
+  // Extract global SynthArticulationConfig from first zone generators
   const articulation = createDefaultArticulation();
   if (rawZones.length > 0) {
     const refGens = rawZones[0].gens;
     const getGenS = (op: number, defVal: number) => (refGens.has(op) ? refGens.get(op)!.sAmount : defVal);
 
     // 1. Amplitude Envelope (VolEnv: ops 33..38)
-    const hasCustomVolEnv =
-      refGens.has(33) || refGens.has(34) || refGens.has(35) || refGens.has(36) || refGens.has(37) || refGens.has(38);
-    const delayV = timecentsToSeconds(getGenS(33, -12000), 0, 10);
-    const attackV = timecentsToSeconds(getGenS(34, -12000), 0.002, 12);
-    const holdV = timecentsToSeconds(getGenS(35, -12000), 0, 10);
-    const decayV = timecentsToSeconds(getGenS(36, -12000), 0.005, 15);
-    const sustainCb = Math.max(0, Math.min(1000, getGenS(37, 0)));
-    const sustainLevel = Math.max(0, Math.min(1, 1 - sustainCb / 1000));
-    const releaseV = timecentsToSeconds(getGenS(38, -12000), 0.01, 15);
-
-    articulation.ampEnv = {
-      delaySec: Number(delayV.toFixed(4)),
-      attackSec: Number(attackV.toFixed(4)),
-      holdSec: Number(holdV.toFixed(4)),
-      decaySec: Number(decayV.toFixed(4)),
-      sustainLevel: Number(sustainLevel.toFixed(3)),
-      releaseSec: Number(releaseV.toFixed(4)),
-    };
-    articulation.ampEnvEnabled = Boolean(hasCustomVolEnv);
+    const vol0 = extractZoneVolEnv(refGens);
+    articulation.ampEnv = vol0.env;
+    articulation.ampEnvEnabled = Boolean(vol0.hasCustom);
 
     // 2. Modulation Envelope (ModEnv: ops 25..30, 7, 11)
     const modToPitch = getGenS(7, 0);
@@ -766,19 +825,9 @@ export function importSf2PresetToNative(
     }
 
     // 3. Filter (ops 8 = initialFilterFc in abs cents, 9 = initialFilterQ in cB)
-    const filterFcCents = getGenS(8, 13500);
-    const filterQCb = Math.max(0, getGenS(9, 0));
-    const cutoffHz = absCentsToHz(filterFcCents, 20, 20000);
-    const filterActive = filterFcCents < 13400 || filterQCb > 0 || Math.abs(modToFilter) > 0;
+    const flt0 = extractZoneFilter(refGens, modToFilter);
     articulation.filter = {
-      enabled: filterActive,
-      type: 'lpf',
-      poles: 2,
-      cutoffHz: Math.round(cutoffHz),
-      resonanceDb: Number((filterQCb / 10).toFixed(1)),
-      envToFilterCents: modToFilter,
-      velToFilterCents: 0,
-      keytrackCents: 0,
+      ...flt0.filter,
       filterEnv: Math.abs(modToFilter) > 0 ? { ...articulation.modEnv } : undefined,
     };
 
@@ -808,6 +857,60 @@ export function importSf2PresetToNative(
       waveform: 0,
     };
   }
+
+  const computeZoneOverrides = (
+    zoneGens: Map<number, GenRecord>,
+  ): {
+    hasArticulationOverride?: boolean;
+    ampEnvOverride?: Partial<DahdsrEnvelope>;
+    filterOverride?: Partial<RegionFilterConfig>;
+  } => {
+    let hasOverride = false;
+    let ampEnvOverride: Partial<DahdsrEnvelope> | undefined;
+    let filterOverride: Partial<RegionFilterConfig> | undefined;
+
+    const zVol = extractZoneVolEnv(zoneGens);
+    if (zVol.hasCustom) {
+      const g = articulation.ampEnv;
+      const e = zVol.env;
+      const diff =
+        !articulation.ampEnvEnabled ||
+        Math.abs(e.delaySec - g.delaySec) > 0.002 ||
+        Math.abs(e.attackSec - g.attackSec) > 0.002 ||
+        Math.abs(e.holdSec - g.holdSec) > 0.002 ||
+        Math.abs(e.decaySec - g.decaySec) > 0.002 ||
+        Math.abs(e.sustainLevel - g.sustainLevel) > 0.002 ||
+        Math.abs(e.releaseSec - g.releaseSec) > 0.002;
+      if (diff) {
+        hasOverride = true;
+        ampEnvOverride = e;
+      }
+    }
+
+    if (zoneGens.has(8) || zoneGens.has(9) || zoneGens.has(11)) {
+      const zModToFlt = zoneGens.has(11) ? zoneGens.get(11)!.sAmount : 0;
+      const zFlt = extractZoneFilter(zoneGens, zModToFlt);
+      const gf = articulation.filter;
+      const diff =
+        (zFlt.filterActive && !gf.enabled) ||
+        ((zFlt.filterActive || gf.enabled) &&
+          (Math.abs(zFlt.filter.cutoffHz - gf.cutoffHz) > 2 ||
+            Math.abs(zFlt.filter.resonanceDb - gf.resonanceDb) > 0.2 ||
+            Math.abs(zFlt.filter.envToFilterCents - gf.envToFilterCents) > 5));
+      if (diff) {
+        hasOverride = true;
+        filterOverride = zFlt.filter;
+      }
+    }
+
+    return hasOverride
+      ? {
+          hasArticulationOverride: true,
+          ...(ampEnvOverride ? { ampEnvOverride } : {}),
+          ...(filterOverride ? { filterOverride } : {}),
+        }
+      : {};
+  };
 
   // ── Merge Linked Left/Right Stereo Sample Pairs & Encode WAVs ──────────
   const consumed = new Set<number>();
@@ -904,6 +1007,7 @@ export function importSf2PresetToNative(
 
       const stereoExclusive = leftZ.gens.get(57)?.uAmount ?? rightZ.gens.get(57)?.uAmount ?? 0;
       const stereoMuteGroup = stereoExclusive > 0 ? Math.min(32, stereoExclusive) : undefined;
+      const stereoOverrides = computeZoneOverrides(leftZ.gens);
       extendedRegions.push({
         id: `ext-reg-${regionSeq++}`,
         sampleName: wavName,
@@ -933,6 +1037,7 @@ export function importSf2PresetToNative(
             : undefined,
         sampleRate,
         numChannels: 2,
+        ...stereoOverrides,
       });
     } else {
       consumed.add(i);
@@ -969,6 +1074,7 @@ export function importSf2PresetToNative(
       const relLoopEnd = Math.max(relLoopStart, Math.min(monoCh.length, zA.endLoopSample - zA.startSample));
       const monoExclusive = zA.gens.get(57)?.uAmount ?? 0;
       const monoMuteGroup = monoExclusive > 0 ? Math.min(32, monoExclusive) : undefined;
+      const monoOverrides = computeZoneOverrides(zA.gens);
 
       extendedRegions.push({
         id: `ext-reg-${regionSeq++}`,
@@ -999,6 +1105,7 @@ export function importSf2PresetToNative(
             : undefined,
         sampleRate,
         numChannels: 1,
+        ...monoOverrides,
       });
     }
   }

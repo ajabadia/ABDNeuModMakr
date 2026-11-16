@@ -14,11 +14,13 @@ export interface Sf2SampleEntry {
   sampleRate: number;
   rootKey: number;
   detuneCents: number;
-  loopMode: 'no_loop' | 'loop_continuous';
+  loopMode: 'no_loop' | 'loop_continuous' | 'loop_sustain';
   loopStart: number;
   loopEnd: number;
-  /** 16-bit signed PCM mono audio samples */
+  /** 16-bit signed PCM mono (or left-channel when pcm16Right is provided) audio samples */
   pcm16: Int16Array;
+  /** Optional 16-bit signed PCM right-channel samples for linked stereo SF2 export */
+  pcm16Right?: Int16Array;
 }
 
 export interface Sf2BankData {
@@ -42,6 +44,7 @@ const SFGEN_sustainVolEnv = 37;
 const SFGEN_releaseVolEnv = 38;
 const SFGEN_keyRange = 43;
 const SFGEN_velRange = 44;
+const SFGEN_initialAttenuation = 48;
 const SFGEN_fineTune = 52;
 const SFGEN_sampleID = 53;
 const SFGEN_sampleModes = 54;
@@ -98,70 +101,144 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
   const inamChunk = buildInfoSubchunk('INAM', bankName);
   const isftChunk = buildInfoSubchunk('ISFT', 'ABDNeuModMakr v1.2');
   const icopChunk = buildInfoSubchunk('ICOP', copyright);
-  const icmtChunk = buildInfoSubchunk('ICMT', `${author} — ${comment}`);
+  const icmtChunk = buildInfoSubchunk('ICMT', `${author} - ${comment}`);
 
   const infoSubchunks = [ifilChunk, isngChunk, inamChunk, isftChunk, icopChunk, icmtChunk];
   let infoDataSize = 4; // 'INFO' fourcc
   for (const c of infoSubchunks) infoDataSize += c.byteLength;
 
-  // 2. Build sdta chunk (16-bit PCM samples with 46 zero-padding samples each)
+  // 2. Prepare Sample Headers (shdr) offsets & stereo linkage (each sample padded with 46 zero frames)
   const PADDING_SAMPLES = 46;
-  let totalSampleWords = 0;
-  for (const s of bank.samples) {
-    totalSampleWords += s.pcm16.length + PADDING_SAMPLES;
-  }
-  // Minimum sdta size if 0 samples
-  if (totalSampleWords === 0) totalSampleWords = PADDING_SAMPLES;
 
-  const smplPayloadBytes = totalSampleWords * 2;
-  const sdtaListBytes = 4 + 8 + smplPayloadBytes; // 'sdta' (4) + 'smpl' (4) + size (4) + data
-
-  // 3. Prepare Sample Headers (shdr) offsets
   interface PreparedSample {
     name: string;
     start: number;
     end: number;
     startLoop: number;
     endLoop: number;
+    hasValidLoop: boolean;
     sampleRate: number;
     originalKey: number;
     pitchCorrection: number;
+    sampleLink: number;
+    sampleType: number; // 1 = monoSample, 2 = rightSample, 4 = leftSample
     pcm16: Int16Array;
   }
 
+  interface LogicalSampleMapping {
+    leftIdx: number;
+    rightIdx?: number;
+  }
+
   const preparedSamples: PreparedSample[] = [];
+  const logicalToShdr: LogicalSampleMapping[] = [];
   let currentWordOffset = 0;
 
   for (let i = 0; i < bank.samples.length; i++) {
     const s = bank.samples[i];
     const len = s.pcm16.length;
-    const start = currentWordOffset;
-    const end = start + len;
+    const isStereo = Boolean(s.pcm16Right && s.pcm16Right.length > 0);
+    const hasValidLoop =
+      (s.loopMode === 'loop_continuous' || s.loopMode === 'loop_sustain') &&
+      s.loopEnd > s.loopStart &&
+      s.loopEnd <= len;
 
-    let sLoop = start;
-    let eLoop = end;
-    if (s.loopMode === 'loop_continuous' && s.loopEnd > s.loopStart && s.loopEnd <= len) {
-      sLoop = start + Math.max(0, s.loopStart);
-      eLoop = start + Math.min(len, s.loopEnd);
-    } else {
-      // Standard non-looping convention: loop end at sample end
-      sLoop = end - 2;
-      eLoop = end - 1;
-    }
+    const relLoopStart = hasValidLoop ? Math.max(0, s.loopStart) : Math.max(0, len - 2);
+    const relLoopEnd = hasValidLoop ? Math.min(len, s.loopEnd) : Math.max(0, len - 1);
+
+    const leftIdx = preparedSamples.length;
+    const rightIdx = isStereo ? leftIdx + 1 : undefined;
+    logicalToShdr.push({ leftIdx, rightIdx });
+
+    const leftStart = currentWordOffset;
+    const leftEnd = leftStart + len;
+    const baseName = isStereo ? s.name.slice(0, 17) : s.name.slice(0, 19);
 
     preparedSamples.push({
-      name: s.name.slice(0, 19),
-      start,
-      end,
-      startLoop: sLoop,
-      endLoop: eLoop,
+      name: isStereo ? `${baseName}_L` : baseName,
+      start: leftStart,
+      end: leftEnd,
+      startLoop: leftStart + relLoopStart,
+      endLoop: leftStart + relLoopEnd,
+      hasValidLoop,
       sampleRate: s.sampleRate,
       originalKey: clamp(s.rootKey, 0, 127),
       pitchCorrection: clamp(s.detuneCents, -50, 50),
+      sampleLink: rightIdx ?? 0,
+      sampleType: isStereo ? 4 : 1,
       pcm16: s.pcm16,
     });
-
     currentWordOffset += len + PADDING_SAMPLES;
+
+    if (isStereo && rightIdx !== undefined && s.pcm16Right) {
+      let rightPcm = s.pcm16Right;
+      if (rightPcm.length !== len) {
+        rightPcm = new Int16Array(len);
+        rightPcm.set(s.pcm16Right.subarray(0, Math.min(len, s.pcm16Right.length)));
+      }
+      const rightStart = currentWordOffset;
+      const rightEnd = rightStart + len;
+      preparedSamples.push({
+        name: `${baseName}_R`,
+        start: rightStart,
+        end: rightEnd,
+        startLoop: rightStart + relLoopStart,
+        endLoop: rightStart + relLoopEnd,
+        hasValidLoop,
+        sampleRate: s.sampleRate,
+        originalKey: clamp(s.rootKey, 0, 127),
+        pitchCorrection: clamp(s.detuneCents, -50, 50),
+        sampleLink: leftIdx,
+        sampleType: 2,
+        pcm16: rightPcm,
+      });
+      currentWordOffset += len + PADDING_SAMPLES;
+    }
+  }
+
+  const totalSampleWords = currentWordOffset > 0 ? currentWordOffset : PADDING_SAMPLES;
+  const smplPayloadBytes = totalSampleWords * 2;
+  const sdtaListBytes = 4 + 8 + smplPayloadBytes; // 'sdta' (4) + 'smpl' (4) + size (4) + data
+
+  const defaultRegion: UniformSamplerRegion & { sampleIndex: number } = {
+    id: 'default',
+    sampleName: 'dummy',
+    sampleIndex: 0,
+    lowKey: 0,
+    highKey: 127,
+    rootKey: 60,
+    lowVel: 1,
+    highVel: 127,
+    detuneCents: 0,
+    volumeDb: 0,
+    pan: 0,
+    pitchKeytrack: 100,
+    loopMode: 'no_loop',
+    loopStart: 0,
+    loopEnd: 0,
+    loopCrossfadeMs: 0,
+  };
+
+  const effectiveRegions = bank.regions.length > 0 ? bank.regions : [defaultRegion];
+  interface ExpandedZone {
+    reg: UniformSamplerRegion;
+    shdrIdx: number;
+    sfPan: number;
+  }
+  const expandedZones: ExpandedZone[] = [];
+  for (const reg of effectiveRegions) {
+    const mapIdx = clamp(reg.sampleIndex, 0, Math.max(0, logicalToShdr.length - 1));
+    const mapping = logicalToShdr[mapIdx];
+    if (mapping && mapping.rightIdx !== undefined) {
+      expandedZones.push({ reg, shdrIdx: mapping.leftIdx, sfPan: -500 });
+      expandedZones.push({ reg, shdrIdx: mapping.rightIdx, sfPan: 500 });
+    } else {
+      expandedZones.push({
+        reg,
+        shdrIdx: mapping ? mapping.leftIdx : 0,
+        sfPan: clamp(Math.round(reg.pan * 10), -500, 500),
+      });
+    }
   }
 
   // 4. Build pdta chunks
@@ -184,16 +261,16 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
   const instCount = 2;
   const instBytes = instCount * 22;
 
-  // - ibag: (number of regions) + 1 terminal = (N + 1) * 4 bytes
-  const regionCount = Math.max(1, bank.regions.length);
+  // - ibag: (number of expanded zones) + 1 terminal = (N + 1) * 4 bytes
+  const regionCount = Math.max(1, expandedZones.length);
   const ibagCount = regionCount + 1;
   const ibagBytes = ibagCount * 4;
 
   // - imod: 1 terminal = 10 bytes
   const imodBytes = 10;
 
-  // - igen: Each region has 13 generators + 1 terminal = (regionCount * 13 + 1) * 4 bytes
-  const GENS_PER_REGION = 13;
+  // - igen: Each zone has 14 generators + 1 terminal = (regionCount * 14 + 1) * 4 bytes
+  const GENS_PER_REGION = 14;
   const igenCount = regionCount * GENS_PER_REGION + 1;
   const igenBytes = igenCount * 4;
 
@@ -366,29 +443,11 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
   v.setUint32(ptr + 4, igenBytes, true);
   ptr += 8;
 
-  const effectiveRegions = bank.regions.length > 0 ? bank.regions : [
-    {
-      id: 'default',
-      sampleName: 'dummy',
-      sampleIndex: 0,
-      lowKey: 0,
-      highKey: 127,
-      rootKey: 60,
-      lowVel: 1,
-      highVel: 127,
-      detuneCents: 0,
-      volumeDb: 0,
-      pan: 0,
-      pitchKeytrack: 100,
-      loopMode: 'no_loop' as const,
-      loopStart: 0,
-      loopEnd: 0,
-      loopCrossfadeMs: 0,
-    },
-  ];
-
-  for (const reg of effectiveRegions) {
-    const sIdx = clamp(reg.sampleIndex, 0, Math.max(0, preparedSamples.length - 1));
+  for (const zone of expandedZones) {
+    const reg = zone.reg;
+    const sIdx = clamp(zone.shdrIdx, 0, Math.max(0, preparedSamples.length - 1));
+    const ps = preparedSamples[sIdx];
+    const hasLoopSpan = Boolean(ps && ps.hasValidLoop && (ps.endLoop - ps.startLoop) > 1);
 
     // Gen 1: keyRange
     v.setUint16(ptr, SFGEN_keyRange, true);
@@ -414,54 +473,63 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
 
     // Gen 5: pan (-500..+500)
     v.setUint16(ptr, SFGEN_pan, true);
-    const sfPan = clamp(Math.round(reg.pan * 10), -500, 500);
-    v.setInt16(ptr + 2, sfPan, true);
+    v.setInt16(ptr + 2, zone.sfPan, true);
     ptr += 4;
 
-    // Gen 6: sampleModes (0 = no loop, 1 = continuous forward loop)
+    // Gen 6: initialAttenuation (centibels matching -attenCb / 25 in Sf2Parser)
+    v.setUint16(ptr, SFGEN_initialAttenuation, true);
+    const attenCb = reg.volumeDb < 0 ? clamp(Math.round(-reg.volumeDb * 25), 0, 1440) : 0;
+    v.setUint16(ptr + 2, attenCb, true);
+    ptr += 4;
+
+    // Gen 7: sampleModes (0 = no loop, 1 = continuous loop, 3 = sustain loop)
+    let sampleModeVal = 0;
+    if (hasLoopSpan && reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot') {
+      sampleModeVal = reg.loopMode === 'loop_sustain' ? 3 : 1;
+    }
     v.setUint16(ptr, SFGEN_sampleModes, true);
-    v.setUint16(ptr + 2, reg.loopMode !== 'no_loop' ? 1 : 0, true);
+    v.setUint16(ptr + 2, sampleModeVal, true);
     ptr += 4;
 
-    // Gen 7: attackVolEnv
+    // Gen 8: attackVolEnv
     v.setUint16(ptr, SFGEN_attackVolEnv, true);
     const atkSec = reg.ampEnvelope?.attackSec ?? 0.005;
     const atkTc = Math.round(1200 * Math.log2(Math.max(0.001, atkSec)));
     v.setInt16(ptr + 2, clamp(atkTc, -12000, 8000), true);
     ptr += 4;
 
-    // Gen 8: decayVolEnv
+    // Gen 9: decayVolEnv
     v.setUint16(ptr, SFGEN_decayVolEnv, true);
     const decSec = reg.ampEnvelope?.decaySec ?? 0.25;
     const decTc = Math.round(1200 * Math.log2(Math.max(0.001, decSec)));
     v.setInt16(ptr + 2, clamp(decTc, -12000, 8000), true);
     ptr += 4;
 
-    // Gen 9: sustainVolEnv (in centibels of attenuation, 0..1000)
+    // Gen 10: sustainVolEnv (in centibels of attenuation, 0..1000)
     v.setUint16(ptr, SFGEN_sustainVolEnv, true);
     const susLvl = clamp(reg.ampEnvelope?.sustainLevel ?? 1.0, 0, 1);
     const susCb = Math.round((1.0 - susLvl) * 1000);
     v.setInt16(ptr + 2, clamp(susCb, 0, 1000), true);
     ptr += 4;
 
-    // Gen 10: releaseVolEnv (in timecents, default ~0.25s = -2400)
+    // Gen 11: releaseVolEnv (in timecents, default ~0.25s = -2400)
     v.setUint16(ptr, SFGEN_releaseVolEnv, true);
     const relSec = reg.ampEnvelope?.releaseSec ?? 0.25;
     const timecents = Math.round(1200 * Math.log2(Math.max(0.001, relSec)));
     v.setInt16(ptr + 2, clamp(timecents, -12000, 8000), true);
     ptr += 4;
 
-    // Gen 11: scaleTuning (0..100 cents/semitone)
+    // Gen 12: scaleTuning (0..100 cents/semitone)
     v.setUint16(ptr, SFGEN_scaleTuning, true);
     v.setInt16(ptr + 2, clamp(Math.round(reg.pitchKeytrack ?? 100), 0, 100), true);
     ptr += 4;
 
-    // Gen 12: exclusiveClass (muteGroup 0..127)
+    // Gen 13: exclusiveClass (muteGroup 0..127)
     v.setUint16(ptr, SFGEN_exclusiveClass, true);
     v.setUint16(ptr + 2, clamp(reg.muteGroup ?? 0, 0, 127), true);
     ptr += 4;
 
-    // Gen 13: sampleID (MUST be last generator in zone per SF2 spec 8.1.2)
+    // Gen 14: sampleID (MUST be last generator in zone per SF2 spec 8.1.2)
     v.setUint16(ptr, SFGEN_sampleID, true);
     v.setUint16(ptr + 2, sIdx, true);
     ptr += 4;
@@ -486,8 +554,8 @@ export function buildSoundFont2Archive(bank: Sf2BankData): Uint8Array {
     v.setUint32(ptr + 36, ps.sampleRate, true);
     v.setUint8(ptr + 40, ps.originalKey);
     v.setInt8(ptr + 41, ps.pitchCorrection);
-    v.setUint16(ptr + 42, 0, true); // sampleLink
-    v.setUint16(ptr + 44, 1, true); // sfSampleType = 1 (monoSample)
+    v.setUint16(ptr + 42, ps.sampleLink, true);
+    v.setUint16(ptr + 44, ps.sampleType, true);
     ptr += 46;
   }
 

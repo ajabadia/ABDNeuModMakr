@@ -15,6 +15,8 @@ export * from './SamplerTypes.ts';
 export * from './SamplerUtils.ts';
 export * from './ExtendedAdapter.ts';
 export * from './UniversalSamplerModel.ts';
+export * from './UniversalSamplerCapsule.ts';
+export * from './UniversalSamplerOfflineRenderer.ts';
 export * from './SliceFileParser.ts';
 export * from './DwopDecompressor.ts';
 export * from './Sf2Parser.ts';

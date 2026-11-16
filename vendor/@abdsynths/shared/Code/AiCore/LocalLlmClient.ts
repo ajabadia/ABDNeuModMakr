@@ -101,7 +101,12 @@ export class LocalLlmClient {
     );
   }
 
-  public async checkHealthAndListModels(timeoutMs = 2500): Promise<LocalLlmHealthResult> {
+  public async checkHealthAndListModels(
+    timeoutMs = 2500,
+    locale: 'es' | 'en' = 'es'
+  ): Promise<LocalLlmHealthResult> {
+    const isEn = String(locale).toLowerCase().startsWith('en');
+    const loc = (es: string, en: string): string => (isEn ? en : es);
     const t0 = performance.now();
     let baseUrl = '';
     try {
@@ -114,6 +119,11 @@ export class LocalLlmClient {
         error: err instanceof Error ? err.message : String(err),
       };
     }
+
+    const corsErrorMsg = loc(
+      'CORS bloqueado por el servidor local. Activa Companion Bridge o define OLLAMA_ORIGINS=*',
+      'CORS blocked by local server. Enable Companion Bridge or set OLLAMA_ORIGINS=*'
+    );
 
     // 1. Intentar GET /v1/models (OpenAI format, supported by LM Studio and modern Ollama)
     try {
@@ -142,7 +152,7 @@ export class LocalLlmClient {
           latencyMs: Math.round(performance.now() - t0),
           models: [],
           corsBlockedLikely: true,
-          error: 'CORS bloqueado por el servidor local. Activa Companion Bridge o define OLLAMA_ORIGINS=*',
+          error: corsErrorMsg,
         };
       }
     }
@@ -174,7 +184,7 @@ export class LocalLlmClient {
           latencyMs: Math.round(performance.now() - t0),
           models: [],
           corsBlockedLikely: true,
-          error: 'CORS bloqueado por el servidor local. Activa Companion Bridge o define OLLAMA_ORIGINS=*',
+          error: corsErrorMsg,
         };
       }
     }
@@ -183,7 +193,10 @@ export class LocalLlmClient {
       connected: false,
       latencyMs: Math.round(performance.now() - t0),
       models: [],
-      error: `No response from local LLM at ${baseUrl}`,
+      error: loc(
+        `Sin respuesta del LLM local en ${baseUrl}`,
+        `No response from local LLM at ${baseUrl}`
+      ),
     };
   }
 

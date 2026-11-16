@@ -52,7 +52,8 @@ import {
   type ParsedImportRegion,
 } from './rawSamplerParsers.ts';
 import { exportRawSamplerLibrary } from './RawSamplerExporter.ts';
-import { indexZipArchive } from '../NeuronFormats/ZipArchive.ts';
+import { importUniversalSamplerCapsule } from './UniversalSamplerCapsule.ts';
+import { extractZipEntry, indexZipArchive } from '../NeuronFormats/ZipArchive.ts';
 import type { RawExportOptions, RawExportResult } from './rawSamplerTypes.ts';
 import {
   MidiTranslationEngine,
@@ -180,6 +181,26 @@ export const FORMAT_CAPABILITIES_REGISTRY: Record<string, FormatCapabilities> = 
   'modern-neural': {
     formatId: 'modern-neural',
     title: 'ABDSynths Extended Time Capsule (.neuronikmodel)',
+    canRead: true,
+    canWrite: true,
+    maxVelocityLayersPerKey: 'unlimited',
+    maxLoopsPerZone: 8,
+    supportsPingPongLoop: true,
+    supportsReversePlayback: true,
+    supportsSampleStartEndOffsets: true,
+    supportsRoundRobin: true,
+    supportsReleaseTrigger: true,
+    supportsNoteCrossfade: true,
+    supportsVelocityCrossfade: true,
+    supportsFilter: true,
+    supportedFilterPoles: [1, 2, 3, 4, 6, 8],
+    supportsPitchEnvelope: true,
+    supportsMuteGroups: true,
+    supportsKeyswitches: true,
+  },
+  abdsmpl: {
+    formatId: 'abdsmpl',
+    title: 'ABDSynths Canonical Sampler Capsule (.abdsmpl.zip)',
     canRead: true,
     canWrite: true,
     maxVelocityLayersPerKey: 'unlimited',
@@ -1285,6 +1306,15 @@ export async function parseUniversalSamplerInstrument(
 ): Promise<UniversalSamplerInstrument> {
   const lower = filename.toLowerCase();
 
+  // Canonical Own-Format Capsules (.abdsmpl.zip, .abdsmpl, .neuronikmodel)
+  if (
+    lower.endsWith('.neuronikmodel') ||
+    lower.endsWith('.abdsmpl') ||
+    lower.endsWith('.abdsmpl.zip')
+  ) {
+    return importUniversalSamplerCapsule(new Uint8Array(buffer), filename);
+  }
+
   // Direct rich parsers for SF2, standalone SFZ, and standalone .dspreset XML
   if (lower.endsWith('.sf2')) {
     const presetIdx =
@@ -1433,10 +1463,21 @@ export async function parseUniversalSamplerInstrument(
     });
   }
 
-  // Check for 1010music or Deluge archives (.zip)
+  // Check for Canonical Capsule, SFZ, 1010music or Deluge archives (.zip)
   if (lower.endsWith('.zip')) {
     const bytes = new Uint8Array(buffer);
     const entries = indexZipArchive(bytes);
+    const hasCapsuleJson = entries.some((e) => {
+      const p = e.path.replace(/\\/g, '/').toLowerCase();
+      return (
+        p === 'universal_instrument.json' ||
+        p === '01_raw_source/native_map.json' ||
+        p === '05_extended_model/extended_map.json'
+      );
+    });
+    if (hasCapsuleJson) {
+      return importUniversalSamplerCapsule(bytes, filename);
+    }
     const hasPresetXml = entries.some(e => {
       const p = e.path.toLowerCase();
       return p.endsWith('/preset.xml') || p.endsWith('\\preset.xml') || p === 'preset.xml';
@@ -1700,6 +1741,42 @@ export async function parseUniversalSamplerInstrument(
       } catch {
         // Not a valid Disting EX package
       }
+    }
+
+    const sfzEntries = entries.filter((e) => e.path.toLowerCase().endsWith('.sfz'));
+    if (sfzEntries.length > 0) {
+      const chosenSfz =
+        (selectedProgramPath &&
+          sfzEntries.find(
+            (e) => e.path.replace(/\\/g, '/') === selectedProgramPath.replace(/\\/g, '/'),
+          )) ||
+        sfzEntries[0];
+      const sfzText = new TextDecoder('utf-8').decode(extractZipEntry(bytes, chosenSfz));
+      const audioExts = /\.(wav|aif|aiff|flac|ogg|caf)$/i;
+      const normSfzPath = chosenSfz.path.replace(/\\/g, '/');
+      const sfzDirPrefix = normSfzPath.includes('/')
+        ? normSfzPath.replace(/\/[^/]+$/, '') + '/'
+        : '';
+      const companionAudioFiles: AudioFilePayload[] = [];
+      for (const entry of entries) {
+        if (audioExts.test(entry.path)) {
+          const rawAudio = extractZipEntry(bytes, entry);
+          const normEntry = entry.path.replace(/\\/g, '/');
+          const relName =
+            sfzDirPrefix && normEntry.startsWith(sfzDirPrefix)
+              ? normEntry.slice(sfzDirPrefix.length)
+              : normEntry;
+          companionAudioFiles.push({
+            name: relName,
+            buffer: rawAudio.buffer.slice(
+              rawAudio.byteOffset,
+              rawAudio.byteOffset + rawAudio.byteLength,
+            ) as ArrayBuffer,
+          });
+        }
+      }
+      const sfzRes = importSfzToNative(sfzText, chosenSfz.path, companionAudioFiles);
+      return nativeImportResultToUniversalInstrument(sfzRes);
     }
   }
 

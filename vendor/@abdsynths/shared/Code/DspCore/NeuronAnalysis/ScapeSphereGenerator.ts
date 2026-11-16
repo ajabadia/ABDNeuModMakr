@@ -59,6 +59,25 @@ function clamp(val: number, lo: number, hi: number): number {
 }
 
 /**
+ * Canonical Hartmann Neuron hardware sample rate (Hz). Every legacy
+ * `.scape` / `.sphere` grid derivation (resolution, 2048-bin Phase-Vocoder
+ * table, frequency ceiling) references this single constant — the
+ * `legacy-neuron` path must never use another rate.
+ */
+export const NEURON_SAMPLE_RATE = 44100;
+
+/**
+ * 25 Psychoacoustic Bark critical band boundary frequencies (Hz)
+ * (Zwicker & Fastl critical bands spanning 0 Hz to 22.05 kHz Nyquist).
+ * 26 edge frequencies delineate exactly 25 continuous bands.
+ */
+export const BARK_BAND_EDGES_HZ: readonly number[] = [
+  0, 100, 200, 300, 400, 510, 630, 770, 920, 1080,
+  1270, 1480, 1720, 2000, 2320, 2700, 3150, 3700, 4400, 5300,
+  6400, 7700, 9500, 12000, 15500, 22050
+];
+
+/**
  * Exact mapping from UI Complexity (1..10) to `recursionDepth`
  * verified from decompiled `neuronapp.ProcessDialog.complexityToRecDepth` (tableswitch 1..10).
  */
@@ -482,24 +501,75 @@ export function serializeNeuronScapeBinary(
   writeFdAnChunk(view, 204, scapeFdPairs);
 
   // 4. int16 excitation curve payload at +0x104 (260)
-  // First 3 cycles fade in from 1/n harmonic attack to pure fundamental sine at ~1538 amplitude
-  let ptr = dataOffset;
-  for (let c = 0; c < numCycles; c++) {
-    const attackWeight = c < 3 ? Math.pow(0.35, c) : 0.0;
-    const fadeEnv = c < 3 ? (c + 1) / 3.0 : 1.0;
+  // AXM.4A: Synthesize real additive harmonic excitation waves across 64 cycles
+  // interpolated from frame partialMagnitudes, with guaranteed cyclic phase continuity
+  // (sin(2*pi*(k+1)*s/res)) and smooth attack envelope.
+  const numFrames = Math.max(1, frames.length);
+  const rawWave = new Float64Array(sampleCount);
 
-    for (let s = 0; s < resolution; s++) {
-      const phase = (2.0 * Math.PI * s) / resolution;
-      let val = Math.sin(phase);
-      if (attackWeight > 0.0) {
-        for (let h = 2; h <= 8; h++) {
-          val += (attackWeight / h) * Math.sin(h * phase);
-        }
-      }
-      const sampleInt16 = clamp(Math.round(val * fadeEnv * 1538), -32768, 32767);
-      view.setInt16(ptr, sampleInt16, true);
-      ptr += 2;
+  for (let c = 0; c < numCycles; c++) {
+    const normT = numCycles > 1 ? c / (numCycles - 1) : 0.0;
+    const framePos = normT * Math.max(0, numFrames - 1);
+    const f0Idx = Math.min(numFrames - 1, Math.floor(framePos));
+    const f1Idx = Math.min(numFrames - 1, f0Idx + 1);
+    const frac = framePos - f0Idx;
+
+    const frame0 = frames[f0Idx] ?? frames[0];
+    const frame1 = frames[f1Idx] ?? frame0;
+    const mags0 = frame0?.scape?.partialMagnitudes;
+    const mags1 = frame1?.scape?.partialMagnitudes;
+
+    let hasEnergy = false;
+    const interpMags = new Float64Array(64);
+    for (let k = 0; k < 64; k++) {
+      const m0 = mags0 ? (mags0[k] ?? 0.0) : 0.0;
+      const m1 = mags1 ? (mags1[k] ?? 0.0) : 0.0;
+      const m = (1.0 - frac) * m0 + frac * m1;
+      interpMags[k] = m;
+      if (m > 1e-4) hasEnergy = true;
     }
+    if (!hasEnergy) {
+      interpMags[0] = 1.0; // Fundamental sine fallback if completely silent
+    }
+
+    // Temporal contour gain
+    const tc0 = frame0?.sphere?.temporalContour?.[f0Idx] ?? 1.0;
+    const tc1 = frame1?.sphere?.temporalContour?.[f1Idx] ?? 1.0;
+    const contourGain = Math.max(0.1, (1.0 - frac) * tc0 + frac * tc1);
+
+    const cycleOffset = c * resolution;
+    for (let s = 0; s < resolution; s++) {
+      const basePhase = (2.0 * Math.PI * s) / resolution;
+      let sample = 0.0;
+      for (let k = 0; k < 64; k++) {
+        const m = interpMags[k];
+        if (m <= 1e-4) continue;
+        sample += m * Math.sin((k + 1) * basePhase);
+      }
+      rawWave[cycleOffset + s] = sample * contourGain;
+    }
+  }
+
+  // Smooth attack fade-in over the first 2 cycles to prevent DC clicks at voice start
+  const attackSamples = Math.min(resolution * 2, sampleCount);
+  for (let i = 0; i < attackSamples; i++) {
+    rawWave[i] *= (i + 1) / attackSamples;
+  }
+
+  // Normalize global peak to nominal Neuron amplitude (~24576 = -2.5 dBFS)
+  let maxPeak = 0.0;
+  for (let i = 0; i < sampleCount; i++) {
+    const a = Math.abs(rawWave[i]);
+    if (a > maxPeak) maxPeak = a;
+  }
+  const targetPeak = 24576.0;
+  const scale = maxPeak > 1e-6 ? targetPeak / maxPeak : targetPeak;
+
+  let ptr = dataOffset;
+  for (let i = 0; i < sampleCount; i++) {
+    const sampleInt16 = clamp(Math.round(rawWave[i] * scale), -32768, 32767);
+    view.setInt16(ptr, sampleInt16, true);
+    ptr += 2;
   }
 
   return new Uint8Array(buffer);
@@ -582,15 +652,58 @@ export function serializeNeuronSphereBinary(
     // Frame header (+0x00..+0x13)
     view.setInt32(frameOff + 0x00, 0x4d2, true);          // SPHERE_FRAME_MAGIC = 1234
     view.setInt32(frameOff + 0x04, curveId + f, true);    // contiguous frame_id
-    view.setFloat32(frameOff + 0x08, 0.4777, true);       // float a (mean abs amplitude)
+
+    // AXM.4A: Compute real 25 Bark critical band energies from frame partials
+    const bandEnergies = new Float64Array(25);
+    let totalFrameEnergy = 0.0;
+    let absAmpSum = 0.0;
+    let activePartials = 0;
+    const frameF0 = Math.max(20.0, frame.f0Hz ?? f0);
+
+    for (let k = 0; k < 64; k++) {
+      const mag = frame.scape.partialMagnitudes[k] ?? 0.0;
+      if (mag <= 1.0e-4) continue;
+      const offHz = frame.scape.partialOffsetsHz[k] ?? 0.0;
+      const freqHz = clamp((k + 1) * frameF0 + offHz, 20.0, 22050.0);
+      const e = mag * mag;
+      totalFrameEnergy += e;
+      absAmpSum += mag;
+      activePartials++;
+
+      let bIdx = 24;
+      for (let b = 0; b < 24; b++) {
+        if (freqHz < BARK_BAND_EDGES_HZ[b + 1]) {
+          bIdx = b;
+          break;
+        }
+      }
+      bandEnergies[bIdx] += e;
+    }
+
+    const meanAbsAmp = activePartials > 0 ? absAmpSum / activePartials : 0.4777;
+    view.setFloat32(frameOff + 0x08, meanAbsAmp, true);   // float a (mean abs amplitude)
     view.setFloat32(frameOff + 0x0c, resolution, true);   // float b (detected lag/period)
-    view.setFloat32(frameOff + 0x10, 0.99853, true);      // float c (also band[0][0])
+
+    // Calculate normalized Bark band gains centered around 1.0
+    const bandGains = new Float32Array(25);
+    if (totalFrameEnergy > 1.0e-6) {
+      const meanRms = Math.sqrt(totalFrameEnergy / 25.0);
+      for (let b = 0; b < 25; b++) {
+        const bandRms = Math.sqrt(bandEnergies[b]);
+        // Scaled relative gain bounded to musical formant range [0.1, 2.5]
+        bandGains[b] = clamp(bandRms / (meanRms + 1.0e-6), 0.1, 2.5);
+      }
+    } else {
+      // Fallback if completely silent frame
+      for (let b = 0; b < 25; b++) {
+        bandGains[b] = 1.0;
+      }
+    }
 
     // 25 x 4 float band table starting at +0x10 (400 bytes -> ends at +0x1A0)
     for (let b = 0; b < 25; b++) {
       const bandOff = frameOff + 0x10 + b * 16;
-      const taper = 0.99853 - (b / 24.0) * 0.00832;
-      view.setFloat32(bandOff + 0, taper, true);
+      view.setFloat32(bandOff + 0, bandGains[b], true);
       view.setFloat32(bandOff + 4, 0.0, true);
       view.setFloat32(bandOff + 8, 0.0, true);
       view.setFloat32(bandOff + 12, 0.0, true);
@@ -955,6 +1068,9 @@ export function resynthesizeModelToPcm(
         if (freq <= 0.0 || freq >= nyquist) continue;
 
         phases[k] += (2.0 * Math.PI * freq) / sampleRate;
+        if (phases[k] > 6.283185307179586) {
+          phases[k] -= 6.283185307179586;
+        }
         sampleSum += amp * Math.sin(phases[k]);
       }
 

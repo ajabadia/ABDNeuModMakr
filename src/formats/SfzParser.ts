@@ -24,7 +24,7 @@ import type { NativeSamplerImportResult } from '@abdsynths/shared/formats/sample
 export const MAX_SFZ_OPCODES_PER_BLOCK = 128;
 export const MAX_SFZ_HEADER_BLOCKS = 8192;
 
-const SFZ_HEADER_RE = /<(control|global|master|group|region)>/gi;
+const SFZ_HEADER_RE = /<(control|global|master|group|region|curve|effect|midi|sample)>/gi;
 const SFZ_OPCODE_RE = /(?:^|\s)[a-zA-Z0-9_]+\s*=/g;
 
 function countSfzOpcodes(segment: string): number {
@@ -37,9 +37,11 @@ function countSfzOpcodes(segment: string): number {
 export function assertSfzTextBoundsSafe(sfzText: string): void {
   SFZ_HEADER_RE.lastIndex = 0;
   let blocks = 0;
+  let lastTag = '';
   let lastIndex = 0;
   let m: RegExpExecArray | null;
-  const check = (segment: string): void => {
+  const check = (segment: string, tag: string): void => {
+    if (tag === 'curve') return;
     const n = countSfzOpcodes(segment);
     if (n > MAX_SFZ_OPCODES_PER_BLOCK) {
       throw new Error(
@@ -49,13 +51,14 @@ export function assertSfzTextBoundsSafe(sfzText: string): void {
   };
   // El texto previo al primer `<…>` también puede llevar opcodes sueltos.
   while ((m = SFZ_HEADER_RE.exec(sfzText)) !== null) {
-    check(sfzText.slice(lastIndex, m.index));
+    check(sfzText.slice(lastIndex, m.index), lastTag);
+    lastTag = m[1].toLowerCase();
     lastIndex = SFZ_HEADER_RE.lastIndex;
     if (++blocks > MAX_SFZ_HEADER_BLOCKS) {
       throw new Error(`SFZ: too many header blocks (>${MAX_SFZ_HEADER_BLOCKS})`);
     }
   }
-  check(sfzText.slice(lastIndex));
+  check(sfzText.slice(lastIndex), lastTag);
 }
 
 export function importSfzToNativeCapped(

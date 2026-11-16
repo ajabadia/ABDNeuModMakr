@@ -30,7 +30,7 @@ export interface AiffInstrumentInfo {
   gainDb: number;
   loopStart?: number;
   loopEnd?: number;
-  loopMode?: 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'one_shot';
+  loopMode?: 'no_loop' | 'loop_continuous' | 'loop_sustain' | 'ping_pong' | 'loop_backward' | 'one_shot';
 }
 
 export interface DecodedWav {
@@ -79,6 +79,196 @@ export function readIeee80BigEndian(view: DataView, offset: number): number {
 
   const mantissa = hi * Math.pow(2, -31) + lo * Math.pow(2, -63);
   return sign * mantissa * Math.pow(2, exp - 16383);
+}
+
+function parseAiffInstChunk(view: DataView, chunkDataStart: number, chunkSize: number): {
+  instrument: AiffInstrumentInfo;
+  sustainPlayMode: number;
+  sustainBeginMarkerId: number;
+  sustainEndMarkerId: number;
+} {
+  const instrument: AiffInstrumentInfo = {
+    rootKey: view.getUint8(chunkDataStart),
+    detune: view.getInt8(chunkDataStart + 1),
+    lowKey: view.getUint8(chunkDataStart + 2),
+    highKey: view.getUint8(chunkDataStart + 3),
+    lowVelocity: view.getUint8(chunkDataStart + 4),
+    highVelocity: view.getUint8(chunkDataStart + 5),
+    gainDb: view.getInt16(chunkDataStart + 6, false),
+  };
+  let sustainPlayMode = 0;
+  let sustainBeginMarkerId = 0;
+  let sustainEndMarkerId = 0;
+  if (chunkSize >= 14 && chunkDataStart + 14 <= view.byteLength) {
+    sustainPlayMode = view.getUint16(chunkDataStart + 8, false);
+    sustainBeginMarkerId = view.getUint16(chunkDataStart + 10, false);
+    sustainEndMarkerId = view.getUint16(chunkDataStart + 12, false);
+  }
+  return { instrument, sustainPlayMode, sustainBeginMarkerId, sustainEndMarkerId };
+}
+
+function parseAiffMarkChunk(
+  view: DataView,
+  chunkDataStart: number,
+  chunkSize: number,
+  markers: Map<number, number>
+): void {
+  const numMarkers = view.getUint16(chunkDataStart, false);
+  let mPtr = chunkDataStart + 2;
+  const limit = Math.min(view.byteLength, chunkDataStart + chunkSize);
+  for (let m = 0; m < numMarkers && mPtr + 7 <= limit; m++) {
+    const mId = view.getUint16(mPtr, false);
+    const mPos = view.getUint32(mPtr + 2, false);
+    const pstrLen = view.getUint8(mPtr + 6);
+    markers.set(mId, mPos);
+    const strTotal = 1 + pstrLen + ((1 + pstrLen) & 1);
+    mPtr += 6 + strTotal;
+  }
+}
+
+function finalizeAiffLoop(
+  instrument: AiffInstrumentInfo | undefined,
+  sustainPlayMode: number,
+  sustainBeginMarkerId: number,
+  sustainEndMarkerId: number,
+  markers: Map<number, number>
+): AiffInstrumentInfo | undefined {
+  if (instrument && sustainPlayMode > 0) {
+    const lStart = markers.get(sustainBeginMarkerId);
+    const lEnd = markers.get(sustainEndMarkerId);
+    if (lStart !== undefined && lEnd !== undefined && lEnd > lStart) {
+      instrument.loopStart = lStart;
+      instrument.loopEnd = lEnd;
+      instrument.loopMode = sustainPlayMode === 2 ? 'ping_pong' : 'loop_continuous';
+    }
+  }
+  return instrument;
+}
+
+function parseWavInstChunk(
+  view: DataView,
+  chunkDataStart: number,
+  existing?: AiffInstrumentInfo
+): AiffInstrumentInfo {
+  return {
+    ...existing,
+    rootKey: view.getUint8(chunkDataStart),
+    detune: view.getInt8(chunkDataStart + 1),
+    gainDb: view.getInt8(chunkDataStart + 2),
+    lowKey: view.getUint8(chunkDataStart + 3),
+    highKey: view.getUint8(chunkDataStart + 4),
+    lowVelocity: view.getUint8(chunkDataStart + 5),
+    highVelocity: view.getUint8(chunkDataStart + 6),
+  };
+}
+
+function parseWavSmplChunk(
+  view: DataView,
+  chunkDataStart: number,
+  chunkSize: number,
+  existing?: AiffInstrumentInfo
+): AiffInstrumentInfo {
+  const midiUnityNote = view.getUint32(chunkDataStart + 12, true);
+  const pitchFraction = view.getUint32(chunkDataStart + 16, true);
+  const cents = Math.round((pitchFraction / 4294967296.0) * 100);
+  const numSampleLoops = view.getUint32(chunkDataStart + 28, true);
+  let loopStart: number | undefined;
+  let loopEnd: number | undefined;
+  let loopMode: AiffInstrumentInfo['loopMode'];
+  if (
+    numSampleLoops > 0 &&
+    chunkSize >= 60 &&
+    chunkDataStart + 60 <= view.byteLength
+  ) {
+    const loopType = view.getUint32(chunkDataStart + 40, true);
+    const lStart = view.getUint32(chunkDataStart + 44, true);
+    const lEnd = view.getUint32(chunkDataStart + 48, true);
+    if (lEnd > lStart) {
+      loopStart = lStart;
+      loopEnd = lEnd;
+      loopMode = loopType === 1 ? 'ping_pong' : loopType === 2 ? 'loop_backward' : 'loop_continuous';
+    }
+  }
+  return {
+    rootKey: existing?.rootKey ?? Math.max(0, Math.min(127, midiUnityNote)),
+    detune: existing?.detune ?? cents,
+    lowKey: existing?.lowKey ?? 0,
+    highKey: existing?.highKey ?? 127,
+    lowVelocity: existing?.lowVelocity ?? 1,
+    highVelocity: existing?.highVelocity ?? 127,
+    gainDb: existing?.gainDb ?? 0,
+    loopStart: loopStart ?? existing?.loopStart,
+    loopEnd: loopEnd ?? existing?.loopEnd,
+    loopMode: loopMode ?? existing?.loopMode,
+  };
+}
+
+/**
+ * Scans RIFF/WAVE (`inst`, `smpl`) or FORM/AIFF (`INST`, `MARK`) headers to
+ * extract embedded rootKey, detune, and loop metadata without decoding PCM frames.
+ */
+export function extractAudioHeaderInstrumentInfo(buffer: ArrayBuffer): AiffInstrumentInfo | undefined {
+  if (!buffer || buffer.byteLength < 32) return undefined;
+  try {
+    const view = new DataView(buffer);
+    const magic = readFourCC(view, 0);
+
+    if (magic === 'FORM') {
+      const aiff = readFourCC(view, 8);
+      if (aiff !== 'AIFF' && aiff !== 'AIFC') return undefined;
+      let offset = 12;
+      let instrument: AiffInstrumentInfo | undefined;
+      let sustainPlayMode = 0;
+      let sustainBeginMarkerId = 0;
+      let sustainEndMarkerId = 0;
+      const markers = new Map<number, number>();
+      while (offset + 8 <= buffer.byteLength) {
+        const chunkId = readFourCC(view, offset);
+        const chunkSize = view.getUint32(offset + 4, false);
+        const chunkDataStart = offset + 8;
+        if (chunkId === 'INST' && chunkSize >= 8 && chunkDataStart + 8 <= buffer.byteLength) {
+          const parsed = parseAiffInstChunk(view, chunkDataStart, chunkSize);
+          instrument = parsed.instrument;
+          sustainPlayMode = parsed.sustainPlayMode;
+          sustainBeginMarkerId = parsed.sustainBeginMarkerId;
+          sustainEndMarkerId = parsed.sustainEndMarkerId;
+        } else if (chunkId === 'MARK' && chunkSize >= 2 && chunkDataStart + 2 <= buffer.byteLength) {
+          parseAiffMarkChunk(view, chunkDataStart, chunkSize, markers);
+        }
+        const paddedSize = chunkSize + (chunkSize & 1);
+        const nextOffset = chunkDataStart + paddedSize;
+        if (nextOffset <= offset) break;
+        offset = nextOffset;
+      }
+      return finalizeAiffLoop(instrument, sustainPlayMode, sustainBeginMarkerId, sustainEndMarkerId, markers);
+    }
+
+    if (magic === 'RIFF' || magic === 'RF64') {
+      const wave = readFourCC(view, 8);
+      if (wave !== 'WAVE') return undefined;
+      let offset = 12;
+      let instrument: AiffInstrumentInfo | undefined;
+      while (offset + 8 <= buffer.byteLength) {
+        const chunkId = readFourCC(view, offset);
+        const chunkSize = view.getUint32(offset + 4, true);
+        const chunkDataStart = offset + 8;
+        if (chunkId === 'inst' && chunkSize >= 7 && chunkDataStart + 7 <= buffer.byteLength) {
+          instrument = parseWavInstChunk(view, chunkDataStart, instrument);
+        } else if (chunkId === 'smpl' && chunkSize >= 36 && chunkDataStart + 36 <= buffer.byteLength) {
+          instrument = parseWavSmplChunk(view, chunkDataStart, chunkSize, instrument);
+        }
+        const paddedSize = chunkSize + (chunkSize & 1);
+        const nextOffset = chunkDataStart + paddedSize;
+        if (nextOffset <= offset) break;
+        offset = nextOffset;
+      }
+      return instrument;
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -134,47 +324,20 @@ export function decodeAiff(buffer: ArrayBuffer): DecodedWav {
         buffer.byteLength - ssndDataStart
       );
     } else if (chunkId === 'INST' && chunkSize >= 8 && chunkDataStart + 8 <= buffer.byteLength) {
-      instrument = {
-        rootKey: view.getUint8(chunkDataStart),
-        detune: view.getInt8(chunkDataStart + 1),
-        lowKey: view.getUint8(chunkDataStart + 2),
-        highKey: view.getUint8(chunkDataStart + 3),
-        lowVelocity: view.getUint8(chunkDataStart + 4),
-        highVelocity: view.getUint8(chunkDataStart + 5),
-        gainDb: view.getInt16(chunkDataStart + 6, false),
-      };
-      if (chunkSize >= 14 && chunkDataStart + 14 <= buffer.byteLength) {
-        sustainPlayMode = view.getUint16(chunkDataStart + 8, false);
-        sustainBeginMarkerId = view.getUint16(chunkDataStart + 10, false);
-        sustainEndMarkerId = view.getUint16(chunkDataStart + 12, false);
-      }
+      const parsed = parseAiffInstChunk(view, chunkDataStart, chunkSize);
+      instrument = parsed.instrument;
+      sustainPlayMode = parsed.sustainPlayMode;
+      sustainBeginMarkerId = parsed.sustainBeginMarkerId;
+      sustainEndMarkerId = parsed.sustainEndMarkerId;
     } else if (chunkId === 'MARK' && chunkSize >= 2 && chunkDataStart + 2 <= buffer.byteLength) {
-      const numMarkers = view.getUint16(chunkDataStart, false);
-      let mPtr = chunkDataStart + 2;
-      for (let m = 0; m < numMarkers && mPtr + 7 <= chunkDataStart + chunkSize; m++) {
-        const mId = view.getUint16(mPtr, false);
-        const mPos = view.getUint32(mPtr + 2, false);
-        const pstrLen = view.getUint8(mPtr + 6);
-        markers.set(mId, mPos);
-        // Pascal string: 1 length byte + pstrLen bytes, padded to even total length
-        const strTotal = 1 + pstrLen + ((1 + pstrLen) & 1);
-        mPtr += 6 + strTotal;
-      }
+      parseAiffMarkChunk(view, chunkDataStart, chunkSize, markers);
     }
 
     const paddedSize = chunkSize + (chunkSize & 1);
     offset = chunkDataStart + paddedSize;
   }
 
-  if (instrument && sustainPlayMode > 0) {
-    const lStart = markers.get(sustainBeginMarkerId);
-    const lEnd = markers.get(sustainEndMarkerId);
-    if (lStart !== undefined && lEnd !== undefined && lEnd > lStart) {
-      instrument.loopStart = lStart;
-      instrument.loopEnd = lEnd;
-      instrument.loopMode = 'loop_continuous';
-    }
-  }
+  finalizeAiffLoop(instrument, sustainPlayMode, sustainBeginMarkerId, sustainEndMarkerId, markers);
 
   if (numChannels < 1 || numChannels > 32) {
     throw new Error(`Invalid AIFF: unsupported channel count (${numChannels})`);
@@ -377,53 +540,13 @@ export function decodeWav(buffer: ArrayBuffer): DecodedWav {
       chunkSize >= 7 &&
       chunkDataStart + 7 <= buffer.byteLength
     ) {
-      instrument = {
-        ...instrument,
-        rootKey: view.getUint8(chunkDataStart),
-        detune: view.getInt8(chunkDataStart + 1),
-        gainDb: view.getInt8(chunkDataStart + 2),
-        lowKey: view.getUint8(chunkDataStart + 3),
-        highKey: view.getUint8(chunkDataStart + 4),
-        lowVelocity: view.getUint8(chunkDataStart + 5),
-        highVelocity: view.getUint8(chunkDataStart + 6),
-      };
+      instrument = parseWavInstChunk(view, chunkDataStart, instrument);
     } else if (
       chunkId === 'smpl' &&
       chunkSize >= 36 &&
       chunkDataStart + 36 <= buffer.byteLength
     ) {
-      const midiUnityNote = view.getUint32(chunkDataStart + 12, true);
-      const pitchFraction = view.getUint32(chunkDataStart + 16, true);
-      const cents = Math.round((pitchFraction / 4294967296.0) * 100);
-      const numSampleLoops = view.getUint32(chunkDataStart + 28, true);
-      let loopStart: number | undefined;
-      let loopEnd: number | undefined;
-      let loopMode: AiffInstrumentInfo['loopMode'];
-      if (
-        numSampleLoops > 0 &&
-        chunkSize >= 60 &&
-        chunkDataStart + 60 <= buffer.byteLength
-      ) {
-        const lStart = view.getUint32(chunkDataStart + 44, true);
-        const lEnd = view.getUint32(chunkDataStart + 48, true);
-        if (lEnd > lStart) {
-          loopStart = lStart;
-          loopEnd = lEnd;
-          loopMode = 'loop_continuous';
-        }
-      }
-      instrument = {
-        rootKey: instrument?.rootKey ?? Math.max(0, Math.min(127, midiUnityNote)),
-        detune: instrument?.detune ?? cents,
-        lowKey: instrument?.lowKey ?? 0,
-        highKey: instrument?.highKey ?? 127,
-        lowVelocity: instrument?.lowVelocity ?? 1,
-        highVelocity: instrument?.highVelocity ?? 127,
-        gainDb: instrument?.gainDb ?? 0,
-        loopStart: loopStart ?? instrument?.loopStart,
-        loopEnd: loopEnd ?? instrument?.loopEnd,
-        loopMode: loopMode ?? instrument?.loopMode,
-      };
+      instrument = parseWavSmplChunk(view, chunkDataStart, chunkSize, instrument);
     }
 
     const paddedSize = chunkSize + (chunkSize & 1);

@@ -45,20 +45,29 @@ export interface CanonicalAiHudStatus {
 /**
  * Computa la pastilla de estado honesto canónico para la barra superior (HUD).
  */
-export function computeCanonicalAiHudStatus(params: {
-  enabled: boolean;
-  activeTasksCount: number;
-  totalTasksCount: number;
-  localConnected: boolean;
-  localEngineLabel?: string;
-  cloudConfigured: boolean;
-  cloudProviderLabel?: string;
-}): CanonicalAiHudStatus {
+export function computeCanonicalAiHudStatus(
+  params: {
+    enabled: boolean;
+    activeTasksCount: number;
+    totalTasksCount: number;
+    localConnected: boolean;
+    localEngineLabel?: string;
+    cloudConfigured: boolean;
+    cloudProviderLabel?: string;
+  },
+  locale: 'es' | 'en' = 'es'
+): CanonicalAiHudStatus {
+  const isEn = String(locale).toLowerCase().startsWith('en');
+  const loc = (es: string, en: string): string => (isEn ? en : es);
+
   if (!params.enabled || params.activeTasksCount === 0) {
     return {
-      badgeText: '100% DETERMINISTA',
+      badgeText: loc('100% DETERMINISTA', '100% DETERMINISTIC'),
       pillClass: 'is-ai-off',
-      tooltip: 'Todas las tareas ejecutan algoritmos matemáticos deterministas locales (Cero IA activa, 100% privado y offline).',
+      tooltip: loc(
+        'Todas las tareas ejecutan algoritmos matemáticos deterministas locales (Cero IA activa, 100% privado y offline).',
+        'All tasks run local deterministic mathematical algorithms (Zero AI active, 100% private and offline).'
+      ),
       mode: 'offline',
       activeTasksCount: 0,
       totalTasksCount: params.totalTasksCount,
@@ -70,9 +79,15 @@ export function computeCanonicalAiHudStatus(params: {
 
   if (isLocal && isCloud) {
     return {
-      badgeText: `HIBRIDO IA (${params.activeTasksCount}/${params.totalTasksCount})`,
+      badgeText: loc(
+        `HIBRIDO IA (${params.activeTasksCount}/${params.totalTasksCount})`,
+        `AI HYBRID (${params.activeTasksCount}/${params.totalTasksCount})`
+      ),
       pillClass: 'is-ai-hybrid',
-      tooltip: `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount}. Local: ${params.localEngineLabel || 'Conectado'} + Cloud: ${params.cloudProviderLabel || 'BYOK Activo'}.`,
+      tooltip: loc(
+        `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount}. Local: ${params.localEngineLabel || 'Conectado'} + Cloud: ${params.cloudProviderLabel || 'BYOK Activo'}.`,
+        `Active AI tasks: ${params.activeTasksCount}/${params.totalTasksCount}. Local: ${params.localEngineLabel || 'Connected'} + Cloud: ${params.cloudProviderLabel || 'BYOK Active'}.`
+      ),
       mode: 'hybrid',
       activeTasksCount: params.activeTasksCount,
       totalTasksCount: params.totalTasksCount,
@@ -81,9 +96,15 @@ export function computeCanonicalAiHudStatus(params: {
 
   if (isLocal) {
     return {
-      badgeText: `IA LOCAL (${params.activeTasksCount}/${params.totalTasksCount})`,
+      badgeText: loc(
+        `IA LOCAL (${params.activeTasksCount}/${params.totalTasksCount})`,
+        `LOCAL AI (${params.activeTasksCount}/${params.totalTasksCount})`
+      ),
       pillClass: 'is-ai-active',
-      tooltip: `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount} ejecutadas en tu máquina local (${params.localEngineLabel || 'Local'}). 0 bytes enviados a la nube.`,
+      tooltip: loc(
+        `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount} ejecutadas en tu máquina local (${params.localEngineLabel || 'Local'}). 0 bytes enviados a la nube.`,
+        `Active AI tasks: ${params.activeTasksCount}/${params.totalTasksCount} running on your local machine (${params.localEngineLabel || 'Local'}). 0 bytes sent to cloud.`
+      ),
       mode: 'local',
       activeTasksCount: params.activeTasksCount,
       totalTasksCount: params.totalTasksCount,
@@ -92,9 +113,15 @@ export function computeCanonicalAiHudStatus(params: {
 
   if (isCloud) {
     return {
-      badgeText: `IA CLOUD (${params.activeTasksCount}/${params.totalTasksCount})`,
+      badgeText: loc(
+        `IA CLOUD (${params.activeTasksCount}/${params.totalTasksCount})`,
+        `CLOUD AI (${params.activeTasksCount}/${params.totalTasksCount})`
+      ),
       pillClass: 'is-ai-active',
-      tooltip: `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount} asistidas por ${params.cloudProviderLabel || 'Cloud BYOK'}.`,
+      tooltip: loc(
+        `Tareas IA activas: ${params.activeTasksCount}/${params.totalTasksCount} asistidas por ${params.cloudProviderLabel || 'Cloud BYOK'}.`,
+        `Active AI tasks: ${params.activeTasksCount}/${params.totalTasksCount} assisted by ${params.cloudProviderLabel || 'Cloud BYOK'}.`
+      ),
       mode: 'cloud',
       activeTasksCount: params.activeTasksCount,
       totalTasksCount: params.totalTasksCount,
@@ -102,9 +129,12 @@ export function computeCanonicalAiHudStatus(params: {
   }
 
   return {
-    badgeText: 'FALLBACK DSP',
+    badgeText: loc('FALLBACK DSP', 'DSP FALLBACK'),
     pillClass: 'is-ai-off',
-    tooltip: 'IA activada en configuración pero ningún motor local ni clave Cloud están disponibles. Se ejecuta DSP determinista.',
+    tooltip: loc(
+      'IA activada en configuración pero ningún motor local ni clave Cloud están disponibles. Se ejecuta DSP determinista.',
+      'AI is enabled in configuration, but neither a local engine nor a Cloud key is available. Running deterministic DSP.'
+    ),
     mode: 'offline',
     activeTasksCount: 0,
     totalTasksCount: params.totalTasksCount,

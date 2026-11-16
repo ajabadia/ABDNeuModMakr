@@ -11,7 +11,21 @@ const STORAGE_KEY_URL = 'neumodmakr_bridge_url';
 export type { BridgeLibraries, BridgeCapabilities, BridgeStatus, BridgeScanFile, BridgeScanResult, AxionikDbModelEntry, SublibraryInfo, AxionikSaveFileEntry, StemSeparationResult, PhonemeWord, PhonemeAlignmentResult, BridgeMemoryStatus, BridgeEnhanceOptions, BridgeModelInfo, BridgeStatusListener } from './bridgeTypes.ts';
 export { DEFAULT_BRIDGE_URL, validateBridgeUrl } from './bridgeTypes.ts';
 import { scanLocalFiles, enhanceAudio, decodeRx2Audio, separateStems, alignPhonemes, getMemoryStatus, clearMemoryCache } from './bridgeAudio.ts';
-import { getModels, downloadModel, getModelProgress, ensureModelInstalled, deleteModel, updateModelUrl, checkModelUrl } from './bridgeModels.ts';
+import {
+  getModels,
+  downloadModel,
+  getModelProgress,
+  ensureModelInstalled,
+  deleteModel,
+  updateModelUrl,
+  checkModelUrl,
+  getModelsWorkdir,
+  setModelsWorkdir,
+  resetModelsWorkdir,
+  browseModelsWorkdir,
+  openModelsWorkdir,
+} from './bridgeModels.ts';
+import type { SharedCatalogStatusPayload } from '../../../vendor/@abdsynths/shared/Code/AiCore/ModelRegistry.ts';
 import { browseLocalFolder, scanAxionikDb, saveAxionikModel, listSublibraries, createSublibrary, deleteSublibrary, moveAxionikModel, reorderSublibrary, duplicateAxionikModel, renameAxionikModel } from './bridgeLibrary.ts';
 
 const STORAGE_KEY_TOKEN = 'neumodmakr_bridge_token';
@@ -307,6 +321,29 @@ export class BridgeClient implements BridgeCore {
     timeoutMs = 8000
   ): Promise<{ reachable: boolean; status_code?: number; size_bytes?: number; error?: string }> {
     return checkModelUrl(this, testUrl, timeoutMs);
+  }
+
+  public async getModelsWorkdir(timeoutMs = 5000): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+    return getModelsWorkdir(this, timeoutMs);
+  }
+
+  public async setModelsWorkdir(
+    path: string,
+    timeoutMs = 15000
+  ): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+    return setModelsWorkdir(this, path, timeoutMs);
+  }
+
+  public async resetModelsWorkdir(timeoutMs = 8000): Promise<SharedCatalogStatusPayload & { ok?: boolean }> {
+    return resetModelsWorkdir(this, timeoutMs);
+  }
+
+  public async browseModelsWorkdir(timeoutMs = 120000): Promise<string | null> {
+    return browseModelsWorkdir(this, timeoutMs);
+  }
+
+  public async openModelsWorkdir(timeoutMs = 5000): Promise<void> {
+    return openModelsWorkdir(this, timeoutMs);
   }
 
 

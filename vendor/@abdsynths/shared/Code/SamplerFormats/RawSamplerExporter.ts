@@ -25,6 +25,8 @@ import {
   encodeWavPcm16,
   encodeWavPcm24,
   createZipArchive,
+  resampleAudioChannel,
+  type AiffInstrumentInfo,
   type DecodedWav,
   type ZipEntryInput,
 } from '../NeuronFormats/index.ts';
@@ -90,17 +92,14 @@ function cleanFilename(name: string): string {
 }
 
 function resampleChannel(source: Float32Array, srcRate: number, dstRate: number): Float32Array {
-  if (srcRate === dstRate || source.length === 0) return source;
-  const ratio = dstRate / srcRate;
-  const newLen = Math.max(1, Math.round(source.length * ratio));
-  const out = new Float32Array(newLen);
-  for (let i = 0; i < newLen; i++) {
-    const srcPos = i / ratio;
-    const idx = Math.floor(srcPos);
-    const frac = srcPos - idx;
-    const s0 = source[idx] ?? 0;
-    const s1 = source[idx + 1] ?? s0;
-    out[i] = s0 + frac * (s1 - s0);
+  return resampleAudioChannel(source, srcRate, dstRate);
+}
+
+function float32ToInt16(channel: Float32Array): Int16Array {
+  const out = new Int16Array(channel.length);
+  for (let i = 0; i < channel.length; i++) {
+    const s = Math.max(-1.0, Math.min(1.0, channel[i]));
+    out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
   }
   return out;
 }
@@ -133,8 +132,11 @@ interface ProcessedSampleItem {
   decoded: DecodedWav;
   processedChannels: Float32Array[];
   sampleRate: number;
+  resampleRatio: number;
   wavBuffer: ArrayBuffer;
   pcm16Mono: Int16Array;
+  pcm16Left: Int16Array;
+  pcm16Right?: Int16Array;
 }
 
 /**
@@ -179,23 +181,36 @@ export async function exportRawSamplerLibrary(
     }
 
     const targetRate = options.sampleRate === 'original' ? decoded.sampleRate : options.sampleRate;
+    const resampleRatio = decoded.sampleRate > 0 ? targetRate / decoded.sampleRate : 1;
     let channels = decoded.channels.map((ch) =>
       resampleChannel(ch, decoded.sampleRate, targetRate)
     );
 
     channels = normalizeChannels(channels, options.normalization);
 
-    // Prepare 16-bit PCM mono for SF2 / Korg KSF / DLS
+    // Prepare 16-bit PCM mono & stereo channels
     const monoChan = channels.length === 1 ? channels[0] : new Float32Array(channels[0].length);
     if (channels.length > 1) {
       for (let i = 0; i < channels[0].length; i++) {
         monoChan[i] = (channels[0][i] + channels[1][i]) * 0.5;
       }
     }
-    const pcm16Mono = new Int16Array(monoChan.length);
-    for (let i = 0; i < monoChan.length; i++) {
-      const s = Math.max(-1.0, Math.min(1.0, monoChan[i]));
-      pcm16Mono[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+    const pcm16Mono = float32ToInt16(monoChan);
+    const pcm16Left = channels.length > 1 ? float32ToInt16(channels[0]) : pcm16Mono;
+    const pcm16Right = channels.length > 1 ? float32ToInt16(channels[1]) : undefined;
+
+    let scaledInstrument: Partial<AiffInstrumentInfo> | undefined = decoded.instrument;
+    if (decoded.instrument && Math.abs(resampleRatio - 1) > 1e-6) {
+      const outFrames = channels[0]?.length ?? 0;
+      scaledInstrument = {
+        ...decoded.instrument,
+        loopStart: decoded.instrument.loopStart !== undefined
+          ? Math.max(0, Math.min(outFrames, Math.round(decoded.instrument.loopStart * resampleRatio)))
+          : undefined,
+        loopEnd: decoded.instrument.loopEnd !== undefined
+          ? Math.max(0, Math.min(outFrames, Math.round(decoded.instrument.loopEnd * resampleRatio)))
+          : undefined,
+      };
     }
 
     const isPcm16 =
@@ -204,8 +219,8 @@ export async function exportRawSamplerLibrary(
       options.format === 'korg_kmp' ||
       options.format === 'dls';
     const wavBuffer = isPcm16
-      ? encodeWavPcm16(channels, targetRate, decoded.instrument)
-      : encodeWavPcm24(channels, targetRate, decoded.instrument);
+      ? encodeWavPcm16(channels, targetRate, scaledInstrument)
+      : encodeWavPcm24(channels, targetRate, scaledInstrument);
 
     const cleanName = cleanFilename(sName.replace(/\.[^/.]+$/, '')) + '.wav';
 
@@ -215,21 +230,44 @@ export async function exportRawSamplerLibrary(
       decoded,
       processedChannels: channels,
       sampleRate: targetRate,
+      resampleRatio,
       wavBuffer,
       pcm16Mono,
+      pcm16Left,
+      pcm16Right,
     });
 
     totalRawDurationSec += decoded.durationSec;
   }
 
-  const validRegions = regions.filter((r) => processedSamplesMap.has(r.sampleName));
+  const validRegions = regions
+    .filter((r) => processedSamplesMap.has(r.sampleName))
+    .map((r) => {
+      const ps = processedSamplesMap.get(r.sampleName)!;
+      const scale = ps.resampleRatio;
+      if (Math.abs(scale - 1) < 1e-6) return r;
+      const totalOut = ps.processedChannels[0]?.length ?? 0;
+      const scaledLoopStart = Math.max(0, Math.min(totalOut, Math.round(r.loopStart * scale)));
+      const scaledLoopEnd = Math.max(scaledLoopStart, Math.min(totalOut, Math.round(r.loopEnd * scale)));
+      return {
+        ...r,
+        loopStart: scaledLoopStart,
+        loopEnd: scaledLoopEnd,
+        sampleStartFrame:
+          r.sampleStartFrame !== undefined ? Math.round(r.sampleStartFrame * scale) : undefined,
+        sampleEndFrame:
+          r.sampleEndFrame !== undefined
+            ? Math.min(totalOut, Math.round(r.sampleEndFrame * scale))
+            : undefined,
+      };
+    });
 
   let outFilename = `${cleanBankName}${meta.extension}`;
   let mimeType = meta.mimeType;
   let outData: Uint8Array = new Uint8Array(0);
   let totalFiles = 1;
 
-  // ── 2. Format-Specific Generation ───────────────────────
+  // 2. Format-Specific Generation
   switch (options.format) {
     case 'sf2': {
       const sf2Samples: Sf2SampleEntry[] = [];
@@ -238,25 +276,64 @@ export async function exportRawSamplerLibrary(
       for (const [name, ps] of processedSamplesMap.entries()) {
         sampleIndexMap.set(name, sf2Samples.length);
         const inst = ps.decoded.instrument;
+        const scale = ps.resampleRatio;
+        const primaryReg =
+          validRegions.find((r) => r.sampleName === name && r.loopMode !== 'no_loop' && r.loopMode !== 'one_shot' && r.loopEnd > r.loopStart) ??
+          validRegions.find((r) => r.sampleName === name);
+
+        const hasRegLoop = Boolean(
+          primaryReg &&
+          primaryReg.loopMode !== 'no_loop' &&
+          primaryReg.loopMode !== 'one_shot' &&
+          primaryReg.loopEnd > primaryReg.loopStart
+        );
+        const scaledInstStart = inst?.loopStart !== undefined ? Math.round(inst.loopStart * scale) : 0;
+        const scaledInstEnd = inst?.loopEnd !== undefined ? Math.round(inst.loopEnd * scale) : 0;
+        const hasInstLoop = Boolean(
+          inst?.loopMode &&
+          inst.loopMode !== 'no_loop' &&
+          inst.loopMode !== 'one_shot' &&
+          scaledInstEnd > scaledInstStart
+        );
+
+        let sampleLoopMode: Sf2SampleEntry['loopMode'] = 'no_loop';
+        let sampleLoopStart = 0;
+        let sampleLoopEnd = 0;
+        if (hasRegLoop && primaryReg) {
+          sampleLoopMode = primaryReg.loopMode === 'loop_sustain' ? 'loop_sustain' : 'loop_continuous';
+          sampleLoopStart = primaryReg.loopStart;
+          sampleLoopEnd = primaryReg.loopEnd;
+        } else if (hasInstLoop && inst) {
+          sampleLoopMode = inst.loopMode === 'loop_sustain' ? 'loop_sustain' : 'loop_continuous';
+          sampleLoopStart = scaledInstStart;
+          sampleLoopEnd = scaledInstEnd;
+        }
+
+        const isStereo = ps.processedChannels.length >= 2 && ps.pcm16Right !== undefined;
         sf2Samples.push({
           name: ps.cleanName.replace('.wav', '').slice(0, 19),
           sampleRate: ps.sampleRate,
-          rootKey: inst?.rootKey ?? 60,
-          detuneCents: inst?.detune ?? 0,
-          loopMode: inst?.loopMode === 'loop_continuous' ? 'loop_continuous' : 'no_loop',
-          loopStart: inst?.loopStart ?? 0,
-          loopEnd: inst?.loopEnd ?? ps.pcm16Mono.length,
-          pcm16: ps.pcm16Mono,
+          rootKey: primaryReg?.rootKey ?? inst?.rootKey ?? 60,
+          detuneCents: primaryReg?.detuneCents ?? inst?.detune ?? 0,
+          loopMode: sampleLoopMode,
+          loopStart: sampleLoopStart,
+          loopEnd: sampleLoopEnd,
+          pcm16: isStereo ? ps.pcm16Left : ps.pcm16Mono,
+          pcm16Right: isStereo ? ps.pcm16Right : undefined,
         });
       }
 
-      const sf2Regions = validRegions.map((r) => ({
-        ...r,
-        sampleIndex: sampleIndexMap.get(r.sampleName) ?? 0,
-        loopMode: (r.loopMode !== 'no_loop' && r.loopMode !== 'one_shot' ? 'loop_continuous' : 'no_loop') as
-          | 'loop_continuous'
-          | 'no_loop',
-      }));
+      const sf2Regions = validRegions.map((r) => {
+        let regionLoopMode: 'no_loop' | 'loop_continuous' | 'loop_sustain' = 'no_loop';
+        if (r.loopEnd > r.loopStart && r.loopMode !== 'no_loop' && r.loopMode !== 'one_shot') {
+          regionLoopMode = r.loopMode === 'loop_sustain' ? 'loop_sustain' : 'loop_continuous';
+        }
+        return {
+          ...r,
+          sampleIndex: sampleIndexMap.get(r.sampleName) ?? 0,
+          loopMode: regionLoopMode,
+        };
+      });
 
       const bankData: Sf2BankData = {
         bankName: cleanBankName,
@@ -380,7 +457,13 @@ export async function exportRawSamplerLibrary(
         if (reg.loopMode === 'one_shot') {
           sfzLines.push('loop_mode=one_shot');
         } else if (reg.loopMode !== 'no_loop' && reg.loopEnd > reg.loopStart) {
-          sfzLines.push(`loop_mode=${reg.loopMode === 'loop_sustain' ? 'loop_sustain' : 'loop_continuous'}`);
+          const sfzLoop =
+            reg.loopMode === 'loop_sustain'
+              ? 'loop_sustain'
+              : reg.loopMode === 'ping_pong'
+                ? 'loop_bidirectional'
+                : 'loop_continuous';
+          sfzLines.push(`loop_mode=${sfzLoop}`);
           sfzLines.push(`loop_start=${Math.round(reg.loopStart)}`);
           sfzLines.push(`loop_end=${Math.round(reg.loopEnd)}`);
           if (reg.loopCrossfadeMs > 0) {
@@ -390,11 +473,19 @@ export async function exportRawSamplerLibrary(
 
         const env = reg.ampEnvelope;
         if (env) {
-          const atk = Math.max(0.001, (env.delaySec ?? 0) + (env.attackSec ?? 0.01) + (env.holdSec ?? 0));
-          sfzLines.push(`ampeg_attack=${atk.toFixed(3)}`);
-          sfzLines.push(`ampeg_decay=${(env.decaySec ?? 0.1).toFixed(3)}`);
+          if ((env.delaySec ?? 0) > 0) {
+            sfzLines.push(`ampeg_delay=${env.delaySec!.toFixed(3)}`);
+          }
+          if ((env.startLevel ?? 0) > 0) {
+            sfzLines.push(`ampeg_start=${Math.round(env.startLevel! * 100)}`);
+          }
+          sfzLines.push(`ampeg_attack=${Math.max(0.001, env.attackSec ?? 0.005).toFixed(3)}`);
+          if ((env.holdSec ?? 0) > 0) {
+            sfzLines.push(`ampeg_hold=${env.holdSec!.toFixed(3)}`);
+          }
+          sfzLines.push(`ampeg_decay=${Math.max(0.001, env.decaySec ?? 0.1).toFixed(3)}`);
           sfzLines.push(`ampeg_sustain=${Math.round((env.sustainLevel ?? 1) * 100)}`);
-          sfzLines.push(`ampeg_release=${(env.releaseSec ?? 0.25).toFixed(3)}`);
+          sfzLines.push(`ampeg_release=${Math.max(0.001, env.releaseSec ?? 0.25).toFixed(3)}`);
         }
         sfzLines.push('');
       }

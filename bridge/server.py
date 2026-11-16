@@ -79,64 +79,76 @@ try:
 except Exception:
     pass
 
-MODEL_REGISTRY = {
+_SHARED_AICORE_DIR = os.path.realpath(os.path.join(os.path.dirname(BASE_DIR), '..', 'ABDShared', 'Code', 'AiCore'))
+_VENDOR_AICORE_DIR = os.path.realpath(os.path.join(os.path.dirname(BASE_DIR), 'vendor', '@abdsynths', 'shared', 'Code', 'AiCore'))
+for _cand_dir in (_SHARED_AICORE_DIR, _VENDOR_AICORE_DIR):
+    if os.path.isdir(_cand_dir) and _cand_dir not in sys.path:
+        sys.path.insert(0, _cand_dir)
+
+import abd_model_store
+
+try:
+    abd_model_store.migrate_legacy_checkpoints(CHECKPOINTS_DIR)
+except Exception:
+    pass
+
+_MODEL_EXTRA_META = {
     "htdemucs": {
-        "id": "htdemucs",
-        "name": "HTDemucs v4 (Stem Separator & De-bleeder)",
         "task": "source-separation",
         "category": "source-separation",
         "package": "@abdsynths/demucs",
         "runtime": "pytorch",
         "min_vram_mb": 2000,
-        "filename": "htdemucs_f7e0c4bc.th",
-        "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/f7e0c4bc-ba3fe64a.th",
-        "size_mb": 80,
-        "inference_wired": False,
-        "description": "High-fidelity isolation of lead instruments and suppression of background acoustic leakage. (Conector PyTorch en preparación; hoy ejecuta HPSS determinista local)."
     },
     "basicpitch": {
-        "id": "basicpitch",
-        "name": "Spotify Basic Pitch (Neural F0 / Note Tracker)",
         "task": "pitch-tracking",
         "category": "pitch-tracking",
         "package": "@abdsynths/pitch-tracker",
         "runtime": "onnx",
         "min_vram_mb": 500,
-        "filename": "basic_pitch_model.onnx",
-        "url": "https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx",
-        "size_mb": 1,
-        "inference_wired": False,
-        "description": "Polyphonic pitch and note detection for automatic root key detection and transient boundary tagging. (Conector ONNX en preparación; hoy ejecuta YIN/MPM determinista local)."
     },
     "deepfilter": {
-        "id": "deepfilter",
-        "name": "DeepFilterNet 3 (Neural Audio Denoiser)",
         "task": "noise-reduction",
         "category": "noise-reduction",
         "package": "@abdsynths/neural-denoise",
         "runtime": "onnx",
         "min_vram_mb": 500,
-        "filename": "DeepFilterNet3_onnx.tar.gz",
-        "url": "https://github.com/Rikorose/DeepFilterNet/raw/main/models/DeepFilterNet3_onnx.tar.gz",
-        "size_mb": 8,
-        "inference_wired": False,
-        "description": "Real-time speech & instrument neural noise suppression and tape hiss reduction. (Conector ONNX en preparación; hoy ejecuta sustracción espectral por huella de ruido local)."
     },
     "whispertiny": {
-        "id": "whispertiny",
-        "name": "OpenAI Whisper-tiny (Speech & Phoneme Slicing)",
         "task": "phoneme-alignment",
         "category": "phoneme-alignment",
         "package": "@abdsynths/speech-slicer",
         "runtime": "onnx",
         "min_vram_mb": 500,
-        "filename": "whisper_tiny_en.onnx",
-        "url": "https://huggingface.co/onnx-community/whisper-tiny/resolve/main/onnx/decoder_model_merged_quantized.onnx",
-        "size_mb": 39,
-        "inference_wired": False,
-        "description": "Vocal onset & speech phoneme boundary alignment for semantic audio chopping (Fase 23). (Conector ONNX en preparación; hoy ejecuta corte por transitorios determinista local)."
-    }
+    },
 }
+
+
+def _build_app_model_registry():
+    raw = abd_model_store.get_app_model_registry("abdneumodmakr")
+    reg = {}
+    for m_id, meta in raw.items():
+        extra = _MODEL_EXTRA_META.get(m_id, {})
+        reg[m_id] = {
+            "id": m_id,
+            "name": meta["name"],
+            "task": extra.get("task", "neural-audio"),
+            "category": extra.get("category", "neural-audio"),
+            "package": extra.get("package", f"@abdsynths/{m_id}"),
+            "runtime": extra.get("runtime", "onnx"),
+            "min_vram_mb": extra.get("min_vram_mb", 500),
+            "filename": meta["filename"],
+            "url": meta["default_url"],
+            "size_mb": meta["size_mb"],
+            "inference_wired": bool(meta.get("inference_wired", False)),
+            "coming_soon": bool(meta.get("coming_soon", True)),
+            "used_by": list(meta.get("used_by", [])),
+            "description": meta.get("description_es", ""),
+        }
+    return reg
+
+
+MODEL_REGISTRY = _build_app_model_registry()
 
 DOWNLOAD_TASKS = {}
 DOWNLOAD_LOCK = threading.Lock()
@@ -351,19 +363,15 @@ def is_allowed_custom_url(v):
 
 
 def load_custom_model_urls():
-    if os.path.exists(MODELS_CONFIG_FILE):
-        try:
-            with open(MODELS_CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    settings = abd_model_store.load_workspace_settings()
+    return dict(settings.get("urlOverrides") or {})
 
 
 def save_custom_model_urls(cfg):
     try:
-        with open(MODELS_CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(cfg, f, indent=2)
+        settings = abd_model_store.load_workspace_settings()
+        settings["urlOverrides"] = dict(cfg or {})
+        abd_model_store.save_workspace_settings(settings)
     except Exception:
         pass
 
@@ -375,14 +383,15 @@ DEAD_CUSTOM_URLS = frozenset([
 
 
 def get_model_download_url(model_id):
-    info = MODEL_REGISTRY.get(model_id)
+    all_models = abd_model_store.load_catalog().get("models", {})
+    info = all_models.get(model_id) or MODEL_REGISTRY.get(model_id)
     if not info:
         return ""
     custom = load_custom_model_urls()
     custom_url = custom.get(model_id)
     if custom_url and custom_url not in DEAD_CUSTOM_URLS:
         return custom_url
-    return info["url"]
+    return info.get("default_url") or info.get("url", "")
 
 
 def open_native_folder_dialog(initial_path="", title="Seleccionar carpeta"):
@@ -461,81 +470,47 @@ def open_native_folder_dialog(initial_path="", title="Seleccionar carpeta"):
 
 
 def download_model_worker(model_id):
-    model_info = MODEL_REGISTRY.get(model_id)
+    all_models = abd_model_store.load_catalog().get("models", {})
+    model_info = all_models.get(model_id) or MODEL_REGISTRY.get(model_id)
     if not model_info:
         return
 
-    dest_path = os.path.join(CHECKPOINTS_DIR, model_info["filename"])
-    tmp_path = dest_path + ".download"
-    download_url = get_model_download_url(model_id)
-
+    expected_total = int(float(model_info.get("size_mb", 0)) * 1024 * 1024)
     with DOWNLOAD_LOCK:
         DOWNLOAD_TASKS[model_id] = {
             "model_id": model_id,
             "status": "downloading",
             "progress": 0.0,
             "downloaded_bytes": 0,
-            "total_bytes": model_info["size_mb"] * 1024 * 1024,
+            "total_bytes": expected_total,
             "speed_mbps": 0.0,
             "error": None
         }
 
-    try:
-        assert_url_resolves_to_public_https(download_url, ALLOWED_DOWNLOAD_HOSTS)
-        opener = urllib.request.build_opener(_SafeHttpsRedirectHandler())
-        req = urllib.request.Request(
-            download_url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    def _on_progress(prog):
+        with DOWNLOAD_LOCK:
+            DOWNLOAD_TASKS[model_id] = {
+                "model_id": model_id,
+                "status": prog.get("status", "downloading"),
+                "progress": float(prog.get("progress", 0.0)),
+                "downloaded_bytes": int(prog.get("downloaded_bytes", 0)),
+                "total_bytes": int(prog.get("total_bytes", expected_total)),
+                "speed_mbps": float(prog.get("speed_mbps", 0.0)),
+                "error": prog.get("error"),
             }
-        )
-        with opener.open(req, timeout=30) as resp, open(tmp_path, "wb") as f_out:
-            total = int(resp.headers.get("Content-Length", model_info["size_mb"] * 1024 * 1024))
-            downloaded = 0
-            chunk_size = 256 * 1024  # 256 KB chunks for high-speed transfer
-            t_start = time.time()
-            last_time = t_start
-            last_bytes = 0
-            speed_mbps = 0.0
 
-            while True:
-                chunk = resp.read(chunk_size)
-                if not chunk:
-                    break
-                f_out.write(chunk)
-                downloaded += len(chunk)
-                if downloaded > MAX_MODEL_DOWNLOAD_BYTES:
-                    raise ValueError(f"Download exceeded maximum size ({MAX_MODEL_DOWNLOAD_BYTES} bytes)")
-
-                now = time.time()
-                if now - last_time >= 0.5:
-                    dt = now - last_time
-                    speed_mbps = round(((downloaded - last_bytes) / dt) / (1024 * 1024), 2)
-                    last_time = now
-                    last_bytes = downloaded
-
-                with DOWNLOAD_LOCK:
-                    DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = downloaded
-                    DOWNLOAD_TASKS[model_id]["total_bytes"] = total
-                    DOWNLOAD_TASKS[model_id]["progress"] = round((downloaded / total) * 100, 1) if total > 0 else 0.0
-                    DOWNLOAD_TASKS[model_id]["speed_mbps"] = speed_mbps
-
-        if os.path.exists(dest_path):
-            os.remove(dest_path)
-        os.rename(tmp_path, dest_path)
-
+    try:
+        download_url = get_model_download_url(model_id)
+        assert_url_resolves_to_public_https(download_url, ALLOWED_DOWNLOAD_HOSTS)
+        res = abd_model_store.download_model_sync(model_id, progress_cb=_on_progress)
+        final_bytes = int((res.get("manifest") or {}).get("size_bytes", expected_total))
         with DOWNLOAD_LOCK:
             DOWNLOAD_TASKS[model_id]["status"] = "ready"
             DOWNLOAD_TASKS[model_id]["progress"] = 100.0
-            DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = total
-            DOWNLOAD_TASKS[model_id]["total_bytes"] = total
+            DOWNLOAD_TASKS[model_id]["downloaded_bytes"] = final_bytes
+            DOWNLOAD_TASKS[model_id]["total_bytes"] = final_bytes
             DOWNLOAD_TASKS[model_id]["speed_mbps"] = 0.0
     except Exception as e:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
         with DOWNLOAD_LOCK:
             DOWNLOAD_TASKS[model_id]["status"] = "error"
             DOWNLOAD_TASKS[model_id]["error"] = str(e)
@@ -1203,21 +1178,39 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in ('/api/models/workdir', '/models/workdir'):
+            with DOWNLOAD_LOCK:
+                active_dl = {k: dict(v) for k, v in DOWNLOAD_TASKS.items()}
+            payload = abd_model_store.get_catalog_status(
+                app_id="abdneumodmakr",
+                active_downloads=active_dl,
+            )
+            payload["ok"] = True
+            body = json.dumps(payload, indent=2).encode('utf-8')
+            self.send_response(200)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ('/api/models', '/models'):
-            models_list = []
+            with DOWNLOAD_LOCK:
+                active_dl = {k: dict(v) for k, v in DOWNLOAD_TASKS.items()}
+            workdir_info = abd_model_store.get_workdir_info()
+            active_root = abd_model_store.resolve_models_root()[0]
             custom_urls = load_custom_model_urls()
+            models_list = []
+
             for m_id, info in MODEL_REGISTRY.items():
-                dest_path = os.path.join(CHECKPOINTS_DIR, info["filename"])
-                installed = os.path.exists(dest_path)
-                with DOWNLOAD_LOCK:
-                    task = DOWNLOAD_TASKS.get(m_id)
-                
+                installed, actual_bytes = abd_model_store.check_model_installed(m_id, info, root=active_root)
+                task = active_dl.get(m_id)
                 status = "ready" if installed else "available"
                 progress = 100.0 if installed else 0.0
                 error = None
-                file_size = os.path.getsize(dest_path) if installed else 0
-                downloaded_bytes = file_size
-                total_bytes = file_size if installed else info["size_mb"] * 1024 * 1024
+                downloaded_bytes = actual_bytes
+                total_bytes = actual_bytes if installed else int(float(info.get("size_mb", 0)) * 1024 * 1024)
                 speed_mbps = 0.0
 
                 if task:
@@ -1229,6 +1222,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     speed_mbps = task.get("speed_mbps", 0.0)
 
                 effective_url = custom_urls.get(m_id) or info["url"]
+                model_folder = os.path.join(str(active_root), m_id)
                 models_list.append({
                     "id": m_id,
                     "name": info["name"],
@@ -1238,12 +1232,17 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     "runtime": info.get("runtime", "onnx"),
                     "min_vram_mb": info.get("min_vram_mb", 0),
                     "filename": info["filename"],
+                    "folder_path": model_folder,
+                    "file_path": os.path.join(model_folder, info["filename"]),
                     "size_mb": info["size_mb"],
                     "description": info["description"],
                     "url": effective_url,
                     "default_url": info["url"],
                     "is_custom_url": bool(custom_urls.get(m_id)),
                     "installed": installed,
+                    "inference_wired": info.get("inference_wired", False),
+                    "coming_soon": info.get("coming_soon", True),
+                    "used_by": info.get("used_by", []),
                     "status": status,
                     "progress": progress,
                     "downloaded_bytes": downloaded_bytes,
@@ -1254,7 +1253,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             body = json.dumps({
                 "models": models_list,
-                "checkpoints_dir": CHECKPOINTS_DIR,
+                "checkpoints_dir": str(active_root),
+                "workdir": workdir_info,
                 "packages_standard_version": "1.0.0"
             }, indent=2).encode('utf-8')
             self.send_response(200)
@@ -1269,18 +1269,21 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             query = parse_qs(parsed.query)
             m_id = query.get('model_id', [''])[0]
             with DOWNLOAD_LOCK:
-                task = DOWNLOAD_TASKS.get(m_id)
+                task = dict(DOWNLOAD_TASKS[m_id]) if m_id in DOWNLOAD_TASKS else None
 
             if not task:
-                dest_path = os.path.join(CHECKPOINTS_DIR, MODEL_REGISTRY.get(m_id, {}).get("filename", ""))
-                installed = os.path.exists(dest_path) if m_id in MODEL_REGISTRY else False
-                file_size = os.path.getsize(dest_path) if installed else 0
+                all_models = abd_model_store.load_catalog().get("models", {})
+                meta = all_models.get(m_id) or MODEL_REGISTRY.get(m_id)
+                if meta:
+                    installed, actual_bytes = abd_model_store.check_model_installed(m_id, meta)
+                else:
+                    installed, actual_bytes = False, 0
                 task = {
                     "model_id": m_id,
                     "status": "ready" if installed else "idle",
                     "progress": 100.0 if installed else 0.0,
-                    "downloaded_bytes": file_size,
-                    "total_bytes": file_size,
+                    "downloaded_bytes": actual_bytes,
+                    "total_bytes": actual_bytes,
                     "speed_mbps": 0.0,
                     "error": None
                 }
@@ -1791,6 +1794,63 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path in ('/api/models/workdir', '/models/workdir'):
+            if not self.require_auth():
+                return
+            content_len = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_len > 0:
+                try:
+                    payload = json.loads(self.rfile.read(content_len).decode('utf-8'))
+                except Exception:
+                    pass
+
+            action = (payload.get("action") or ("set" if "path" in payload else "get")).strip()
+            with DOWNLOAD_LOCK:
+                active_dl = {k: dict(v) for k, v in DOWNLOAD_TASKS.items()}
+
+            try:
+                if action == "set":
+                    raw_path = payload.get("path", "")
+                    abd_model_store.set_models_root(raw_path, create_if_missing=True, migrate_existing=True)
+                    data = abd_model_store.get_catalog_status("abdneumodmakr", active_downloads=active_dl)
+                    data["ok"] = True
+                    res_code = 200
+                elif action == "reset":
+                    abd_model_store.reset_models_root()
+                    data = abd_model_store.get_catalog_status("abdneumodmakr", active_downloads=active_dl)
+                    data["ok"] = True
+                    res_code = 200
+                elif action == "browse":
+                    current_root = abd_model_store.get_workdir_info().get("models_root", "")
+                    dlg_res = open_native_folder_dialog(current_root, "Seleccionar carpeta compartida de modelos IA")
+                    chosen = dlg_res.get("path", "") if isinstance(dlg_res, dict) else ""
+                    data = {"ok": True, "path": chosen, "cancelled": not bool(chosen)}
+                    res_code = 200
+                elif action == "open":
+                    abd_model_store.open_in_file_manager()
+                    data = {"ok": True}
+                    res_code = 200
+                else:
+                    data = abd_model_store.get_catalog_status("abdneumodmakr", active_downloads=active_dl)
+                    data["ok"] = True
+                    res_code = 200
+            except ValueError as ve:
+                data = {"ok": False, "error": str(ve)}
+                res_code = 400
+            except Exception as ex:
+                data = {"ok": False, "error": str(ex)}
+                res_code = 500
+
+            body = json.dumps(data, indent=2).encode('utf-8')
+            self.send_response(res_code)
+            self.send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path in ('/api/models/download', '/models/download'):
             content_len = int(self.headers.get('Content-Length', 0))
             payload = {}
@@ -1801,7 +1861,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     pass
 
             model_id = payload.get("model_id", "")
-            if model_id not in MODEL_REGISTRY:
+            all_models = abd_model_store.load_catalog().get("models", {})
+            if model_id not in all_models and model_id not in MODEL_REGISTRY:
                 err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
                 self.send_response(404)
                 self.send_cors_headers()
@@ -1840,7 +1901,8 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                     pass
 
             model_id = payload.get("model_id", "")
-            if model_id not in MODEL_REGISTRY:
+            all_models = abd_model_store.load_catalog().get("models", {})
+            if model_id not in all_models and model_id not in MODEL_REGISTRY:
                 err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
                 self.send_response(404)
                 self.send_cors_headers()
@@ -1850,21 +1912,19 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(err_msg)
                 return
 
-            dest_path = os.path.join(CHECKPOINTS_DIR, MODEL_REGISTRY[model_id]["filename"])
-            freed_bytes = 0
-            if os.path.exists(dest_path):
-                try:
-                    freed_bytes = os.path.getsize(dest_path)
-                    os.remove(dest_path)
-                except Exception as e:
-                    err_msg = json.dumps({"error": f"Failed to delete model file: {e}"}).encode('utf-8')
-                    self.send_response(500)
-                    self.send_cors_headers()
-                    self.send_header('Content-Type', 'application/json')
-                    self.send_header('Content-Length', str(len(err_msg)))
-                    self.end_headers()
-                    self.wfile.write(err_msg)
-                    return
+            try:
+                del_res = abd_model_store.delete_model(model_id)
+                freed_mb = float(del_res.get("freed_mb", 0.0))
+                freed_bytes = int(freed_mb * 1024 * 1024)
+            except Exception as e:
+                err_msg = json.dumps({"error": f"Failed to delete model file: {e}"}).encode('utf-8')
+                self.send_response(500)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
 
             with DOWNLOAD_LOCK:
                 if model_id in DOWNLOAD_TASKS:
@@ -1874,7 +1934,7 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 "status": "deleted",
                 "model_id": model_id,
                 "freed_bytes": freed_bytes,
-                "freed_mb": round(freed_bytes / (1024 * 1024), 1)
+                "freed_mb": freed_mb
             }).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()
@@ -1897,8 +1957,9 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
 
             model_id = payload.get("model_id", "")
             new_url = payload.get("url", "").strip()
+            all_models = abd_model_store.load_catalog().get("models", {})
 
-            if model_id not in MODEL_REGISTRY:
+            if model_id not in all_models and model_id not in MODEL_REGISTRY:
                 err_msg = json.dumps({"error": f"Model '{model_id}' not found in registry"}).encode('utf-8')
                 self.send_response(404)
                 self.send_cors_headers()
@@ -1918,19 +1979,27 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(err_msg)
                 return
 
-            cfg = load_custom_model_urls()
-            if new_url and new_url != MODEL_REGISTRY[model_id]["url"]:
-                cfg[model_id] = new_url
-            else:
-                if model_id in cfg:
-                    del cfg[model_id]
-            save_custom_model_urls(cfg)
+            try:
+                default_url = (all_models.get(model_id) or MODEL_REGISTRY.get(model_id) or {}).get("default_url") or ""
+                active_url, is_custom = abd_model_store.set_model_url_override(
+                    model_id,
+                    None if (not new_url or new_url == default_url) else new_url,
+                )
+            except ValueError as ve:
+                err_msg = json.dumps({'error': str(ve)}).encode('utf-8')
+                self.send_response(400)
+                self.send_cors_headers()
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(err_msg)))
+                self.end_headers()
+                self.wfile.write(err_msg)
+                return
 
             res = json.dumps({
                 "status": "updated",
                 "model_id": model_id,
-                "url": get_model_download_url(model_id),
-                "is_custom_url": bool(cfg.get(model_id))
+                "url": active_url,
+                "is_custom_url": is_custom
             }).encode('utf-8')
             self.send_response(200)
             self.send_cors_headers()

@@ -6541,6 +6541,26 @@
       "type": "continuous",
       "sysex": false,
       "scope": "part"
+    },
+    {
+      "id": "kbdOctave",
+      "name": "KBD Octave",
+      "group": "Keyboard",
+      "cc": null,
+      "min": -3,
+      "max": 3,
+      "default": 0,
+      "type": "integer",
+      "unit": "oct",
+      "sysex": false,
+      "binaryPacking": {
+        "byteOffset": 37,
+        "bitMask": 255,
+        "bitShift": 0,
+        "byteSize": 1,
+        "encoding": "Signed2sComplement"
+      },
+      "scope": "global"
     }
   ]
 }
