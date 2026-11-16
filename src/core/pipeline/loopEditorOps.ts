@@ -1,5 +1,11 @@
 import type { PipelineContext } from './types.ts';
-import type { DahdsrEnvelope, LoopMode, MidiNote, ZoneLoopEditorData } from '../types.ts';
+import type {
+  DahdsrEnvelope,
+  LoopMode,
+  MidiNote,
+  RegionFilterConfig,
+  ZoneLoopEditorData,
+} from '../types.ts';
 import { clamp } from '../dsp/DspMath.ts';
 import { decodeWav, synthesizeDemoWav, type DecodedWav } from '../dsp/WavDecoder.ts';
 import { getExtendedRegions } from './importOps.ts';
@@ -161,6 +167,26 @@ export async function playLoopEditorData(ctx: PipelineContext, data: ZoneLoopEdi
       ? opts.loopEndFrame
       : data.loopEnd;
 
+  let filter: RegionFilterConfig | undefined;
+  const globalFlt = ctx.state.session.articulation?.filter;
+  if (reg?.hasArticulationOverride && reg.filterOverride) {
+    filter = {
+      ...(globalFlt ?? {
+        enabled: true,
+        type: 'lpf',
+        cutoffHz: 18000,
+        resonanceDb: 0,
+        envToFilterCents: 0,
+        velToFilterCents: 0,
+        keytrackCents: 0,
+      }),
+      ...reg.filterOverride,
+      enabled: true,
+    };
+  } else if (globalFlt?.enabled) {
+    filter = globalFlt;
+  }
+
   await ctx.state.preview.auditionLoopSample({
     sampleName: data.sampleName,
     rootKey: data.rootKey,
@@ -173,6 +199,8 @@ export async function playLoopEditorData(ctx: PipelineContext, data: ZoneLoopEdi
     pan,
     detuneCents,
     ampEnv,
+    filter,
+    reversed: reg?.reversed,
     startFromLoopStart: opts.startFromLoopStart,
   });
 }

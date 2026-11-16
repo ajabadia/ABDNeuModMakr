@@ -18,6 +18,7 @@ import type {
   ExtendedModelMetadata,
   ExtendedRegion,
   LoopMode,
+  OffMode,
   SampleLoopDescriptor,
   SamplerPlayLogic,
   TriggerMode,
@@ -130,6 +131,11 @@ interface DsSampleEntry {
   endFrame?: number;
   groupName?: string;
   silencedByTag?: string;
+  silencingMode?: OffMode;
+  attack?: number;
+  decay?: number;
+  sustain?: number;
+  release?: number;
 }
 
 // ─── Group-level defaults ─────────────────────────────────────────────────
@@ -137,6 +143,11 @@ interface DsGroupDefaults {
   name?: string;
   tags?: string;
   silencedByTags?: string;
+  silencingMode?: OffMode;
+  attack?: number;
+  decay?: number;
+  sustain?: number;
+  release?: number;
   loKey: number;
   hiKey: number;
   loVel: number;
@@ -151,11 +162,28 @@ interface DsGroupDefaults {
   releaseDecay: number;
 }
 
+function parseSilencingMode(val?: string): OffMode | undefined {
+  const v = (val ?? '').toLowerCase();
+  if (v === 'fast' || v === 'normal' || v === 'time') return v;
+  return undefined;
+}
+
 function readGroupDefaults(group: Element): DsGroupDefaults {
+  const optNum = (name: string): number | undefined => {
+    const raw = attr(group, name);
+    if (raw === undefined) return undefined;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : undefined;
+  };
   return {
     name:          attr(group, 'name') ?? attr(group, 'tags'),
     tags:          attr(group, 'tags'),
     silencedByTags: attr(group, 'silencedByTags'),
+    silencingMode: parseSilencingMode(attr(group, 'silencingMode')),
+    attack:        optNum('attack'),
+    decay:         optNum('decay'),
+    sustain:       optNum('sustain'),
+    release:       optNum('release'),
     loKey:         parseDsNote(attr(group, 'loNote') ?? attr(group, 'loKey'), 0),
     hiKey:         parseDsNote(attr(group, 'hiNote') ?? attr(group, 'hiKey'), 127),
     loVel:         Math.round(numAttr(group, 'loVel', 1)),
@@ -225,6 +253,11 @@ function parseSampleElement(
     endFrame:      rawEnd !== undefined ? Math.max(0, Math.round(parseFloat(rawEnd) || 0)) : undefined,
     groupName:     gd.name,
     silencedByTag: attr(sample, 'silencedByTags') ?? gd.silencedByTags,
+    silencingMode: parseSilencingMode(attr(sample, 'silencingMode')) ?? gd.silencingMode,
+    attack:        attr(sample, 'attack') !== undefined ? numAttr(sample, 'attack', 0.005) : gd.attack,
+    decay:         attr(sample, 'decay') !== undefined ? numAttr(sample, 'decay', 0.25) : gd.decay,
+    sustain:       attr(sample, 'sustain') !== undefined ? numAttr(sample, 'sustain', 1.0) : gd.sustain,
+    release:       attr(sample, 'release') !== undefined ? numAttr(sample, 'release', 0.2) : gd.release,
   };
 }
 
@@ -415,6 +448,19 @@ export function parseDecentSamplerPreset(
       groupName: s.groupName,
       groupId: s.groupName ? `grp-${s.groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : undefined,
       muteGroup,
+      ...(s.silencingMode ? { offMode: s.silencingMode } : {}),
+      ...(s.trigger === 'release' && s.releaseDecay > 0 ? { rtDecayDbPerSec: s.releaseDecay } : {}),
+      ...(s.attack !== undefined || s.decay !== undefined || s.sustain !== undefined || s.release !== undefined
+        ? {
+            hasArticulationOverride: true,
+            ampEnvOverride: {
+              ...(s.attack !== undefined ? { attackSec: Math.max(0.002, s.attack) } : {}),
+              ...(s.decay !== undefined ? { decaySec: Math.max(0.005, s.decay) } : {}),
+              ...(s.sustain !== undefined ? { sustainLevel: clamp(s.sustain, 0, 1) } : {}),
+              ...(s.release !== undefined ? { releaseSec: Math.max(0.01, s.release) } : {}),
+            },
+          }
+        : {}),
       loops,
       hasPlaybackOverride: s.trigger !== 'attack' || s.pitchKeyTrack !== 100,
     };

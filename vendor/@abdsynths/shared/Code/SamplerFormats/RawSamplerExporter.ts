@@ -435,6 +435,28 @@ export async function exportRawSamplerLibrary(
           sfzLines.push(`group=${reg.muteGroup}`);
           sfzLines.push(`off_by=${reg.muteGroup}`);
         }
+        if (reg.offMode) sfzLines.push(`off_mode=${reg.offMode}`);
+        if (reg.offTimeSec !== undefined && reg.offMode === 'time') {
+          sfzLines.push(`off_time=${reg.offTimeSec.toFixed(3)}`);
+        }
+        if (reg.rtDecayDbPerSec !== undefined && reg.rtDecayDbPerSec > 0) {
+          sfzLines.push(`rt_decay=${reg.rtDecayDbPerSec.toFixed(2)}`);
+        }
+        if (reg.loRand !== undefined) sfzLines.push(`lorand=${reg.loRand.toFixed(4)}`);
+        if (reg.hiRand !== undefined) sfzLines.push(`hirand=${reg.hiRand.toFixed(4)}`);
+        if (reg.curveIndex !== undefined) sfzLines.push(`curve_index=${reg.curveIndex}`);
+        if (reg.ccCrossfadeIn) {
+          for (const [cc, r] of Object.entries(reg.ccCrossfadeIn)) {
+            sfzLines.push(`xfin_locc${cc}=${Math.round(r.lo)}`);
+            sfzLines.push(`xfin_hicc${cc}=${Math.round(r.hi)}`);
+          }
+        }
+        if (reg.ccCrossfadeOut) {
+          for (const [cc, r] of Object.entries(reg.ccCrossfadeOut)) {
+            sfzLines.push(`xfout_locc${cc}=${Math.round(r.lo)}`);
+            sfzLines.push(`xfout_hicc${cc}=${Math.round(r.hi)}`);
+          }
+        }
         if (reg.groupName) sfzLines.push(`group_label=${reg.groupName}`);
         if (reg.keyswitchNote !== undefined) sfzLines.push(`sw_last=${reg.keyswitchNote}`);
 
@@ -488,6 +510,24 @@ export async function exportRawSamplerLibrary(
           sfzLines.push(`ampeg_sustain=${Math.round((env.sustainLevel ?? 1) * 100)}`);
           sfzLines.push(`ampeg_release=${Math.max(0.001, env.releaseSec ?? 0.25).toFixed(3)}`);
         }
+
+        const regFlt = reg.filterConfig;
+        if (reg.hasArticulationOverride && regFlt?.enabled) {
+          const poles = regFlt.poles ?? 2;
+          const ft =
+            regFlt.type === 'hpf'
+              ? `hpf_${poles}p`
+              : regFlt.type === 'bpf'
+                ? `bpf_${poles}p`
+                : regFlt.type === 'brf' || regFlt.type === 'notch'
+                  ? 'brf_2p'
+                  : `lpf_${poles}p`;
+          sfzLines.push(`fil_type=${ft}`);
+          if (regFlt.cutoffHz !== undefined) sfzLines.push(`cutoff=${Math.round(regFlt.cutoffHz)}`);
+          if (regFlt.resonanceDb !== undefined && regFlt.resonanceDb > 0) {
+            sfzLines.push(`resonance=${regFlt.resonanceDb.toFixed(1)}`);
+          }
+        }
         sfzLines.push('');
       }
 
@@ -536,7 +576,18 @@ export async function exportRawSamplerLibrary(
         if (reg.seqPosition && reg.seqPosition >= 1) extraAttrs.push(`seqPosition="${reg.seqPosition}"`);
         if (reg.seqLength && reg.seqLength > 1) extraAttrs.push(`seqLength="${reg.seqLength}"`);
         if (reg.muteGroup && reg.muteGroup > 0) {
-          extraAttrs.push(`tags="mute_${reg.muteGroup}" silencedByTags="mute_${reg.muteGroup}" silencingMode="fast"`);
+          const dsSilence = reg.offMode === 'normal' ? 'normal' : 'fast';
+          extraAttrs.push(`tags="mute_${reg.muteGroup}" silencedByTags="mute_${reg.muteGroup}" silencingMode="${dsSilence}"`);
+        }
+        if (reg.trigger === 'release' && reg.rtDecayDbPerSec && reg.rtDecayDbPerSec > 0) {
+          extraAttrs.push(`releaseDecay="${reg.rtDecayDbPerSec.toFixed(2)}"`);
+        }
+        if (reg.hasArticulationOverride && reg.ampEnvelope) {
+          const ae = reg.ampEnvelope;
+          if (ae.attackSec !== undefined) extraAttrs.push(`attack="${Math.max(0.001, ae.attackSec).toFixed(3)}"`);
+          if (ae.decaySec !== undefined) extraAttrs.push(`decay="${Math.max(0.001, ae.decaySec).toFixed(3)}"`);
+          if (ae.sustainLevel !== undefined) extraAttrs.push(`sustain="${ae.sustainLevel.toFixed(3)}"`);
+          if (ae.releaseSec !== undefined) extraAttrs.push(`release="${Math.max(0.001, ae.releaseSec).toFixed(3)}"`);
         }
 
         sampleXmlLines.push(
@@ -698,8 +749,28 @@ ${sampleXmlLines.join('\n')}
         const ps = processedSamplesMap.get(reg.sampleName);
         if (!ps) continue;
 
+        const extraKontakt: string[] = [];
+        if (reg.trigger && reg.trigger !== 'attack') extraKontakt.push(`trigger="${reg.trigger}"`);
+        if (reg.muteGroup && reg.muteGroup > 0) extraKontakt.push(`muteGroup="${reg.muteGroup}"`);
+        if (reg.keyswitchNote !== undefined) extraKontakt.push(`keyswitchNote="${reg.keyswitchNote}"`);
+        if (reg.seqLength && reg.seqLength > 1) {
+          extraKontakt.push(`seqLength="${reg.seqLength}" seqPosition="${reg.seqPosition ?? 1}"`);
+        }
+        if (reg.reversed) extraKontakt.push(`reverse="true"`);
+        if (reg.hasArticulationOverride && reg.ampEnvelope) {
+          const ae = reg.ampEnvelope;
+          extraKontakt.push(
+            `attack="${(ae.attackSec ?? 0.005).toFixed(3)}" decay="${(ae.decaySec ?? 0.25).toFixed(3)}" sustain="${(ae.sustainLevel ?? 1).toFixed(3)}" release="${(ae.releaseSec ?? 0.2).toFixed(3)}"`
+          );
+        }
+        if (reg.hasArticulationOverride && reg.filterConfig?.enabled) {
+          extraKontakt.push(
+            `filterType="${reg.filterConfig.type ?? 'lpf'}" cutoff="${Math.round(reg.filterConfig.cutoffHz ?? 18000)}" resonance="${(reg.filterConfig.resonanceDb ?? 0).toFixed(1)}"`
+          );
+        }
+
         zoneXmlLines.push(
-          `        <zone id="${reg.id}" sample="Samples/${ps.cleanName}" rootKey="${reg.rootKey}" lowKey="${reg.lowKey}" highKey="${reg.highKey}" lowVel="${reg.lowVel}" highVel="${reg.highVel}" tune="${reg.detuneCents}" volume="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" sampleStart="${Math.round(reg.sampleStartFrame ?? 0)}" sampleEnd="${Math.round(reg.sampleEndFrame ?? ps.processedChannels[0].length)}"/>`
+          `        <zone id="${reg.id}" sample="Samples/${ps.cleanName}" rootKey="${reg.rootKey}" lowKey="${reg.lowKey}" highKey="${reg.highKey}" lowVel="${reg.lowVel}" highVel="${reg.highVel}" tune="${reg.detuneCents}" volume="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" sampleStart="${Math.round(reg.sampleStartFrame ?? 0)}" sampleEnd="${Math.round(reg.sampleEndFrame ?? ps.processedChannels[0].length)}"${extraKontakt.length > 0 ? ' ' + extraKontakt.join(' ') : ''}/>`
         );
       }
 
@@ -749,8 +820,21 @@ ${zoneXmlLines.join('\n')}
             ? Math.round(reg.sampleEndFrame)
             : ps.processedChannels[0].length;
 
+        const extraHalion: string[] = [];
+        if (reg.hasArticulationOverride && reg.ampEnvelope) {
+          const ae = reg.ampEnvelope;
+          extraHalion.push(
+            `attack="${(ae.attackSec ?? 0.005).toFixed(3)}" decay="${(ae.decaySec ?? 0.25).toFixed(3)}" sustain="${(ae.sustainLevel ?? 1).toFixed(3)}" release="${(ae.releaseSec ?? 0.2).toFixed(3)}"`
+          );
+        }
+        if (reg.hasArticulationOverride && reg.filterConfig?.enabled) {
+          extraHalion.push(
+            `filterType="${reg.filterConfig.type ?? 'lpf'}" cutoff="${Math.round(reg.filterConfig.cutoffHz ?? 18000)}" resonance="${(reg.filterConfig.resonanceDb ?? 0).toFixed(1)}"`
+          );
+        }
+
         zoneXmlLines.push(
-          `        <zone name="${cleanFilename(reg.sampleName)}" file="Samples/${ps.cleanName}" keyLow="${reg.lowKey}" keyHigh="${reg.highKey}" rootKey="${reg.rootKey}" velLow="${reg.lowVel}" velHigh="${reg.highVel}" keyFadeIn="${reg.keyFadeIn ?? 0}" keyFadeOut="${reg.keyFadeOut ?? 0}" velFadeIn="${reg.velFadeIn ?? 0}" velFadeOut="${reg.velFadeOut ?? 0}" tune="${reg.detuneCents}" gain="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" keytrack="${reg.pitchKeytrack ?? 100}" sampleStart="${startFrame}" sampleEnd="${endFrame}" reverse="${Boolean(reg.reversed)}" loop="${reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot'}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" loopCrossfadeMs="${reg.loopCrossfadeMs ?? 0}" muteGroup="${reg.muteGroup ?? 0}" trigger="${reg.trigger ?? 'attack'}"${reg.keyswitchNote !== undefined ? ` keyswitchNote="${reg.keyswitchNote}"` : ''}/>`
+          `        <zone name="${cleanFilename(reg.sampleName)}" file="Samples/${ps.cleanName}" keyLow="${reg.lowKey}" keyHigh="${reg.highKey}" rootKey="${reg.rootKey}" velLow="${reg.lowVel}" velHigh="${reg.highVel}" keyFadeIn="${reg.keyFadeIn ?? 0}" keyFadeOut="${reg.keyFadeOut ?? 0}" velFadeIn="${reg.velFadeIn ?? 0}" velFadeOut="${reg.velFadeOut ?? 0}" tune="${reg.detuneCents}" gain="${reg.volumeDb.toFixed(1)}" pan="${reg.pan}" keytrack="${reg.pitchKeytrack ?? 100}" sampleStart="${startFrame}" sampleEnd="${endFrame}" reverse="${Boolean(reg.reversed)}" loop="${reg.loopMode !== 'no_loop' && reg.loopMode !== 'one_shot'}" loopMode="${reg.loopMode}" loopStart="${Math.round(reg.loopStart)}" loopEnd="${Math.round(reg.loopEnd)}" loopCrossfadeMs="${reg.loopCrossfadeMs ?? 0}" muteGroup="${reg.muteGroup ?? 0}" trigger="${reg.trigger ?? 'attack'}"${reg.keyswitchNote !== undefined ? ` keyswitchNote="${reg.keyswitchNote}"` : ''}${extraHalion.length > 0 ? ' ' + extraHalion.join(' ') : ''}/>`
         );
       }
 

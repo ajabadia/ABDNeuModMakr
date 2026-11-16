@@ -11,6 +11,7 @@ import type {
   DahdsrEnvelope,
   LoopMode,
   MidiNote,
+  OffMode,
   PitchEnvelopeConfig,
   RegionFilterConfig,
   SampleLoopDescriptor,
@@ -163,6 +164,15 @@ export interface UniformSamplerRegion {
   groupId?: string;
   groupName?: string;
   muteGroup?: number;
+  offMode?: OffMode;
+  offTimeSec?: number;
+  rtDecayDbPerSec?: number;
+  loRand?: number;
+  hiRand?: number;
+  ccCrossfadeIn?: Record<number, { lo: number; hi: number }>;
+  ccCrossfadeOut?: Record<number, { lo: number; hi: number }>;
+  curveIndex?: number;
+  hasArticulationOverride?: boolean;
   keyswitchNote?: MidiNote;
   velToVolumeDepth?: number;
   velToPitchCents?: number;

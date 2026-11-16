@@ -59,3 +59,23 @@
   - Parsear `v0..v127` + `curve_index` dentro de `<curve>` (exenta de tope S6.6), interpolar puntos faltantes (`interpolateSfzCurvePoints`) y evaluar curvas (`evaluateSfzCurve` / `computeCcCrossfadeGain`) + extraer `xfin_loccN`/`xfin_hiccN`/`xfout_loccN`/`xfout_hiccN` en `SfzParser.ts`.
 - [x] **4.2 Stretch tuning paramétrico (Railsback)**:
   - Añadido `createRailsbackStretchTable()` y `applyStretchTuningToTable()` en `ScalaMicrotuning.ts` y conectado `railsbackStretch` en `UniversalSamplerOfflineRenderer.ts`.
+
+---
+
+## P4 — Fase 5: Paridad en Exportador SFZ y Audición de Fila / Loop Editor (Completada)
+- [x] **5.1 Exportador SFZ completo (`RawSamplerExporter.ts` + `rawSamplerPreflight.ts`)**:
+  - Propagar `offMode`, `offTimeSec`, `rtDecayDbPerSec`, `loRand`, `hiRand`, `ccCrossfadeIn`/`Out`, `curveIndex`, `ampEnvOverride` y `filterOverride` en `UniformSamplerRegion` (`rawSamplerTypes.ts` / `rawSamplerPreflight.ts`).
+  - Emitir `off_mode`, `off_time`, `rt_decay`, `lorand`, `hirand`, `xfin_loccN`/`xfin_hiccN`/`xfout_loccN`/`xfout_hiccN`, `curve_index` y filtro por región cuando `hasArticulationOverride` esté activo en `case 'sfz'` de `RawSamplerExporter.ts`.
+- [x] **5.2 Audición de fila / Loop Editor (`audioPreview.ts` + `loopEditorOps.ts`)**:
+  - Aplicar `filter`/`filterOverride` (`BiquadFilterNode`) y `reversed`/`loop_backward` en `auditionLoopSample()` y propagarlos desde `playLoopEditorData()` en `loopEditorOps.ts`.
+
+---
+
+## P5 — Fase 6: Extensión a Decent Sampler, Kontakt/HALion y TX16Wx (Completada)
+- [x] **6.1 Decent Sampler (`.dspreset`)**:
+  - Leer `silencingMode="fast|normal|time"` → `offMode`, `releaseDecay` → `rtDecayDbPerSec` y `attack`/`decay`/`sustain`/`release` por `<group>`/`<sample>` → `ampEnvOverride` en `DecentSamplerParser.ts`.
+  - Emitir `silencingMode` dinámico, `releaseDecay` y `attack`/`decay`/`sustain`/`release` por región cuando `hasArticulationOverride` esté activo en `case 'dspreset'` de `RawSamplerExporter.ts`.
+- [x] **6.2 Kontakt (`.nki` XML) y Steinberg HALion (`.vstpreset`)**:
+  - Emitir `trigger`, `muteGroup`, `keyswitchNote`, `seqLength`/`seqPosition`, `reverse` y envolvente/filtro por zona cuando `hasArticulationOverride` esté activo en `RawSamplerExporter.ts`.
+- [x] **6.3 CWITEC TX16Wx (`.txprog`)**:
+  - Agrupar regiones por `muteGroup`/`playmode`/`keyscale` y emitir múltiples `<tx:group>` en `Tx16WxFormat.ts` (en EXS24 binario, el bloque de grupo 0x02 ya soporta `muteGroup`, `trigger`, `keyswitchNote`, `playLogic` y crossfades; los ADSR/filtros residen en el bloque global 0x04).

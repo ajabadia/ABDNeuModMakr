@@ -289,6 +289,8 @@ export class AudioPreviewService {
     pan?: number;
     detuneCents?: number;
     ampEnv?: DahdsrEnvelope;
+    filter?: RegionFilterConfig;
+    reversed?: boolean;
     startFromLoopStart?: boolean;
   }): Promise<void> {
     if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
@@ -337,26 +339,34 @@ export class AudioPreviewService {
         ? Math.round((opts.loopCrossfadeMs / 1000) * sr)
         : 0;
 
-    let processedChannels = decoded.channels;
+    let processedChannels: Float32Array[] = decoded.channels;
     let actualStartFrame = effStartFrame;
     let actualEndFrame = effEndFrame;
 
+    if (opts.reversed || opts.loopMode === 'loop_backward') {
+      processedChannels = processedChannels.map((ch) => {
+        const rev = new Float32Array(ch.length);
+        for (let i = 0; i < ch.length; i++) rev[i] = ch[ch.length - 1 - i];
+        return rev;
+      });
+    }
+
     // Apply circular equal-power crossfade if configured
     if (xfadeFrames > 0 && !isPingPong) {
-      processedChannels = decoded.channels.map((ch) =>
+      processedChannels = processedChannels.map((ch) =>
         applyLoopCrossfade(ch, effStartFrame, effEndFrame, xfadeFrames, 'equal-power')
       );
     }
 
     // Ping-Pong: unroll [start..end] + [end..start] alternating mirror
     if (isPingPong) {
-      const p0 = generatePingPongLoopBuffer(decoded.channels[0], effStartFrame, effEndFrame);
+      const p0 = generatePingPongLoopBuffer(processedChannels[0], effStartFrame, effEndFrame);
       actualStartFrame = p0.loopStart;
       actualEndFrame = p0.loopEnd;
       if (decoded.numChannels === 1) {
         processedChannels = [p0.pcm];
       } else {
-        processedChannels = decoded.channels.map(
+        processedChannels = processedChannels.map(
           (ch) => generatePingPongLoopBuffer(ch, effStartFrame, effEndFrame).pcm
         );
       }
@@ -460,7 +470,25 @@ export class AudioPreviewService {
       lastNode = panner;
     }
 
-    source.connect(gainNode);
+    let sourceOut: AudioNode = source;
+    const extraNodes: AudioNode[] = [];
+    if (opts.filter?.enabled && typeof this.audioCtx.createBiquadFilter === 'function') {
+      const biquad = this.audioCtx.createBiquadFilter();
+      biquad.type =
+        opts.filter.type === 'hpf'
+          ? 'highpass'
+          : opts.filter.type === 'bpf'
+            ? 'bandpass'
+            : opts.filter.type === 'notch' || opts.filter.type === 'brf'
+              ? 'notch'
+              : 'lowpass';
+      biquad.frequency.value = clamp(opts.filter.cutoffHz || 18000, 20, 20000);
+      biquad.Q.value = clamp(Math.pow(10, (opts.filter.resonanceDb ?? 0) / 20), 0.5, 20);
+      source.connect(biquad);
+      sourceOut = biquad;
+      extraNodes.push(biquad);
+    }
+    sourceOut.connect(gainNode);
     lastNode.connect(this.analyserNode);
 
     source.onended = () => {
@@ -487,7 +515,10 @@ export class AudioPreviewService {
     };
     this.activeSourceNode = source;
     this.activeGainNode = gainNode;
-    this.activeIntermediateNodes = lastNode !== gainNode ? [gainNode, lastNode] : [gainNode];
+    this.activeIntermediateNodes = [
+      ...extraNodes,
+      ...(lastNode !== gainNode ? [gainNode, lastNode] : [gainNode]),
+    ];
     this.activePlaybackMode = 'original';
     // When startFromLoopStart is true (e.g. Waveform Loop Editor preview), start at loopStart.
     // Otherwise start from 0 so the sample plays from the beginning naturally.

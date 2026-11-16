@@ -498,7 +498,16 @@ export function buildTx16WxProgramXml(options: {
   } = options;
 
   const waveXmlLines: string[] = [];
-  const regionXmlLines: string[] = [];
+  const groupBuckets = new Map<
+    string,
+    {
+      name: string;
+      muteGroup: number;
+      playmode: string;
+      keyscale: number;
+      regionLines: string[];
+    }
+  >();
 
   regions.forEach((reg, idx) => {
     const startFrame = Math.max(0, Math.round(reg.sampleStartFrame ?? 0));
@@ -550,7 +559,29 @@ export function buildTx16WxProgramXml(options: {
     const fadeLoVel = Math.min(reg.highVel, reg.lowVel + (reg.velFadeIn ?? 0));
     const fadeHiVel = Math.max(reg.lowVel, reg.highVel - (reg.velFadeOut ?? 0));
 
-    regionXmlLines.push(`    <tx:region tx:mode="DFD" tx:attenuation="${reg.volumeDb.toFixed(1)} dB" tx:pan="${panPct}%" tx:loop="${activeLoops.length > 0 ? 0 : -1}" tx:release="-1" tx:wave="${idx}" tx:root="${reg.rootKey}" tx:reverse="${reg.reversed ? 'true' : 'false'}">
+    const gMute = reg.muteGroup ?? 0;
+    const gPlaymode =
+      reg.trigger === 'release'
+        ? 'Release'
+        : reg.loopMode === 'one_shot'
+          ? 'Oneshot'
+          : 'Normal';
+    const gKeyscale = reg.pitchKeytrack ?? 100;
+    const gKey = `${gMute}|${gPlaymode}|${gKeyscale}`;
+    let bucket = groupBuckets.get(gKey);
+    if (!bucket) {
+      const grpIndex = groupBuckets.size + 1;
+      bucket = {
+        name: grpIndex === 1 ? 'Main Group' : `Group ${grpIndex}`,
+        muteGroup: gMute,
+        playmode: gPlaymode,
+        keyscale: gKeyscale,
+        regionLines: [],
+      };
+      groupBuckets.set(gKey, bucket);
+    }
+
+    bucket.regionLines.push(`    <tx:region tx:mode="DFD" tx:attenuation="${reg.volumeDb.toFixed(1)} dB" tx:pan="${panPct}%" tx:loop="${activeLoops.length > 0 ? 0 : -1}" tx:release="-1" tx:wave="${idx}" tx:root="${reg.rootKey}" tx:reverse="${reg.reversed ? 'true' : 'false'}">
       <tx:bounds tx:low-key="${reg.lowKey}" tx:high-key="${reg.highKey}" tx:low-vel="${reg.lowVel}" tx:high-vel="${reg.highVel}"/>
       <tx:fade tx:low-key="${fadeLoKey}" tx:high-key="${fadeHiKey}" tx:low-vel="${fadeLoVel}" tx:high-vel="${fadeHiVel}"/>
       <tx:sound-offsets tx:coarse="${coarseSt}" tx:fine="${fineCents}"/>
@@ -602,15 +633,11 @@ export function buildTx16WxProgramXml(options: {
     );
   }
 
-  const primaryReg = regions[0];
-  const muteGroup = primaryReg?.muteGroup ?? 0;
-  const playmode =
-    primaryReg?.trigger === 'release'
-      ? 'Release'
-      : primaryReg?.loopMode === 'one_shot'
-        ? 'Oneshot'
-        : 'Normal';
-  const keyscale = primaryReg?.pitchKeytrack ?? 100;
+  const groupXmlBlocks = Array.from(groupBuckets.values()).map(
+    (b) => `  <tx:group tx:name="${escapeXml(b.name)}" tx:soundshape="ss-main" tx:playmode="${b.playmode}" tx:volume="0 dB" tx:pan="0%" tx:coarse="0" tx:fine="0" tx:keyscale="${b.keyscale}" tx:scale-key="60" tx:choke-group="${b.muteGroup}" tx:notepoly="${polyphony}" tx:polymode="Poly" tx:output="--" tx:quality="Default" tx:color="yellow">
+${b.regionLines.join('\n')}
+  </tx:group>`
+  );
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <tx:program xmlns:tx="http://www.tx16wx.com/3.0/program" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -625,9 +652,7 @@ ${waveXmlLines.join('\n')}
 ${modLines.join('\n')}
     </tx:modulation>
   </tx:soundshape>
-  <tx:group tx:name="Main Group" tx:soundshape="ss-main" tx:playmode="${playmode}" tx:volume="0 dB" tx:pan="0%" tx:coarse="0" tx:fine="0" tx:keyscale="${keyscale}" tx:scale-key="60" tx:choke-group="${muteGroup}" tx:notepoly="${polyphony}" tx:polymode="Poly" tx:output="--" tx:quality="Default" tx:color="yellow">
-${regionXmlLines.join('\n')}
-  </tx:group>
+${groupXmlBlocks.join('\n')}
 </tx:program>
 `;
 }
