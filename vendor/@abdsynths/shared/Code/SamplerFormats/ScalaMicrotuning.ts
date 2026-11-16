@@ -166,3 +166,52 @@ export function createMicrotuningTable(
     centsOffsetFrom12Tet: centsOffset,
   };
 }
+
+/**
+ * Clean-room parametric Railsback stretch-tuning curve generator.
+ * Models acoustic string inharmonicity: bass notes are progressively flat and
+ * treble notes progressively sharp around `referenceMidi` (default A4 = 69).
+ * `amount01` in 0..1 scales the maximum deviation (up to ~±35 cents at extremes).
+ */
+export function createRailsbackStretchTable(
+  amount01: number,
+  referenceMidi = 69,
+): Float32Array {
+  const amt = Math.max(0, Math.min(1, Number.isFinite(amount01) ? amount01 : 0));
+  const out = new Float32Array(128);
+  if (amt <= 0) return out;
+
+  for (let note = 0; note < 128; note++) {
+    const semi = note - referenceMidi;
+    const oct = semi / 12.0;
+    // Asymmetric cubic-like stretch: gentle in middle register, steeper in bass/treble extremes
+    const sign = oct >= 0 ? 1 : -1;
+    const absOct = Math.abs(oct);
+    const baseCents = sign * (1.8 * absOct + 1.15 * Math.pow(absOct, 2.15));
+    // Slight extra treble stretch above C6 (84)
+    const trebleBoost = note > 84 ? 0.35 * ((note - 84) / 12.0) ** 1.6 : 0;
+    out[note] = Math.max(-45, Math.min(45, (baseCents + trebleBoost) * amt));
+  }
+  return out;
+}
+
+/**
+ * Applies a per-note cents stretch table on top of an existing `MicrotuningTable`.
+ */
+export function applyStretchTuningToTable(
+  base: MicrotuningTable,
+  stretchCents: Float32Array,
+): MicrotuningTable {
+  const frequenciesHz = new Float64Array(128);
+  const centsOffsetFrom12Tet = new Float32Array(128);
+  for (let note = 0; note < 128; note++) {
+    const delta = stretchCents[note] ?? 0;
+    frequenciesHz[note] = base.frequenciesHz[note] * Math.pow(2.0, delta / 1200.0);
+    centsOffsetFrom12Tet[note] = base.centsOffsetFrom12Tet[note] + delta;
+  }
+  return {
+    scaleName: `${base.scaleName} + Stretch`,
+    frequenciesHz,
+    centsOffsetFrom12Tet,
+  };
+}

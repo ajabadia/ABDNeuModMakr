@@ -21,7 +21,16 @@ import { ZoneRibbon } from './ui/ZoneRibbon';
 import { ZoneInspector } from './ui/ZoneInspector';
 import { ProcessPanel } from './ui/ProcessPanel';
 import { KeyboardStrip } from './ui/KeyboardStrip';
-import { resolveClassicNoteTargets, resolveExtendedNoteTargets, resolveRowAuditionSpan } from './core/noteMapping';
+import {
+  computeRegionCrossfadeGain,
+  resolveClassicNoteTargets,
+  resolveExtendedNoteTargets,
+  resolveRowAuditionSpan,
+} from './core/noteMapping';
+import {
+  SamplerArticulationEngine,
+  computeReleaseTriggerGainLinear,
+} from '@abdsynths/shared/formats/sampler';
 import { ProcessModal } from './ui/ProcessModal';
 import { TelemetryDrawer } from './ui/TelemetryDrawer';
 import { BankDrawer } from './ui/BankDrawer';
@@ -92,6 +101,7 @@ class App {
   private sublibraries: import('./core/types').SublibraryInfo[] = [];
   private auditionPcmSourceNode: AudioBufferSourceNode | null = null;
   private auditionAudioContext: AudioContext | null = null;
+  private readonly articulationEngine = new SamplerArticulationEngine();
 
   constructor() {
     const self = this;
@@ -1244,7 +1254,13 @@ class App {
         const isExtended = this.session.processConfig.workingMode === 'extended';
         // Resolve which row(s)/sample this note + velocity triggers (mode-specific tables)
         const targets = isExtended
-          ? resolveExtendedNoteTargets(this.core.getExtendedRegions(), note, velocity)
+          ? resolveExtendedNoteTargets(
+              this.core.getExtendedRegions(),
+              note,
+              velocity,
+              'attack',
+              this.articulationEngine,
+            )
           : resolveClassicNoteTargets(this.session.zones, note, velocity);
         // Find zone covering this note, select it, and audition at `note` pitch
         const found = this.session.zones.find((z) => note >= z.lowKey && note <= z.highKey);
@@ -1262,27 +1278,90 @@ class App {
             this.updateSpectralView(found);
           }
           const kbMode = this.spectralView.getKeyboardMode();
-          const override =
-            targets.sampleName !== undefined
-              ? { sampleName: targets.sampleName, rootKey: targets.rootKey ?? found.rootKey }
-              : undefined;
-          void this.core.auditionZoneComparison(found.id, kbMode, note, override);
+          if (kbMode === 'original' && this.core.playPolyNoteOn) {
+            const reg = targets.region;
+            const globalArt = this.session.articulation ?? this.core.getArticulation();
+            const ampEnv = reg?.hasArticulationOverride && reg.ampEnvOverride
+              ? { ...globalArt.ampEnv, ...reg.ampEnvOverride }
+              : (globalArt.ampEnvEnabled !== false ? globalArt.ampEnv : undefined);
+            const filter = reg?.hasArticulationOverride && reg.filterOverride
+              ? { ...globalArt.filter, ...reg.filterOverride, enabled: true }
+              : (globalArt.filter.enabled ? globalArt.filter : undefined);
+            const sampleName = targets.sampleName ?? found.sampleLow ?? '';
+            if (sampleName) {
+              void this.core.playPolyNoteOn({
+                note,
+                velocity,
+                sampleName,
+                rootKey: targets.rootKey ?? found.rootKey,
+                pitchKeytrack: reg?.pitchKeytrack ?? 100,
+                detuneCents: reg?.detune ?? found.detune,
+                volumeDb: reg?.volume ?? found.volume,
+                pan: reg?.pan ?? found.pan,
+                gainMultiplier: reg ? computeRegionCrossfadeGain(reg, note, velocity) : 1.0,
+                loopMode: reg?.loopMode,
+                loopStartFrame: reg?.loopStart,
+                loopEndFrame: reg?.loopEnd,
+                loopCrossfadeMs: reg?.loopCrossfadeMs,
+                sampleStartFrame: reg?.sampleStartFrame,
+                sampleEndFrame: reg?.sampleEndFrame,
+                reversed: reg?.reversed,
+                ampEnv,
+                filter,
+                muteGroup: reg?.muteGroup,
+                offMode: reg?.offMode,
+                offTimeSec: reg?.offTimeSec,
+                maxPolyphony: globalArt.polyphony,
+              });
+            }
+          } else {
+            const override =
+              targets.sampleName !== undefined
+                ? { sampleName: targets.sampleName, rootKey: targets.rootKey ?? found.rootKey }
+                : undefined;
+            void this.core.auditionZoneComparison(found.id, kbMode, note, override);
+          }
           this.spectralView.notifyPlaybackStarted();
         }
       },
       onNoteRelease: (note) => {
         this.inspector.releaseNote(note);
+        const holdDurationSec = this.core.releasePolyNote?.(note) ?? 0;
         if (this.session && this.session.processConfig.workingMode === 'extended') {
-          // Check for release trigger samples (Key-Off)
+          // Check for release trigger samples (Key-Off) with rt_decay attenuation
           const releaseTargets = resolveExtendedNoteTargets(
             this.core.getExtendedRegions(),
             note,
             80,
-            'release'
+            'release',
+            this.articulationEngine,
           );
           if (releaseTargets.sampleName) {
+            const reg = releaseTargets.region;
             const found = this.session.zones.find((z) => note >= z.lowKey && note <= z.highKey) ?? this.session.zones[0];
-            if (found) {
+            if (found && this.core.playPolyNoteOn) {
+              const globalArt = this.session.articulation ?? this.core.getArticulation();
+              const rtGain = computeReleaseTriggerGainLinear(reg?.rtDecayDbPerSec, holdDurationSec);
+              void this.core.playPolyNoteOn({
+                note,
+                velocity: 80,
+                sampleName: releaseTargets.sampleName,
+                rootKey: releaseTargets.rootKey ?? found.rootKey,
+                pitchKeytrack: reg?.pitchKeytrack ?? 100,
+                detuneCents: reg?.detune ?? found.detune,
+                volumeDb: reg?.volume ?? found.volume,
+                pan: reg?.pan ?? found.pan,
+                gainMultiplier: rtGain,
+                sampleStartFrame: reg?.sampleStartFrame,
+                sampleEndFrame: reg?.sampleEndFrame,
+                reversed: reg?.reversed,
+                ampEnv: reg?.hasArticulationOverride && reg.ampEnvOverride
+                  ? { ...globalArt.ampEnv, ...reg.ampEnvOverride }
+                  : (globalArt.ampEnvEnabled !== false ? globalArt.ampEnv : undefined),
+                maxPolyphony: globalArt.polyphony,
+                isReleaseTrigger: true,
+              });
+            } else if (found) {
               const override = {
                 sampleName: releaseTargets.sampleName,
                 rootKey: releaseTargets.rootKey ?? found.rootKey,

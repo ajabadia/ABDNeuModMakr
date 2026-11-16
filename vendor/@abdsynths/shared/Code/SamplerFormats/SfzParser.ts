@@ -16,11 +16,17 @@ import type {
   ExtendedRegion,
   FilterSlopePoles,
   LoopMode,
+  OffMode,
   RegionFilterConfig,
   SampleLoopDescriptor,
   SamplerPlayLogic,
+  SfzCcMacroInfo,
+  SfzCurveDescriptor,
+  SfzIntrospectionReport,
+  SfzKeyswitchInfo,
   TriggerMode,
 } from './SamplerTypes.ts';
+import { interpolateSfzCurvePoints } from './ArticulationEngine.ts';
 import { extractAudioHeaderInstrumentInfo } from '../NeuronFormats/index.ts';
 import {
   createDefaultArticulation,
@@ -85,6 +91,169 @@ function stripSfzComments(text: string): string {
 
 const MAX_SFZ_DEFINES = 256;
 const MAX_SFZ_DEFINE_VALUE_LEN = 256;
+const DEFAULT_MAX_INCLUDE_DEPTH = 8;
+const MAX_SFZ_INLINE_SAMPLE_BYTES = 16 * 1024 * 1024;
+const MAX_UNKNOWN_OPCODE_AUDIT = 64;
+
+export interface SfzImportOptions {
+  /** Optional safe resolver for `#include "path.sfz"` directives (must return UTF-8 text or undefined). */
+  includeResolver?: (includePath: string, fromFile: string) => string | undefined;
+  /** Maximum nested `#include` depth (default 8, clamped 1..16). */
+  maxIncludeDepth?: number;
+}
+
+function resolveSafeIncludePath(rawInclude: string, fromFile: string): string | undefined {
+  const cleaned = rawInclude.trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+  if (!cleaned || cleaned.startsWith('/')) return undefined;
+  const fromNorm = fromFile.replace(/\\/g, '/');
+  const fromDir = fromNorm.includes('/') ? fromNorm.slice(0, fromNorm.lastIndexOf('/')) : '';
+  const combined = fromDir ? `${fromDir}/${cleaned}` : cleaned;
+  const parts: string[] = [];
+  for (const seg of combined.split('/')) {
+    const t = seg.trim();
+    if (!t || t === '.') continue;
+    if (t === '..') return undefined; // fail-closed on path traversal
+    parts.push(t);
+  }
+  return parts.length > 0 ? parts.join('/') : undefined;
+}
+
+function resolveSfzIncludes(
+  rawText: string,
+  rootFileName: string,
+  options: SfzImportOptions | undefined,
+  maxTotalChars: number,
+): { text: string; includedFiles: string[]; missingIncludes: string[] } {
+  const includedFiles: string[] = [];
+  const missingIncludes: string[] = [];
+  const maxDepth = Math.max(1, Math.min(16, options?.maxIncludeDepth ?? DEFAULT_MAX_INCLUDE_DEPTH));
+  const visited = new Set<string>([rootFileName.replace(/\\/g, '/').toLowerCase()]);
+  let totalChars = 0;
+
+  const expandFile = (text: string, currentFile: string, depth: number): string => {
+    const stripped = stripSfzComments(text);
+    const outLines: string[] = [];
+    for (const line of stripped.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      const incMatch = /^#include\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/i.exec(trimmed);
+      if (!incMatch) {
+        totalChars += line.length + 1;
+        if (totalChars > maxTotalChars) {
+          throw new Error(`SFZ expanded includes exceed max size (${maxTotalChars} chars)`);
+        }
+        outLines.push(line);
+        continue;
+      }
+      const rawTarget = (incMatch[1] ?? incMatch[2] ?? incMatch[3] ?? '').trim();
+      const safeTarget = resolveSafeIncludePath(rawTarget, currentFile);
+      if (!safeTarget) {
+        if (rawTarget && !missingIncludes.includes(rawTarget)) missingIncludes.push(rawTarget);
+        continue;
+      }
+      const targetKey = safeTarget.toLowerCase();
+      if (visited.has(targetKey)) {
+        continue; // anti-cycle guard
+      }
+      if (depth >= maxDepth) {
+        if (!missingIncludes.includes(safeTarget)) missingIncludes.push(safeTarget);
+        continue;
+      }
+      const resolvedText =
+        options?.includeResolver?.(safeTarget, currentFile) ??
+        options?.includeResolver?.(rawTarget, currentFile);
+      if (resolvedText === undefined) {
+        if (!missingIncludes.includes(safeTarget)) missingIncludes.push(safeTarget);
+        continue;
+      }
+      visited.add(targetKey);
+      includedFiles.push(safeTarget);
+      outLines.push(expandFile(resolvedText, safeTarget, depth + 1));
+    }
+    return outLines.join('\n');
+  };
+
+  return {
+    text: expandFile(rawText, rootFileName, 0),
+    includedFiles,
+    missingIncludes,
+  };
+}
+
+const SFZ_OPCODE_EXACT_ALIASES: Record<string, string> = {
+  offby: 'off_by',
+  offmode: 'off_mode',
+  loopmode: 'loop_mode',
+  loopstart: 'loop_start',
+  loopend: 'loop_end',
+};
+
+function normalizeSfzOpcodeKey(rawKey: string): string {
+  const lower = rawKey.toLowerCase();
+  if (SFZ_OPCODE_EXACT_ALIASES[lower]) return SFZ_OPCODE_EXACT_ALIASES[lower];
+  const vel2Match = /^(.+)_vel2([a-z0-9_]+)$/.exec(lower);
+  if (vel2Match) {
+    return `${vel2Match[1]}_velto${vel2Match[2]}`;
+  }
+  const ccAliasMatch = /^(?!set_|label_|sw_|set_hd|set_real)(.+)_cc(\d+)$/.exec(lower);
+  if (ccAliasMatch) {
+    return `${ccAliasMatch[1]}_oncc${ccAliasMatch[2]}`;
+  }
+  return lower;
+}
+
+function decodeSfzInlineBase64Sample(b64Raw: string): ArrayBuffer | undefined {
+  const clean = b64Raw.replace(/\s+/g, '');
+  if (!clean) return undefined;
+  const estBytes = Math.floor((clean.length * 3) / 4);
+  if (estBytes <= 0 || estBytes > MAX_SFZ_INLINE_SAMPLE_BYTES) return undefined;
+  try {
+    if (typeof atob === 'function') {
+      const bin = atob(clean);
+      if (bin.length === 0 || bin.length > MAX_SFZ_INLINE_SAMPLE_BYTES) return undefined;
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out.buffer;
+    }
+    const g = globalThis as { Buffer?: { from(s: string, enc: string): Uint8Array } };
+    if (g.Buffer) {
+      const buf = g.Buffer.from(clean, 'base64');
+      if (buf.byteLength === 0 || buf.byteLength > MAX_SFZ_INLINE_SAMPLE_BYTES) return undefined;
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+const KNOWN_SFZ_OPCODES = new Set<string>([
+  'default_path', 'octave_offset', 'note_offset', 'image', 'image_controls',
+  'sample', 'name', 'base64data', 'key', 'lokey', 'hikey', 'pitch_keycenter', 'pitch_keytrack',
+  'lovel', 'hivel', 'lorand', 'hirand', 'transpose', 'tune', 'volume', 'pan', 'width', 'position',
+  'trigger', 'seq_position', 'seq_length', 'group', 'off_by', 'off_mode', 'off_time',
+  'group_label', 'master_label', 'sw_lokey', 'sw_hikey', 'sw_last', 'sw_label', 'sw_default',
+  'xfin_lokey', 'xfin_hikey', 'xfout_lokey', 'xfout_hikey', 'xfin_lovel', 'xfin_hivel',
+  'xfout_lovel', 'xfout_hivel', 'xf_keycurve', 'xf_velcurve', 'xf_cccurve',
+  'loop_mode', 'loop_start', 'loop_end', 'loop_crossfade', 'offset', 'end', 'direction',
+  'amp_veltrack', 'pitch_veltrack', 'rt_decay', 'polyphony', 'bend_up', 'bend_down',
+  'ampeg_delay', 'ampeg_start', 'ampeg_attack', 'ampeg_hold', 'ampeg_decay', 'ampeg_sustain', 'ampeg_release',
+  'ampeg_veltoattack', 'ampeg_veltodecay', 'ampeg_veltorelease', 'ampeg_veltosustain', 'ampeg_veltodepth',
+  'cutoff', 'resonance', 'fil_type', 'fil_veltrack', 'fil_keytrack',
+  'fileg_delay', 'fileg_attack', 'fileg_hold', 'fileg_decay', 'fileg_sustain', 'fileg_release', 'fileg_depth',
+  'pitcheg_delay', 'pitcheg_attack', 'pitcheg_hold', 'pitcheg_decay', 'pitcheg_sustain', 'pitcheg_release',
+  'pitcheg_depth', 'pitcheg_veltodepth',
+  'pitchlfo_delay', 'pitchlfo_freq', 'pitchlfo_depth', 'fillfo_depth', 'amplfo_depth',
+  'curve_index',
+]);
+
+function isRecognizedSfzOpcode(key: string): boolean {
+  if (KNOWN_SFZ_OPCODES.has(key)) return true;
+  if (/^v\d+$/.test(key)) return true;
+  if (/^(?:label_cc|set_cc|set_hdcc|set_realcc|label_key|locc|hicc|xfin_locc|xfin_hicc|xfout_locc|xfout_hicc|sw_locc|sw_hicc)\d+$/.test(key)) return true;
+  if (/^(?:lfo\d+|eq\d+|eg\d+)_[a-z0-9_]+$/.test(key)) return true;
+  if (/_oncc\d+$/.test(key)) return true;
+  return false;
+}
 
 function preprocessSfzDefines(text: string, maxTotalChars: number): string {
   const defines = new Map<string, string>();
@@ -127,7 +296,7 @@ function parseOpcodeEntriesFromBlock(body: string): Array<[string, string]> {
   const regex = /([a-zA-Z0-9_]+)\s*=\s*([^\r\n]*?)(?=\s+[a-zA-Z0-9_]+\s*=|\r|\n|$)/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(body)) !== null) {
-    entries.push([match[1].toLowerCase(), match[2].trim()]);
+    entries.push([normalizeSfzOpcodeKey(match[1]), match[2].trim()]);
   }
   return entries;
 }
@@ -300,12 +469,18 @@ export function importSfzToNative(
   sfzText: string,
   sfzFileName: string,
   companionAudioFiles: AudioFilePayload[] = [],
+  options?: SfzImportOptions,
 ): NativeSamplerImportResult {
   if (sfzText.length > MAX_SFZ_TEXT_BYTES) {
     throw new Error(`SFZ text too large (${sfzText.length} chars, max ${MAX_SFZ_TEXT_BYTES})`);
   }
-  const commentsStripped = stripSfzComments(sfzText);
-  const preprocessed = preprocessSfzDefines(commentsStripped, MAX_SFZ_TEXT_BYTES);
+  const { text: includesExpanded, includedFiles, missingIncludes } = resolveSfzIncludes(
+    sfzText,
+    sfzFileName,
+    options,
+    MAX_SFZ_TEXT_BYTES,
+  );
+  const preprocessed = preprocessSfzDefines(includesExpanded, MAX_SFZ_TEXT_BYTES);
   const headerRegex = /<(control|global|master|group|region|curve|effect|midi|sample)>/gi;
 
   interface SectionBlock {
@@ -371,8 +546,28 @@ export function importSfzToNative(
 
   const mergedRegions: MergedRegionRecord[] = [];
   const globalOps: Record<string, string> = {};
+  const keyswitchLabelsMap = new Map<number, string>();
+  const ccMacrosMap = new Map<number, SfzCcMacroInfo>();
+  const unknownOpcodesSet = new Set<string>();
+  const inlineSamplePayloads: AudioFilePayload[] = [];
+  const parsedCurves: SfzCurveDescriptor[] = [];
+  let nextCurveIndex = 0;
+  let imagePath: string | undefined;
+  let imageControlsPath: string | undefined;
+  let swLokey: number | undefined;
+  let swHikey: number | undefined;
+  let swLastGlobal: number | undefined;
+
+  const auditEntries = (entries: Array<[string, string]>) => {
+    for (const [k] of entries) {
+      if (unknownOpcodesSet.size < MAX_UNKNOWN_OPCODE_AUDIT && !isRecognizedSfzOpcode(k)) {
+        unknownOpcodesSet.add(k);
+      }
+    }
+  };
 
   for (const b of blocks) {
+    auditEntries(b.entries);
     if (b.tag === 'control') {
       for (const [k, v] of b.entries) {
         if (k === 'default_path') {
@@ -382,6 +577,75 @@ export function importSfzToNative(
           controlState = { ...controlState, octaveOffset: parseIntOr(v, 0) };
         } else if (k === 'note_offset') {
           controlState = { ...controlState, noteOffset: parseIntOr(v, 0) };
+        } else if (k === 'image') {
+          const normImg = normalizeRelativeSamplePath(`${controlState.defaultPath}${v}`);
+          if (normImg) imagePath = normImg;
+        } else if (k === 'image_controls') {
+          const normImg = normalizeRelativeSamplePath(`${controlState.defaultPath}${v}`);
+          if (normImg) imageControlsPath = normImg;
+        } else {
+          const lblCc = /^label_cc(\d+)$/.exec(k);
+          if (lblCc) {
+            const cc = parseInt(lblCc[1], 10);
+            if (cc >= 0 && cc <= 127) {
+              const prev = ccMacrosMap.get(cc) ?? { cc };
+              ccMacrosMap.set(cc, { ...prev, label: v });
+            }
+            continue;
+          }
+          const setCc = /^set_(?:hd|real)?cc(\d+)$/.exec(k);
+          if (setCc) {
+            const cc = parseInt(setCc[1], 10);
+            if (cc >= 0 && cc <= 127) {
+              const prev = ccMacrosMap.get(cc) ?? { cc };
+              const val = parseFloat(v);
+              if (Number.isFinite(val)) ccMacrosMap.set(cc, { ...prev, initialValue: val });
+            }
+            continue;
+          }
+          const lblKey = /^label_key(\d+)$/.exec(k);
+          if (lblKey) {
+            const note = parseInt(lblKey[1], 10);
+            if (note >= 0 && note <= 127 && v) {
+              keyswitchLabelsMap.set(note, v);
+            }
+          }
+        }
+      }
+    } else if (b.tag === 'curve') {
+      const sparse = new Map<number, number>();
+      let explicitIdx: number | undefined;
+      for (const [k, v] of b.entries) {
+        if (k === 'curve_index') {
+          const parsed = parseInt(v, 10);
+          if (!Number.isNaN(parsed) && parsed >= 0) explicitIdx = parsed;
+        } else {
+          const vm = /^v(\d+)$/.exec(k);
+          if (vm) {
+            const ptIdx = parseInt(vm[1], 10);
+            const ptVal = parseFloat(v);
+            if (ptIdx >= 0 && ptIdx <= 127 && Number.isFinite(ptVal)) {
+              sparse.set(ptIdx, clamp(ptVal, -1, 1));
+            }
+          }
+        }
+      }
+      const index = explicitIdx ?? nextCurveIndex;
+      nextCurveIndex = Math.max(nextCurveIndex, index + 1);
+      if (sparse.size > 0) {
+        parsedCurves.push({ index, points: interpolateSfzCurvePoints(sparse) });
+      }
+    } else if (b.tag === 'sample') {
+      const sampleOps: Record<string, string> = {};
+      for (const [k, v] of b.entries) sampleOps[k] = v;
+      const rawName = sampleOps.name ?? sampleOps.sample;
+      if (rawName && sampleOps.base64data) {
+        const decodedBuf = decodeSfzInlineBase64Sample(sampleOps.base64data);
+        if (decodedBuf) {
+          inlineSamplePayloads.push({
+            name: sanitizeFlatSampleName(basenameOfPath(rawName)),
+            buffer: decodedBuf,
+          });
         }
       }
     } else if (b.tag === 'global') {
@@ -398,6 +662,16 @@ export function importSfzToNative(
       for (const [k, v] of orderedEntries) {
         ops[k] = v;
       }
+      const keyOffset = controlState.octaveOffset * 12 + controlState.noteOffset;
+      if (ops.sw_lokey !== undefined) swLokey = parseSfzNote(ops.sw_lokey, 0, keyOffset);
+      if (ops.sw_hikey !== undefined) swHikey = parseSfzNote(ops.sw_hikey, 127, keyOffset);
+      if (ops.sw_last !== undefined) {
+        const swNote = parseSfzNote(ops.sw_last, 0, keyOffset);
+        swLastGlobal = swNote;
+        if (ops.sw_label) {
+          keyswitchLabelsMap.set(swNote, ops.sw_label);
+        }
+      }
       mergedRegions.push({
         control: { ...controlState },
         orderedEntries,
@@ -407,10 +681,12 @@ export function importSfzToNative(
     }
   }
 
-  // Index companion audio files by normalized relative path and lowercase basename,
+  const allAudioPayloads = [...companionAudioFiles, ...inlineSamplePayloads];
+
+  // Index companion + inline audio files by normalized relative path and lowercase basename,
   // while assigning a guaranteed flat unique sampleName (no '/' or '..').
   const basenameCounts = new Map<string, number>();
-  for (const f of companionAudioFiles) {
+  for (const f of allAudioPayloads) {
     const flatBase = sanitizeFlatSampleName(basenameOfPath(f.name)).toLowerCase();
     basenameCounts.set(flatBase, (basenameCounts.get(flatBase) ?? 0) + 1);
   }
@@ -422,8 +698,8 @@ export function importSfzToNative(
   const usedFlatNames = new Set<string>();
   const outputAudioFiles: AudioFilePayload[] = [];
 
-  for (let i = 0; i < companionAudioFiles.length; i++) {
-    const f = companionAudioFiles[i];
+  for (let i = 0; i < allAudioPayloads.length; i++) {
+    const f = allAudioPayloads[i];
     const normRel = normalizeRelativeSamplePath(f.name);
     const normLower = normRel.toLowerCase();
     const base = sanitizeFlatSampleName(basenameOfPath(f.name));
@@ -503,7 +779,9 @@ export function importSfzToNative(
         enabled: depthCents !== 0,
         depthCents,
         velModDepth:
-          refOps.pitcheg_vel2depth !== undefined ? parseFloatOr(refOps.pitcheg_vel2depth, 0) : undefined,
+          (refOps.pitcheg_veltodepth ?? refOps.pitcheg_vel2depth) !== undefined
+            ? parseFloatOr(refOps.pitcheg_veltodepth ?? refOps.pitcheg_vel2depth, 0)
+            : undefined,
         env: {
           delaySec: Math.max(0, parseFloatOr(refOps.pitcheg_delay, 0)),
           attackSec: Math.max(0.001, parseFloatOr(refOps.pitcheg_attack, 0.005)),
@@ -702,6 +980,49 @@ export function importSfzToNative(
 
     const muteGroupRaw = parseIntOr(ops.off_by ?? ops.group, 0);
     const muteGroup = muteGroupRaw > 0 ? Math.min(32, muteGroupRaw) : undefined;
+    const rawOffMode = (ops.off_mode ?? '').toLowerCase();
+    const offMode: OffMode | undefined =
+      rawOffMode === 'fast' || rawOffMode === 'normal' || rawOffMode === 'time'
+        ? rawOffMode
+        : undefined;
+    const offTimeSec =
+      ops.off_time !== undefined ? Math.max(0.001, parseFloatOr(ops.off_time, 0.06)) : undefined;
+    const rtDecayDbPerSec =
+      ops.rt_decay !== undefined ? Math.max(0, parseFloatOr(ops.rt_decay, 0)) : undefined;
+    const loRand =
+      ops.lorand !== undefined ? clamp(parseFloatOr(ops.lorand, 0), 0, 1) : undefined;
+    const hiRand =
+      ops.hirand !== undefined ? clamp(parseFloatOr(ops.hirand, 1), 0, 1) : undefined;
+    const curveIndex =
+      ops.curve_index !== undefined ? Math.max(0, parseIntOr(ops.curve_index, 0)) : undefined;
+
+    let ccCrossfadeIn: Record<number, { lo: number; hi: number }> | undefined;
+    let ccCrossfadeOut: Record<number, { lo: number; hi: number }> | undefined;
+    for (const [k, v] of orderedEntries) {
+      const mIn = /^xf(in)_(lo|hi)cc(\d+)$/.exec(k);
+      if (mIn) {
+        const cc = parseInt(mIn[3], 10);
+        if (cc >= 0 && cc <= 127) {
+          ccCrossfadeIn ??= {};
+          ccCrossfadeIn[cc] ??= { lo: 0, hi: 127 };
+          const val = clamp(parseFloatOr(v, mIn[2] === 'lo' ? 0 : 127), 0, 127);
+          if (mIn[2] === 'lo') ccCrossfadeIn[cc].lo = val;
+          else ccCrossfadeIn[cc].hi = val;
+        }
+        continue;
+      }
+      const mOut = /^xf(out)_(lo|hi)cc(\d+)$/.exec(k);
+      if (mOut) {
+        const cc = parseInt(mOut[3], 10);
+        if (cc >= 0 && cc <= 127) {
+          ccCrossfadeOut ??= {};
+          ccCrossfadeOut[cc] ??= { lo: 0, hi: 127 };
+          const val = clamp(parseFloatOr(v, mOut[2] === 'lo' ? 0 : 127), 0, 127);
+          if (mOut[2] === 'lo') ccCrossfadeOut[cc].lo = val;
+          else ccCrossfadeOut[cc].hi = val;
+        }
+      }
+    }
     const groupName = ops.group_label ?? ops.master_label;
     const groupId = groupName
       ? `grp-${groupName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
@@ -801,6 +1122,14 @@ export function importSfzToNative(
       groupId,
       groupName,
       muteGroup,
+      ...(offMode !== undefined ? { offMode } : {}),
+      ...(offTimeSec !== undefined ? { offTimeSec } : {}),
+      ...(rtDecayDbPerSec !== undefined ? { rtDecayDbPerSec } : {}),
+      ...(loRand !== undefined ? { loRand } : {}),
+      ...(hiRand !== undefined ? { hiRand } : {}),
+      ...(ccCrossfadeIn ? { ccCrossfadeIn } : {}),
+      ...(ccCrossfadeOut ? { ccCrossfadeOut } : {}),
+      ...(curveIndex !== undefined ? { curveIndex } : {}),
       keyswitchNote,
       loops,
       ...(hasArticulationOverride ? { hasArticulationOverride: true } : {}),
@@ -819,6 +1148,53 @@ export function importSfzToNative(
   const classification = classifyInstrumentAndParameterSet(cleanTitle);
 
   const metadata = extractSfzMetadata(sfzText, sfzFileName, classification.category);
+  const keyswitches: SfzKeyswitchInfo[] = Array.from(keyswitchLabelsMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([note, label]) => ({ note, label }));
+  const ccMacros: SfzCcMacroInfo[] = Array.from(ccMacrosMap.values()).sort((a, b) => a.cc - b.cc);
+  const unknownOpcodes = Array.from(unknownOpcodesSet);
+
+  const extraAttrs: CustomMetadataTag[] = [...(metadata.customAttributes ?? [])];
+  for (const ks of keyswitches) {
+    extraAttrs.push({ tag: `Keyswitch ${ks.note}`, value: ks.label });
+  }
+  for (const cm of ccMacros) {
+    extraAttrs.push({
+      tag: `CC${cm.cc}${cm.label ? ` (${cm.label})` : ''}`,
+      value: cm.initialValue !== undefined ? String(cm.initialValue) : 'macro',
+    });
+  }
+  if (imagePath) {
+    extraAttrs.push({ tag: 'Cover Image', value: imagePath });
+  }
+  if (extraAttrs.length > 0) {
+    metadata.customAttributes = extraAttrs;
+  }
+
+  const warnings: string[] = [];
+  if (missingIncludes.length > 0) {
+    warnings.push(`SFZ missing #include target(s): ${missingIncludes.join(', ')}`);
+  }
+  if (unknownOpcodes.length > 0) {
+    warnings.push(
+      `SFZ unrecognized/degraded opcodes (${unknownOpcodes.length}): ${unknownOpcodes.slice(0, 12).join(', ')}${unknownOpcodes.length > 12 ? '...' : ''}`
+    );
+  }
+
+  const sfzIntrospection: SfzIntrospectionReport = {
+    includedFiles,
+    missingIncludes,
+    keyswitches,
+    ...(swLokey !== undefined && swHikey !== undefined
+      ? { swRange: { lokey: swLokey, hikey: swHikey, ...(swLastGlobal !== undefined ? { last: swLastGlobal } : {}) } }
+      : {}),
+    ccMacros,
+    ...(imagePath ? { imagePath } : {}),
+    ...(imageControlsPath ? { imageControlsPath } : {}),
+    unknownOpcodes,
+    inlineSampleCount: inlineSamplePayloads.length,
+    ...(parsedCurves.length > 0 ? { curves: parsedCurves } : {}),
+  };
 
   return {
     sourceFormat: 'sfz',
@@ -832,5 +1208,7 @@ export function importSfzToNative(
     velocityLayerGainCompensation,
     articulation,
     metadata,
+    ...(warnings.length > 0 ? { warnings } : {}),
+    sfzIntrospection,
   };
 }

@@ -11,7 +11,7 @@ import { createInitialSession, createZone } from '../sessionFactory.ts';
 import { cloneArticulation, cloneExtendedRegion, syncExtendedRegionsFromClassicZones } from '../extendedAdapter.ts';
 import { importSf2PresetToNativeCapped } from '../../formats/Sf2Parser.ts';
 import type { NativeSamplerImportResult } from '../../formats/Sf2Parser.ts';
-import { importSfzToNativeCapped } from '../../formats/SfzParser.ts';
+import { importSfzToNativeCapped, type SfzImportOptions } from '../../formats/SfzParser.ts';
 import { buildTimeCapsuleEntries } from '../timeCapsule.ts';
 import { yieldToUI } from '../asyncUtils.ts';
 import { clearHistory, newSession, pushHistory } from './sessionHistoryOps.ts';
@@ -294,8 +294,14 @@ export async function importSf2Buffer(ctx: PipelineContext, buffer: ArrayBuffer,
   return applyNativeSamplerImport(ctx, imported);
 }
 
-export async function importSfzText(ctx: PipelineContext, sfzText: string, sfzFileName: string, audioFiles: AudioFilePayload[]): Promise<Session> {
-  const imported = importSfzToNativeCapped(sfzText, sfzFileName, audioFiles);
+export async function importSfzText(
+  ctx: PipelineContext,
+  sfzText: string,
+  sfzFileName: string,
+  audioFiles: AudioFilePayload[],
+  options?: SfzImportOptions,
+): Promise<Session> {
+  const imported = importSfzToNativeCapped(sfzText, sfzFileName, audioFiles, options);
   return applyNativeSamplerImport(ctx, imported);
 }
 

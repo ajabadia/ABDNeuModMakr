@@ -17,6 +17,7 @@ import type {
 } from './SamplerTypes.ts';
 import { basename, clamp, dbToLinear } from './SamplerUtils.ts';
 import type { UniversalSamplerInstrument } from './UniversalSamplerModel.ts';
+import { createRailsbackStretchTable } from './ScalaMicrotuning.ts';
 
 export interface SamplerOfflineRenderOptions {
   midiNote?: number;
@@ -27,6 +28,31 @@ export interface SamplerOfflineRenderOptions {
   roundRobinIndex?: number;
   activeKeyswitch?: number;
   includeReleaseTrigger?: boolean;
+  /** Optional Railsback stretch tuning amount (0..1) applied to rendered pitch */
+  railsbackStretch?: number;
+}
+
+export interface SamplerActiveZoneStretchInfo {
+  regionId: string;
+  sampleName: string;
+  rootKey: number;
+  lowKey: number;
+  highKey: number;
+  semitoneShift: number;
+  effectiveShiftSemis: number;
+  playbackRateRatio: number;
+}
+
+export interface SamplerNoteMappingInspection {
+  midiNote: number;
+  velocity: number;
+  rootKeys: number[];
+  nearestRootKey: number | null;
+  nearestRootDistanceSemis: number;
+  activeZones: SamplerActiveZoneStretchInfo[];
+  hasActiveZone: boolean;
+  isExactRootMatch: boolean;
+  maxAbsShiftSemis: number;
 }
 
 export interface SamplerOfflineRenderResult {
@@ -39,6 +65,15 @@ export interface SamplerOfflineRenderResult {
   activeRegionIds: string[];
   peakLinear: number;
   rmsLinear: number;
+  mappingInspection: SamplerNoteMappingInspection;
+}
+
+const MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+export function formatSamplerMidiNoteName(midiNote: number): string {
+  const n = clamp(Math.round(midiNote), 0, 127);
+  const oct = Math.floor(n / 12) - 1;
+  return `${MIDI_NOTE_NAMES[n % 12]}${oct}`;
 }
 
 const EXP_5_NORM = 1.0 - Math.exp(-5.0);
@@ -233,6 +268,90 @@ function selectActiveRegionsDeterministic(
   return chosen;
 }
 
+/**
+ * Inspects which root keys exist in a `UniversalSamplerInstrument` and how much
+ * pitch-stretching is applied for a requested MIDI note and velocity.
+ */
+export function inspectSamplerNoteMapping(
+  instrument: UniversalSamplerInstrument,
+  options: Pick<SamplerOfflineRenderOptions, 'midiNote' | 'velocity' | 'roundRobinIndex' | 'activeKeyswitch'> = {},
+): SamplerNoteMappingInspection {
+  const midiNote = clamp(Math.round(options.midiNote ?? 60), 0, 127);
+  const velocity = clamp(Math.round(options.velocity ?? 100), 1, 127);
+  const rrIndex = options.roundRobinIndex ?? 1;
+
+  const rootKeySet = new Set<number>();
+  for (const r of instrument.regions) {
+    if ((r.trigger ?? 'attack') === 'release') continue;
+    if (r.highVel <= 0 || r.highKey < 0 || r.lowKey > 127) continue;
+    rootKeySet.add(clamp(Math.round(r.rootKey), 0, 127));
+  }
+  const rootKeys = Array.from(rootKeySet).sort((a, b) => a - b);
+
+  let nearestRootKey: number | null = null;
+  let bestDist = Infinity;
+  for (const rk of rootKeys) {
+    const dist = Math.abs(midiNote - rk);
+    if (dist < bestDist) {
+      bestDist = dist;
+      nearestRootKey = rk;
+    }
+  }
+  const nearestRootDistanceSemis = nearestRootKey !== null ? midiNote - nearestRootKey : 0;
+
+  const matched = instrument.regions.filter((r) => {
+    if (midiNote < r.lowKey || midiNote > r.highKey) return false;
+    if (velocity < r.lowVel || velocity > r.highVel) return false;
+    if (
+      r.keyswitchNote !== undefined &&
+      options.activeKeyswitch !== undefined &&
+      r.keyswitchNote !== options.activeKeyswitch
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const attackCandidates = matched.filter(
+    (r) => (r.trigger ?? 'attack') === 'attack' || r.trigger === 'first' || r.trigger === 'legato',
+  );
+  const activeAttack = selectActiveRegionsDeterministic(attackCandidates, rrIndex);
+
+  const activeZones: SamplerActiveZoneStretchInfo[] = activeAttack.map((region) => {
+    const semitoneShift = midiNote - region.rootKey;
+    const effectiveShiftSemis =
+      semitoneShift * ((region.pitchKeytrack ?? 100) / 100) + (region.detune ?? 0) / 100;
+    return {
+      regionId: region.id,
+      sampleName: region.sampleName,
+      rootKey: region.rootKey,
+      lowKey: region.lowKey,
+      highKey: region.highKey,
+      semitoneShift,
+      effectiveShiftSemis,
+      playbackRateRatio: Math.pow(2, effectiveShiftSemis / 12),
+    };
+  });
+
+  const hasActiveZone = activeZones.length > 0;
+  const maxAbsShiftSemis = hasActiveZone
+    ? Math.max(...activeZones.map((z) => Math.abs(z.effectiveShiftSemis)))
+    : 0;
+  const isExactRootMatch = hasActiveZone && maxAbsShiftSemis <= 0.15;
+
+  return {
+    midiNote,
+    velocity,
+    rootKeys,
+    nearestRootKey,
+    nearestRootDistanceSemis,
+    activeZones,
+    hasActiveZone,
+    isExactRootMatch,
+    maxAbsShiftSemis,
+  };
+}
+
 function renderSingleRegionIntoMix(
   region: ExtendedRegion,
   decoded: DecodedWav,
@@ -245,6 +364,7 @@ function renderSingleRegionIntoMix(
   totalFrames: number,
   outLeft: Float32Array,
   outRight: Float32Array,
+  railsbackStretch = 0,
 ): void {
   const art = instrument.articulation;
   const ampEnv: DahdsrEnvelope = region.ampEnvOverride
@@ -355,9 +475,13 @@ function renderSingleRegionIntoMix(
   const startFrameOut = Math.max(0, Math.round(startOffsetSec * outSampleRate));
   const holdFramesFromTrigger = Math.max(1, Math.round(noteHoldSec * outSampleRate));
 
+  const stretchCents =
+    railsbackStretch > 0
+      ? (createRailsbackStretchTable(railsbackStretch)[clamp(Math.round(midiNote), 0, 127)] ?? 0)
+      : 0;
   const baseSemis =
     (midiNote - region.rootKey) * (region.pitchKeytrack / 100) +
-    (region.detune + normVel * (region.velToPitchCents ?? 0)) / 100;
+    (region.detune + stretchCents + normVel * (region.velToPitchCents ?? 0)) / 100;
   const rateScale = decoded.sampleRate / outSampleRate;
 
   const filterEnv = filterCfg.filterEnv ?? art.modEnv;
@@ -548,6 +672,7 @@ export function renderUniversalSamplerNoteOffline(
       totalFrames,
       outLeft,
       outRight,
+      options.railsbackStretch ?? 0,
     );
   }
 
@@ -567,6 +692,7 @@ export function renderUniversalSamplerNoteOffline(
       totalFrames,
       outLeft,
       outRight,
+      options.railsbackStretch ?? 0,
     );
   }
 
@@ -584,6 +710,12 @@ export function renderUniversalSamplerNoteOffline(
   const rmsLinear = Math.sqrt(sumSq / totalFrames);
 
   const wavBuffer = encodeWavPcm24([outLeft, outRight], outSampleRate, undefined, false);
+  const mappingInspection = inspectSamplerNoteMapping(instrument, {
+    midiNote,
+    velocity,
+    roundRobinIndex: rrIndex,
+    activeKeyswitch: options.activeKeyswitch,
+  });
 
   return {
     sampleRate: outSampleRate,
@@ -595,5 +727,6 @@ export function renderUniversalSamplerNoteOffline(
     activeRegionIds,
     peakLinear,
     rmsLinear,
+    mappingInspection,
   };
 }

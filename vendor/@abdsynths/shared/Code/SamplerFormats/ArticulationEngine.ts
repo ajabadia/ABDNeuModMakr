@@ -59,34 +59,48 @@ export class SamplerArticulationEngine {
 
   /**
    * Selects the active region among multiple candidates covering the same note/velocity,
-   * respecting round-robin cycle/random logic and trigger mode (attack vs release).
+   * respecting `lorand`/`hirand`, round-robin cycle/random logic, and trigger mode.
    */
   public selectRegionForNote(
     candidateRegions: ExtendedRegion[],
     note: MidiNote,
     _velocity: number,
-    triggerType: TriggerMode = 'attack'
+    triggerType: TriggerMode = 'attack',
+    randValue: number = Math.random(),
   ): ExtendedRegion | undefined {
     // 1. Filter by trigger mode
     const matchedTrigger = candidateRegions.filter((r) => (r.trigger || 'attack') === triggerType);
     if (matchedTrigger.length === 0) return undefined;
-    if (matchedTrigger.length === 1) return matchedTrigger[0];
 
-    // 2. Group by Round-Robin index if defined
-    const hasRr = matchedTrigger.some((r) => (r.seqLength ?? 1) > 1);
+    // 2. Filter by lorand/hirand when any candidate specifies random bounds
+    const hasRandBounds = matchedTrigger.some(
+      (r) => r.loRand !== undefined || r.hiRand !== undefined,
+    );
+    const randPool = hasRandBounds
+      ? matchedTrigger.filter((r) => {
+          const lo = r.loRand ?? 0;
+          const hi = r.hiRand ?? 1;
+          return randValue >= lo && (randValue < hi || (hi >= 1 && randValue <= 1));
+        })
+      : matchedTrigger;
+    const pool = randPool.length > 0 ? randPool : matchedTrigger;
+    if (pool.length === 1) return pool[0];
+
+    // 3. Group by Round-Robin index if defined
+    const hasRr = pool.some((r) => (r.seqLength ?? 1) > 1);
     if (!hasRr) {
-      return matchedTrigger[0];
+      return pool[0];
     }
 
-    const rrGroupKey = `${note}_${matchedTrigger[0].lowVel}_${triggerType}`;
-    const totalRr = Math.max(...matchedTrigger.map((r) => r.seqLength ?? 1));
-    const logic: SamplerPlayLogic = matchedTrigger[0].playLogic || 'round_robin';
+    const rrGroupKey = `${note}_${pool[0].lowVel}_${triggerType}`;
+    const totalRr = Math.max(...pool.map((r) => r.seqLength ?? 1));
+    const logic: SamplerPlayLogic = pool[0].playLogic || 'round_robin';
 
     let targetIndex = 1;
     if (logic === 'random') {
       const last = this.lastRandomPick.get(rrGroupKey) ?? 0;
-      // Pick random 1..totalRr avoiding immediate repeat when totalRr > 1
-      let pick = Math.floor(Math.random() * totalRr) + 1;
+      let pick = Math.floor(randValue * totalRr) + 1;
+      if (pick > totalRr) pick = totalRr;
       if (totalRr > 1 && pick === last) {
         pick = (pick % totalRr) + 1;
       }
@@ -100,8 +114,8 @@ export class SamplerArticulationEngine {
     }
 
     const chosen =
-      matchedTrigger.find((r) => (r.seqPosition ?? 1) === targetIndex) ??
-      matchedTrigger[0];
+      pool.find((r) => (r.seqPosition ?? 1) === targetIndex) ??
+      pool[0];
 
     return chosen;
   }
@@ -176,4 +190,127 @@ export class SamplerArticulationEngine {
     this.rrCounters.clear();
     this.lastRandomPick.clear();
   }
+}
+
+/**
+ * Computes linear gain attenuation for SFZ `trigger=release` (`rt_decay` in dB/sec)
+ * given the held note duration in seconds.
+ */
+export function computeReleaseTriggerGainLinear(
+  rtDecayDbPerSec: number | undefined,
+  holdDurationSec: number,
+): number {
+  if (!rtDecayDbPerSec || rtDecayDbPerSec <= 0 || holdDurationSec <= 0) return 1.0;
+  const attenDb = Math.min(96, rtDecayDbPerSec * holdDurationSec);
+  return Math.pow(10, -attenDb / 20);
+}
+
+/**
+ * Clean-room voice stealer using envelope contribution + age:
+ * prefers stealing older voices whose envelope contribution is below half the pool average,
+ * falling back to the oldest active voice.
+ */
+export function selectVoiceToSteal(
+  voices: Array<{ id: string; ageMs: number; envelopeLevel: number }>,
+): string | undefined {
+  if (voices.length === 0) return undefined;
+  const sorted = [...voices].sort((a, b) => b.ageMs - a.ageMs);
+  const oldest = sorted[0];
+  const avgEnv =
+    sorted.reduce((sum, v) => sum + Math.max(0, v.envelopeLevel), 0) / sorted.length;
+  const envThreshold = avgEnv * 0.5;
+  const ageThreshold = oldest.ageMs * 0.5;
+
+  for (const v of sorted) {
+    if (v.ageMs <= ageThreshold) break;
+    if (v.envelopeLevel <= envThreshold) return v.id;
+  }
+  return oldest.id;
+}
+
+/**
+ * Builds a 128-point SFZ `<curve>` table from sparse `v0..v127` points using
+ * linear interpolation between defined breakpoints.
+ */
+export function interpolateSfzCurvePoints(sparsePoints: ReadonlyMap<number, number>): number[] {
+  const out = new Array<number>(128).fill(0);
+  const defined = new Map<number, number>(sparsePoints);
+  if (!defined.has(0)) defined.set(0, 0);
+  if (!defined.has(127)) defined.set(127, 1);
+
+  const keys = Array.from(defined.keys())
+    .filter((k) => k >= 0 && k <= 127)
+    .sort((a, b) => a - b);
+
+  for (let idx = 0; idx < keys.length; idx++) {
+    const k0 = keys[idx];
+    const v0 = defined.get(k0)!;
+    out[k0] = v0;
+    if (idx + 1 < keys.length) {
+      const k1 = keys[idx + 1];
+      const v1 = defined.get(k1)!;
+      const span = k1 - k0;
+      for (let i = k0 + 1; i < k1; i++) {
+        const t = (i - k0) / span;
+        out[i] = v0 + (v1 - v0) * t;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Evaluates a 128-point SFZ `<curve>` at normalized position `norm01` (0..1)
+ * with linear interpolation between adjacent table entries.
+ */
+export function evaluateSfzCurve(points: readonly number[], norm01: number): number {
+  if (points.length === 0) return Math.max(0, Math.min(1, norm01));
+  const clamped = Math.max(0, Math.min(1, norm01));
+  const scaled = clamped * (points.length - 1);
+  const i0 = Math.floor(scaled);
+  const i1 = Math.min(points.length - 1, i0 + 1);
+  const frac = scaled - i0;
+  return points[i0] * (1 - frac) + points[i1] * frac;
+}
+
+/**
+ * Computes combined CC crossfade gain (0..1) for a region given current CC values (0..127).
+ */
+export function computeCcCrossfadeGain(
+  ccValues: Readonly<Record<number, number>>,
+  ccFadeIn?: Readonly<Record<number, { lo: number; hi: number }>>,
+  ccFadeOut?: Readonly<Record<number, { lo: number; hi: number }>>,
+  curveType: 'linear' | 'equal-power' | 'spectral-morph' = 'equal-power',
+  customCurvePoints?: readonly number[],
+): number {
+  let gain = 1.0;
+  const shape = (t: number): number => {
+    const c = Math.max(0, Math.min(1, t));
+    if (customCurvePoints && customCurvePoints.length > 1) {
+      return Math.max(0, Math.min(1, evaluateSfzCurve(customCurvePoints, c)));
+    }
+    return curveType === 'linear' ? c : Math.sin(c * Math.PI * 0.5);
+  };
+
+  if (ccFadeIn) {
+    for (const [ccStr, range] of Object.entries(ccFadeIn)) {
+      const cc = Number(ccStr);
+      const val = ccValues[cc] ?? 0;
+      if (val <= range.lo) return 0;
+      if (val < range.hi && range.hi > range.lo) {
+        gain *= shape((val - range.lo) / (range.hi - range.lo));
+      }
+    }
+  }
+  if (ccFadeOut) {
+    for (const [ccStr, range] of Object.entries(ccFadeOut)) {
+      const cc = Number(ccStr);
+      const val = ccValues[cc] ?? 0;
+      if (val >= range.hi) return 0;
+      if (val > range.lo && range.hi > range.lo) {
+        gain *= shape((range.hi - val) / (range.hi - range.lo));
+      }
+    }
+  }
+  return Math.max(0, Math.min(1, gain));
 }

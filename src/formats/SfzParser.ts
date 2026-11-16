@@ -5,7 +5,7 @@
 
 export * from '@abdsynths/shared/formats/sampler/SfzParser.ts';
 
-import { importSfzToNative } from '@abdsynths/shared/formats/sampler/SfzParser.ts';
+import { importSfzToNative, type SfzImportOptions } from '@abdsynths/shared/formats/sampler/SfzParser.ts';
 import type { AudioFilePayload } from '@abdsynths/shared/formats/sampler/SamplerTypes.ts';
 import type { NativeSamplerImportResult } from '@abdsynths/shared/formats/sampler/Sf2Parser.ts';
 
@@ -64,8 +64,9 @@ export function assertSfzTextBoundsSafe(sfzText: string): void {
 export function importSfzToNativeCapped(
   sfzText: string,
   sfzFileName: string,
-  companionAudioFiles: AudioFilePayload[] = []
+  companionAudioFiles: AudioFilePayload[] = [],
+  options?: SfzImportOptions,
 ): NativeSamplerImportResult {
   assertSfzTextBoundsSafe(sfzText);
-  return importSfzToNative(sfzText, sfzFileName, companionAudioFiles);
+  return importSfzToNative(sfzText, sfzFileName, companionAudioFiles, options);
 }

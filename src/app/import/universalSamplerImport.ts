@@ -74,8 +74,62 @@ export async function importUniversalSamplerFiles(
           ui.ctx.session.processConfig.keyMappingMode = isDrumPreset ? 'drum' : 'chromatic';
           ui.ctx.session.processConfig.extendedMetadata = {
             ...ui.ctx.session.processConfig.extendedMetadata,
-            category: parsedPreset.detectedCategory,
+            ...parsedPreset.metadata,
+            category: parsedPreset.metadata?.category ?? parsedPreset.detectedCategory,
+            sourceFormat: parsedPreset.sourceFormat ?? parsedPreset.format,
+            sourcePresetName: fullExpandedName,
+            ...(parsedPreset.author ? { author: parsedPreset.author } : {}),
+            ...(parsedPreset.description ? { description: parsedPreset.description } : {}),
           };
+          if (parsedPreset.articulation) {
+            ui.ctx.session.articulation = {
+              ...parsedPreset.articulation,
+              ampEnv: { ...parsedPreset.articulation.ampEnv },
+              modEnv: { ...parsedPreset.articulation.modEnv },
+              filter: { ...parsedPreset.articulation.filter },
+              vibLfo: { ...parsedPreset.articulation.vibLfo },
+              modLfo: { ...parsedPreset.articulation.modLfo },
+            };
+          } else if (
+            parsedPreset.envelope ||
+            parsedPreset.filter ||
+            parsedPreset.pitchEnv ||
+            parsedPreset.polyphony !== undefined ||
+            parsedPreset.pitchBendUpSt !== undefined ||
+            parsedPreset.pitchBendDownSt !== undefined
+          ) {
+            const baseArt = ui.ctx.core.getArticulation();
+            ui.ctx.session.articulation = {
+              ...baseArt,
+              ...(parsedPreset.envelope
+                ? {
+                    ampEnvEnabled: true,
+                    ampEnv: {
+                      ...baseArt.ampEnv,
+                      delaySec: parsedPreset.envelope.delay ?? baseArt.ampEnv.delaySec,
+                      attackSec: parsedPreset.envelope.attack,
+                      holdSec: parsedPreset.envelope.hold ?? baseArt.ampEnv.holdSec,
+                      decaySec: parsedPreset.envelope.decay,
+                      sustainLevel: parsedPreset.envelope.sustain,
+                      releaseSec: parsedPreset.envelope.release,
+                    },
+                  }
+                : {}),
+              ...(parsedPreset.filter
+                ? { filter: { ...baseArt.filter, ...parsedPreset.filter } }
+                : {}),
+              ...(parsedPreset.pitchEnv && baseArt.pitchEnv
+                ? { pitchEnv: { ...baseArt.pitchEnv, ...parsedPreset.pitchEnv } }
+                : {}),
+              ...(parsedPreset.polyphony !== undefined ? { polyphony: parsedPreset.polyphony } : {}),
+              ...(parsedPreset.pitchBendUpSt !== undefined
+                ? { pitchBendUpSt: parsedPreset.pitchBendUpSt }
+                : {}),
+              ...(parsedPreset.pitchBendDownSt !== undefined
+                ? { pitchBendDownSt: parsedPreset.pitchBendDownSt }
+                : {}),
+            };
+          }
           ui.ctx.session.zones = adapted.classicZones;
           ui.ctx.session.extendedRegions = adapted.extendedRegions;
           ui.ctx.session.detectedInstrumentCategory = parsedPreset.detectedCategory;

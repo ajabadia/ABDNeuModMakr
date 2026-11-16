@@ -12,6 +12,31 @@ import { MultiInstrumentModal } from '../../ui/MultiInstrumentModal';
 
 import type { MixedImportContext } from './types.ts';
 
+function buildSfzIncludeResolver(
+  allFiles: { name: string; buffer: ArrayBuffer }[],
+): (includePath: string) => string | undefined {
+  const decoder = new TextDecoder('utf-8');
+  const textByNorm = new Map<string, ArrayBuffer>();
+  for (const f of allFiles) {
+    const norm = f.name.replace(/\\/g, '/').toLowerCase();
+    if (/\.(sfz|txt|inc|sfzh)$/i.test(norm)) {
+      textByNorm.set(norm, f.buffer);
+    }
+  }
+  return (includePath: string): string | undefined => {
+    const norm = includePath.replace(/\\/g, '/').toLowerCase();
+    const direct = textByNorm.get(norm);
+    if (direct) return decoder.decode(direct);
+    const suffix = `/${norm}`;
+    for (const [k, buf] of textByNorm.entries()) {
+      if (k === norm || k.endsWith(suffix)) {
+        return decoder.decode(buf);
+      }
+    }
+    return undefined;
+  };
+}
+
 export async function importSf2SfzFiles(
   ui: MixedImportContext,
   sf2Files: { name: string; buffer: ArrayBuffer }[],
@@ -90,7 +115,15 @@ export async function importSf2SfzFiles(
             const normBuf = await transcodeAnyAudioToWavBuffer(af.buffer, af.name);
             normalizedSfzAudio.push({ name: af.name, buffer: normBuf });
           }
-          const session = await ui.ctx.core.importSfzText(sfzText, chosenSfz.name, normalizedSfzAudio);
+          const includeResolver = buildSfzIncludeResolver(
+            expanded.length > 0 ? expanded : sfzFiles,
+          );
+          const session = await ui.ctx.core.importSfzText(
+            sfzText,
+            chosenSfz.name,
+            normalizedSfzAudio,
+            { includeResolver },
+          );
           ui.ctx.session = session;
           ui.ctx.selectedZoneId = session.zones[0]?.id || null;
           ui.ctx.log(

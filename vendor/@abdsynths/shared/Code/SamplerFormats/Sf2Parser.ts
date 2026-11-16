@@ -17,6 +17,7 @@ import type {
   ExtendedRegion,
   RegionFilterConfig,
   Sf2PresetOption,
+  SfzIntrospectionReport,
   SynthArticulationConfig,
   Zone,
   LoopMode,
@@ -39,6 +40,8 @@ export interface NativeSamplerImportResult {
   velocityLayerGainCompensation: Record<string, { lowGain: number; highGain: number }>;
   articulation: SynthArticulationConfig;
   metadata?: ExtendedModelMetadata;
+  warnings?: string[];
+  sfzIntrospection?: SfzIntrospectionReport;
 }
 
 interface PhdrRecord {

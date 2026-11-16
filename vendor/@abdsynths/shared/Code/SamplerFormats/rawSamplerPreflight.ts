@@ -308,6 +308,12 @@ export const SAMPLER_FORMAT_METADATA: Record<
     extension: '.zip',
     mimeType: 'application/zip',
   },
+  abdsmpl: {
+    title: 'ABDSynths Universal Capsule (.abdsmpl.zip)',
+    description: 'Cápsula canónica autocontenida con regiones 2D, articulación completa, overrides por región, matriz de modulación y muestras WAV.',
+    extension: '.abdsmpl.zip',
+    mimeType: 'application/zip',
+  },
 };
 
 /**

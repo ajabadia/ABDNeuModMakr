@@ -121,7 +121,23 @@ export function formatRegionModeBadge(reg: ExtendedRegion): string {
     reg.trigger && reg.trigger !== 'attack'
       ? ` • ${reg.trigger.charAt(0).toUpperCase() + reg.trigger.slice(1)}`
       : '';
-  return `${loopLabel}${keytrackTag}${trigTag}`;
+  const rrTag =
+    reg.seqLength && reg.seqLength > 1
+      ? ` • RR ${reg.seqPosition ?? 1}/${reg.seqLength}`
+      : '';
+  const muteTag =
+    reg.muteGroup && reg.muteGroup > 0
+      ? ` • Mute ${reg.muteGroup}`
+      : '';
+  const ksTag =
+    reg.keyswitchNote !== undefined
+      ? ` • KS ${midiToNoteName(reg.keyswitchNote)}`
+      : '';
+  const rtTag =
+    reg.rtDecayDbPerSec && reg.rtDecayDbPerSec > 0
+      ? ` • RT -${reg.rtDecayDbPerSec}dB/s`
+      : '';
+  return `${loopLabel}${keytrackTag}${trigTag}${rrTag}${muteTag}${ksTag}${rtTag}`;
 }
 
 export function findZoneIdForRegion(

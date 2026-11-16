@@ -11,7 +11,57 @@ import { decodeWav, synthesizeDemoWav } from './dsp/WavDecoder.ts';
 import { clamp, linearToDb } from './dsp/DspMath.ts';
 import { DEFAULT_SAMPLE_NAME, parseRootKeyFromFilename } from './sampleNaming.ts';
 import { applyLoopCrossfade, generatePingPongLoopBuffer } from './dsp/LoopEditorTools.ts';
-import type { DahdsrEnvelope, LoopMode, MidiNote, Zone } from './types.ts';
+import type {
+  DahdsrEnvelope,
+  LoopMode,
+  MidiNote,
+  OffMode,
+  RegionFilterConfig,
+  Zone,
+} from './types.ts';
+import { selectVoiceToSteal } from '@abdsynths/shared/formats/sampler';
+
+export interface PolyNoteOnOptions {
+  note: MidiNote;
+  velocity?: number; // 1..127
+  sampleName: string;
+  rootKey?: MidiNote;
+  pitchKeytrack?: number; // 0..100
+  detuneCents?: number;
+  volumeDb?: number;
+  pan?: number; // -50..+50
+  gainMultiplier?: number; // e.g. crossfade * rt_decay
+  loopMode?: LoopMode;
+  loopStartFrame?: number;
+  loopEndFrame?: number;
+  loopCrossfadeMs?: number;
+  sampleStartFrame?: number;
+  sampleEndFrame?: number;
+  reversed?: boolean;
+  ampEnv?: DahdsrEnvelope;
+  filter?: RegionFilterConfig;
+  muteGroup?: number;
+  offMode?: OffMode;
+  offTimeSec?: number;
+  maxPolyphony?: number;
+  isReleaseTrigger?: boolean;
+}
+
+interface PolyVoiceState {
+  id: string;
+  note: MidiNote;
+  startedAtMs: number;
+  released: boolean;
+  muteGroup?: number;
+  offMode: OffMode;
+  offTimeSec: number;
+  releaseSec: number;
+  sustainLevel: number;
+  targetGain: number;
+  sourceNode: AudioBufferSourceNode;
+  gainNode: GainNode;
+  nodes: AudioNode[];
+}
 
 export type PreviewPlaybackMode = 'original' | 'resynthesis' | 'enhanced' | 'resynator_v2';
 
@@ -41,6 +91,8 @@ export class AudioPreviewService {
   private activeGainNode: GainNode | null = null;
   private activeIntermediateNodes: AudioNode[] = [];
   private activePlaybackMode: PreviewPlaybackMode | null = null;
+  private activePolyVoices = new Map<string, PolyVoiceState>();
+  private polyVoiceSeq = 0;
 
   constructor(sources: PreviewSources) {
     this.sources = sources;
@@ -467,6 +519,7 @@ export class AudioPreviewService {
   }
 
   public stopAudition(): void {
+    this.stopAllPolyVoices();
     if (this.activeGainNode && this.audioCtx) {
       try {
         const now = this.audioCtx.currentTime;
@@ -520,6 +573,288 @@ export class AudioPreviewService {
     }
   }
 
+  public async playPolyNoteOn(opts: PolyNoteOnOptions): Promise<void> {
+    if (typeof window === 'undefined' || typeof AudioContext === 'undefined') {
+      return;
+    }
+    this.ensureAudioContext();
+    if (!this.audioCtx || !this.analyserNode) return;
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+
+    // 1. Choke groups (group / off_by)
+    if (opts.muteGroup && opts.muteGroup > 0) {
+      for (const v of Array.from(this.activePolyVoices.values())) {
+        if (v.muteGroup === opts.muteGroup && !v.released) {
+          this.chokePolyVoice(v);
+        }
+      }
+    }
+
+    // 2. Polyphony cap + clean-room envelope/age voice stealing
+    const maxPoly = Math.max(1, Math.min(64, opts.maxPolyphony ?? 32));
+    while (this.activePolyVoices.size >= maxPoly) {
+      const nowMs = performance.now();
+      const victimId = selectVoiceToSteal(
+        Array.from(this.activePolyVoices.values()).map((v) => ({
+          id: v.id,
+          ageMs: Math.max(0, nowMs - v.startedAtMs),
+          envelopeLevel: v.released ? v.sustainLevel * 0.25 : v.sustainLevel,
+        })),
+      );
+      if (!victimId) break;
+      const victim = this.activePolyVoices.get(victimId);
+      if (!victim) break;
+      this.fadeAndRemovePolyVoice(victim, 0.008);
+    }
+
+    const samplePath = opts.sampleName || DEFAULT_SAMPLE_NAME;
+    const rootKey = opts.rootKey ?? 60;
+    let raw = this.sources.getSampleBuffer(samplePath);
+    if (!raw) {
+      const parsedKey = parseRootKeyFromFilename(samplePath, rootKey);
+      raw = synthesizeDemoWav('strings', parsedKey, 44100, 1.0);
+    }
+
+    const decoded = decodeWav(raw);
+    const sr = Math.max(1, decoded.sampleRate);
+    const totalFrames = Math.max(2, decoded.numSamples);
+    const startTrim = clamp(opts.sampleStartFrame ?? 0, 0, totalFrames - 2);
+    const endTrim = clamp(opts.sampleEndFrame ?? totalFrames, startTrim + 2, totalFrames);
+
+    let channels: Float32Array[] = decoded.channels.map((ch) =>
+      startTrim > 0 || endTrim < totalFrames ? ch.slice(startTrim, endTrim) : new Float32Array(ch),
+    );
+    const shouldReverse = Boolean(opts.reversed || opts.loopMode === 'loop_backward');
+    if (shouldReverse) {
+      channels = channels.map((ch) => {
+        const rev = new Float32Array(ch.length);
+        for (let i = 0; i < ch.length; i++) rev[i] = ch[ch.length - 1 - i];
+        return rev;
+      });
+    }
+
+    const trimmedLen = Math.max(2, channels[0].length);
+    const relLoopStart = clamp((opts.loopStartFrame ?? 0) - startTrim, 0, trimmedLen - 2);
+    const relLoopEnd = clamp((opts.loopEndFrame ?? 0) - startTrim, relLoopStart + 1, trimmedLen);
+    const wantLoop =
+      !opts.isReleaseTrigger &&
+      opts.loopMode !== undefined &&
+      opts.loopMode !== 'no_loop' &&
+      opts.loopMode !== 'one_shot' &&
+      relLoopEnd > relLoopStart + 1;
+    const isPingPong = wantLoop && opts.loopMode === 'ping_pong';
+    const xfadeFrames =
+      wantLoop && opts.loopCrossfadeMs && opts.loopCrossfadeMs > 0
+        ? Math.round((opts.loopCrossfadeMs / 1000) * sr)
+        : 0;
+
+    let actualStartFrame = relLoopStart;
+    let actualEndFrame = relLoopEnd;
+    if (xfadeFrames > 0 && !isPingPong) {
+      channels = channels.map((ch) =>
+        applyLoopCrossfade(ch, relLoopStart, relLoopEnd, xfadeFrames, 'equal-power'),
+      );
+    }
+    if (isPingPong) {
+      const p0 = generatePingPongLoopBuffer(channels[0], relLoopStart, relLoopEnd);
+      actualStartFrame = p0.loopStart;
+      actualEndFrame = p0.loopEnd;
+      channels =
+        decoded.numChannels === 1
+          ? [p0.pcm]
+          : channels.map((ch) => generatePingPongLoopBuffer(ch, relLoopStart, relLoopEnd).pcm);
+    }
+
+    const outNumSamples = channels[0].length;
+    const audioBuffer = this.audioCtx.createBuffer(decoded.numChannels, outNumSamples, sr);
+    for (let ch = 0; ch < decoded.numChannels; ch++) {
+      audioBuffer.copyToChannel(new Float32Array(channels[ch]), ch);
+    }
+
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    const keytrack = (opts.pitchKeytrack ?? 100) / 100;
+    const semitoneShift = (opts.note - rootKey) * keytrack;
+    source.playbackRate.value = clamp(Math.pow(2.0, semitoneShift / 12.0), 0.125, 8.0);
+    if (opts.detuneCents) {
+      source.detune.value = opts.detuneCents;
+    }
+
+    const durSec = outNumSamples / sr;
+    const loopStartSec = clamp(actualStartFrame / sr, 0, Math.max(0, durSec - 0.002));
+    const loopEndSec = clamp(actualEndFrame / sr, loopStartSec + 0.002, durSec);
+    if (wantLoop && loopEndSec > loopStartSec) {
+      source.loop = true;
+      source.loopStart = loopStartSec;
+      source.loopEnd = loopEndSec;
+    }
+
+    const velNorm = clamp((opts.velocity ?? 100) / 127, 0.02, 1.0);
+    const volLinear = Math.pow(10.0, (opts.volumeDb ?? 0) / 20.0);
+    const mult = clamp(opts.gainMultiplier ?? 1.0, 0, 1);
+    const targetLinearGain = clamp(volLinear * velNorm * mult, 0.00005, 4.0);
+
+    const gainNode = this.audioCtx.createGain();
+    const now = this.audioCtx.currentTime;
+    const env = opts.ampEnv;
+    const releaseSec = Math.max(0.015, env?.releaseSec ?? 0.2);
+    const sustainLevel = clamp(env?.sustainLevel ?? 1.0, 0, 1);
+
+    if (env) {
+      const dSec = Math.max(0, env.delaySec || 0);
+      const aSec = Math.max(0.002, env.attackSec || 0.005);
+      const hSec = Math.max(0, env.holdSec || 0);
+      const decSec = Math.max(0.002, env.decaySec || 0.01);
+      const susGain = clamp(targetLinearGain * sustainLevel, 0.00001, 4.0);
+      const startGain = clamp(targetLinearGain * (env.startLevel ?? 0), 0.00001, 4.0);
+
+      gainNode.gain.cancelScheduledValues(now);
+      gainNode.gain.setValueAtTime(startGain, now);
+      const tAttackStart = now + dSec;
+      if (dSec > 0.001) gainNode.gain.setValueAtTime(startGain, tAttackStart);
+      const tHoldStart = tAttackStart + aSec;
+      gainNode.gain.linearRampToValueAtTime(targetLinearGain, tHoldStart);
+      const tDecayStart = tHoldStart + hSec;
+      if (hSec > 0.001) gainNode.gain.setValueAtTime(targetLinearGain, tDecayStart);
+      gainNode.gain.linearRampToValueAtTime(susGain, tDecayStart + decSec);
+    } else {
+      gainNode.gain.setValueAtTime(targetLinearGain, now);
+    }
+
+    const nodes: AudioNode[] = [];
+    let tail: AudioNode = source;
+
+    if (opts.filter?.enabled && typeof this.audioCtx.createBiquadFilter === 'function') {
+      const biquad = this.audioCtx.createBiquadFilter();
+      biquad.type =
+        opts.filter.type === 'hpf'
+          ? 'highpass'
+          : opts.filter.type === 'bpf'
+            ? 'bandpass'
+            : opts.filter.type === 'notch' || opts.filter.type === 'brf'
+              ? 'notch'
+              : 'lowpass';
+      biquad.frequency.value = clamp(opts.filter.cutoffHz || 18000, 20, 20000);
+      biquad.Q.value = clamp(Math.pow(10, (opts.filter.resonanceDb ?? 0) / 20), 0.5, 20);
+      tail.connect(biquad);
+      tail = biquad;
+      nodes.push(biquad);
+    }
+
+    tail.connect(gainNode);
+    tail = gainNode;
+    nodes.push(gainNode);
+
+    if (
+      typeof opts.pan === 'number' &&
+      opts.pan !== 0 &&
+      typeof (this.audioCtx as unknown as { createStereoPanner?: () => StereoPannerNode }).createStereoPanner === 'function'
+    ) {
+      const panner = (this.audioCtx as unknown as { createStereoPanner: () => StereoPannerNode }).createStereoPanner();
+      panner.pan.value = clamp(opts.pan / 50.0, -1.0, 1.0);
+      tail.connect(panner);
+      tail = panner;
+      nodes.push(panner);
+    }
+
+    tail.connect(this.analyserNode);
+
+    const voiceId = `pv_${++this.polyVoiceSeq}`;
+    const voiceState: PolyVoiceState = {
+      id: voiceId,
+      note: opts.note,
+      startedAtMs: performance.now(),
+      released: Boolean(opts.isReleaseTrigger),
+      muteGroup: opts.muteGroup,
+      offMode: opts.offMode ?? 'fast',
+      offTimeSec: opts.offTimeSec ?? 0.06,
+      releaseSec,
+      sustainLevel,
+      targetGain: targetLinearGain,
+      sourceNode: source,
+      gainNode,
+      nodes,
+    };
+
+    source.onended = () => {
+      this.cleanupPolyVoice(voiceState);
+    };
+
+    this.activePolyVoices.set(voiceId, voiceState);
+    this.activePlaybackMode = 'original';
+    source.start(0);
+  }
+
+  /**
+   * Releases all sustaining polyphonic voices for `note` and returns the held duration
+   * in seconds (used by `trigger=release` / `rt_decay`).
+   */
+  public releasePolyNote(note: MidiNote): number | undefined {
+    const nowMs = performance.now();
+    let maxHoldSec: number | undefined;
+    for (const v of Array.from(this.activePolyVoices.values())) {
+      if (v.note === note && !v.released) {
+        const holdSec = Math.max(0, (nowMs - v.startedAtMs) / 1000);
+        if (maxHoldSec === undefined || holdSec > maxHoldSec) {
+          maxHoldSec = holdSec;
+        }
+        v.released = true;
+        this.fadeAndRemovePolyVoice(v, v.releaseSec);
+      }
+    }
+    return maxHoldSec;
+  }
+
+  public stopAllPolyVoices(): void {
+    for (const v of Array.from(this.activePolyVoices.values())) {
+      this.fadeAndRemovePolyVoice(v, 0.015);
+    }
+  }
+
+  private chokePolyVoice(v: PolyVoiceState): void {
+    v.released = true;
+    if (v.offMode === 'normal') {
+      this.fadeAndRemovePolyVoice(v, v.releaseSec);
+    } else if (v.offMode === 'time') {
+      this.fadeAndRemovePolyVoice(v, Math.max(0.004, v.offTimeSec));
+    } else {
+      this.fadeAndRemovePolyVoice(v, 0.006);
+    }
+  }
+
+  private fadeAndRemovePolyVoice(v: PolyVoiceState, fadeSec: number): void {
+    this.activePolyVoices.delete(v.id);
+    if (!this.audioCtx) {
+      try { v.sourceNode.stop(); } catch { /* ignore */ }
+      this.cleanupPolyVoice(v);
+      return;
+    }
+    try {
+      const now = this.audioCtx.currentTime;
+      const cur = Math.max(0.00001, v.gainNode.gain.value);
+      v.gainNode.gain.cancelScheduledValues(now);
+      v.gainNode.gain.setValueAtTime(cur, now);
+      v.gainNode.gain.linearRampToValueAtTime(0.00001, now + fadeSec);
+      v.sourceNode.stop(now + fadeSec + 0.01);
+      setTimeout(() => this.cleanupPolyVoice(v), Math.round((fadeSec + 0.03) * 1000));
+    } catch {
+      this.cleanupPolyVoice(v);
+    }
+  }
+
+  private cleanupPolyVoice(v: PolyVoiceState): void {
+    this.activePolyVoices.delete(v.id);
+    try { v.sourceNode.disconnect(); } catch { /* ignore */ }
+    for (const n of v.nodes) {
+      try { n.disconnect(); } catch { /* ignore */ }
+    }
+    if (!this.activeSourceNode && this.activePolyVoices.size === 0) {
+      this.activePlaybackMode = null;
+    }
+  }
+
   /**
    * Returns real-time Web Audio FFT bins (0..255) and RMS level (dBFS) during playback.
    */
@@ -529,7 +864,7 @@ export class AudioPreviewService {
     isPlaying: boolean;
     mode: PreviewPlaybackMode | null;
   } {
-    if (!this.analyserNode || !this.activeSourceNode) {
+    if (!this.analyserNode || (!this.activeSourceNode && this.activePolyVoices.size === 0)) {
       return {
         bins: new Uint8Array(64),
         rmsDb: -96,

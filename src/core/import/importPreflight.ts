@@ -356,30 +356,73 @@ export function applyPreflightImportAdaptations(
     }
   }
 
-  // 2. Build Extended Regions (1:1 with all N velocity layers)
-  const extendedRegions: ExtendedRegion[] = regions.map((r, idx) => ({
-    id: `ext_reg_${String(idx + 1).padStart(3, '0')}`,
-    sampleName: r.sampleName,
-    lowKey: r.lowKey,
-    highKey: r.highKey,
-    rootKey: r.rootKey,
-    lowVel: r.lowVel,
-    highVel: r.highVel,
-    detune: r.detuneCents,
-    volume: r.volumeDb,
-    pan: r.pan,
-    pitchKeytrack: 100,
-    trigger: 'attack',
-    keyFadeIn: 0,
-    keyFadeOut: 0,
-    velFadeIn: 0,
-    velFadeOut: 0,
-    fadeCurve: 'equal-power',
-    loopMode: r.loopMode,
-    loopStart: r.loopStart,
-    loopEnd: r.loopEnd,
-    loopCrossfadeMs: 0,
-  }));
+  // 2. Build Extended Regions (1:1 with all N velocity layers & full articulation metadata)
+  const extendedRegions: ExtendedRegion[] = regions.map((r, idx) => {
+    const synthesizedAmpEnv =
+      r.ampEnvOverride ??
+      (r.attackTimeSec !== undefined ||
+      r.decayTimeSec !== undefined ||
+      r.sustainLevel !== undefined ||
+      r.releaseTimeSec !== undefined
+        ? {
+            ...(r.attackTimeSec !== undefined ? { attackSec: r.attackTimeSec } : {}),
+            ...(r.decayTimeSec !== undefined ? { decaySec: r.decayTimeSec } : {}),
+            ...(r.sustainLevel !== undefined ? { sustainLevel: r.sustainLevel } : {}),
+            ...(r.releaseTimeSec !== undefined ? { releaseSec: r.releaseTimeSec } : {}),
+          }
+        : undefined);
+    const synthesizedFilter =
+      r.filterOverride ??
+      (r.filterCutoffHz !== undefined || r.filterResonance !== undefined
+        ? {
+            enabled: true,
+            ...(r.filterCutoffHz !== undefined ? { cutoffHz: r.filterCutoffHz } : {}),
+            ...(r.filterResonance !== undefined ? { resonanceDb: r.filterResonance } : {}),
+          }
+        : undefined);
+    const hasArticulationOverride =
+      r.hasArticulationOverride ?? Boolean(synthesizedAmpEnv || synthesizedFilter);
+
+    return {
+      id: r.id || `ext_reg_${String(idx + 1).padStart(3, '0')}`,
+      sampleName: r.sampleName,
+      lowKey: r.lowKey,
+      highKey: r.highKey,
+      rootKey: r.rootKey,
+      lowVel: r.lowVel,
+      highVel: r.highVel,
+      detune: r.detuneCents,
+      volume: r.volumeDb,
+      pan: r.pan,
+      pitchKeytrack: r.pitchKeytrack ?? 100,
+      trigger: r.trigger ?? 'attack',
+      ...(r.seqPosition !== undefined ? { seqPosition: r.seqPosition } : {}),
+      ...(r.seqLength !== undefined ? { seqLength: r.seqLength } : {}),
+      keyFadeIn: r.keyFadeIn ?? 0,
+      keyFadeOut: r.keyFadeOut ?? 0,
+      velFadeIn: r.velFadeIn ?? 0,
+      velFadeOut: r.velFadeOut ?? 0,
+      fadeCurve: r.fadeCurve ?? 'equal-power',
+      loopMode: r.loopMode,
+      loopStart: r.loopStart,
+      loopEnd: r.loopEnd,
+      loopCrossfadeMs: r.loopCrossfadeMs ?? 0,
+      ...(r.sampleStartFrame !== undefined ? { sampleStartFrame: r.sampleStartFrame } : {}),
+      ...(r.sampleEndFrame !== undefined ? { sampleEndFrame: r.sampleEndFrame } : {}),
+      ...(r.reversed !== undefined ? { reversed: r.reversed } : {}),
+      ...(r.playLogic !== undefined ? { playLogic: r.playLogic } : {}),
+      ...(r.velToVolumeDepth !== undefined ? { velToVolumeDepth: r.velToVolumeDepth } : {}),
+      ...(r.velToPitchCents !== undefined ? { velToPitchCents: r.velToPitchCents } : {}),
+      ...(r.groupId !== undefined ? { groupId: r.groupId } : {}),
+      ...(r.groupName !== undefined ? { groupName: r.groupName } : {}),
+      ...(r.muteGroup !== undefined ? { muteGroup: r.muteGroup } : {}),
+      ...(r.keyswitchNote !== undefined ? { keyswitchNote: r.keyswitchNote } : {}),
+      ...(r.loops !== undefined ? { loops: r.loops } : {}),
+      ...(hasArticulationOverride ? { hasArticulationOverride: true } : {}),
+      ...(synthesizedAmpEnv ? { ampEnvOverride: synthesizedAmpEnv } : {}),
+      ...(synthesizedFilter ? { filterOverride: synthesizedFilter } : {}),
+    };
+  });
 
   // 3. Project to Classic Hartmann 2-layer Zones
   // Group regions by note range

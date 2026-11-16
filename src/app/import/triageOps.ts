@@ -150,10 +150,30 @@ async function importTriageSingle(
             const normBuf = await transcodeAnyAudioToWavBuffer(af.buffer, baseName);
             normalizedSfzAudio.push({ name: baseName, buffer: normBuf });
           }
+          const sfzTextMap = new Map<string, ArrayBuffer>();
+          for (const f of files) {
+            const nLower = f.name.replace(/\\/g, '/').toLowerCase();
+            if (/\.(sfz|txt|inc|sfzh)$/i.test(nLower)) {
+              sfzTextMap.set(nLower, f.buffer);
+            }
+          }
+          const decoder = new TextDecoder('utf-8');
           const session = await ui.ctx.core.importSfzText(
             sfzText,
             sfzFile.name.split('/').pop() ?? sfzFile.name,
-            normalizedSfzAudio
+            normalizedSfzAudio,
+            {
+              includeResolver: (includePath: string) => {
+                const norm = includePath.replace(/\\/g, '/').toLowerCase();
+                const direct = sfzTextMap.get(norm);
+                if (direct) return decoder.decode(direct);
+                const suffix = `/${norm}`;
+                for (const [k, buf] of sfzTextMap.entries()) {
+                  if (k === norm || k.endsWith(suffix)) return decoder.decode(buf);
+                }
+                return undefined;
+              },
+            },
           );
           ui.ctx.session = session;
           ui.ctx.selectedZoneId = session.zones[0]?.id || null;

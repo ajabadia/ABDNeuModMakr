@@ -57,7 +57,12 @@ export async function importMixedFilesOrZip(
         bytes[0] === 0x50 &&
         bytes[1] === 0x4b &&
         (bytes[2] === 0x03 || bytes[2] === 0x05);
-      if (lower.endsWith('.zip') || lower.endsWith('.nmpack') || (lower.endsWith('.model') && isPkZip)) {
+      const isCanonicalSamplerCapsule =
+        lower.endsWith('.abdsmpl.zip') || lower.endsWith('.abdsmpl');
+      if (
+        !isCanonicalSamplerCapsule &&
+        (lower.endsWith('.zip') || lower.endsWith('.nmpack') || (lower.endsWith('.model') && isPkZip))
+      ) {
         await expandNestedZipBuffer(bytes, '', expanded, 0);
       } else {
         expanded.push({ name: f.name, buffer: buf });
@@ -91,7 +96,7 @@ export async function importMixedFilesOrZip(
     const universalSamplerFiles: { name: string; path: string; buffer: ArrayBuffer }[] = [];
 
     const universalSamplerExtRe =
-      /\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb|xpn|xpm|xty|xtd|dspreset|nki|vstpreset|fxp|multisample|adv|exs|talsmpl|txprog|kmp|ksf|dls|qpat|tvpst|dexpreset|grp|kit|s24|korgmultisample|3wv|svz|akp|pgm|set|krz|k25|k26|x7u|x8u|x3a|fzv|fzf|synx|cmi|cmi3|vc|s3p|sxt|dwp|sbpack|sbx|zmap|prt_omn|mxsnd|mxgrp|nicnt|rx2|rex|rcy)$/i;
+      /\.(iso|img|dsk|bin|hda|out|efe|ede|gkh|e4b|esi|exb|xpn|xpm|xty|xtd|dspreset|nki|vstpreset|fxp|multisample|adv|exs|talsmpl|txprog|kmp|ksf|dls|qpat|tvpst|dexpreset|grp|kit|s24|korgmultisample|3wv|svz|akp|pgm|set|krz|k25|k26|x7u|x8u|x3a|fzv|fzf|synx|cmi|cmi3|vc|s3p|sxt|dwp|sbpack|sbx|zmap|prt_omn|mxsnd|mxgrp|nicnt|rx2|rex|rcy|abdsmpl|abdsmpl\.zip)$/i;
 
     for (const item of expanded) {
       const normPath = item.name.replace(/\\/g, '/');

@@ -39,6 +39,7 @@ export type LoopMode =
   | 'one_shot';
 
 export type TriggerMode = 'attack' | 'release' | 'first' | 'legato';
+export type OffMode = 'fast' | 'normal' | 'time';
 export type CrossfadeCurve = 'linear' | 'equal-power' | 'spectral-morph';
 export type EnvelopeSlopeCurve = 'linear' | 'exponential' | 'logarithmic';
 export type SamplerPlayLogic = 'always' | 'round_robin' | 'random' | 'velocity';
@@ -205,6 +206,22 @@ export interface ExtendedRegion {
   groupName?: string;
   /** Fase 33.1 — Mute / choke group (0 = none, 1..32 = exclusive group e.g. closed/open hi-hat) */
   muteGroup?: number;
+  /** Choke / off-mode when silenced by muteGroup or voice stealing ('fast' | 'normal' | 'time') */
+  offMode?: OffMode;
+  /** Ramp duration in seconds when offMode === 'time' */
+  offTimeSec?: number;
+  /** Release-trigger decay attenuation in dB/sec based on held note duration (`rt_decay`) */
+  rtDecayDbPerSec?: number;
+  /** Random layer lower bound 0..1 (`lorand`) */
+  loRand?: number;
+  /** Random layer upper bound 0..1 (`hirand`) */
+  hiRand?: number;
+  /** CC fade-in ranges keyed by CC number (`xfin_loccN` / `xfin_hiccN`) */
+  ccCrossfadeIn?: Record<number, { lo: number; hi: number }>;
+  /** CC fade-out ranges keyed by CC number (`xfout_loccN` / `xfout_hiccN`) */
+  ccCrossfadeOut?: Record<number, { lo: number; hi: number }>;
+  /** Optional SFZ `<curve>` index (`curve_index`) */
+  curveIndex?: number;
   /** Fase 33.1 — Keyswitch MIDI note (0..127) activating this region/group */
   keyswitchNote?: MidiNote;
   /** Fase 33.1 — Multi-loop array (loops[0] mirrors loopMode/loopStart/loopEnd/loopCrossfadeMs) */
@@ -232,6 +249,36 @@ export interface Sf2PresetOption {
 export interface CustomMetadataTag {
   tag: string;
   value: string;
+}
+
+export interface SfzKeyswitchInfo {
+  note: number;
+  label: string;
+}
+
+export interface SfzCcMacroInfo {
+  cc: number;
+  label?: string;
+  initialValue?: number;
+}
+
+export interface SfzCurveDescriptor {
+  index: number;
+  /** 128-point normalized table (0..1 or -1..1) */
+  points: number[];
+}
+
+export interface SfzIntrospectionReport {
+  includedFiles: string[];
+  missingIncludes: string[];
+  keyswitches: SfzKeyswitchInfo[];
+  swRange?: { lokey: number; hikey: number; last?: number };
+  ccMacros: SfzCcMacroInfo[];
+  imagePath?: string;
+  imageControlsPath?: string;
+  unknownOpcodes: string[];
+  inlineSampleCount: number;
+  curves?: SfzCurveDescriptor[];
 }
 
 /** Comprehensive metadata specification for Extended Mode & ABDAxionikVS */

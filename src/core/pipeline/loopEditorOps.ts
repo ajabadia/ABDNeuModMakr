@@ -219,6 +219,16 @@ export async function auditionZoneComparison(ctx: PipelineContext, zoneId: strin
   return ctx.state.preview.auditionZoneComparison(zoneId, mode, targetNote, sampleOverride);
 }
 
+import type { PolyNoteOnOptions } from '../audioPreview.ts';
+
+export async function playPolyNoteOn(ctx: PipelineContext, opts: PolyNoteOnOptions): Promise<void> {
+  return ctx.state.preview.playPolyNoteOn(opts);
+}
+
+export function releasePolyNote(ctx: PipelineContext, note: MidiNote): number | undefined {
+  return ctx.state.preview.releasePolyNote(note);
+}
+
 export function stopAudition(ctx: PipelineContext): void {
   ctx.state.preview.stopAudition();
 }

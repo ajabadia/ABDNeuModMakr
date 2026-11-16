@@ -67,6 +67,7 @@ import { exportRenoiseXrni } from './RenoiseFormat.ts';
 import { exportBlissZip } from './BlissFormat.ts';
 import { exportPolyendTrackerPti } from './PolyendTrackerFormat.ts';
 import { sessionToUniversalSamplerInstrument } from './UniversalSamplerModel.ts';
+import { exportUniversalSamplerCapsule } from './UniversalSamplerCapsule.ts';
 import { writeAkpProgram, type AkpProgram, type AkpKeygroup } from './AkaiAkpFormat.ts';
 import { writeDirectWavePatch } from './DirectWaveFormat.ts';
 import { writeSxtPatch } from './ReasonNnxtFormat.ts';
@@ -1435,6 +1436,30 @@ ${zoneXmlLines.join('\n')}
       }
       outData = createZipArchive(zipEntries);
       totalFiles = zipEntries.length;
+      break;
+    }
+
+    case 'abdsmpl': {
+      const audioPool = new Map<string, ArrayBuffer>();
+      for (const r of validRegions) {
+        const ps = processedSamplesMap.get(r.sampleName);
+        if (ps && !audioPool.has(r.sampleName)) {
+          audioPool.set(r.sampleName, ps.wavBuffer);
+        }
+      }
+      const instrument = sessionToUniversalSamplerInstrument(session, audioPool);
+      instrument.name = bankName;
+      instrument.expandedName = bankName;
+      instrument.metadata = {
+        ...instrument.metadata,
+        author,
+        license,
+        description,
+      };
+      outFilename = `${cleanBankName}.abdsmpl.zip`;
+      mimeType = 'application/zip';
+      outData = exportUniversalSamplerCapsule(instrument);
+      totalFiles = audioPool.size + 2; // universal_instrument.json + 01_raw_source/native_map.json + samples
       break;
     }
 

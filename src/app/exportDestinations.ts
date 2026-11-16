@@ -56,6 +56,7 @@ const QUICK_SAMPLER_FORMAT_BY_ACTION: Readonly<Record<string, RawSamplerFormat>>
   'fmt-nki': 'nki',
   'fmt-mpc': 'mpc_xpm',
   'fmt-exs24': 'exs24',
+  'fmt-abdsmpl': 'abdsmpl',
   'wav-chain': 'sample_chain',
 };
 
@@ -112,6 +113,7 @@ export function buildExportDestinationCards(): ExportDestinationCard[] {
         { id: 'fmt-nki', label: 'Kontakt (.nki)', samplerFormat: 'nki' },
         { id: 'fmt-mpc', label: 'Akai MPC (.xpm)', samplerFormat: 'mpc_xpm' },
         { id: 'fmt-exs24', label: 'Logic EXS24', samplerFormat: 'exs24' },
+        { id: 'fmt-abdsmpl', label: 'Universal (.abdsmpl.zip)', samplerFormat: 'abdsmpl' },
       ],
     },
     {

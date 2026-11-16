@@ -94,6 +94,8 @@ export const TRIAGE_CONTAINER_EXTENSIONS = [
   '.nmpack',
   '.neuronikmodel',
   '.nmmodel',
+  '.abdsmpl',
+  '.abdsmpl.zip',
   '.scape',
   '.sphere',
   '.script',

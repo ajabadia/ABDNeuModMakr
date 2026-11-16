@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { ExtendedRegion, MidiNote, TriggerMode, Zone } from './types.ts';
+import type { SamplerArticulationEngine } from '@abdsynths/shared/formats/sampler';
 
 export type ClassicVelocityLayer = 'low' | 'high';
 
@@ -58,11 +59,37 @@ export function resolveClassicNoteTargets(
   return { zoneId: zone.id, layer, regionIds: [], sampleName, rootKey: zone.rootKey };
 }
 
+export function computeRegionCrossfadeGain(
+  region: ExtendedRegion,
+  note: MidiNote,
+  velocity127: number,
+): number {
+  let gain = 1.0;
+  const evalCurve = (t: number): number => {
+    const c = Math.max(0, Math.min(1, t));
+    return region.fadeCurve === 'linear' ? c : Math.sin(c * Math.PI * 0.5);
+  };
+  if (region.keyFadeIn > 0 && note < region.lowKey + region.keyFadeIn) {
+    gain *= evalCurve((note - region.lowKey + 1) / (region.keyFadeIn + 1));
+  }
+  if (region.keyFadeOut > 0 && note > region.highKey - region.keyFadeOut) {
+    gain *= evalCurve((region.highKey - note + 1) / (region.keyFadeOut + 1));
+  }
+  if (region.velFadeIn > 0 && velocity127 < region.lowVel + region.velFadeIn) {
+    gain *= evalCurve((velocity127 - region.lowVel + 1) / (region.velFadeIn + 1));
+  }
+  if (region.velFadeOut > 0 && velocity127 > region.highVel - region.velFadeOut) {
+    gain *= evalCurve((region.highVel - velocity127 + 1) / (region.velFadeOut + 1));
+  }
+  return Math.max(0, Math.min(1, gain));
+}
+
 export function resolveExtendedNoteTargets(
   regions: ExtendedRegion[],
   note: MidiNote,
   velocity127: number,
-  trigger: TriggerMode = 'attack'
+  trigger: TriggerMode = 'attack',
+  engine?: SamplerArticulationEngine,
 ): NoteTargets {
   const hits = regions.filter(
     (r) =>
@@ -76,15 +103,17 @@ export function resolveExtendedNoteTargets(
   const triggerMatches = hits.filter((r) => (r.trigger || 'attack') === trigger);
   const activePool = triggerMatches.length > 0 ? triggerMatches : (trigger === 'release' ? [] : hits);
 
-  // If multiple regions match and have round-robin indices, select sequentially or by rr index
-  const first = activePool.find((r) => r.sampleName) ?? activePool[0];
+  const selected =
+    engine && activePool.length > 0
+      ? engine.selectRegionForNote(activePool, note, velocity127, trigger)
+      : (activePool.find((r) => r.sampleName) ?? activePool[0]);
 
   return {
     regionIds: hits.map((r) => r.id),
-    sampleName: first?.sampleName || undefined,
-    rootKey: first?.rootKey,
-    region: first,
-    trigger: first?.trigger || 'attack',
+    sampleName: selected?.sampleName || undefined,
+    rootKey: selected?.rootKey,
+    region: selected,
+    trigger: selected?.trigger || 'attack',
   };
 }
 

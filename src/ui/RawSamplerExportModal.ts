@@ -77,6 +77,7 @@ export const ALL_EXPORTABLE_SAMPLER_FORMATS: Array<{
   { id: 'isla_s2400', label: 'Isla Instruments S2400 (.kit)', badge: 'S2400 Kit' },
   { id: 'disting_ex', label: 'Expert Sleepers Disting EX (.dexpreset)', badge: 'DEXBPRST' },
   { id: 'dls', label: 'MMA Downloadable Sounds (.dls)', badge: 'RIFF DLS2' },
+  { id: 'abdsmpl', label: 'ABDSynths Universal Capsule (.abdsmpl.zip)', badge: 'Canonical 2D' },
   { id: 'sample_chain', label: 'Linear Sample Chain (.wav)', badge: 'Cue Markers' },
 ];
 

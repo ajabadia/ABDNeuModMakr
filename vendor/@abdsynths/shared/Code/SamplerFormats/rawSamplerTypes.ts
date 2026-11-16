@@ -66,6 +66,7 @@ export type RawSamplerFormat =
   | 'omnisphere'   // Spectrasonics Omnisphere (.zmap, .prt_omn)
   | 'ni_maschine'  // Native Instruments Maschine (.mxsnd, .mxgrp, .nicnt)
   | 'neuron_bank'  // Hartmann Neuron / Neuronik Bank (.model, .neuronikmodel, .nmmodel, NeuronDB .zip)
+  | 'abdsmpl'      // ABDSynths Canonical Sampler Capsule (.abdsmpl.zip)
   | 'sample_chain';// Linear sample chain (.wav with RIFF cue markers + slice index)
 
 export type RawAudioResolution = 'original' | 'pcm16' | 'pcm24';

@@ -194,12 +194,14 @@ export function bindDrawerExtendedRegionEvents(ui: InspectorContext, activeReg: 
       updateReg({
         hasArticulationOverride: true,
         ampEnvOverride: {
+          ...(activeReg.ampEnvOverride ?? {}),
           attackSec: Math.max(0.002, parseFloat(inpA?.value ?? '0.005') || 0.005),
           decaySec: Math.max(0.005, parseFloat(inpD?.value ?? '0.25') || 0.25),
           sustainLevel: Math.max(0, Math.min(1, parseFloat(inpS?.value ?? '1') || 0)),
           releaseSec: Math.max(0.01, parseFloat(inpR?.value ?? '0.2') || 0.2),
         },
         filterOverride: {
+          ...(activeReg.filterOverride ?? {}),
           cutoffHz: Math.max(20, Math.min(20000, parseFloat(inpCut?.value ?? '18000') || 18000)),
           resonanceDb: Math.max(0, Math.min(40, parseFloat(inpReso?.value ?? '0') || 0)),
         },

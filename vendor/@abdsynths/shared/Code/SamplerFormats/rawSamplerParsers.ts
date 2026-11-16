@@ -34,14 +34,18 @@ import { parseSliceFile, parseWavSliceCues, type ParsedSliceMarker } from './Sli
 import { decompressRx2Audio, isRx2Buffer } from './DwopDecompressor.ts';
 import type {
   CrossfadeCurve,
+  DahdsrEnvelope,
+  ExtendedModelMetadata,
   LoopMode,
   MidiNote,
   PitchEnvelopeConfig,
   RegionFilterConfig,
   SampleLoopDescriptor,
   SamplerPlayLogic,
+  SynthArticulationConfig,
   TriggerMode,
 } from './SamplerTypes.ts';
+import { importUniversalSamplerCapsule } from './UniversalSamplerCapsule.ts';
 import { parseMpcXpm, mpcGainToDb, type MpcProgram } from './MpcXpmFormat.ts';
 import { parseAbletonAdv } from './AbletonAdvFormat.ts';
 import { isExs24Buffer, parseExs24 } from './Exs24Format.ts';
@@ -198,7 +202,8 @@ export type RawSamplerFormat =
   | 'soundbox'
   | 'omnisphere'
   | 'ni_maschine'
-  | 'neuron_bank';
+  | 'neuron_bank'
+  | 'abdsmpl';
 
 export interface ParsedImportRegion {
   id: string;
@@ -244,6 +249,9 @@ export interface ParsedImportRegion {
   releaseTimeSec?: number;
   filterCutoffHz?: number;
   filterResonance?: number;
+  hasArticulationOverride?: boolean;
+  ampEnvOverride?: Partial<DahdsrEnvelope>;
+  filterOverride?: Partial<RegionFilterConfig>;
 }
 
 export interface ParsedSamplerPreset {
@@ -274,6 +282,9 @@ export interface ParsedSamplerPreset {
   isMultiLayer?: boolean;
   /** Origin format tag used for provenance/diagnostics. */
   sourceFormat?: RawSamplerFormat;
+  /** Full canonical articulation & metadata when restored from rich capsules (.abdsmpl.zip). */
+  articulation?: SynthArticulationConfig;
+  metadata?: ExtendedModelMetadata;
 }
 
 /**
@@ -2681,6 +2692,84 @@ export async function parseUniversalSampler(
         : undefined;
   const targetProgramPath =
     typeof decodedWavBufferOrProgramPath === 'string' ? decodedWavBufferOrProgramPath : selectedProgramPath;
+
+  // 0a. Canonical ABDSynths Universal Sampler Capsule (.abdsmpl.zip / .abdsmpl)
+  if (typeof data !== 'string' && (lower.endsWith('.abdsmpl.zip') || lower.endsWith('.abdsmpl'))) {
+    const inst = importUniversalSamplerCapsule(new Uint8Array(data), filename);
+    const regions: ParsedImportRegion[] = inst.regions.map((r, idx) => ({
+      id: r.id || `abdsmpl-reg-${idx + 1}`,
+      sampleName: r.sampleName,
+      samplePath: r.sampleName,
+      rootKey: r.rootKey,
+      lowKey: r.lowKey,
+      highKey: r.highKey,
+      lowVel: r.lowVel,
+      highVel: r.highVel,
+      detuneCents: r.detune,
+      volumeDb: r.volume,
+      pan: r.pan,
+      loopMode: r.loopMode,
+      loopStart: r.loopStart,
+      loopEnd: r.loopEnd,
+      pitchKeytrack: r.pitchKeytrack,
+      sampleStartFrame: r.sampleStartFrame,
+      sampleEndFrame: r.sampleEndFrame,
+      reversed: r.reversed,
+      keyFadeIn: r.keyFadeIn,
+      keyFadeOut: r.keyFadeOut,
+      velFadeIn: r.velFadeIn,
+      velFadeOut: r.velFadeOut,
+      fadeCurve: r.fadeCurve,
+      loopCrossfadeMs: r.loopCrossfadeMs,
+      loops: r.loops,
+      trigger: r.trigger,
+      playLogic: r.playLogic,
+      seqPosition: r.seqPosition,
+      seqLength: r.seqLength,
+      groupId: r.groupId,
+      groupName: r.groupName,
+      muteGroup: r.muteGroup,
+      keyswitchNote: r.keyswitchNote,
+      velToVolumeDepth: r.velToVolumeDepth,
+      velToPitchCents: r.velToPitchCents,
+      hasArticulationOverride: r.hasArticulationOverride,
+      ampEnvOverride: r.ampEnvOverride,
+      filterOverride: r.filterOverride,
+    }));
+    const cls = classifyPresetCategory(
+      inst.expandedName || inst.name,
+      regions.map((r) => r.sampleName),
+    );
+    return {
+      format: 'abdsmpl',
+      formatLabel: 'ABDSynths Universal Capsule (.abdsmpl.zip)',
+      presetName: inst.expandedName || inst.name,
+      modelName: inst.name.slice(0, 11) || 'Capsule',
+      detectedCategory: inst.metadata?.category || cls.category,
+      suggestedParameterSet: cls.parameterSet,
+      regions,
+      audioBuffers: inst.audioPool ?? new Map<string, ArrayBuffer>(),
+      envelope: {
+        attack: inst.articulation.ampEnv.attackSec,
+        decay: inst.articulation.ampEnv.decaySec,
+        sustain: inst.articulation.ampEnv.sustainLevel,
+        release: inst.articulation.ampEnv.releaseSec,
+        delay: inst.articulation.ampEnv.delaySec,
+        hold: inst.articulation.ampEnv.holdSec,
+      },
+      filter: inst.articulation.filter,
+      pitchEnv: inst.articulation.pitchEnv,
+      polyphony: inst.articulation.polyphony,
+      pitchBendUpSt: inst.articulation.pitchBendUpSt,
+      pitchBendDownSt: inst.articulation.pitchBendDownSt,
+      author: inst.metadata?.author,
+      description: inst.metadata?.description,
+      articulation: inst.articulation,
+      metadata: inst.metadata,
+      isMultiLayer: regions.some((r) => r.lowVel > 1 || r.highVel < 127),
+      sourceFormat: 'abdsmpl',
+    };
+  }
 
   // 0. Vintage Sampler Disk Images (Akai, E-mu, Roland, Ensoniq, Yamaha, Casio, MPC)
   if (typeof data !== 'string') {

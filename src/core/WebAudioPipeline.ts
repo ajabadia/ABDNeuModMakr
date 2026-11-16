@@ -21,6 +21,8 @@ import {
   auditionZoneComparison,
   getRealtimeSpectrum,
   getZoneLoopEditorData,
+  playPolyNoteOn,
+  releasePolyNote,
   stopAudition,
   updateLiveLoopPoints,
 } from './pipeline/loopEditorOps.ts';
@@ -62,6 +64,7 @@ import { SpectralAnalyzer } from './dsp/SpectralAnalyzer.ts';
 import type { RawExportOptions, RawSamplerPreflightReport, RawExportResult } from './export/rawSamplerTypes.ts';
 import { NeuronAssetStore } from './storage/NeuronAssetStore.ts';
 import { listSf2Presets as parseSf2PresetsList } from '../formats/Sf2Parser.ts';
+import type { PolyNoteOnOptions } from './audioPreview.ts';
 import { AudioPreviewService } from './audioPreview.ts';
 import { BankService } from './bankService.ts';
 import { SessionHistory } from './sessionHistory.ts';
@@ -563,8 +566,16 @@ export class WebAudioPipeline implements CoreService {
   }
 
 
-  public async importSfzText(sfzText: string, sfzFileName: string, audioFiles: AudioFilePayload[]): Promise<Session> {
-    return importSfzText(this.pipelineCtx(), sfzText, sfzFileName, audioFiles);
+  public async importSfzText(
+    sfzText: string,
+    sfzFileName: string,
+    audioFiles: AudioFilePayload[],
+    options?: {
+      includeResolver?: (includePath: string, fromFile: string) => string | undefined;
+      maxIncludeDepth?: number;
+    }
+  ): Promise<Session> {
+    return importSfzText(this.pipelineCtx(), sfzText, sfzFileName, audioFiles, options);
   }
 
 
@@ -739,6 +750,14 @@ export class WebAudioPipeline implements CoreService {
 
   public updateLiveLoopPoints(loopStartFrame: number, loopEndFrame: number, sampleRate: number, loopEnabled: boolean = true): void {
     updateLiveLoopPoints(this.pipelineCtx(), loopStartFrame, loopEndFrame, sampleRate, loopEnabled);
+  }
+
+  public async playPolyNoteOn(opts: PolyNoteOnOptions): Promise<void> {
+    return playPolyNoteOn(this.pipelineCtx(), opts);
+  }
+
+  public releasePolyNote(note: MidiNote): number | undefined {
+    return releasePolyNote(this.pipelineCtx(), note);
   }
 
   // ── Phase 14: Model Cover Artwork (.webp) — Exclusive to Extended Mode ──

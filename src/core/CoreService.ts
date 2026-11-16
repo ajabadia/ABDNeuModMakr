@@ -40,6 +40,7 @@ import type {
   ZoneLoopEditorData,
   PipelineChecklistSelection,
 } from './types.ts';
+import type { PolyNoteOnOptions } from './audioPreview.ts';
 import type {
   RawExportOptions,
   RawSamplerPreflightReport,
@@ -206,6 +207,12 @@ export interface CoreService {
     sampleOverride?: { sampleName: string; rootKey: MidiNote }
   ): Promise<void>;
 
+  /** Polyphonic live note-on preview supporting choke groups, filters, envelopes & release triggers */
+  playPolyNoteOn?(opts: PolyNoteOnOptions): Promise<void>;
+
+  /** Releases sustaining polyphonic preview voices for `note` and returns held duration in seconds */
+  releasePolyNote?(note: MidiNote): number | undefined;
+
   /** Synthesize stereo PCM for `zoneId` using the Resynator v2 motor (WASM). */
   synthesizeZoneResynatorV2?(
     zoneId: string,
@@ -255,7 +262,11 @@ export interface CoreService {
   importSfzText(
     sfzText: string,
     sfzFileName: string,
-    audioFiles: AudioFilePayload[]
+    audioFiles: AudioFilePayload[],
+    options?: {
+      includeResolver?: (includePath: string, fromFile: string) => string | undefined;
+      maxIncludeDepth?: number;
+    }
   ): Promise<Session>;
 
   /** Get active 2D Extended Regions (synchronizing from classic zones if not yet initialized) */

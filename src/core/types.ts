@@ -250,6 +250,7 @@ export interface PipelineChecklistSelection {
 
 import type {
   LoopMode,
+  OffMode,
   TriggerMode,
   CrossfadeCurve,
   EnvelopeSlopeCurve,
@@ -274,6 +275,7 @@ import type { AxionikSurfaceTempoSync } from '@abdsynths/shared/contracts/axioni
 
 export type {
   LoopMode,
+  OffMode,
   TriggerMode,
   CrossfadeCurve,
   EnvelopeSlopeCurve,

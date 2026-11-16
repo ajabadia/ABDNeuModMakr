@@ -1328,10 +1328,26 @@ export async function parseUniversalSamplerInstrument(
   if (lower.endsWith('.sfz') && siblingFiles) {
     const text = new TextDecoder('utf-8').decode(buffer);
     const audioFiles: AudioFilePayload[] = [];
+    const textFiles = new Map<string, string>();
     for (const [name, buf] of siblingFiles.entries()) {
-      audioFiles.push({ name, buffer: buf });
+      const nLower = name.replace(/\\/g, '/').toLowerCase();
+      if (/\.(sfz|txt|inc|sfzh)$/i.test(nLower)) {
+        textFiles.set(nLower, new TextDecoder('utf-8').decode(buf));
+      } else {
+        audioFiles.push({ name, buffer: buf });
+      }
     }
-    const sfzRes = importSfzToNative(text, filename, audioFiles);
+    const sfzRes = importSfzToNative(text, filename, audioFiles, {
+      includeResolver: (incPath) => {
+        const norm = incPath.replace(/\\/g, '/').toLowerCase();
+        if (textFiles.has(norm)) return textFiles.get(norm);
+        const suffix = `/${norm}`;
+        for (const [k, v] of textFiles.entries()) {
+          if (k === norm || k.endsWith(suffix)) return v;
+        }
+        return undefined;
+      },
+    });
     return nativeImportResultToUniversalInstrument(sfzRes);
   }
 
@@ -1758,8 +1774,11 @@ export async function parseUniversalSamplerInstrument(
         ? normSfzPath.replace(/\/[^/]+$/, '') + '/'
         : '';
       const companionAudioFiles: AudioFilePayload[] = [];
+      const sfzTextEntries = new Map<string, typeof chosenSfz>();
       for (const entry of entries) {
-        if (audioExts.test(entry.path)) {
+        if (/\.(sfz|txt|inc|sfzh)$/i.test(entry.path)) {
+          sfzTextEntries.set(entry.path.replace(/\\/g, '/').toLowerCase(), entry);
+        } else if (audioExts.test(entry.path)) {
           const rawAudio = extractZipEntry(bytes, entry);
           const normEntry = entry.path.replace(/\\/g, '/');
           const relName =
@@ -1775,7 +1794,20 @@ export async function parseUniversalSamplerInstrument(
           });
         }
       }
-      const sfzRes = importSfzToNative(sfzText, chosenSfz.path, companionAudioFiles);
+      const sfzRes = importSfzToNative(sfzText, chosenSfz.path, companionAudioFiles, {
+        includeResolver: (incPath) => {
+          const norm = incPath.replace(/\\/g, '/').toLowerCase();
+          const direct = sfzTextEntries.get(norm);
+          if (direct) return new TextDecoder('utf-8').decode(extractZipEntry(bytes, direct));
+          const suffix = `/${norm}`;
+          for (const [k, entry] of sfzTextEntries.entries()) {
+            if (k.endsWith(suffix)) {
+              return new TextDecoder('utf-8').decode(extractZipEntry(bytes, entry));
+            }
+          }
+          return undefined;
+        },
+      });
       return nativeImportResultToUniversalInstrument(sfzRes);
     }
   }
