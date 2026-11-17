@@ -1,71 +1,32 @@
 // ─────────────────────────────────────────────────────────
-// ABDNeuModMakr — General MIDI (GM) Drum Map & Collision Detection
+// ABDNeuModMakr — Multi-Mode Drum Map & Collision Detection
 //
-// Canonical mapping from MIDI note numbers (35..81) to General MIDI Level 1
-// Percussion Sound Names. Provides note label formatting with note numbers
-// and names: e.g. "Acoustic Snare (38 D1)", collision detection across
-// zones/regions, and assigned-note tracking.
+// DRY wrapper over @abdsynths/shared/contracts/abdDrumMapProfiles.
+// Preserves legacy GM Level 1 API (35..81) while supporting Roland GS/MC-303,
+// Yamaha XG/XS/CS2x, Korg N5/AI2, Hardware Native, and Proprietary 0..127 maps.
 // ─────────────────────────────────────────────────────────
 
+import {
+  DRUM_MAP_MODES,
+  GM_CORE_NOTES,
+  getDrumMapProfile,
+  getDrumNoteMap,
+  getDrumSlotName,
+  type DrumMapMode,
+  type DrumNoteRemapper,
+  type DrumTriggerMode,
+} from '@abdsynths/shared/contracts/abdDrumMapProfiles.ts';
 import { midiToNoteName } from '../ui/ZoneRibbon.ts';
+
+export { DRUM_MAP_MODES, type DrumMapMode, type DrumNoteRemapper, type DrumTriggerMode };
 
 export interface GmDrumDefinition {
   note: number;
   name: string;
 }
 
-/**
- * Canonical General MIDI Level 1 Drum Map (MIDI Notes 35..81)
- */
-export const GM_DRUM_MAP: Record<number, string> = {
-  35: 'Acoustic Bass Drum',
-  36: 'Bass Drum 1',
-  37: 'Side Stick',
-  38: 'Acoustic Snare',
-  39: 'Hand Clap',
-  40: 'Electric Snare',
-  41: 'Low Floor Tom',
-  42: 'Closed Hi-Hat',
-  43: 'High Floor Tom',
-  44: 'Pedal Hi-Hat',
-  45: 'Low Tom',
-  46: 'Open Hi-Hat',
-  47: 'Low-Mid Tom',
-  48: 'Hi-Mid Tom',
-  49: 'Crash Cymbal 1',
-  50: 'High Tom',
-  51: 'Ride Cymbal 1',
-  52: 'Chinese Cymbal',
-  53: 'Ride Bell',
-  54: 'Tambourine',
-  55: 'Splash Cymbal',
-  56: 'Cowbell',
-  57: 'Crash Cymbal 2',
-  58: 'Vibraslap',
-  59: 'Ride Cymbal 2',
-  60: 'Hi Bongo',
-  61: 'Low Bongo',
-  62: 'Mute Hi Conga',
-  63: 'Open Hi Conga',
-  64: 'Low Conga',
-  65: 'High Timbale',
-  66: 'Low Timbale',
-  67: 'High Agogo',
-  68: 'Low Agogo',
-  69: 'Cabasa',
-  70: 'Maracas',
-  71: 'Short Whistle',
-  72: 'Long Whistle',
-  73: 'Short Guiro',
-  74: 'Long Guiro',
-  75: 'Claves',
-  76: 'Hi Wood Block',
-  77: 'Low Wood Block',
-  78: 'Mute Cuica',
-  79: 'Open Cuica',
-  80: 'Mute Triangle',
-  81: 'Open Triangle',
-};
+/** Canonical General MIDI Level 1 Drum Map (MIDI Notes 35..81) */
+export const GM_DRUM_MAP: Record<number, string> = GM_CORE_NOTES;
 
 /** Checks if a MIDI note is within the standard GM Drum Map range (35..81) */
 export function isGmDrumNote(midiNote: number): boolean {
@@ -77,32 +38,54 @@ export function getGmDrumName(midiNote: number): string | null {
   return GM_DRUM_MAP[midiNote] ?? null;
 }
 
-/**
- * Canonical formatter: "${drumName} (${midiNote} ${noteName})"
- * Example: "Acoustic Snare (38 D1)", "Closed Hi-Hat (42 F#1)", "Bass Drum 1 (36 C1)"
- */
-export function formatGmDrumLabel(midiNote: number): string {
-  const noteName = midiToNoteName(midiNote);
-  const drumName = GM_DRUM_MAP[midiNote];
-  if (drumName) {
-    return `${drumName} (${midiNote} ${noteName})`;
-  }
-  return `Custom Perc (${midiNote} ${noteName})`;
+/** Resolves a drum note name for any supported DrumMapMode (GM, GS/MC, XG/XS, Korg AI2/N5, Hardware, Proprietary) */
+export function getDrumNoteNameByMode(
+  midiNote: number,
+  mode: DrumMapMode = 'gm_standard',
+  hardwareId = 'boss_dr5'
+): string | null {
+  if (mode === 'gm_standard') return getGmDrumName(midiNote);
+  return getDrumSlotName(mode, midiNote, hardwareId);
 }
 
-/**
- * Returns all standard GM drum entries in ascending note order (35..81)
- */
+/** Canonical formatter: "${drumName} (${midiNote} ${noteName})" */
+export function formatDrumLabelByMode(
+  midiNote: number,
+  mode: DrumMapMode = 'gm_standard',
+  hardwareId = 'boss_dr5'
+): string {
+  const noteName = midiToNoteName(midiNote);
+  const drumName = getDrumNoteNameByMode(midiNote, mode, hardwareId);
+  return drumName ? `${drumName} (${midiNote} ${noteName})` : `Custom Perc (${midiNote} ${noteName})`;
+}
+
+/** Legacy GM formatter preserved for existing UI/test callers */
+export function formatGmDrumLabel(midiNote: number): string {
+  return formatDrumLabelByMode(midiNote, 'gm_standard');
+}
+
+/** Lists all drum entries in ascending note order for the requested DrumMapMode */
+export function listDrumEntriesByMode(
+  mode: DrumMapMode = 'gm_standard',
+  hardwareId = 'boss_dr5'
+): Array<{ note: number; name: string; label: string; category: string; muteGroup: number }> {
+  const profile = getDrumMapProfile(mode, hardwareId);
+  return profile.slots.map((slot) => ({
+    note: slot.note,
+    name: slot.name,
+    label: `${slot.name} (${slot.note} ${midiToNoteName(slot.note)})`,
+    category: slot.category,
+    muteGroup: slot.muteGroup,
+  }));
+}
+
+/** Returns all standard GM drum entries in ascending note order (35..81) */
 export function listGmDrumEntries(): Array<{ note: number; name: string; label: string }> {
   const result: Array<{ note: number; name: string; label: string }> = [];
   for (let note = 35; note <= 81; note++) {
     const name = GM_DRUM_MAP[note];
     if (name) {
-      result.push({
-        note,
-        name,
-        label: formatGmDrumLabel(note),
-      });
+      result.push({ note, name, label: formatGmDrumLabel(note) });
     }
   }
   return result;
@@ -128,29 +111,21 @@ export interface DrumCollisionInfo {
 }
 
 export interface DrumCollisionReport {
-  collisionMap: Record<string, DrumCollisionInfo>; // Keyed by item id
-  totalCollisions: number;                         // Total number of conflicting items
-  collidingKeys: number[];                         // Distinct MIDI notes in collision
+  collisionMap: Record<string, DrumCollisionInfo>;
+  totalCollisions: number;
+  collidingKeys: number[];
 }
 
-/**
- * Analyzes collisions across zones or regions.
- * A collision occurs when two or more items have identical rootKeys or overlapping key ranges
- * AND overlapping velocity ranges.
- */
-export function analyzeDrumCollisions(
-  items: Array<{
-    id: string;
-    lowKey: number;
-    highKey: number;
-    rootKey: number;
-    lowVel?: number;
-    highVel?: number;
-  }>
+/** Analyzes collisions across zones/regions using labels from the requested DrumMapMode */
+export function analyzeDrumCollisionsForMode(
+  items: Array<{ id: string; lowKey: number; highKey: number; rootKey: number; lowVel?: number; highVel?: number }>,
+  mode: DrumMapMode = 'gm_standard',
+  hardwareId = 'boss_dr5'
 ): DrumCollisionReport {
   const collisionMap: Record<string, DrumCollisionInfo> = {};
   const collidingKeysSet = new Set<number>();
   let totalCollidingItems = 0;
+  const noteNames = getDrumNoteMap(mode, hardwareId);
 
   for (let i = 0; i < items.length; i++) {
     const a = items[i];
@@ -163,13 +138,9 @@ export function analyzeDrumCollisions(
       const b = items[j];
       const bLowVel = b.lowVel ?? 1;
       const bHighVel = b.highVel ?? 127;
-
-      // Key match or overlap (in drum mode, rootKey match is primary, key range overlap is checked)
       const keyOverlap =
         a.rootKey === b.rootKey ||
-        (Math.max(a.lowKey, b.lowKey) <= Math.min(a.highKey, b.highKey));
-
-      // Velocity range overlap
+        Math.max(a.lowKey, b.lowKey) <= Math.min(a.highKey, b.highKey);
       const velOverlap = Math.max(aLowVel, bLowVel) <= Math.min(aHighVel, bHighVel);
 
       if (keyOverlap && velOverlap) {
@@ -188,10 +159,12 @@ export function analyzeDrumCollisions(
     if (peers.length > 0) {
       collidingKeysSet.add(a.rootKey);
       totalCollidingItems++;
+      const resolvedName = noteNames[a.rootKey];
+      const noteName = midiToNoteName(a.rootKey);
       collisionMap[a.id] = {
         key: a.rootKey,
-        noteName: midiToNoteName(a.rootKey),
-        drumLabel: formatGmDrumLabel(a.rootKey),
+        noteName,
+        drumLabel: resolvedName ? `${resolvedName} (${a.rootKey} ${noteName})` : `Custom Perc (${a.rootKey} ${noteName})`,
         peerIds: peers.map((p) => p.id),
         peerIndices: peers.map((p) => p.index),
         peers,
@@ -204,4 +177,11 @@ export function analyzeDrumCollisions(
     totalCollisions: totalCollidingItems,
     collidingKeys: Array.from(collidingKeysSet).sort((a, b) => a - b),
   };
+}
+
+/** Legacy GM collision detector preserved for existing callers */
+export function analyzeDrumCollisions(
+  items: Array<{ id: string; lowKey: number; highKey: number; rootKey: number; lowVel?: number; highVel?: number }>
+): DrumCollisionReport {
+  return analyzeDrumCollisionsForMode(items, 'gm_standard');
 }

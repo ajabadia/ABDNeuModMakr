@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_sc55",
+  "aliases": ["sc55", "roland-sc-55", "sc55mk2"],
+  "displayName": "Roland SC-55 / SC-55mkII Sound Canvas",
+  "description": "Roland GS 16-part Sound Canvas wavetable module (TC6116AF, Model ID 42h, DT1 F0 41 dev 42 12).",
+  "deviceType": "AUTOMATED_NRPN",
+  "category": "Sound Module / Rompler",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "SC-55",
+    "modelIdHex": "42",
+    "sysexHeaderHex": "41 10 42 12",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["SC-55", "Sound Canvas", "SC55"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "GS Reset SysEx", "method": "SYSEX_RAW", "sysexHexPayload": "F0 41 10 42 12 40 00 7F 00 41 F7", "settlingDelayMs": 120 },
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 30 }
+    ],
+    "postSessionTeardown": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "sc55_tvf",
+      "name": "GS TVF Filter (NRPN MSB=1)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "controls": [
+        { "index": 1, "name": "TVF Cutoff", "type": "Knob", "controlMethod": "NRPN", "nrpn": 160, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 2, "name": "TVF Resonance", "type": "Knob", "controlMethod": "NRPN", "nrpn": 161, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" }
+      ]
+    },
+    {
+      "id": "sc55_env",
+      "name": "GS TVA/TVF Envelope (NRPN MSB=1)",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "controls": [
+        { "index": 1, "name": "Attack Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 227, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 2, "name": "Decay Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 228, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 3, "name": "Release Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 230, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" }
+      ]
+    }
+  ]
+}

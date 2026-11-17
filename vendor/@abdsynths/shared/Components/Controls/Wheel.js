@@ -56,12 +56,15 @@ export class Wheel {
     this._initialFrame = options.initialFrame ?? Math.floor((this.frames - 1) / 2);
     this.onChange = options.onChange || (() => {});
     this.onSettled = options.onSettled || (() => {});
+    this.onDragStart = options.onDragStart || (() => {});
+    this.onDragEnd = options.onDragEnd || (() => {});
     this.isPitch = this.type === 'pitch';
     this.min = options.min !== undefined ? options.min : this.isPitch ? -8192 : 0;
     this.max = options.max !== undefined ? options.max : this.isPitch ? 8191 : 127;
     this.label = options.label || (this.isPitch ? 'PITCH' : 'MOD');
     this.valueFormatter = options.valueFormatter || this.defaultValueFormatter.bind(this);
     this._destroyed = false;
+    this._dragOpen = false;
     this.notices = createContinuousNotices({
       onMovement: (v) => this.onChange(v),
       onSettled: (v) => this.onSettled(v),
@@ -136,6 +139,24 @@ export class Wheel {
     this.setValue(0);
   }
 
+  /**
+   * Abre el gesto del host una sola vez por arrastre. Hay dos caminos de arrastre
+   * (sprite y slider) y los dos pueden disparar el mismo pointerdown, así que el
+   * guard es lo que evita un beginChangeGesture duplicado que el host no cerraría.
+   */
+  _openDrag() {
+    if (this._dragOpen) return;
+    this._dragOpen = true;
+    this.onDragStart();
+  }
+
+  /** Cierra el gesto abierto; si no hay ninguno abierto no hace nada. */
+  _closeDrag() {
+    if (!this._dragOpen) return;
+    this._dragOpen = false;
+    this.onDragEnd();
+  }
+
   attachEvents() {
     const getRaw = () => parseInt(this.slider.value, 10);
     this._rawPrev = getRaw();
@@ -168,24 +189,6 @@ export class Wheel {
     let startVal = 0;
     const totalRange = this.max - this.min;
     const dragLanePx = 150;
-
-  /**
-   * Abre el gesto del host una sola vez por arrastre. Hay dos caminos de arrastre
-   * (sprite y slider) y los dos pueden disparar el mismo pointerdown, así que el
-   * guard es lo que evita un beginChangeGesture duplicado que el host no cerraría.
-   */
-  _openDrag() {
-    if (this._dragOpen) return;
-    this._dragOpen = true;
-    this.onDragStart();
-  }
-
-  /** Cierra el gesto abierto; si no hay ninguno abierto no hace nada. */
-  _closeDrag() {
-    if (!this._dragOpen) return;
-    this._dragOpen = false;
-    this.onDragEnd();
-  };
 
     const onPointerDown = (e) => {
       isDragging = true;

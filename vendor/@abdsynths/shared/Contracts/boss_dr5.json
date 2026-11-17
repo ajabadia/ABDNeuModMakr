@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "2.0",
+  "id": "boss_dr5",
+  "aliases": ["dr5", "boss-dr-5"],
+  "displayName": "Boss DR-5 Dr. Rhythm Section",
+  "description": "Boss DR-5 4-track programmable rhythm/bass/guitar/keys GS sound module (1993, Roland 41h GS NRPN/DT1 compatible).",
+  "deviceType": "AUTOMATED_MIDI_CC",
+  "category": "Drum Machine / Sound Module",
+  "brand": "Boss",
+  "brandLogo": "brands/boss-logo.svg",
+  "modelImage": "",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "DR-5",
+    "modelIdHex": "42",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["DR-5", "DR5"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 30 },
+      { "description": "Reset All Controllers", "method": "MIDI_CC", "controlNumber": 121, "normalizedValue": 0.0, "settlingDelayMs": 30 },
+      { "description": "Zero Reverb Send (CC91 = 0)", "method": "MIDI_CC", "controlNumber": 91, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ],
+    "postSessionTeardown": [
+      { "description": "All Sound Off Post-Session", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "dr5_voice_channel",
+      "name": "DR-5 Track Volume, Pan & Reverb/Chorus",
+      "blockType": "AmplitudeGain",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Notes Ch 10 (Drums) & Ch 1..4 (Bass/Keys/Guitar)",
+        "responseInput": "Boss DR-5 Output L/R -> Audio Interface In 1/2",
+        "notes": "Supports standard MIDI CC 7/10/91/93 and GS Drum Key NRPNs (CC99=24,26,28,29)."
+      },
+      "controls": [
+        { "index": 1, "name": "Track Level", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 7, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 100.0, "unit": "midi" },
+        { "index": 2, "name": "Track Pan", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 10, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" },
+        { "index": 3, "name": "Reverb Depth", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 91, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 0.0, "unit": "midi" }
+      ]
+    }
+  ]
+}

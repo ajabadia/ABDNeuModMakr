@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdsynths.dev/schemas/abd_structured_rompler.schema.json",
+  "title": "ABDSynths Structured Rompler & De-Baked Soundbank Contract",
+  "description": "Clean-room structured bank/patch/wave-capsule schema designed to surpass SF2 and SFZ by uniting de-baked spectral+DDSP waves, up to 4 stereo partials, modular filters, 4T4L envelopes, vector 2D mixing, and 128-key per-pad synth drum kits.",
+  "type": "object",
+  "required": ["schemaVersion", "formatId", "bankName", "wavePool", "tones"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "formatId": { "type": "string", "const": "abd_structured_rompler" },
+    "bankName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "author": { "type": "string" },
+    "targetHardwareFamily": { "type": "string" },
+    "wavePool": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/WaveDescriptor" }
+    },
+    "tones": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/McxTonePatch" }
+    },
+    "drumKits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/McxDrumKitPatch" }
+    }
+  },
+  "$defs": {
+    "Env4T4L": {
+      "type": "object",
+      "required": ["t1Ms", "t2Ms", "t3Ms", "t4Ms", "l1", "l2", "l3"],
+      "properties": {
+        "t1Ms": { "type": "number", "minimum": 0 },
+        "t2Ms": { "type": "number", "minimum": 0 },
+        "t3Ms": { "type": "number", "minimum": 0 },
+        "t4Ms": { "type": "number", "minimum": 0 },
+        "l0": { "type": "number", "minimum": -1, "maximum": 1 },
+        "l1": { "type": "number", "minimum": -1, "maximum": 1 },
+        "l2": { "type": "number", "minimum": -1, "maximum": 1 },
+        "l3": { "type": "number", "minimum": -1, "maximum": 1 },
+        "l4": { "type": "number", "minimum": -1, "maximum": 1 }
+      }
+    },
+    "WaveDescriptor": {
+      "type": "object",
+      "required": ["id", "name", "sourceKind"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" },
+        "name": { "type": "string", "minLength": 1 },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["spectral_ddsp", "pcm_zone", "va_osc", "fm_2op", "axionik_surface_ref"]
+        },
+        "stereo": { "type": "boolean" },
+        "assetUriLeft": { "type": "string" },
+        "assetUriRight": { "type": "string" },
+        "playMode": { "type": "string", "enum": ["oneshot", "forward", "pingpong"] },
+        "rootKey": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "fineTuneCents": { "type": "number", "minimum": -100, "maximum": 100 },
+        "loopTuneCents": { "type": "number", "minimum": -100, "maximum": 100 },
+        "altStartOffsetFrames": { "type": "integer", "minimum": 0 },
+        "loopStartFrame": { "type": "integer", "minimum": 0 },
+        "loopEndFrame": { "type": "integer", "minimum": 0 },
+        "deBakeProvenance": {
+          "type": "object",
+          "properties": {
+            "ipCleanResynthesis": { "type": "boolean" },
+            "referenceHardwareId": { "type": "string" },
+            "barkResidualBands": { "type": "integer", "minimum": 0, "maximum": 48 },
+            "harmonicPartials": { "type": "integer", "minimum": 0, "maximum": 512 },
+            "captureTool": { "type": "string", "enum": ["ABDNeuModMakr", "ABDAudioLab", "CleanVA"] }
+          }
+        }
+      }
+    },
+    "PartialConfig": {
+      "type": "object",
+      "required": ["slot", "enabled", "sourceKind"],
+      "properties": {
+        "slot": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "enabled": { "type": "boolean" },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["spectral_ddsp", "pcm_zone", "va_osc", "fm_2op", "axionik_surface_ref"]
+        },
+        "waveId": { "type": "string" },
+        "vaShape": { "type": "string", "enum": ["saw", "pulse", "tri", "sine", "supersaw", "noise"] },
+        "coarseSemitones": { "type": "integer", "minimum": -48, "maximum": 48 },
+        "fineCents": { "type": "number", "minimum": -50, "maximum": 50 },
+        "levelDb": { "type": "number", "minimum": -96, "maximum": 12 },
+        "pan": { "type": "number", "minimum": -1, "maximum": 1 },
+        "velLo": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "velHi": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "fadeLo": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "fadeHi": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "filterModel": {
+          "type": "string",
+          "enum": ["svf_clean", "roland_tvf_zdf", "ms20_acid", "ladder_drive", "zplane_morph", "roland_tc6116_tvf"]
+        },
+        "filterType": { "type": "string", "enum": ["lpf12", "lpf24", "bpf", "hpf", "morph"] },
+        "cutoffHz": { "type": "number", "minimum": 20, "maximum": 20000 },
+        "resonance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "zplaneMorph": { "type": "number", "minimum": 0, "maximum": 1 },
+        "drive": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pitchEnv4T4L": { "$ref": "#/$defs/Env4T4L" },
+        "filterEnv4T4L": { "$ref": "#/$defs/Env4T4L" },
+        "ampEnv4T4L": { "$ref": "#/$defs/Env4T4L" }
+      }
+    },
+    "McxTonePatch": {
+      "type": "object",
+      "required": ["id", "name", "structureMode", "partials"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 48 },
+        "category": { "type": "string" },
+        "structureMode": {
+          "type": "string",
+          "enum": [
+            "parallel",
+            "roland_struct_1",
+            "roland_struct_2",
+            "roland_struct_3",
+            "roland_struct_4",
+            "roland_struct_5",
+            "roland_struct_6",
+            "roland_struct_7",
+            "roland_struct_8",
+            "roland_struct_9",
+            "roland_struct_10",
+            "vector_2d"
+          ]
+        },
+        "outputCharacter": {
+          "type": "string",
+          "enum": ["hd_studio", "rompler_16bit_32k", "sampler_12bit"]
+        },
+        "partials": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": { "$ref": "#/$defs/PartialConfig" }
+        },
+        "vectorEnvelope": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["x", "y", "timeMs"],
+            "properties": {
+              "x": { "type": "number", "minimum": -1, "maximum": 1 },
+              "y": { "type": "number", "minimum": -1, "maximum": 1 },
+              "timeMs": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "patchCords": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "destination", "amount"],
+            "properties": {
+              "source": { "type": "string" },
+              "destination": { "type": "string" },
+              "amount": { "type": "number", "minimum": -1, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "McxDrumKeySlot": {
+      "type": "object",
+      "required": ["midiNote", "name"],
+      "properties": {
+        "midiNote": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "name": { "type": "string" },
+        "toneId": { "type": "string" },
+        "muteGroup": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "coarseKey": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "level": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pan": { "type": "number", "minimum": -1, "maximum": 1 },
+        "reverbSend": { "type": "number", "minimum": 0, "maximum": 1 },
+        "chorusSend": { "type": "number", "minimum": 0, "maximum": 1 },
+        "drive": { "type": "number", "minimum": 0, "maximum": 1 },
+        "cutoffHzOverride": { "type": "number", "minimum": 20, "maximum": 20000 },
+        "resonanceOverride": { "type": "number", "minimum": 0, "maximum": 1 },
+        "decayScaleOverride": { "type": "number", "minimum": 0.05, "maximum": 10 },
+        "triggerMode": { "type": "string", "enum": ["one_shot", "gated"] },
+        "pitchKeyTrack": { "type": "boolean" }
+      }
+    },
+    "McxDrumKitPatch": {
+      "type": "object",
+      "required": ["id", "name", "slots"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 48 },
+        "drumMapMode": {
+          "type": "string",
+          "enum": ["gm_standard", "roland_gs_mc", "yamaha_xg_xs", "korg_ai2_n5", "hardware_native", "proprietary_custom"]
+        },
+        "slots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/McxDrumKeySlot" }
+        }
+      }
+    }
+  }
+}

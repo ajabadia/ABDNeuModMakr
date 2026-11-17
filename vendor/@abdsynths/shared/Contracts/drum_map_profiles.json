@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "1.0.0",
+  "gm_standard": {
+    "35": "Acoustic Bass Drum", "36": "Bass Drum 1", "37": "Side Stick", "38": "Acoustic Snare",
+    "39": "Hand Clap", "40": "Electric Snare", "41": "Low Floor Tom", "42": "Closed Hi-Hat",
+    "43": "High Floor Tom", "44": "Pedal Hi-Hat", "45": "Low Tom", "46": "Open Hi-Hat",
+    "47": "Low-Mid Tom", "48": "Hi-Mid Tom", "49": "Crash Cymbal 1", "50": "High Tom",
+    "51": "Ride Cymbal 1", "52": "Chinese Cymbal", "53": "Ride Bell", "54": "Tambourine",
+    "55": "Splash Cymbal", "56": "Cowbell", "57": "Crash Cymbal 2", "58": "Vibraslap",
+    "59": "Ride Cymbal 2", "60": "Hi Bongo", "61": "Low Bongo", "62": "Mute Hi Conga",
+    "63": "Open Hi Conga", "64": "Low Conga", "65": "High Timbale", "66": "Low Timbale",
+    "67": "High Agogo", "68": "Low Agogo", "69": "Cabasa", "70": "Maracas",
+    "71": "Short Whistle", "72": "Long Whistle", "73": "Short Guiro", "74": "Long Guiro",
+    "75": "Claves", "76": "Hi Wood Block", "77": "Low Wood Block", "78": "Mute Cuica",
+    "79": "Open Cuica", "80": "Mute Triangle", "81": "Open Triangle"
+  },
+  "roland_gs_mc_extra": {
+    "11": "909 Snare 1", "12": "808 Snare 4", "13": "Rim Snare 1", "14": "Hyper Snare 1",
+    "15": "Hyper Snare 2", "16": "Finger Snap", "17": "909 Bass Drum 1", "18": "Cave Bass Drum",
+    "19": "808 Bass Drum 1", "20": "909 Bass Drum 3", "21": "Blip Bass Drum", "22": "606 Bass Drum 3",
+    "23": "909 Bass Drum 9", "24": "909 Bass Drum Alt", "25": "Snare Roll", "26": "Finger Snap Alt",
+    "27": "High Q", "28": "Slap", "29": "Scratch Push", "30": "Scratch Pull",
+    "31": "Sticks", "32": "Square Click", "33": "Metronome Click", "34": "Metronome Bell",
+    "82": "Shaker", "83": "Jingle Bell", "84": "Belltree", "85": "Castanets",
+    "86": "Mute Surdo", "87": "Open Surdo", "88": "Applaud / Douby", "89": "Strings Hit",
+    "90": "Syn Perc", "91": "MG Blip 1", "92": "Rev Blip", "93": "Vocal Ha!",
+    "94": "Vocal Hoo!", "95": "Brass Fall", "96": "Scratch Push FX", "97": "Scratch Pull FX",
+    "98": "Scratch Rewind", "99": "Tape Rewind", "100": "Vinyl Stop", "101": "Laughing",
+    "102": "Screaming", "103": "Car Pass", "104": "Car Crash", "105": "Helicopter",
+    "106": "Jetplane", "107": "Laser Gun", "108": "Burst Noise", "109": "Starship",
+    "110": "Analog FX", "111": "Bird", "112": "Bubble", "113": "Wind",
+    "114": "Stream", "115": "Seashore", "116": "Thunder", "117": "Applause",
+    "118": "Explosion", "126": "Metronome Low", "127": "Metronome Hi"
+  },
+  "yamaha_xg_xs_extra": {
+    "13": "Surdo Mute", "14": "Surdo Open", "15": "Hi Q", "16": "Whip Slap",
+    "17": "Scratch Push", "18": "Scratch Pull", "19": "Finger Snap", "20": "Click Noise",
+    "21": "Metronome Click", "22": "Metronome Bell", "23": "Seq Click L", "24": "Seq Click H",
+    "25": "Brush Tap", "26": "Brush Swirl", "27": "Brush Slap", "28": "Brush Swirl W/Attack",
+    "29": "Snare Roll", "30": "Castanet", "31": "Snare Soft", "32": "Sticks",
+    "33": "Kick Soft", "34": "Open Rim Shot", "82": "Shaker", "83": "Jingle Bell",
+    "84": "Bell Tree", "85": "XS Rim Heavy", "86": "XS Mute Surdo", "87": "XS Open Surdo",
+    "88": "XS Synth Kick", "89": "XS Techno Clap", "90": "XS Analog Hat C", "91": "XS Analog Hat O",
+    "92": "XS Break Snare", "93": "XS Lo-Fi Rim", "94": "XS Hit Cymbal", "95": "XS Electro Tom",
+    "96": "XS Perc Loop Hit", "97": "XS Vox Breath", "98": "XS Noise Sweep", "99": "XS Reverse Crash",
+    "100": "XS Sub Drop"
+  },
+  "korg_ai2_n5_extra": {
+    "24": "Orch / Synth BD", "25": "Rim Snare Korg", "26": "Brush Tap", "27": "High Q",
+    "28": "Slap", "29": "Scratch Push", "30": "Scratch Pull", "31": "Sticks",
+    "32": "Square Click", "33": "Metronome Click", "34": "Metronome Bell",
+    "82": "Shaker", "83": "Jingle Bell", "84": "Wind Chimes", "85": "Castanets"
+  },
+  "hardware_native_presets": {
+    "boss_dr5": {
+      "35": "DR-5 Kick 2", "36": "DR-5 Kick 1", "37": "DR-5 Rimshot", "38": "DR-5 Snare 1",
+      "39": "DR-5 Clap", "40": "DR-5 Snare 2", "42": "DR-5 Closed Hat", "44": "DR-5 Pedal Hat",
+      "46": "DR-5 Open Hat", "49": "DR-5 Crash", "51": "DR-5 Ride"
+    },
+    "quasimidi_309": {
+      "36": "309 Kick Section", "38": "309 Snare Section", "42": "309 Hi-Hat Closed",
+      "46": "309 Hi-Hat Open", "48": "309 Perc Set A", "50": "309 Perc Set B"
+    },
+    "emu_orbit_carnival": {
+      "36": "E-mu Sub Kick", "37": "E-mu Tight Rim", "38": "E-mu Break Snare", "39": "E-mu Dance Clap",
+      "42": "E-mu Closed Hat", "46": "E-mu Open Hat", "48": "Orbit Hit 1", "50": "Orbit Beat Slice"
+    },
+    "akai_mpc": {
+      "36": "Pad A01", "37": "Pad A02", "38": "Pad A03", "39": "Pad A04",
+      "40": "Pad A05", "41": "Pad A06", "42": "Pad A07", "43": "Pad A08",
+      "44": "Pad A09", "45": "Pad A10", "46": "Pad A11", "47": "Pad A12",
+      "48": "Pad A13", "49": "Pad A14", "50": "Pad A15", "51": "Pad A16"
+    },
+    "elektron_8track": {
+      "0": "Track 1 Kick", "1": "Track 2 Snare", "2": "Track 3 Tom / Rim", "3": "Track 4 Clap",
+      "4": "Track 5 Cowbell / Perc", "5": "Track 6 Closed Hat", "6": "Track 7 Open Hat", "7": "Track 8 Cymbal / FX"
+    }
+  }
+}

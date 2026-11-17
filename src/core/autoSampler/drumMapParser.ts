@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────
 
 import { midiNoteToStandardName } from '@abdsynths/shared/dsp/take';
+import { getDrumMapProfile, type DrumMapMode } from '@abdsynths/shared/contracts/abdDrumMapProfiles.ts';
 
 export interface DrumMapHitEntry {
   midiNote: number; // 0..127
@@ -405,6 +406,21 @@ function unquote(s: string): string {
 
 // ── Factory Presets & User-Facing Templates / Documentation ─────────────────
 
+function buildPresetFromContractMode(kitName: string, mode: DrumMapMode): ParsedDrumHitMap {
+  const profile = getDrumMapProfile(mode);
+  return {
+    name: kitName,
+    kitName,
+    channel: 10,
+    hits: profile.slots.map((s) => ({
+      midiNote: s.note,
+      name: s.name,
+      ...(s.muteGroup > 0 ? { muteGroup: s.muteGroup } : {}),
+    })),
+    warnings: [],
+  };
+}
+
 export const FACTORY_DRUM_MAP_PRESETS: Record<string, ParsedDrumHitMap> = {
   tr808_909: {
     name: 'Roland TR-808 / TR-909 Standard (16 Hits)',
@@ -456,6 +472,9 @@ export const FACTORY_DRUM_MAP_PRESETS: Record<string, ParsedDrumHitMap> = {
     ],
     warnings: [],
   },
+  roland_gs_mc303: buildPresetFromContractMode('Roland GS / MC-303 / D-2 Extended (11..127)', 'roland_gs_mc'),
+  yamaha_xg_cs2x: buildPresetFromContractMode('Yamaha XG / Motif XS / CS2x (13..100)', 'yamaha_xg_xs'),
+  korg_n5_ai2: buildPresetFromContractMode('Korg N5 / X5D / AI2 Percussion (24..85)', 'korg_ai2_n5'),
 };
 
 export function getDrumMapFormatSpecificationHelpText(): string {

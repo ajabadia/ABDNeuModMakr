@@ -719,7 +719,7 @@ async function runSecurityTestsPart5(): Promise<void> {
   const child = spawn('python', ['bridge/server.py', '--port', String(port)], {
     stdio: 'ignore',
     detached: true,
-    env: { ...process.env, ABD_BRIDGE_TOKEN: 'redteam-token' },
+    env: { ...process.env, ABD_BRIDGE_TOKEN: 'redteam-token', PYTHONIOENCODING: 'utf-8' },
   });
   const kill = (): void => {
     try {

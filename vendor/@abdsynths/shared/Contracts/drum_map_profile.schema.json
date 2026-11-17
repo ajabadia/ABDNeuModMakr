@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abdsynths.dev/schemas/drum_map_profile.schema.json",
+  "title": "ABDSynths Multi-Standard & Proprietary Drum Map Profile Contract",
+  "description": "Shared drum map layout, mute group, trigger mode, and bidirectional note remapping contract across ABDShared, ABDNeuModMakr, and ABDMCX0X.",
+  "type": "object",
+  "required": ["schemaVersion", "mode", "name", "minNote", "maxNote", "slots"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0.0" },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "gm_standard",
+        "roland_gs_mc",
+        "yamaha_xg_xs",
+        "korg_ai2_n5",
+        "hardware_native",
+        "proprietary_custom"
+      ]
+    },
+    "hardwareId": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "minNote": { "type": "integer", "minimum": 0, "maximum": 127 },
+    "maxNote": { "type": "integer", "minimum": 0, "maximum": 127 },
+    "slots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DrumSlotDefinition" }
+    },
+    "remapper": { "$ref": "#/$defs/DrumNoteRemapper" }
+  },
+  "$defs": {
+    "DrumTriggerMode": {
+      "type": "string",
+      "enum": ["one_shot", "gated"]
+    },
+    "DrumSlotDefinition": {
+      "type": "object",
+      "required": ["note", "name", "category", "muteGroup", "triggerMode", "pitchKeyTrack"],
+      "properties": {
+        "note": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "muteGroup": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "triggerMode": { "$ref": "#/$defs/DrumTriggerMode" },
+        "pitchKeyTrack": { "type": "boolean" }
+      }
+    },
+    "DrumNoteRemapper": {
+      "type": "object",
+      "properties": {
+        "inputToSlot": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 127 }
+        },
+        "slotToExternal": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 127 }
+        }
+      }
+    }
+  }
+}

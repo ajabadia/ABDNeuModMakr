@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_d2",
+  "aliases": ["d2", "roland-d-2", "mc505"],
+  "displayName": "Roland D-2 Groovebox (MC-505 Engine)",
+  "description": "Roland D-2 / MC-505 4-Partial Structured Groove Engine (TVF multimode, 10 ring/booster structures, per-key drum edit).",
+  "deviceType": "AUTOMATED_NRPN",
+  "category": "Groovebox / Rompler",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "D-2",
+    "modelIdHex": "00 0B",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["D-2", "MC-505", "JX-305"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 30 },
+      { "description": "Reset All Controllers", "method": "MIDI_CC", "controlNumber": 121, "normalizedValue": 0.0, "settlingDelayMs": 30 }
+    ],
+    "postSessionTeardown": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "d2_tvf",
+      "name": "Multimode TVF (Cutoff & Resonance)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Ch 1..7 / Ch 10 Drums",
+        "responseInput": "Roland D-2 Line Out L/R -> Audio Interface In 1/2",
+        "notes": "CC74 Cutoff / CC71 Resonance or NRPN MSB=1 LSB=32/33."
+      },
+      "controls": [
+        { "index": 1, "name": "TVF Cutoff", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 74, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" },
+        { "index": 2, "name": "TVF Resonance", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 71, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" }
+      ]
+    },
+    {
+      "id": "d2_env",
+      "name": "TVA / TVF Envelope Offset",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "controls": [
+        { "index": 1, "name": "Attack Time", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 73, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" },
+        { "index": 2, "name": "Decay Time", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 75, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" },
+        { "index": 3, "name": "Release Time", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 72, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 64.0, "unit": "midi" }
+      ]
+    }
+  ]
+}

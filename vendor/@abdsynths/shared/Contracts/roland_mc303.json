@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "2.0",
+  "id": "roland_mc303",
+  "aliases": ["mc303", "roland-mc-303"],
+  "displayName": "Roland MC-303 Groovebox",
+  "description": "Roland MC-303 Groovebox (1996, TC6116AF, Sound Module mode) - NRPN + DT1 SysEx profile.",
+  "deviceType": "AUTOMATED_NRPN",
+  "category": "Groovebox / Rompler",
+  "brand": "Roland",
+  "brandLogo": "brands/roland-logo.svg",
+  "modelImage": "",
+  "midiIdentification": {
+    "manufacturer": "Roland",
+    "manufacturerIdHex": "41",
+    "model": "MC-303",
+    "modelIdHex": "00 03",
+    "autoDetectSysEx": "F0 7E 7F 06 01 F7",
+    "portNameMatches": ["MC-303", "MC303"]
+  },
+  "lifecycle": {
+    "preSessionSetup": [
+      { "description": "All Sound Off", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 30 },
+      { "description": "Reset All Controllers", "method": "MIDI_CC", "controlNumber": 121, "normalizedValue": 0.0, "settlingDelayMs": 30 },
+      { "description": "Disable Reverb Send (CC91 = 0)", "method": "MIDI_CC", "controlNumber": 91, "normalizedValue": 0.0, "settlingDelayMs": 20 },
+      { "description": "Disable Chorus Send (CC93 = 0)", "method": "MIDI_CC", "controlNumber": 93, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ],
+    "postSessionTeardown": [
+      { "description": "All Sound Off Post-Session", "method": "MIDI_CC", "controlNumber": 120, "normalizedValue": 0.0, "settlingDelayMs": 20 }
+    ]
+  },
+  "functions": [
+    {
+      "id": "tvf_filter",
+      "name": "Time-Variant Filter (TVF)",
+      "blockType": "SpectrumFilter",
+      "suggestedStimulus": "LOG_SINE_SWEEP",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note / Tone (Sound Module Mode, Ch 1)",
+        "responseInput": "MC-303 Mix Out L/R -> Audio Interface In 1/2",
+        "notes": "Strict NRPN order: CC99=1 -> CC98=32/33 -> CC6=14..114."
+      },
+      "controls": [
+        { "index": 1, "name": "TVF Cutoff Freq", "type": "Knob", "controlMethod": "NRPN", "nrpn": 160, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 2, "name": "TVF Resonance", "type": "Knob", "controlMethod": "NRPN", "nrpn": 161, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" }
+      ]
+    },
+    {
+      "id": "tva_tvf_envelope",
+      "name": "TVA & TVF Envelope (Attack / Decay / Release)",
+      "blockType": "TimeDynamic",
+      "suggestedStimulus": "GATE_PULSE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On/Off (Ch 1)",
+        "responseInput": "MC-303 Mix Out L/R -> Audio Interface In 1/2",
+        "notes": "NRPN MSB=1 (CC99=1), LSB=99 (Attack), 100 (Decay), 102 (Release)."
+      },
+      "controls": [
+        { "index": 1, "name": "Env Attack Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 227, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 2, "name": "Env Decay Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 228, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 3, "name": "Env Release Time", "type": "Knob", "controlMethod": "NRPN", "nrpn": 230, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" }
+      ]
+    },
+    {
+      "id": "vibrato_lfo",
+      "name": "Vibrato LFO (Rate / Depth / Delay)",
+      "blockType": "CyclicModulator",
+      "suggestedStimulus": "SUSTAINED_NOTE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On (Ch 1)",
+        "responseInput": "MC-303 Mix Out L/R -> Audio Interface In 1/2",
+        "notes": "NRPN MSB=1 (CC99=1), LSB=8 (Rate), 9 (Depth), 10 (Delay)."
+      },
+      "controls": [
+        { "index": 1, "name": "Vibrato Rate", "type": "Knob", "controlMethod": "NRPN", "nrpn": 136, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 2, "name": "Vibrato Depth", "type": "Knob", "controlMethod": "NRPN", "nrpn": 137, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" },
+        { "index": 3, "name": "Vibrato Delay", "type": "Knob", "controlMethod": "NRPN", "nrpn": 138, "minVal": 14.0, "maxVal": 114.0, "defaultVal": 64.0, "unit": "step" }
+      ]
+    },
+    {
+      "id": "fx_sends",
+      "name": "Part Effect Sends & Drum Kit NRPN",
+      "blockType": "AmplitudeGain",
+      "suggestedStimulus": "DIRAC_IMPULSE",
+      "routingGuide": {
+        "stimulusOutput": "MIDI Note On (Ch 1 / Ch 10)",
+        "responseInput": "MC-303 Mix Out L/R -> Audio Interface In 1/2",
+        "notes": "Part FX: CC91 Reverb, CC93 Chorus. Drum Kit per-key NRPN: CC99=24 Pitch, 26 Level, 28 Pan, 29 Reverb, 30 Chorus (CC98=key 11..118)."
+      },
+      "controls": [
+        { "index": 1, "name": "Reverb Depth", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 91, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 0.0, "unit": "midi" },
+        { "index": 2, "name": "Chorus Depth", "type": "Knob", "controlMethod": "MIDI_CC", "cc": 93, "minVal": 0.0, "maxVal": 127.0, "defaultVal": 0.0, "unit": "midi" }
+      ]
+    }
+  ]
+}
